@@ -168,10 +168,10 @@ int FuncFb(lens & l, double blen) {
 //                         Error LSST calculations                    //
 //                                                                    //
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
-double errlsstM(double maga, int fi, double sig5){ //LSST Photometric Error 
+double errlsstM(double mag, int fi, double sig5){ //LSST Photometric Error 
 
     double x, Delta1 = 0.0;
-    x = pow(10.0, float(0.4 * (maga- sig5 )));
+    x = pow(10.0, float(0.4 * (mag- sig5 )));
     Delta1 = double(sqrt(fabs((0.04 - gama[fi]) * x + gama[fi] * x * x)));
     
     if (Delta1 < 0.0001)   Delta1 = 0.0001;
@@ -188,18 +188,18 @@ double errlsstA(lsst & ls, double ghadr){ //LSST Astrometric Error
 
     double error = -1.0, shib = 0.0;
 
-    if (ghadr < ls.maga[0] or  ghadr == ls.maga[0]) error = double(ls.err[0]);
+    if (ghadr < ls.mag[0] or  ghadr == ls.mag[0]) error = double(ls.err[0]);
 
-    else if (ghadr > ls.maga[Na-1] or ghadr == ls.maga[Na-1]) {
-        shib = (ls.err[Na-1] - ls.err[Na-2]) / (ls.maga[Na-1] - ls.maga[Na-2]);
-        error = double(ls.err[Na-1] + shib * (ghadr - ls.maga[Na-1]));
+    else if (ghadr > ls.mag[Na-1] or ghadr == ls.mag[Na-1]) {
+        shib = (ls.err[Na-1] - ls.err[Na-2]) / (ls.mag[Na-1] - ls.mag[Na-2]);
+        error = double(ls.err[Na-1] + shib * (ghadr - ls.mag[Na-1]));
     }
 
     else {
         for (int i = 1; i < Na; ++i) {
-            if (double((ghadr - ls.maga[i]) * (ghadr - ls.maga[i-1])) < 0.0 or ghadr == ls.maga[i-1]) {
-                shib = (ls.err[i] - ls.err[i-1]) / (ls.maga[i] - ls.maga[i-1]);
-                error = double(ls.err[i-1] + shib * (ghadr - ls.maga[i-1]));
+            if (double((ghadr - ls.mag[i]) * (ghadr - ls.mag[i-1])) < 0.0 or ghadr == ls.mag[i-1]) {
+                shib = (ls.err[i] - ls.err[i-1]) / (ls.mag[i] - ls.mag[i-1]);
+                error = double(ls.err[i-1] + shib * (ghadr - ls.mag[i-1]));
                 break;
             }
         }
@@ -341,7 +341,8 @@ int nearestSightline(const extin& ex, double lon, double lat) {
         }
     }
 
-    CHECK(best >= 0)
+    CHECK(best >= 0);
+
     return best;
 }
 
@@ -368,7 +369,7 @@ double interpExtinctionAlongSightline(const extin& ex, int k, double dist) {
             hi = mid;
     }
 
-    double t = (dist-profile.dist[lo]) / (profile.dist[hi]-profile.dist[lo]);
+    double t = (profile.dist[hi] > profile.dist[lo]) ? (dist - profile.dist[lo]) / (profile.dist[hi] - profile.dist[lo]) : 0.0;
 
     return profile.ext[lo] + t*(profile.ext[hi]-profile.ext[lo]);
 }
@@ -378,7 +379,7 @@ void readBayestar(extin& ex, const std::string& folder) {
     int k = 0;
 
     for(const auto& entry : fs::directory_iterator(folder)) {
-        if(!entry.is_regular_file())
+        if(!entry.is_regular_file() || entry.path().extension() != ".txt")
             continue;
 
         std::ifstream fin(entry.path());
@@ -392,17 +393,32 @@ void readBayestar(extin& ex, const std::string& folder) {
             continue;
         }
 
+        CHECK(k < NFILES);
         Sightline& s = ex.sightlines[k];
 
-        for (int i = 0; i < NROWS; i++) {
-            fin
-                >> s.l
-                >> s.b
+        fin >> s.l
+            >> s.b
+            >> s.profile.dist[0]
+            >> s.profile.ext[0];
+        
+        double l, b;
+        
+        for (int i = 1; i < NROWS; ++i) {
+            fin >> l
+                >> b
                 >> s.profile.dist[i]
                 >> s.profile.ext[i];
+        
+            if (l != s.l || b != s.b)
+            {
+                std::cerr << "Inconsistent l,b in file "
+                          << entry.path() << '\n';
+                std::exit(EXIT_FAILURE);
+            }
         }
-        k++;
+
     }
+    CHECK(k == NFILES);
 
     std::cout
         << "Loaded "

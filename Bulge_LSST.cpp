@@ -65,7 +65,7 @@ int main() {
     if (!fil) { std::cerr << "Cannot read sigmaA_LSST.txt\n"; return 1; }
 
     for (int i = 0; i < Na; ++i) {
-        fil >> ls->maga[i] >> ls->err[i];
+        fil >> ls->mag[i] >> ls->err[i];
 
         CHECK(ls->mag[i] >= 16.0);
         CHECK(ls->mag[i] <= 25.0);

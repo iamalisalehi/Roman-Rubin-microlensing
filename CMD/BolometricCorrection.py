@@ -17,6 +17,9 @@ class MISTBolometricCorrection:
         elif phot.lower() in ["roman", "wfirst"]:
             self.phot = "roman"
             directory = "./Roman"
+        elif phot.lower() in ["f_146", "f146"]:
+            self.phot = "f146"
+            directory = "./Roman"
         else:
             raise ValueError("Unknown photometric system")
 
@@ -101,8 +104,11 @@ class MISTBolometricCorrection:
         if self.phot == "lsst":
             self.filter_names = ["LSST_u", "LSST_g", "LSST_r", "LSST_i", "LSST_z", "LSST_y"]
 
-        else:
+        elif self.phot == "roman":
             self.filter_names = ["Roman_F062", "Roman_F087", "Roman_F106", "Roman_F129", "Roman_F146", "Roman_F158", "Roman_F184", "Roman_F213", "Roman_Grism", "Roman_Prism"]
+
+        else:
+            self.filter_names = ["Roman_F146"]
 
         for name in self.filter_names:
             print(f"Interpolating {name}")
@@ -127,6 +133,8 @@ class MISTBolometricCorrection:
         df['Age'] = self.input_data['Age']
         df['Pop'] = self.input_data['Pop']
         df[self.filter_names] = self.input_data[self.filter_names]
+        df['CL'] = self.input_data['CL']
+        df['Typ'] = self.input_data['Typ']
         df = df.dropna()
 
         if not breakdown_components:
@@ -144,10 +152,10 @@ class MISTBolometricCorrection:
 
 
 rubin = MISTBolometricCorrection("Rubin")
-rubin.read_input("./Besancon/bos7.dat")
+rubin.read_input("./Besancon/bos9.dat")
 rubin.interp()
 
-roman = MISTBolometricCorrection("Roman")
+roman = MISTBolometricCorrection("F146")
 roman.input_data = rubin.input_data
 roman.interp()
 for name in rubin.filter_names:

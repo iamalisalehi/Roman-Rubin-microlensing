@@ -5,7 +5,7 @@
 //                         Func source calculations                   //
 //                                                                    //
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
-void func_source(source & s, CMD & cm, const extin& ex, int sightlineIdx) {
+void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
     int nums, num;
     double rho, rf;
     double Ds, Av = -1, Alv;
@@ -19,7 +19,7 @@ void func_source(source & s, CMD & cm, const extin& ex, int sightlineIdx) {
         s.nsbl[i] += RandN(sqrt(s.nsbl[i]), 2.0);
         if (s.nsbl[i] <= 1.0)   s.nsbl[i] = 1.0;
         if (s.nsbl[i] > maxnb)  maxnb = s.nsbl[i];
-    //cout<<"nsbl[i]:  "<<s.nsbl[i]<<"\t maxnb:  "<<maxnb<<endl;
+    cout<<"nsbl[i]:  "<<s.nsbl[i]<<"\t maxnb:  "<<maxnb<<endl;
     }
 
     for (int k = 1; k <= int(maxnb + 0.000000034756346); ++k) {
@@ -27,14 +27,15 @@ void func_source(source & s, CMD & cm, const extin& ex, int sightlineIdx) {
             nums = int(RandR(5.0, Num - 2.0));
             rho  = RandR(s.Romins, s.Romaxs);
             Ds   = double(nums * step);
-        } while (rho > s.Rostari[nums] or Ds < 0.0 or Ds > MaxD);///distance larger than 20.0
-    //cout<<"k:  "<<k<<"\t Ds:  "<<Ds<<"\t nums:  "<<nums<<endl;
+        } while (rho > s.Rostari[nums] or Ds < 0.0 or Ds > MaxD); //distance larger than 20.0
+
+        cout<<"k:  "<<k<<"\t Ds:  "<<Ds<<"\t nums:  "<<nums<<endl;
 
         rf = RandR(0.0, s.Rostar0[nums]);
-        if      (rf <= s.rho_disk[nums])                                                            struc = GalacticComponent::THIN_DISK; //thin disk
-        else if (rf <= (s.rho_disk[nums] + s.rho_bulge[nums]))                                      struc = GalacticComponent::BULGE; // bulge structure
-        else if (rf <= (s.rho_disk[nums] + s.rho_bulge[nums] + s.rho_ThD[nums]))                    struc = GalacticComponent::THICK_DISK; //thick disk
-        else if (rf <= (s.rho_disk[nums] + s.rho_bulge[nums] + s.rho_ThD[nums] + s.rho_halo[nums])) struc = GalacticComponent::HALO; //halo
+        if      (rf <=  s.rho_thin[nums])                                                             struc = GalacticComponent::THIN_DISK;
+        else if (rf <= (s.rho_thin[nums] + s.rho_bulge[nums]))                                        struc = GalacticComponent::BULGE;
+        else if (rf <= (s.rho_thin[nums] + s.rho_bulge[nums] + s.rho_thick[nums]))                    struc = GalacticComponent::THICK_DISK;
+        else if (rf <= (s.rho_thin[nums] + s.rho_bulge[nums] + s.rho_thick[nums] + s.rho_halo[nums])) struc = GalacticComponent::HALO;
         else {
            std::cerr << "Selected Galactic Component can not be initialized with rf =" << rf << ".\n";
            std::exit(EXIT_FAILURE);
@@ -89,7 +90,7 @@ void func_source(source & s, CMD & cm, const extin& ex, int sightlineIdx) {
         }
 
         Av = interpExtinctionAlongSightline(ex, sightlineIdx, Ds);
-        //cout<<"Av:  "<<Av<<endl;
+        cout << "Av: " << Av << endl;
         for (int i = 0; i < M; ++i) {
             Alv = fabs(a0[i] + b0[i] / Rv[static_cast<int>(struc)]); //Alambda/AV
             Ai[i] = Av * Alv + RandN(sigma[i], 1.0); //extinction in other bands
@@ -122,7 +123,6 @@ void func_source(source & s, CMD & cm, const extin& ex, int sightlineIdx) {
         //cout<<"=========================="<<endl;
     } //loop over the stars
 
-
     for (int i = 0; i < M; ++i) {
         s.magb[i]  = -2.5 * log10(s.Fluxb[i]);
         s.blend[i] = double(pow(10.0, -0.4 * s.Map[i]) / s.Fluxb[i]);
@@ -137,7 +137,6 @@ void func_source(source & s, CMD & cm, const extin& ex, int sightlineIdx) {
         CHECK(s.Ds > 0.0);
         CHECK(Av >= 0.0);
     }
-
 
     // For purposes of Fisher Matrix calculations
 //    s.fb[0]  = s.blend[2];//r-LSST
@@ -182,16 +181,13 @@ void func_lens(lens & l, source & s){
     } while(test > tt);
     l.Dl = double(l.numl * step);
 
-
-
-
     double randflag = RandR(0.0,s.Rostar0[l.numl]);
-    if      (randflag <= (s.rho_disk[l.numl])) l.struc = GalacticComponent::THIN_DISK;//disk
-    else if (randflag <= (s.rho_disk[l.numl] + s.rho_bulge[l.numl])) l.struc=GalacticComponent::BULGE;//bulge
-    else if (randflag <= (s.rho_disk[l.numl] + s.rho_bulge[l.numl] + s.rho_ThD[l.numl])) l.struc = GalacticComponent::THICK_DISK;//thick
-    else if (randflag <= (s.rho_disk[l.numl] + s.rho_bulge[l.numl] + s.rho_ThD[l.numl] + s.rho_halo[l.numl])) l.struc = GalacticComponent::HALO;//halo
-    //else if(randflag<=(s.rho_disk[l.numl]+s.rho_bulge[l.numl]+s.rho_ThD[l.numl]+s.rho_halo[l.numl]+s.rho_hlmc[l.numl]))l.struc=GalacticComponent::HALO_LMC;//hlmc
-    //else if(randflag<=(s.rho_disk[l.numl]+s.rho_bulge[l.numl]+s.rho_ThD[l.numl]+s.rho_halo[l.numl]+s.rho_hlmc[l.numl]+s.rho_dlmc[l.numl]))l.struc=GalacticComponent::DISK_LMC;//dlmc
+    if      (randflag <= (s.rho_thin[l.numl])) l.struc = GalacticComponent::THIN_DISK;//disk
+    else if (randflag <= (s.rho_thin[l.numl] + s.rho_bulge[l.numl])) l.struc=GalacticComponent::BULGE;//bulge
+    else if (randflag <= (s.rho_thin[l.numl] + s.rho_bulge[l.numl] + s.rho_thick[l.numl])) l.struc = GalacticComponent::THICK_DISK;//thick
+    else if (randflag <= (s.rho_thin[l.numl] + s.rho_bulge[l.numl] + s.rho_thick[l.numl] + s.rho_halo[l.numl])) l.struc = GalacticComponent::HALO;//halo
+    //else if(randflag<=(s.rho_thin[l.numl]+s.rho_bulge[l.numl]+s.rho_thick[l.numl]+s.rho_halo[l.numl]+s.rho_hlmc[l.numl]))l.struc=GalacticComponent::HALO_LMC;//hlmc
+    //else if(randflag<=(s.rho_thin[l.numl]+s.rho_bulge[l.numl]+s.rho_thick[l.numl]+s.rho_halo[l.numl]+s.rho_hlmc[l.numl]+s.rho_dlmc[l.numl]))l.struc=GalacticComponent::DISK_LMC;//dlmc
     //else if(randflag<=fabs( s.Rostar0[l.numl]))  l.struc=GalacticComponent::BAR_LMC;//blmc
 
     else {

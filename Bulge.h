@@ -140,7 +140,7 @@ constexpr double mu_min  = 0.0; //mu_relative
 constexpr double mu_max  = 100.0;
 
 ////=================================== Bulge ====================================
-constexpr int    Num  = int(9500);
+constexpr int    Num  = 9500;
 constexpr double MaxD = 20.0;///kpc
 constexpr double step = double(MaxD / Num / 1.0);///step in kpc
 //const double RaLMC  =  80.89375;
@@ -208,8 +208,8 @@ struct source {
 
     std::vector<double> nssim; // size Num
     std::vector<double> nsdet; // size Num
-    std::vector<double> rho_disk;
-    std::vector<double> rho_ThD;
+    std::vector<double> rho_thin;
+    std::vector<double> rho_thick;
     std::vector<double> rho_halo;
     std::vector<double> rho_stars;
     std::vector<double> rho_bulge;
@@ -229,7 +229,7 @@ struct source {
     // Constructor
     source()
         : nssim(Num), nsdet(Num),
-          rho_disk(Num), rho_ThD(Num), rho_halo(Num), rho_stars(Num), rho_bulge(Num),
+          rho_thin(Num), rho_thick(Num), rho_halo(Num), rho_stars(Num), rho_bulge(Num),
           Rostar0(Num), Rostari(Num), Nstari(Num),
           nsbl(M), blend(M), Fluxb(M), magb(M), Ai(M), Mab(M), Map(M)
     {}

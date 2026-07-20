@@ -1192,8 +1192,8 @@ void optical_depth(source& s)
         dl = (double)k * step;///kpc
         x  = dl / ds;
         dx = (double)step / ds / 1.0;
-        s.od_disk  += s.rho_disk[k]  * x * (1.0 - x) * dx * CC;
-        s.od_ThD   += s.rho_ThD[k]   * x * (1.0 - x) * dx * CC;
+        s.od_disk  += s.rho_thin[k]  * x * (1.0 - x) * dx * CC;
+        s.od_ThD   += s.rho_thick[k]   * x * (1.0 - x) * dx * CC;
         s.od_bulge += s.rho_bulge[k] * x * (1.0 - x) * dx * CC;
         s.od_halo  += s.rho_halo[k]  * x * (1.0 - x) * dx * CC;
     }
@@ -1250,10 +1250,10 @@ void Disk_model(source& s, int numt)
     }
 
     for (int i = 1; i < Num; ++i) {
-        s.rho_disk[i]  = 0;
+        s.rho_thin[i]  = 0;
         s.rho_bulge[i] = 0;
         s.rho_halo[i]  = 0;
-        s.rho_ThD[i]   = 0;
+        s.rho_thick[i] = 0;
         x  = double(i  * step); //kpc
         zb = sin(s.FI) * x;
         yb = cos(s.FI) * sin(s.TET) * x;
@@ -1267,13 +1267,13 @@ void Disk_model(source& s, int numt)
             rdi = Rb * Rb + zb * zb / (epci[ii] * epci[ii]);
             if (ii == 0)     rho = exp(-rdi / 25.0) - exp(-rdi / 9.0);
             else if (ii > 0) rho = exp(-sqrt(0.25 + rdi / (Rdd * Rdd))) - exp(-sqrt(0.25 + rdi / (Rhh * Rhh)));
-            s.rho_disk[i] = fabs(s.rho_disk[i] + rho0[ii] * corr[ii] * 0.001 * rho/d0[ii]);
+            s.rho_thin[i] = fabs(s.rho_thin[i] + rho0[ii] * corr[ii] * 0.001 * rho/d0[ii]);
         } //Msun/pc^3
 
 ///========== Galactic Thick Disk =====================
         double rho00 = 1.34 * 0.001 + 3.04 * 0.0001;
-        if (fabs(zb) < 0.4) s.rho_ThD[i] = fabs((rho00 / 0.999719) * exp(-(Rb - Dsun) / 2.5) * (1.0 - zb * zb / (0.4 * 0.8 * (2.0 + nnf))));
-        else s.rho_ThD[i] = fabs((rho00 / 0.999719) * exp(-(Rb - Dsun) / 2.5) * exp(nnf) * exp(-fabs(zb) / 0.8)/(1.0 + 0.5 * nnf));///Msun/pc^3
+        if (fabs(zb) < 0.4) s.rho_thick[i] = fabs((rho00 / 0.999719) * exp(-(Rb - Dsun) / 2.5) * (1.0 - zb * zb / (0.4 * 0.8 * (2.0 + nnf))));
+        else s.rho_thick[i] = fabs((rho00 / 0.999719) * exp(-(Rb - Dsun) / 2.5) * exp(nnf) * exp(-fabs(zb) / 0.8)/(1.0 + 0.5 * nnf));///Msun/pc^3
 
 ///========== Galactic Stellar Halo=================
         rdi = sqrt(Rb * Rb + zb * zb / (0.76 * 0.76));
@@ -1305,10 +1305,10 @@ void Disk_model(source& s, int numt)
         s.rho_bulge[i] = fabs(rhoS) + fabs(rhoE); ///Msun/pc^3
 ///==================================================================
 
-        s.Rostar0[i] = fabs(s.rho_disk[i] + s.rho_ThD[i] + s.rho_bulge[i] + s.rho_halo[i]);///[Msun/pc^3]
+        s.Rostar0[i] = fabs(s.rho_thin[i] + s.rho_thick[i] + s.rho_bulge[i] + s.rho_halo[i]);///[Msun/pc^3]
         s.Rostari[i] = s.Rostar0[i] * x * x * step * 1.0e9 * (M_PI / 180.0) * (M_PI / 180.0);///[Msun/deg^2]
         s.Nstari[i]  = binary_fraction
-          * (s.rho_disk[i] * fd / 0.403445 + s.rho_ThD[i] * fh / 0.4542 + s.rho_halo[i] * fh / 0.4542 + s.rho_bulge[i] * fb / 0.308571);////[Nt/pc^3]
+          * (s.rho_thin[i] * fd / 0.403445 + s.rho_thick[i] * fh / 0.4542 + s.rho_halo[i] * fh / 0.4542 + s.rho_bulge[i] * fb / 0.308571);////[Nt/pc^3]
         s.Nstari[i]  = s.Nstari[i] * x * x * step * 1.0e9 * (M_PI / 180.0) * (M_PI / 180.0);///[Ni/deg^2]
 
 
@@ -1320,7 +1320,7 @@ void Disk_model(source& s, int numt)
 
         if (flagf > 0)
         fprintf(fill, "%e   %e   %e   %e   %e  %e  %e\n",
-            x, s.rho_disk[i], s.rho_bulge[i], s.rho_ThD[i], s.rho_halo[i], s.Rostar0[i], s.Nstari[i]);
+            x, s.rho_thin[i], s.rho_bulge[i], s.rho_thick[i], s.rho_halo[i], s.Rostar0[i], s.Nstari[i]);
     }
     if (flagf > 0) {
         fprintf(filj, "%.5lf  %.5lf  %.5lf  %.5lf\n", s.lon, s.lat, s.TET * RAa, s.FI * RAa);

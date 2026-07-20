@@ -6,17 +6,16 @@ double RandN(double sigm, double nnd) {
     std::normal_distribution<double> normal(0.0, 1.0);
 
     double x;
-    do
-    {
+    do {
         x = sigm * normal(rng);
-    }
-    while (std::abs(x) > sigm * nnd); //[-N sigma:N sigma]
+    } while (std::abs(x) > sigm * nnd); //[-N sigma:N sigma]
 
     return x;
 }
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 double RandR(double down, double up) {
     std::uniform_real_distribution<double> dist(down, up);
+
     return dist(rng);
 }
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
@@ -220,9 +219,8 @@ double errlsstA(lsst & ls, double ghadr){ //LSST Astrometric Error
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
 void read_cmd(CMD & cm)
 {
-//  mass  logT    Age  logL logG  Z  u_LSST  g_LSST  r_LSST i_LSST z_LSST  B  V  R    I   J    H    K    CL    Type//1402/04/06
-//  0      1       2     3    4   5   6       7       8      9      10     11 12  13  14  15   16   17   18     19
-//  (meatadata comment needs to change)
+// mass  logT  Mbol  Age  Pop  Roman_F146  LSST_u  LSST_g  LSST_r  LSST_i  LSST_z  LSST_y  CL  Type //20/07/2026
+// 0     1     2     3    4    5           6       7       8       9       10      11      12  13
     int j = 0;
     double Mbol, Pop;
 //    double logL, gravity, metal, B, V, R, I, J, H;

@@ -2,15 +2,15 @@
 
 
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
-double RandN(double sigma, double nnd) {
+double RandN(double sigm, double nnd) {
     std::normal_distribution<double> normal(0.0, 1.0);
 
     double x;
     do
     {
-        x = sigma * normal(rng);
+        x = sigm * normal(rng);
     }
-    while (std::abs(x) > sigma * nnd); //[-N sigma:N sigma]
+    while (std::abs(x) > sigm * nnd); //[-N sigma:N sigma]
 
     return x;
 }
@@ -29,10 +29,10 @@ int FunctE(lens & l) {
 
    if (l.tE <= tE_min)       gg = 0;
 
-   else if (l.tE >= tE_max)  gg = int(GG);
+   else if (l.tE >= tE_max)  gg = GG;
 
    else {
-       for (int i=1; i <= GG; ++i) {
+       for (int i = 1; i <= GG; ++i) {
           if(double((l.tE - l.tEs[i-1]) * (l.tE - l.tEs[i])) < 0.0 or l.tE == l.tEs[i-1]) { gg = int(i-1);  break; }
        }
    }
@@ -51,7 +51,7 @@ int FuncMl(lens & l) {
    int gg = -1;
 
    if (l.Ml <= Ml_min)      gg = 0;
-   else if (l.Ml >= Ml_max) gg = int(GG);
+   else if (l.Ml >= Ml_max) gg = GG;
    else {
       for(int i = 1; i <= GG; ++i) {
           if (double((l.Ml - l.Mls[i-1]) * (l.Ml - l.Mls[i])) < 0.0 or l.Ml == l.Mls[i-1]) { gg = int(i-1);  break; }
@@ -71,7 +71,7 @@ int FuncPi(lens & l) {
    double lpi = log10(l.pirel);
 
    if (lpi <= pi_min)      gg = 0;
-   else if (lpi >= pi_max) gg = int(GG);
+   else if (lpi >= pi_max) gg = GG;
    else {
       for (int i = 1; i <= GG; ++i) {
           if (double((lpi - l.pis[i-1]) * (lpi - l.pis[i])) < 0.0 or lpi == l.pis[i-1]) { gg = int(i-1);  break; }
@@ -89,7 +89,7 @@ int Funcu0(lens & l){
    int gg = -1;
 
    if (l.u0 <= u0_min)      gg = 0;
-   else if (l.u0 >= u0_max) gg = int(GG);
+   else if (l.u0 >= u0_max) gg = GG;
    else {
       for (int i = 1; i <= GG; ++i) {
           if (double((l.u0 - l.u0s[i-1]) * (l.u0 - l.u0s[i])) < 0.0 or l.u0 == l.u0s[i-1]) { gg = int(i-1);  break; }
@@ -110,7 +110,7 @@ int FuncMu(lens & l){
    double mur = double(l.murel * year); //mas/years
 
    if (mur <= mu_min)      gg = 0;
-   else if (mur >= mu_max) gg = int(GG);
+   else if (mur >= mu_max) gg = GG;
    else {
        for (int i = 1; i <= GG; ++i) {
           if (double((mur - l.mus[i-1]) * (mur - l.mus[i])) < 0.0 or mur == l.mus[i-1]) { gg = int(i-1);  break; }
@@ -129,7 +129,7 @@ int FuncMb(lens & l, double gadr) {
    int gg = -1;
 
    if (gadr <= mb_min)       gg = 0;
-   else if (gadr >= mb_max)  gg = int(GG);
+   else if (gadr >= mb_max)  gg = GG;
    else {
        for (int i = 1; i <= GG; ++i) {
           if (double((gadr - l.mbs[i-1]) * (gadr - l.mbs[i])) < 0.0 or gadr == l.mbs[i-1]) { gg = int(i-1); break; }
@@ -147,7 +147,7 @@ int FuncFb(lens & l, double blen) {
    int gg = -1;
 
    if (blen <= fb_min)       gg = 0;
-   else if (blen >= fb_max)  gg = int(GG);
+   else if (blen >= fb_max)  gg = GG;
    else {
        for (int i = 1; i <= GG; ++i) {
           if(double((blen - l.fbs[i-1]) * (blen - l.fbs[i])) < 0.0 or blen == l.fbs[i-1]) { gg = int(i-1); break;}

@@ -103,17 +103,17 @@ constexpr double cade1 = 3.0 ;//LSST[days]
 constexpr int    coun  = int(500);//int(int(460+10)+int(Tobs/cade2+10));
 //constexpr int YZ = 3578;   //No.yzma.txt rows
 //constexpr int met = 70;   //No rows metal.txt
-//constexpr std::size_t Nel = 7;//rows in "sigma_ELT.txt" (https://academic.oup.com/mnras/article/494/3/4413/5813442)
-constexpr std::size_t nfiles = 2518;
-constexpr std::size_t nlines = 3686;
-//constexpr std::size_t nex = 2518 * 3686; //number of ext files * lines in each file
+//constexpr int Nel = 7;//rows in "sigma_ELT.txt" (https://academic.oup.com/mnras/article/494/3/4413/5813442)
+//constexpr int nfiles = 2518;
+//constexpr int nlines = 3686;
+//constexpr int nex = 2518 * 3686; //number of ext files * lines in each file
 constexpr int NFILES = 2518; //number of extinction files
 constexpr int NROWS = 3686; //number of rows in extintion files
-constexpr std::size_t nrd = 10000; //rows in "convert_coordinate_2.dat"
-constexpr std::size_t Na = 96;     //rows in "sigmaA_LSST.txt"
-constexpr std::size_t nq = 15;     //resu
-constexpr std::size_t N1 = 258334, N2 = 1957085, N3 = 458784, N4 = 1514; //CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo
-constexpr std::size_t Nl = 7373; //BulgeBaseline.dat 18/07/2026
+constexpr int nrd = 10000; //rows in "convert_coordinate_2.dat"
+constexpr int Na = 96;     //rows in "sigmaA_LSST.txt"
+constexpr int nq = 15;     //resu
+constexpr int N1 = 258334, N2 = 1957085, N3 = 458784, N4 = 1514; //CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo
+constexpr int Nl = 7373; //BulgeBaseline.dat 18/07/2026
 
 
 constexpr double tetp   = double(M_PI / 3.0);        //parallax
@@ -123,7 +123,7 @@ constexpr std::array<double, 2> sig  = {+1.0 ,-1.0};
 constexpr std::array<double, 2> sig2 = {+0.5 ,+1.0};
 
 
-constexpr std::size_t GG = 100;
+constexpr int GG = 100;
 constexpr double tE_min  = 0.0;///days
 constexpr double tE_max  = 50.0*year;//days
 constexpr double Ml_min  = 3.0;
@@ -179,7 +179,7 @@ static std::vector<double> make_grid(double min, double max)
 {
     std::vector<double> v(GG + 1);
 
-    for (std::size_t i = 0; i <= GG; ++i)
+    for (int i = 0; i <= GG; ++i)
     {
         v[i] = min + (max - min) * static_cast<double>(i) / GG;
     }
@@ -245,36 +245,37 @@ struct lens {
 
     std::array<double, 2> Nhalo, Nself; // small fixed arrays
 
-    std::vector<int> tele;    // size coun
     std::vector<double> nstE; // size GG+1
     std::vector<double> ndtE; // size GG+1
     std::vector<double> NstE; // size GG+1
     std::vector<double> NdtE; // size GG+1
-    std::vector<double> tEs;  // size GG+1
     std::vector<double> NsMl; // size GG+1
     std::vector<double> NdMl; // size GG+1
-    std::vector<double> Mls;  // size GG+1
     std::vector<double> Nspi; // size GG+1
     std::vector<double> Ndpi; // size GG+1
-    std::vector<double> pis;  // size GG+1
     std::vector<double> Nsu0; // size GG+1
     std::vector<double> Ndu0; // size GG+1
-    std::vector<double> u0s;  // size GG+1
     std::vector<double> Nsmb; // size GG+1
     std::vector<double> Ndmb; // size GG+1
-    std::vector<double> mbs;  // size GG+1
     std::vector<double> Nsfb; // size GG+1
     std::vector<double> Ndfb; // size GG+1
-    std::vector<double> fbs;  // size GG+1
     std::vector<double> Nsmu; // size GG+1
     std::vector<double> Ndmu; // size GG+1
-    std::vector<double> mus;  // size GG+1
     std::vector<double> timn; // size coun
     std::vector<double> magn; // size coun
     std::vector<double> soux; // size coun
     std::vector<double> souy; // size coun
     std::vector<double> errm; // size coun
     std::vector<double> erra; // size coun
+    std::vector<int> tele;    // size coun
+    
+    std::vector<double> tEs;  // size GG+1
+    std::vector<double> Mls;  // size GG+1
+    std::vector<double> pis;  // size GG+1
+    std::vector<double> u0s;  // size GG+1
+    std::vector<double> mbs;  // size GG+1
+    std::vector<double> fbs;  // size GG+1
+    std::vector<double> mus;  // size GG+1
 
     GalacticComponent struc;
     // Constructor
@@ -391,10 +392,11 @@ struct extin {
 };
 */
 struct lsst {
-    std::vector<int> filter;    // Nl
-    std::vector<int> ct;        // 1000
     std::vector<double> mag;   // Na
     std::vector<double> err;   // Na
+    std::vector<int> filter;    // Nl
+    
+    std::vector<int> ct;        // 1000
     std::vector<double> RA;     // Nl
     std::vector<double> DEC;    // Nl
     std::vector<double> l;      // Nl

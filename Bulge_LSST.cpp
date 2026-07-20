@@ -38,12 +38,12 @@ int main() {
     }
 
     int ID;
-    double TV, airm, seeing, skyB, texp;
+    double TV, airm, seeingVal, skyB, texp;
 //    int tmpFilter;
 
     for (int i = 0; i < Nl; ++i) {
         fil >> ID >> ls->RA[i] >> ls->DEC[i] >> ls->l[i] >> ls->b[i]
-            >> ls->tim[i] >> ls->filter[i] >> airm >> seeing >> skyB
+            >> ls->tim[i] >> ls->filter[i] >> airm >> seeingVal >> skyB
             >> TV >> ls->sig5[i] >> texp >> ls->dist[i];
 
         CHECK(airm >= 0.0);
@@ -76,7 +76,8 @@ int main() {
     std::cout << "**** File sigmaA_LSST.txt was read ****\n";
 
     // --------------------- Read sigma_Roman.txt ---------------------
-    fil.open("./files/sigma_ELT.txt");
+    // To be added
+/*    fil.open("./files/sigma_ELT.txt");
     if (!fil) { std::cerr << "Cannot read sigma_ELT.txt\n"; return 1; }
 
     for (int i = 0; i < Nro; ++i) {
@@ -84,7 +85,7 @@ int main() {
     }
     fil.close();
     std::cout << "**** File sigma_Roman.txt was read ****\n";
- 
+*/ 
     // --------------------- Read convert_coordinate_2.dat ----------
     fil.open("./files/convert_coordinate_2.dat");
     if (!fil) { std::cerr << "Cannot read convert_coordinate_2.dat\n"; return 1; }
@@ -107,24 +108,24 @@ int main() {
     read_cmd(*cm);
     std::cout << "******* read_cmd was done ************" << std::endl;
 
-    int    save = 0, flagm, counter, flagL, gg;// ss, qq, ww, vv, zz, pp, 
+    int    save = 0, flagm, flagL, gg = -1; //ss, qq, ww, vv, zz, pp, counter, 
     int    nri = -1, nde = -1, icon;
-    int    nde1,     nri1, nlens, hh;
+    int    nlens, hh; // nde1, nri1, 
     int    gi,       ndw, sq, ndd;
-    int    flag_det, nml = 0;
-    int    flagf,  fi,   datf1, datf2;
-    double errs,   errg, fel,   mind, fdet, minc, cade;
+    int    flag_det; // nml = 0;
+    int    flagf,  fi; // datf1, datf2;
+    double errs,   errg, mind, fdet, minc, cade; // fel, 
     double magnio, test, dist,  deltaA;
     double Astar0, As1,  As0;
     double initial;
-    double trajm, trajp,  ddf;
+    double trajm, trajp; //  ddf;
     double chi1,  chi2,   chi3, chi1a, chi2a, chi3a, sil, sil2;
     double dchiL, dchiP,  dchiA;
     double flag0, flag1,  flag2;
     double vs1,   vs2,    def1p,  def2p, vsave, dt,    Mpeak;
     double ErtE,  ErpiE,  ErtetE, Erml,  Erdl,  Ermul, Ermus, Eru0, Erfb, nsim;
     double mbase, fblend, Gamma,  Neven, EFF,   EffiD, EffiL, nerr=0.0;
-    double shib,  Efi;
+//    double shib,  Efi;
    
     std::array<int, 3> FFG;
     std::array<double, M> magni, magni0;
@@ -323,7 +324,7 @@ int main() {
                         sq = int(ls->ct[gi]);
 
                         if (tim >= 0.0 and tim <= Tobs and tim >= ls->tim[int(ls->ct[0])] and tim <= ls->tim[int(ls->ct[ndd - 1])] and
-                            gi < ndd and sq >= 0 and sq <= Nl and tim >= ls->tim[sq]) {
+                            gi < ndd and sq >= 0 and sq <= static_cast<int>(Nl) and tim >= ls->tim[sq]) {
 
                             fi = int(ls->filter[sq]);
 
@@ -450,16 +451,16 @@ int main() {
                             nerr += 1.0;
                             ErrorCal(*co, *l, *s);
 
-                            std::ofstream fil0(fnLDt, std::ios::app);
-                            fil0 << std::fixed << std::setprecision(5)
-                                 << l->Ml       << " " << l->Dl       << " " << l->mul       << " " << s->fb[0]     << " " << s->mbs[0]   << " "
-      << std::setprecision(7)    << l->tE       << " " << l->murel    << " " << l->u0        << " " << s->lon       << " " << s->lat      << " "
-                                 << l->piE      << " " << l->tetE     << " " << co->resu[1]  << " " << co->resu[2]  << " " << co->resu[3] << " "
-                                 << co->resu[5] << " " << co->resu[9] << " " << co->resu[10] << " " << co->resu[13] << "\n";
-                            fil0.close();
+                            std::ofstream fil0_append(fnLDt, std::ios::app);
+                            fil0_append << std::fixed << std::setprecision(5)
+                                        << l->Ml       << " " << l->Dl       << " " << l->mul       << " " << s->fb[0]     << " " << s->mbs[0]   << " "
+      << std::setprecision(7)           << l->tE       << " " << l->murel    << " " << l->u0        << " " << s->lon       << " " << s->lat      << " "
+                                        << l->piE      << " " << l->tetE     << " " << co->resu[1]  << " " << co->resu[2]  << " " << co->resu[3] << " "
+                                        << co->resu[5] << " " << co->resu[9] << " " << co->resu[10] << " " << co->resu[13] << "\n";
+                            fil0_append.close();
                         }
                     }
-                    gg = int(FunctE(*l));
+                    gg = FunctE(*l);
                     //ss = int(FuncMl(*l));
                     //qq = int(FuncPi(*l));
                     //ww = int(Funcu0(*l));
@@ -467,6 +468,7 @@ int main() {
                     //zz = int(FuncMb(*l, s->Map[2]));
                     //pp = int(FuncFb(*l, s->blend[2]));
                 }
+                CHECK(gg >= 0);
 
                 records.push_back(EventRecord{
                     icon, static_cast<int>(FFG[0]),
@@ -498,39 +500,41 @@ int main() {
 
 
                 if (flagm > 0 && IMnum == 1) {
-                    std::ofstream fil1("./files/MONTLMC/files/BHLSSTMONTS.dat", std::ios::app);
+                    std::ofstream fil1_append("./files/MONTLMC/files/BHLSSTMONTS.dat", std::ios::app);
 
-                    fil1 << save            << " " << std::fixed << std::setprecision(5)
-                         << s->lat          << " " << s->lon         << " "
-                         << static_cast<int>(l->struc)               << " " << l->Ml           << " "
-                         << l->Dl           << " " << l->vl          << " "
-                         << static_cast<int>(s->struc)               << " " << s->cl           << " "
-                         << s->Ds           << " " << s->logT        << " " << s->mass         << " "
-                         << s->vs           << " " << s->Mab[2]      << " " << s->Mab[6]       << " "
-                         << s->Map[2]       << " " << s->Map[6]      << " "
-                         << s->mbs[0]       << " " << s->mbs[1]      << " " << s->fb[0]        << " "
-                         << s->fb[1]        << " " << s->nsbl[2]     << " "
-                         << s->nsbl[6]      << " " << s->Ai[2]       << " " << s->Ai[6]        << " "
-                         << std::setprecision(7)
-                         << l->tE           << " " << l->RE / AU     << " " << l->t0           << " "
-                         << l->mul          << " " << l->Vt          << " " << l->u0           << " "
-                         << s->opt*1.0e6    << " " << l->tetE        << " "
-                         << s->mus1         << " " << s->mus2        << " " << s->xi           << " "
-                         << l->mul1         << " " << l->mul2        << " " << l->piE          << " "
-                         << s->errM         << " " << s->errA        << " "
-                         << flagf           << " " << flag_det       << " " << dchiL           << " "
-                         << dchiP           << " " << dchiA          << " " << ndw             << " "
-                         << FFG[0]          << " " << FFG[1]         << " " << FFG[2]          << " "
-                         << s->Rostart      << " " << s->Nstart      << " " << l->mi1          << " "
-                         << l->mi2          << " " << vsave          << " " << s->FWHM         << " "
-                         << chi3a           << " " << nri            << " " << nde             << " "
-                         << l->betal  * RAa << " " << l->betas * RAa << " " << l->deltal * RAa << " "
-                         << l->deltas * RAa << " "
-                         << l->deltao * RAa << " "
-                         << co->resu[0]     << " " << co->resu[1]    << " " << co->resu[2]     << " "
-                         << co->resu[3]     << " " << co->resu[5]    << " "
-                         << co->resu[9]     << " " << co->resu[10]   << " " << co->resu[13]    << " "
-                         << co->resu[14]    << "\n";
+                    fil1_append << save            << " " << std::fixed << std::setprecision(5)
+                                << s->lat          << " " << s->lon         << " "
+                                << static_cast<int>(l->struc)               << " " << l->Ml           << " "
+                                << l->Dl           << " " << l->vl          << " "
+                                << static_cast<int>(s->struc)               << " " << s->cl           << " "
+                                << s->Ds           << " " << s->logT        << " " << s->mass         << " "
+                                << s->vs           << " " << s->Mab[2]      << " " << s->Mab[6]       << " "
+                                << s->Map[2]       << " " << s->Map[6]      << " "
+                                << s->mbs[0]       << " " << s->mbs[1]      << " " << s->fb[0]        << " "
+                                << s->fb[1]        << " " << s->nsbl[2]     << " "
+                                << s->nsbl[6]      << " " << s->Ai[2]       << " " << s->Ai[6]        << " "
+                                << std::setprecision(7)
+                                << l->tE           << " " << l->RE / AU     << " " << l->t0           << " "
+                                << l->mul          << " " << l->Vt          << " " << l->u0           << " "
+                                << s->opt*1.0e6    << " " << l->tetE        << " "
+                                << s->mus1         << " " << s->mus2        << " " << s->xi           << " "
+                                << l->mul1         << " " << l->mul2        << " " << l->piE          << " "
+                                << s->errM         << " " << s->errA        << " "
+                                << flagf           << " " << flag_det       << " " << dchiL           << " "
+                                << dchiP           << " " << dchiA          << " " << ndw             << " "
+                                << FFG[0]          << " " << FFG[1]         << " " << FFG[2]          << " "
+                                << s->Rostart      << " " << s->Nstart      << " " << l->mi1          << " "
+                                << l->mi2          << " " << vsave          << " " << s->FWHM         << " "
+                                << chi3a           << " " << nri            << " " << nde             << " "
+                                << l->betal  * RAa << " " << l->betas * RAa << " " << l->deltal * RAa << " "
+                                << l->deltas * RAa << " "
+                                << l->deltao * RAa << " "
+                                << co->resu[0]     << " " << co->resu[1]    << " " << co->resu[2]     << " "
+                                << co->resu[3]     << " " << co->resu[5]    << " "
+                                << co->resu[9]     << " " << co->resu[10]   << " " << co->resu[13]    << " "
+                                << co->resu[14]    << "\n";
+                    
+                    fil1_append.close();
                 }
                 //cout << "** End of saving in the file *********" << save << endl;
                 //cout << "icon: " << icon << "\tnlens: " << nlens << "\tnerr: " << nerr << endl;
@@ -591,7 +595,8 @@ int main() {
   
     int tempStruc;
     for (const auto& r : records) {
-        counter = r.counter;   flagL = r.flagL;
+//        counter = r.counter;
+        flagL = r.flagL;
         l->tE = r.tE;   l->RE = r.RE;   l->piE = r.piE;  l->tetE = r.tetE;
         l->Vt = r.Vt;   l->u0 = r.u0;   l->Ml  = r.Ml;
         s->opt = r.opt; l->Dl = r.Dl;   s->Ds  = r.Ds;   l->vl = r.vl; s->vs = r.vs;
@@ -790,7 +795,7 @@ int main() {
 void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 {
     co.flagi =+ 1;
-    int tt, tev;
+    int tt; // tev;
 
     if (s.fb[0] < 0.15)      {co.bb[0] =+ 0.07; co.bb[1] =+ 0.15;}
     else if (s.fb[0] < 0.85) {co.bb[0] =- 0.07; co.bb[1] =+ 0.07;}
@@ -1220,17 +1225,17 @@ void Disk_model(source& s, int numt)
     double fh    = 1.0;  //No limitation
     double Rdd   = 2.17; //2.53; ///2.17;
     double Rhh   = 1.33; //1.32; //1.33;
-    double alm   = 2.0;  //2KPC,  Mancini 2004
-    double rlm_0 = 1.76 * 0.01; //solar mass/ Pc^-3
+//    double alm   = 2.0;  //2KPC,  Mancini 2004
+//    double rlm_0 = 1.76 * 0.01; //solar mass/ Pc^-3
 
-    double xb0, yb0, zb0;//kPC
+//    double xb0, yb0, zb0;//kPC
 
     double frac = 0.05; //fraction of halo in the form of compact objects
-    double qq   = 0.688;
-    double Rd0  = 1.54;
+//    double qq   = 0.688;
+//    double Rd0  = 1.54;
 
-    double xol, yol, zol, x0, y0, z0;
-    double r0, pos1, inc1, Rlm;
+//    double xol, yol, zol, x0, y0, z0;
+//    double r0, pos1, inc1, Rlm;
 
     char filename[40];
     FILE *filj;
@@ -1255,7 +1260,7 @@ void Disk_model(source& s, int numt)
         xb = x * cos(s.FI) * cos(s.TET) - Dsun;
         Rb = sqrt(xb * xb + yb * yb);
 
-        double rsun = sqrt(zb * zb + yb * yb + xb * xb);
+//        double rsun = sqrt(zb * zb + yb * yb + xb * xb);
 
 ///========== Galactic Thin Disk =====================
         for (int ii = 0; ii < 8; ++ii) {
@@ -1379,7 +1384,7 @@ void invert_matrix(covarian & co, int flag)
 
 void print_mat_contents(gsl_matrix *matrix, int size)
 {
-    size_t i, j;
+    int i, j;
     double element;
 
     for (i = 0; i < size; ++i) {

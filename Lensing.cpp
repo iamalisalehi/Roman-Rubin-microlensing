@@ -8,8 +8,8 @@
 void func_source(source & s, CMD & cm, const extin& ex, int sightlineIdx) {
     int nums, num;
     double rho, rf;
-    double Ds, Av, Alv;
-    double test, frand;
+    double Ds, Av = -1, Alv;
+//    double test, frand;
     double maxnb = 0.0;
     std::array<double, M> Map{}, Mab{}, Ai{}; 
     GalacticComponent struc;
@@ -35,7 +35,10 @@ void func_source(source & s, CMD & cm, const extin& ex, int sightlineIdx) {
         else if (rf <= (s.rho_disk[nums] + s.rho_bulge[nums]))                                      struc = GalacticComponent::BULGE; // bulge structure
         else if (rf <= (s.rho_disk[nums] + s.rho_bulge[nums] + s.rho_ThD[nums]))                    struc = GalacticComponent::THICK_DISK; //thick disk
         else if (rf <= (s.rho_disk[nums] + s.rho_bulge[nums] + s.rho_ThD[nums] + s.rho_halo[nums])) struc = GalacticComponent::HALO; //halo
-   // cout<<"struc :  "<<struc<<endl;
+        else {
+           std::cerr << "Selected Galactic Component can not be initialized with rf =" << rf << ".\n";
+           std::exit(EXIT_FAILURE);
+       }  // cout<<"struc :  "<<struc<<endl;
 
         if (struc == GalacticComponent::THIN_DISK) { //thin disk
             num = int(RandR(0.0, N1 - 1.0));
@@ -315,7 +318,6 @@ void func_lens(lens & l, source & s){
 
 void vrel(source & s, lens & l){
     if (l.Dl == 0.0) l.Dl = 0.00034735;
-    double pi  = M_PI;
     double Rlc = sqrt(l.Dl * l.Dl * cos(s.FI) * cos(s.FI) + Dsun * Dsun - 2. * Dsun * l.Dl * cos(s.TET) * cos(s.FI));
     double Rsc = sqrt(s.Ds * s.Ds * cos(s.FI) * cos(s.FI) + Dsun * Dsun - 2. * Dsun * s.Ds * cos(s.TET) * cos(s.FI));
     if (Rlc == 0.0) Rlc = 0.0000000000034346123;
@@ -323,7 +325,8 @@ void vrel(source & s, lens & l){
 
     double LVx, SVx, vt2;
     double SVT, SVR, SVZ, LVT, LVR, LVZ;
-    double fv, testfv, test, age;
+//    double fv, testfv, age;
+    double test, age = -1;
     double  VSunx, vls2, vls1;
     double  tetd ;
 
@@ -362,14 +365,15 @@ void vrel(source & s, lens & l){
             sigma_Z_DiskL = sigma_Z_Disk;
         }
     }
+    CHECK(age >= 0);
 
-    double v_R_lmc   = -57.0;
-    double v_T_lmc   = -226.0;
-    double v_Z_lmc   =  221.0;
-    double sigma_LMC =  20.2;
-    double err_rlmc  =  13.0; ///error of global velocity
-    double err_tlmc  =  15.0;
-    double err_zlmc  =  19.0;
+//    double v_R_lmc   = -57.0;
+//    double v_T_lmc   = -226.0;
+//    double v_Z_lmc   =  221.0;
+//    double sigma_LMC =  20.2;
+//    double err_rlmc  =  13.0; ///error of global velocity
+//    double err_tlmc  =  15.0;
+//    double err_zlmc  =  19.0;
 
 
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
@@ -396,16 +400,12 @@ void vrel(source & s, lens & l){
         SVT = RandN(sigma_T_halo, NN);
         SVZ = RandN(sigma_Z_halo, NN);
     }
-/*
+
     else {
-        SVR = RandN(sigma_LMC, NN);
-        SVT = RandN(sigma_LMC, NN);
-        SVZ = RandN(sigma_LMC, NN);
-        SVZ +=  v_Z_lmc + RandR(-err_zlmc, err_zlmc);
-        SVR +=  v_R_lmc + RandR(-err_rlmc, err_rlmc);
-        SVT +=  v_T_lmc + RandR(-err_tlmc, err_tlmc);
+        std::cerr << "Selected Galactic Component " << static_cast<int>(s.struc) << " does not exist.\n";
+        std::exit(EXIT_FAILURE);
     }
-*/
+
     if (s.struc == GalacticComponent::THIN_DISK or s.struc == GalacticComponent::THICK_DISK) {
         SVT = SVT + vro_sun * (1.00762 * pow(Rsc / Dsun, 0.0394) + 0.00712);
     }
@@ -435,18 +435,13 @@ void vrel(source & s, lens & l){
         LVT = RandN(sigma_T_halo, NN);
         LVZ = RandN(sigma_Z_halo, NN);
     }
-/*
-    else {
-        LVR = RandN(sigma_LMC, NN);
-        LVT = RandN(sigma_LMC, NN);
-        LVZ = RandN(sigma_LMC, NN);
-        LVZ +=  v_Z_lmc + RandR(-err_zlmc, err_zlmc);
-        LVR +=  v_R_lmc + RandR(-err_rlmc, err_rlmc);
-        LVT +=  v_T_lmc + RandR(-err_tlmc, err_tlmc);
-    }
-*/
 
-    if(l.struc == GalacticComponent::THIN_DISK or l.struc == GalacticComponent::THICK_DISK) {
+    else {
+        std::cerr << "Selected Galactic Component" << static_cast<int>(s.struc) << "does not exist.\n";
+        std::exit(EXIT_FAILURE);
+    }
+
+    if (l.struc == GalacticComponent::THIN_DISK or l.struc == GalacticComponent::THICK_DISK) {
         LVT = LVT + vro_sun * (1.00762 * pow(Rlc / Dsun, 0.0394) + 0.00712);
     }
 

@@ -6,7 +6,8 @@ from dustmaps.decaps import DECaPSQueryLite
 bay    = BayestarQuery(max_samples=1)
 decaps = DECaPSQueryLite(mean_only=True)   # E(B-V) directly, lighter memory footprint
 
-RV = 3.1  # standard total-to-selective extinction ratio
+RV_BAYESTAR = 3.1    # standard total-to-selective extinction ratio
+RV_DECAPS   = 3.32   # per dustmaps docs, specific to the DECaPS E(B-V) calibration
 
 l_list, b_list, _ = np.loadtxt('./BulgeBaseline.dat', usecols=[3, 4, 13], unpack=True)
 nfiles = len(l_list)              # must match `nfiles` in Bulge.h
@@ -26,10 +27,11 @@ for i in range(nfiles):
     dec = coords.icrs.dec.deg[0]  # same for every point on one sightline
     if dec > -30.0:
         ebv = bay(coords, mode='mean') * 0.884   # Bayestar19 -> E(B-V)
+        av = RV_BAYESTAR * ebv
     else:
         ebv = decaps(coords, mode='mean')        # already E(B-V)
+        av = RV_DECAPS * ebv
 
-    av = RV * ebv
     out = np.stack((l, b, dist_grid, av), axis=-1)
     fname = f'./files/ext/bayestar_{l_list[i]:.2f}_{b_list[i]:.2f}.txt'
     np.savetxt(fname, out, fmt="%.3e\t%.3e\t%.3e\t%.3e")

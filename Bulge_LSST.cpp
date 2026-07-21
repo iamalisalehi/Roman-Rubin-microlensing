@@ -61,6 +61,7 @@ int main() {
     std::cout << "**** File BulgeBaseline.dat was read ****\n";
 
     // --------------------- Read sigmaA_LSST.txt -------------------
+    // Atrometric error?
     fil.open("./files/sigmaA_LSST.txt");
     if (!fil) { std::cerr << "Cannot read sigmaA_LSST.txt\n"; return 1; }
 
@@ -76,16 +77,18 @@ int main() {
     std::cout << "**** File sigmaA_LSST.txt was read ****\n";
 
     // --------------------- Read sigma_Roman.txt ---------------------
-    // To be added
-/*    fil.open("./files/sigma_ELT.txt");
-    if (!fil) { std::cerr << "Cannot read sigma_ELT.txt\n"; return 1; }
+    // Photometric error
+    fil.open("./files/sigma_roman.txt");
+    if (!fil) { std::cerr << "Cannot read sigma_roman.txt\n"; return 1; }
 
     for (int i = 0; i < Nro; ++i) {
-        fil >> ro->mag[i] >> ro->err[i] >> ro->err[i];
+        fil >> ro->mag[i] >> ro->err[i];
+        CHECK(ro->mag[i] > 12.0);
+        CHECK(ro->err[i] > 0.0);
     }
     fil.close();
-    std::cout << "**** File sigma_Roman.txt was read ****\n";
-*/ 
+    std::cout << "**** File sigma_roman.txt was read ****\n";
+ 
     // --------------------- Read convert_coordinate_2.dat ----------
     fil.open("./files/convert_coordinate_2.dat");
     if (!fil) { std::cerr << "Cannot read convert_coordinate_2.dat\n"; return 1; }

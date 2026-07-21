@@ -111,6 +111,7 @@ constexpr int NFILES = 2518; //number of extinction files
 constexpr int NROWS = 3686; //number of rows in extintion files
 constexpr int nrd = 10000; //rows in "convert_coordinate_2.dat"
 constexpr int Na = 96;     //rows in "sigmaA_LSST.txt"
+constexpr int NaRoman = 123;  // rows in sigma_roman.txt
 constexpr int nq = 15;     //resu
 constexpr int N1 = 258334, N2 = 1957085, N3 = 458784, N4 = 1514; //CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo
 constexpr int Nl = 7373; //BulgeBaseline.dat 18/07/2026
@@ -419,7 +420,7 @@ struct roman {
     std::vector<double> err;
 
     roman()
-        : mag(Na), err(Na)
+        : mag(NaRoman), err(NaRoman)
     {}
 };
 

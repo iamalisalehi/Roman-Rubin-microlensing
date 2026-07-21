@@ -231,8 +231,8 @@ void read_cmd(CMD & cm)
     }
 
     while (fp2 >> cm.mass_thin[j] >> cm.logT_thin[j]    >> Mbol               >> cm.age_thin[j]     >> Pop
-            >> cm.Mab_thin[j][0]  >> cm.Mab_thin[j][1]  >> cm.Mab_thin[j][2]  >> cm.Mab_thin[j][3]  >> cm.Mab_thin[j][4]  
-            >> cm.Mab_thin[j][5]  >> cm.Mab_thin[j][6]  >> cm.cl_thin[j]      >> cm.typ_thin[j]) {
+            >> cm.Mab_thin[j][6]  >> cm.Mab_thin[j][0]  >> cm.Mab_thin[j][1]  >> cm.Mab_thin[j][2]  >> cm.Mab_thin[j][3]  
+            >> cm.Mab_thin[j][4]  >> cm.Mab_thin[j][5]  >> cm.cl_thin[j]      >> cm.typ_thin[j]) {
 
         CHECK(cm.mass_thin[j]   >= 0.0);
         CHECK(cm.logT_thin[j]   >= 0.0);
@@ -255,8 +255,8 @@ void read_cmd(CMD & cm)
     }
 
     while (fp2 >> cm.mass_bulge[j]  >> cm.logT_bulge[j]   >> Mbol                >> cm.age_bulge[j]     >> Pop
-            >> cm.Mab_bulge[j][0]  >> cm.Mab_bulge[j][1]  >> cm.Mab_bulge[j][2]  >> cm.Mab_bulge[j][3]  >> cm.Mab_bulge[j][4]  
-            >> cm.Mab_bulge[j][5]  >> cm.Mab_bulge[j][6]  >> cm.cl_bulge[j]      >> cm.typ_bulge[j]) {
+            >> cm.Mab_bulge[j][6]  >> cm.Mab_bulge[j][0]  >> cm.Mab_bulge[j][1]  >> cm.Mab_bulge[j][2]  >> cm.Mab_bulge[j][3]  
+            >> cm.Mab_bulge[j][4]  >> cm.Mab_bulge[j][5]  >> cm.cl_bulge[j]      >> cm.typ_bulge[j]) {
 
         CHECK(cm.mass_bulge[j]   >= 0.0);
         CHECK(cm.logT_bulge[j]   >= 0.0);
@@ -278,8 +278,8 @@ void read_cmd(CMD & cm)
         throw std::runtime_error("cannot read ./BC/components/thick_disk.dat");
     }
     while (fp2 >> cm.mass_thick[j] >> cm.logT_thick[j]    >> Mbol                >> cm.age_thick[j]     >> Pop
-            >> cm.Mab_thick[j][0]  >> cm.Mab_thick[j][1]  >> cm.Mab_thick[j][2]  >> cm.Mab_thick[j][3]  >> cm.Mab_thick[j][4]  
-            >> cm.Mab_thick[j][5]  >> cm.Mab_thick[j][6]  >> cm.cl_thick[j]      >> cm.typ_thick[j]) {
+            >> cm.Mab_thick[j][6]  >> cm.Mab_thick[j][0]  >> cm.Mab_thick[j][1]  >> cm.Mab_thick[j][2]  >> cm.Mab_thick[j][3]  
+            >> cm.Mab_thick[j][4]  >> cm.Mab_thick[j][5]  >> cm.cl_thick[j]      >> cm.typ_thick[j]) {
 
         CHECK(cm.mass_thick[j]   >= 0.0);
         CHECK(cm.logT_thick[j]   >= 0.0);
@@ -301,8 +301,8 @@ void read_cmd(CMD & cm)
         throw std::runtime_error("cannot read ./BC/components/halo.dat");
     }
     while (fp2 >> cm.mass_halo[j] >> cm.logT_halo[j]    >> Mbol               >> cm.age_halo[j]     >> Pop
-            >> cm.Mab_halo[j][0]  >> cm.Mab_halo[j][1]  >> cm.Mab_halo[j][2]  >> cm.Mab_halo[j][3]  >> cm.Mab_halo[j][4]  
-            >> cm.Mab_halo[j][5]  >> cm.Mab_halo[j][6]  >> cm.cl_halo[j]      >> cm.typ_halo[j]) {
+            >> cm.Mab_halo[j][6]  >> cm.Mab_halo[j][0]  >> cm.Mab_halo[j][1]  >> cm.Mab_halo[j][2]  >> cm.Mab_halo[j][3]  
+            >> cm.Mab_halo[j][4]  >> cm.Mab_halo[j][5]  >> cm.cl_halo[j]      >> cm.typ_halo[j]) {
 
         CHECK(cm.mass_halo[j]   >= 0.0);
         CHECK(cm.logT_halo[j]   >= 0.0);

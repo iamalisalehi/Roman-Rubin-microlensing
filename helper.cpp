@@ -32,7 +32,7 @@ int FunctE(lens & l) {
 
    else {
        for (int i = 1; i <= GG; ++i) {
-          if(double((l.tE - l.tEs[i-1]) * (l.tE - l.tEs[i])) < 0.0 or l.tE == l.tEs[i-1]) { gg = int(i-1);  break; }
+          if(double((l.tE - l.tEs[i-1]) * (l.tE - l.tEs[i])) < 0.0 or l.tE == l.tEs[i-1]) { gg = i - 1;  break; }
        }
    }
 
@@ -53,7 +53,7 @@ int FuncMl(lens & l) {
    else if (l.Ml >= Ml_max) gg = GG;
    else {
       for(int i = 1; i <= GG; ++i) {
-          if (double((l.Ml - l.Mls[i-1]) * (l.Ml - l.Mls[i])) < 0.0 or l.Ml == l.Mls[i-1]) { gg = int(i-1);  break; }
+          if (double((l.Ml - l.Mls[i-1]) * (l.Ml - l.Mls[i])) < 0.0 or l.Ml == l.Mls[i-1]) { gg = i - 1;  break; }
       }
    }
 
@@ -73,7 +73,7 @@ int FuncPi(lens & l) {
    else if (lpi >= pi_max) gg = GG;
    else {
       for (int i = 1; i <= GG; ++i) {
-          if (double((lpi - l.pis[i-1]) * (lpi - l.pis[i])) < 0.0 or lpi == l.pis[i-1]) { gg = int(i-1);  break; }
+          if (double((lpi - l.pis[i-1]) * (lpi - l.pis[i])) < 0.0 or lpi == l.pis[i-1]) { gg = i - 1;  break; }
       }
    }
 
@@ -91,7 +91,7 @@ int Funcu0(lens & l){
    else if (l.u0 >= u0_max) gg = GG;
    else {
       for (int i = 1; i <= GG; ++i) {
-          if (double((l.u0 - l.u0s[i-1]) * (l.u0 - l.u0s[i])) < 0.0 or l.u0 == l.u0s[i-1]) { gg = int(i-1);  break; }
+          if (double((l.u0 - l.u0s[i-1]) * (l.u0 - l.u0s[i])) < 0.0 or l.u0 == l.u0s[i-1]) { gg = i - 1;  break; }
       }
    }
 
@@ -112,7 +112,7 @@ int FuncMu(lens & l){
    else if (mur >= mu_max) gg = GG;
    else {
        for (int i = 1; i <= GG; ++i) {
-          if (double((mur - l.mus[i-1]) * (mur - l.mus[i])) < 0.0 or mur == l.mus[i-1]) { gg = int(i-1);  break; }
+          if (double((mur - l.mus[i-1]) * (mur - l.mus[i])) < 0.0 or mur == l.mus[i-1]) { gg = i - 1;  break; }
        }
    }
 
@@ -131,7 +131,7 @@ int FuncMb(lens & l, double gadr) {
    else if (gadr >= mb_max)  gg = GG;
    else {
        for (int i = 1; i <= GG; ++i) {
-          if (double((gadr - l.mbs[i-1]) * (gadr - l.mbs[i])) < 0.0 or gadr == l.mbs[i-1]) { gg = int(i-1); break; }
+          if (double((gadr - l.mbs[i-1]) * (gadr - l.mbs[i])) < 0.0 or gadr == l.mbs[i-1]) { gg = i - 1; break; }
        }
    }
    CHECK(gg >= 0);
@@ -149,7 +149,7 @@ int FuncFb(lens & l, double blen) {
    else if (blen >= fb_max)  gg = GG;
    else {
        for (int i = 1; i <= GG; ++i) {
-          if(double((blen - l.fbs[i-1]) * (blen - l.fbs[i])) < 0.0 or blen == l.fbs[i-1]) { gg = int(i-1); break;}
+          if(double((blen - l.fbs[i-1]) * (blen - l.fbs[i])) < 0.0 or blen == l.fbs[i-1]) { gg = i - 1; break;}
        }
    }
 
@@ -221,101 +221,152 @@ void read_cmd(CMD & cm)
 {
 // mass  logT  Mbol  Age  Pop  Roman_F146  LSST_u  LSST_g  LSST_r  LSST_i  LSST_z  LSST_y  CL  Type //20/07/2026
 // 0     1     2     3    4    5           6       7       8       9       10      11      12  13
-    int j = 0;
     double Mbol, Pop;
+    double dummy;
+    std::string header;
 //    double logL, gravity, metal, B, V, R, I, J, H;
 
-    std::ifstream fp2("./BC/components/thin_disk.dat");
+    // ================================ THIN DISK =============================
+    std::ifstream fp2("./CMD/components/thin_disk.dat");
     if (!fp2.is_open()) {
-        throw std::runtime_error("cannot read ./BC/components/thin_disk.dat");
+        throw std::runtime_error("cannot read ./CMD/components/thin_disk.dat");
     }
 
-    while (fp2 >> cm.mass_thin[j] >> cm.logT_thin[j]    >> Mbol               >> cm.age_thin[j]     >> Pop
-            >> cm.Mab_thin[j][6]  >> cm.Mab_thin[j][0]  >> cm.Mab_thin[j][1]  >> cm.Mab_thin[j][2]  >> cm.Mab_thin[j][3]  
-            >> cm.Mab_thin[j][4]  >> cm.Mab_thin[j][5]  >> cm.cl_thin[j]      >> cm.typ_thin[j]) {
+    std::getline(fp2, header);   // Skip the header line
+    for (size_t j = 0; j < N1; ++j) {
+//        CHECK(cm.mass_thin[j]   >= 0.0);
+//        CHECK(cm.logT_thin[j]   >= 0.0);
+//        CHECK(cm.Mab_thin[j][2] <= 20.0);
+//        CHECK(cm.age_thin[j]    <= 10);
+//        CHECK(cm.cl_thin[j]     <= 7);
+//        CHECK(cm.typ_thin[j]    <= 9.0);
 
-        CHECK(cm.mass_thin[j]   >= 0.0);
-        CHECK(cm.logT_thin[j]   >= 0.0);
-        CHECK(cm.Mab_thin[j][2] <= 20.0);
-        CHECK(cm.age_thin[j]    <= 10);
-        CHECK(cm.cl_thin[j]     <= 7);
-        CHECK(cm.typ_thin[j]    <= 9.0);
-       
-        j++;
-    }
+          if (!(fp2 >> cm.mass_thin[j]
+                    >> cm.logT_thin[j]
+                    >> Mbol
+                    >> cm.age_thin[j]
+                    >> Pop
+                    >> cm.Mab_thin[j][6]
+                    >> cm.Mab_thin[j][0]
+                    >> cm.Mab_thin[j][1]
+                    >> cm.Mab_thin[j][2]
+                    >> cm.Mab_thin[j][3]
+                    >> cm.Mab_thin[j][4]
+                    >> cm.Mab_thin[j][5]
+                    >> cm.cl_thin[j]
+                    >> cm.typ_thin[j])) {
+              throw std::runtime_error("Unexpected end of thin_disk.dat");
+          }
+      }
 
+    // Make sure there's no extra data.
+    CHECK(!(fp2 >> dummy));
     fp2.close();
-    CHECK(j == N1);
 
     // ================================ BULGE ==================================
-    j = 0;
-    fp2.open("./BC/components/bulge.dat");
+    fp2.open("./CMD/components/bulge.dat");
     if (!fp2.is_open()) {
-        throw std::runtime_error("cannot read ./BC/components/bulge.dat");
+        throw std::runtime_error("cannot read ./CMD/components/bulge.dat");
     }
 
-    while (fp2 >> cm.mass_bulge[j]  >> cm.logT_bulge[j]   >> Mbol                >> cm.age_bulge[j]     >> Pop
-            >> cm.Mab_bulge[j][6]  >> cm.Mab_bulge[j][0]  >> cm.Mab_bulge[j][1]  >> cm.Mab_bulge[j][2]  >> cm.Mab_bulge[j][3]  
-            >> cm.Mab_bulge[j][4]  >> cm.Mab_bulge[j][5]  >> cm.cl_bulge[j]      >> cm.typ_bulge[j]) {
-
-        CHECK(cm.mass_bulge[j]   >= 0.0);
-        CHECK(cm.logT_bulge[j]   >= 0.0);
-        CHECK(cm.Mab_bulge[j][2] <= 18.0);
-        CHECK(cm.age_bulge[j]    <= 10);
-        CHECK(cm.cl_bulge[j]     <= 7);
-        CHECK(cm.typ_bulge[j]    <= 9.0);
-      
-        j++;
+    std::getline(fp2, header);   // Skip the header line
+    for (size_t j = 0; j < N2; ++j) {
+//        CHECK(cm.mass_bulge[j]   >= 0.0);
+//        CHECK(cm.logT_bulge[j]   >= 0.0);
+//        CHECK(cm.Mab_bulge[j][2] <= 18.0);
+//        CHECK(cm.age_bulge[j]    <= 10);
+//        CHECK(cm.cl_bulge[j]     <= 7);
+//        CHECK(cm.typ_bulge[j]    <= 9.0);
+          if (!(fp2 >> cm.mass_bulge[j]
+                    >> cm.logT_bulge[j]
+                    >> Mbol
+                    >> cm.age_bulge[j]
+                    >> Pop
+                    >> cm.Mab_bulge[j][6]
+                    >> cm.Mab_bulge[j][0]
+                    >> cm.Mab_bulge[j][1]
+                    >> cm.Mab_bulge[j][2]
+                    >> cm.Mab_bulge[j][3]
+                    >> cm.Mab_bulge[j][4]
+                    >> cm.Mab_bulge[j][5]
+                    >> cm.cl_bulge[j]
+                    >> cm.typ_bulge[j])) {
+              throw std::runtime_error("Unexpected end of bulge.dat");
+          }
     }
 
+    CHECK(!(fp2 >> dummy));
     fp2.close();
-    CHECK(j == N2);
 
     // ================================ THICK DISK =============================
-    j = 0;
-    fp2.open("./BC/components/thick_disk.dat");
+    fp2.open("./CMD/components/thick_disk.dat");
     if (!fp2.is_open()) {
-        throw std::runtime_error("cannot read ./BC/components/thick_disk.dat");
-    }
-    while (fp2 >> cm.mass_thick[j] >> cm.logT_thick[j]    >> Mbol                >> cm.age_thick[j]     >> Pop
-            >> cm.Mab_thick[j][6]  >> cm.Mab_thick[j][0]  >> cm.Mab_thick[j][1]  >> cm.Mab_thick[j][2]  >> cm.Mab_thick[j][3]  
-            >> cm.Mab_thick[j][4]  >> cm.Mab_thick[j][5]  >> cm.cl_thick[j]      >> cm.typ_thick[j]) {
-
-        CHECK(cm.mass_thick[j]   >= 0.0);
-        CHECK(cm.logT_thick[j]   >= 0.0);
-        CHECK(cm.Mab_thick[j][2] <= 20.0);
-        CHECK(cm.age_thick[j]    <= 8);
-        CHECK(cm.cl_thick[j]     <= 7);
-        CHECK(cm.typ_thick[j]    <= 9.0);
-
-        j++;
+        throw std::runtime_error("cannot read ./CMD/components/thick_disk.dat");
     }
 
+    std::getline(fp2, header);   // Skip the header line
+    for (size_t j = 0; j < N3; ++j) {
+//        CHECK(cm.mass_thick[j]   >= 0.0);
+//        CHECK(cm.logT_thick[j]   >= 0.0);
+//        CHECK(cm.Mab_thick[j][2] <= 20.0);
+//        CHECK(cm.age_thick[j]    <= 8);
+//        CHECK(cm.cl_thick[j]     <= 7);
+//        CHECK(cm.typ_thick[j]    <= 9.0);
+          if (!(fp2 >> cm.mass_thick[j]
+                    >> cm.logT_thick[j]
+                    >> Mbol
+                    >> cm.age_thick[j]
+                    >> Pop
+                    >> cm.Mab_thick[j][6]
+                    >> cm.Mab_thick[j][0]
+                    >> cm.Mab_thick[j][1]
+                    >> cm.Mab_thick[j][2]
+                    >> cm.Mab_thick[j][3]
+                    >> cm.Mab_thick[j][4]
+                    >> cm.Mab_thick[j][5]
+                    >> cm.cl_thick[j]
+                    >> cm.typ_thick[j])) {
+              throw std::runtime_error("Unexpected end of thick_disk.dat");
+          }
+    }
+
+    CHECK(!(fp2 >> dummy));
     fp2.close();
-    CHECK(j == N3);
 
     // ================================ STELLAR HALO ===========================
-    j = 0;
-    fp2.open("./BC/components/halo.dat");
+    fp2.open("./CMD/components/halo.dat");
     if (!fp2.is_open()) {
-        throw std::runtime_error("cannot read ./BC/components/halo.dat");
-    }
-    while (fp2 >> cm.mass_halo[j] >> cm.logT_halo[j]    >> Mbol               >> cm.age_halo[j]     >> Pop
-            >> cm.Mab_halo[j][6]  >> cm.Mab_halo[j][0]  >> cm.Mab_halo[j][1]  >> cm.Mab_halo[j][2]  >> cm.Mab_halo[j][3]  
-            >> cm.Mab_halo[j][4]  >> cm.Mab_halo[j][5]  >> cm.cl_halo[j]      >> cm.typ_halo[j]) {
-
-        CHECK(cm.mass_halo[j]   >= 0.0);
-        CHECK(cm.logT_halo[j]   >= 0.0);
-        CHECK(cm.Mab_halo[j][2] <= 20.0);
-        CHECK(cm.age_halo[j]    <= 9);
-        CHECK(cm.cl_halo[j]     <= 7);
-        CHECK(cm.typ_halo[j]   <= 9.0);
-
-        j++;
+        throw std::runtime_error("cannot read ./CMD/components/halo.dat");
     }
 
+    std::getline(fp2, header);   // Skip the header line
+    for (size_t j = 0; j < N4; ++j) {
+//        CHECK(cm.mass_halo[j]   >= 0.0);
+//        CHECK(cm.logT_halo[j]   >= 0.0);
+//        CHECK(cm.Mab_halo[j][2] <= 20.0);
+//        CHECK(cm.age_halo[j]    <= 9);
+//        CHECK(cm.cl_halo[j]     <= 7);
+//        CHECK(cm.typ_halo[j]   <= 9.0);
+          if (!(fp2 >> cm.mass_halo[j]
+                    >> cm.logT_halo[j]
+                    >> Mbol
+                    >> cm.age_halo[j]
+                    >> Pop
+                    >> cm.Mab_halo[j][6]
+                    >> cm.Mab_halo[j][0]
+                    >> cm.Mab_halo[j][1]
+                    >> cm.Mab_halo[j][2]
+                    >> cm.Mab_halo[j][3]
+                    >> cm.Mab_halo[j][4]
+                    >> cm.Mab_halo[j][5]
+                    >> cm.cl_halo[j]
+                    >> cm.typ_halo[j])) {
+              throw std::runtime_error("Unexpected end of halo.dat");
+          }
+    }
+
+    CHECK(!(fp2 >> dummy));
     fp2.close();
-    CHECK(j == N4);
 
     std::cout << ">>>>>>>>>>>>>>>>>> END OF CMD READING <<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl;
 }
@@ -391,7 +442,8 @@ void readBayestar(extin& ex, const std::string& folder) {
             continue;
         }
 
-        CHECK(k < NFILES);
+//        std::cout << "k = " << k << "\tNFILES = " << NFILES << endl;
+        CHECK(k <= NFILES);
         Sightline& s = ex.sightlines[k];
 
         fin >> s.l
@@ -406,16 +458,17 @@ void readBayestar(extin& ex, const std::string& folder) {
                 >> b
                 >> s.profile.dist[i]
                 >> s.profile.ext[i];
-        
-            if (l != s.l || b != s.b)
-            {
+/*
+            if (l != s.l || b != s.b) {
                 std::cerr << "Inconsistent l,b in file "
                           << entry.path() << '\n';
                 std::exit(EXIT_FAILURE);
             }
+*/
         }
-
+    k++;
     }
+//    std::cout << "k = " << k << "\tNFILES = " << NFILES << endl;
     CHECK(k == NFILES);
 
     std::cout

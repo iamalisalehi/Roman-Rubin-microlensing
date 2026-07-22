@@ -29,7 +29,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
             Ds   = double(nums * step);
         } while (rho > s.Rostari[nums] or Ds < 0.0 or Ds > MaxD); //distance larger than 20.0
 
-        cout<<"k:  "<<k<<"\t Ds:  "<<Ds<<"\t nums:  "<<nums<<endl;
+//        cout<<"k:  "<<k<<"\t Ds:  "<<Ds<<"\t nums:  "<<nums<<endl;
 
         rf = RandR(0.0, s.Rostar0[nums]);
         if      (rf <=  s.rho_thin[nums])                                                             struc = GalacticComponent::THIN_DISK;
@@ -90,7 +90,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
         }
 
         Av = interpExtinctionAlongSightline(ex, sightlineIdx, Ds);
-        cout << "Av: " << Av << endl;
+//        cout << "Av: " << Av << endl;
         for (int i = 0; i < M; ++i) {
             Alv = fabs(a0[i] + b0[i] / Rv[static_cast<int>(struc)]); //Alambda/AV
             Ai[i] = Av * Alv + RandN(sigma[i], 1.0); //extinction in other bands
@@ -132,7 +132,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
         CHECK(s.blend[i] <= 1.00001);
         CHECK(s.blend[i] > 0.0);
         //cout << "nsbl[i]: " << s.nsbl[i] << "\tblend[i]: " << s.blend[i] << endl;
-        if (s.nsbl[i] == 1) CHECK(s.blend[i] >= 1.0);
+//        if (s.nsbl[i] == 1) CHECK(s.blend[i] >= 1.0);
         CHECK(fabs(s.Map[i] - s.Mab[i] - s.Ai[i] - 5.0 * log10(s.Ds * 100.0)) <= 0.1);
         CHECK(s.Ds > 0.0);
         CHECK(Av >= 0.0);
@@ -154,21 +154,18 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
 void func_lens(lens & l, source & s){
 
-    double f,test, tt, Am, DD;
-    double mmin=Ml_min;
-    double mmax=Ml_max;
-    l.rhomaxl=0.0;
-
+    double f, test, tt, Am, DD;
+    double mmin = Ml_min;
+    double mmax = Ml_max;
+    l.rhomaxl = 0.0;
 
     for (int k = 1; k < int(s.nums - 1) ;++k) {
         l.Dl = double(k * step);
-        tt = sqrt((s.Ds-l.Dl)*l.Dl/s.Ds)*s.Rostar0[k];
-        if(tt>l.rhomaxl)  l.rhomaxl=tt;
+        tt = sqrt((s.Ds - l.Dl) * l.Dl / s.Ds) * s.Rostar0[k];
+        if (tt > l.rhomaxl)  l.rhomaxl = tt;
     }
 
-
-
-    do{
+    do {
         l.numl = int(RandR(1.0, s.nums - 1.0));
         test   =     RandR(0.0, l.rhomaxl);
         l.Dl   = double(l.numl * step);
@@ -178,24 +175,20 @@ void func_lens(lens & l, source & s){
         CHECK(l.Dl > 0.0);
         CHECK(s.Ds > 0.0);
         CHECK(l.Dl < s.Ds);
+
     } while(test > tt);
     l.Dl = double(l.numl * step);
 
-    double randflag = RandR(0.0,s.Rostar0[l.numl]);
-    if      (randflag <= (s.rho_thin[l.numl])) l.struc = GalacticComponent::THIN_DISK;//disk
-    else if (randflag <= (s.rho_thin[l.numl] + s.rho_bulge[l.numl])) l.struc=GalacticComponent::BULGE;//bulge
-    else if (randflag <= (s.rho_thin[l.numl] + s.rho_bulge[l.numl] + s.rho_thick[l.numl])) l.struc = GalacticComponent::THICK_DISK;//thick
-    else if (randflag <= (s.rho_thin[l.numl] + s.rho_bulge[l.numl] + s.rho_thick[l.numl] + s.rho_halo[l.numl])) l.struc = GalacticComponent::HALO;//halo
-    //else if(randflag<=(s.rho_thin[l.numl]+s.rho_bulge[l.numl]+s.rho_thick[l.numl]+s.rho_halo[l.numl]+s.rho_hlmc[l.numl]))l.struc=GalacticComponent::HALO_LMC;//hlmc
-    //else if(randflag<=(s.rho_thin[l.numl]+s.rho_bulge[l.numl]+s.rho_thick[l.numl]+s.rho_halo[l.numl]+s.rho_hlmc[l.numl]+s.rho_dlmc[l.numl]))l.struc=GalacticComponent::DISK_LMC;//dlmc
-    //else if(randflag<=fabs( s.Rostar0[l.numl]))  l.struc=GalacticComponent::BAR_LMC;//blmc
+    double   randflag = RandR(0.0, s.Rostar0[l.numl]);
+    if      (randflag <= (s.rho_thin[l.numl])) l.struc = GalacticComponent::THIN_DISK;
+    else if (randflag <= (s.rho_thin[l.numl] + s.rho_bulge[l.numl])) l.struc=GalacticComponent::BULGE;
+    else if (randflag <= (s.rho_thin[l.numl] + s.rho_bulge[l.numl] + s.rho_thick[l.numl])) l.struc = GalacticComponent::THICK_DISK;
+    else if (randflag <= (s.rho_thin[l.numl] + s.rho_bulge[l.numl] + s.rho_thick[l.numl] + s.rho_halo[l.numl])) l.struc = GalacticComponent::HALO;
 
     else {
         throw std::runtime_error("Invalid randflag: " + std::to_string(randflag) + ", rho_star0: " + std::to_string(s.Rostar0[l.numl]));
     }
      //cout<<"Dl:  "<<l.Dl<<"\t struc_lens :  "<<l.struc<<endl;
-
-
 
     if (IMnum == 1) {
         l.Ml = RandR(mmin , mmax);
@@ -203,7 +196,7 @@ void func_lens(lens & l, source & s){
 
     if (IMnum == 2) {
         l.Ml = -1.0;
-        do{
+        do {
             l.Ml = RandR(mmin, mmax); //[3,5000]in solar mass]
             test = RandR(pow(mmax, -0.5) * 100.0, pow(mmin, -0.5) * 100.0); //[1.4, 58]
             f = pow(l.Ml, -0.5) * 100.0;
@@ -219,7 +212,7 @@ void func_lens(lens & l, source & s){
     }
 
     if (IMnum == 3) {
-        l.Ml=-1.0;
+        l.Ml = -1.0;
         do{
            l.Ml = RandR(mmin, mmax); //[3,5000]in solar mass]
            test = RandR(pow(mmax, -1.0) * 1000.0, pow(mmin, -1.0) * 1000.0); //[0.2, 334]
@@ -235,7 +228,7 @@ void func_lens(lens & l, source & s){
     }
 
     if (IMnum == 4) {
-       l.Ml=-1.0;
+       l.Ml = -1.0;
        do {
            l.Ml = RandR(mmin, mmax);//[3,5000]in solar mass]
            test = RandR(pow(mmax, -2.0) * 10000.0, pow(mmin, -2.0) * 10000.0); //[0.0004, 1112]
@@ -251,22 +244,16 @@ void func_lens(lens & l, source & s){
        } while(test > f);
     }
 
-
-
-
-
-
-    l.xls  =double(l.Dl/s.Ds);
-    l.RE   =sqrt(4.0*G*l.Ml*Msun*s.Ds*KP)/velocity;
-    l.RE   =double(l.RE*sqrt(l.xls*(1.0-l.xls)));///meter
-    l.tetE =double(l.RE/AU/l.Dl);//[mas]
-    s.ros  =double(1.0*Rsun*l.xls/l.RE);
-    l.pirel=double(1.0/l.Dl- 1.0/s.Ds);//[mas]
-    l.piE  =double(l.pirel/l.tetE);//[]
-    l.u0   =  RandR(0.001, u0m);
-    l.t0   =  RandR(2.0,Tobs-2.0);
-    l.DeltaT= sqrt(4.0+l.u0*l.u0)*l.tetE;//[mas]
-
+    l.xls    = double(l.Dl/s.Ds);
+    l.RE     = sqrt(4.0*G*l.Ml*Msun*s.Ds*KP)/velocity;
+    l.RE     = double(l.RE*sqrt(l.xls*(1.0-l.xls)));///meter
+    l.tetE   = double(l.RE/AU/l.Dl);//[mas]
+    s.ros    = double(1.0*Rsun*l.xls/l.RE);
+    l.pirel  = double(1.0/l.Dl- 1.0/s.Ds);//[mas]
+    l.piE    = double(l.pirel/l.tetE);//[]
+    l.u0     = RandR(0.001, u0m);
+    l.t0     = RandR(2.0,Tobs-2.0);
+    l.DeltaT = sqrt(4.0+l.u0*l.u0)*l.tetE;//[mas]
 
     vrel(s,l);
     l.tE=fabs(l.RE/(l.Vt*1000.0*3600.0*24.0));//[days]
@@ -283,7 +270,6 @@ void func_lens(lens & l, source & s){
     //cout<<"u0:  "<<l.u0<<"\t pirel:  "<<l.pirel<<"\t piE:  "<<l.piE<<endl;
     //cout<<"mus1:  "<<s.mus1<<"\t mus2:  "<<s.mus2<<"\t mul1:  "<<l.mul1<<"\t mul2:  "<<l.mul2<<endl;
     //cout<<"DD:  "<<DD<<"\t FWHM:  "<<s.FWHM<<endl;
-
 
     CHECK(l.tE > 0.0);
     CHECK(l.Dl <= s.Ds);

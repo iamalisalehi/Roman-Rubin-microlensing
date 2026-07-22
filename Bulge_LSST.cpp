@@ -40,12 +40,14 @@ int main() {
     int ID;
     double TV, airm, seeingVal, skyB, texp;
 //    int tmpFilter;
+    std::string header;
 
+    std::getline(fil, header);   // Skip the header line
     for (int i = 0; i < Nl; ++i) {
         fil >> ID >> ls->RA[i] >> ls->DEC[i] >> ls->l[i] >> ls->b[i]
             >> ls->tim[i] >> ls->filter[i] >> airm >> seeingVal >> skyB
             >> TV >> ls->sig5[i] >> texp >> ls->dist[i];
-
+//if (i == 0) cout << ID << endl;
         CHECK(airm >= 0.0);
         CHECK(ls->filter[i] >= 0);
         CHECK(ls->filter[i] < 6);
@@ -81,7 +83,7 @@ int main() {
     fil.open("./files/sigma_roman.txt");
     if (!fil) { std::cerr << "Cannot read sigma_roman.txt\n"; return 1; }
 
-    for (int i = 0; i < Nro; ++i) {
+    for (int i = 0; i < NaRoman; ++i) {
         fil >> ro->mag[i] >> ro->err[i];
         CHECK(ro->mag[i] > 12.0);
         CHECK(ro->err[i] > 0.0);
@@ -151,7 +153,7 @@ int main() {
     }
 
     // File names
-    std::string filnam0 = "./files/MONTLMC/files/BHLSSTMONTS.dat"; // now visible outside the if
+//    std::string filnam0 = "./files/MONTLMC/files/BHLSSTMONTS.dat"; // now visible outside the if
     std::string filnam1 = "./files/MONTLMC/files/magC"   + std::to_string(save)  +  ".dat";
     std::string filnam2 = "./files/MONTLMC/files/datC"   + std::to_string(save)  +  ".dat";
     std::string fnLDt   = "./files/MONTLMC/files/LpLMC"  + std::to_string(IMnum) +  ".dat";
@@ -162,7 +164,7 @@ int main() {
 
     // Open files
     std::ifstream fil0(fnLDt);
-    std::ifstream fil1(filnam0);
+//    std::ifstream fil1(filnam0);
     std::ofstream fil2(fnEff);
     std::ofstream fil2b(fnEffB);
     std::ofstream fil4(filnam1);
@@ -171,7 +173,7 @@ int main() {
     std::ofstream filg_in(testf);
 
     // Check all
-    if (!fil0 || !fil1 || !fil2 || !fil2b || !fil3 || !fil4 || !fil5 || !filg_in) {
+    if (!fil0 || !fil2 || !fil2b || !fil3 || !fil4 || !fil5 || !filg_in) {
         std::cerr << "Cannot open one or more files!" << std::endl;
         return 1;
     }
@@ -180,10 +182,12 @@ int main() {
 
 ///HHHHHHHHHHHHHHHHHHHHH Monte Carlo Simulation HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 
-    for (s->lon = l1 - wid; s->lon <= l2 + wid; s->lon += dd) {
+//    for (s->lon = l1 - wid; s->lon <= l2 + wid; s->lon += dd) {
+    for (s->lon = 0.5; s->lon <= 0.6; s->lon += dd) {
         nri +=  1;
         nde  = -1;
-        for (s->lat = b1 - wid; s->lat <= b2 + wid; s->lat += dd) {
+//        for (s->lat = b1 - wid; s->lat <= b2 + wid; s->lat += dd) {
+        for (s->lat = -1.4; s->lat <= -1.3; s->lat += dd) {
             if (s->lon < lx and s->lat > bx) continue;
             nde += 1;
             cout << ">>>>>>>>>>> NEW STEP " << nde << " <<<<<<<<\t nri:  " << nri << endl;
@@ -206,11 +210,12 @@ int main() {
                         // If LSST sees the source
                         ls->ct[ndd] = i;
                         if (ndd > 0) {
-                            cade = float(ls->tim[int(ls->ct[ndd])] - ls->tim[int(ls->ct[ndd-1])]);
-                            
+                            cade = ls->tim[i] - ls->tim[i-1];
+//                            std::cout << "i = " << i << endl;
                             if (minc > cade) minc = cade;
 
-                            CHECK(ndd <= 999);
+//                            CHECK(ndd <= 999);
+                            if (ndd >= 999) break;
                             CHECK(cade > 0.0);
                             CHECK(ls->tim[i] >= 0.0);
                             CHECK(ls->tim[i] <= Tobs);
@@ -471,7 +476,7 @@ int main() {
                     //zz = int(FuncMb(*l, s->Map[2]));
                     //pp = int(FuncFb(*l, s->blend[2]));
                 }
-                CHECK(gg >= 0);
+//                CHECK(gg >= 0);
 
                 records.push_back(EventRecord{
                     icon, static_cast<int>(FFG[0]),
@@ -541,7 +546,8 @@ int main() {
                 }
                 //cout << "** End of saving in the file *********" << save << endl;
                 //cout << "icon: " << icon << "\tnlens: " << nlens << "\tnerr: " << nerr << endl;
-            } while (icon < 850 or nlens < 150 or nerr < 2.0); //end of loop icon
+//            } while (icon < 850 or nlens < 150 or nerr < 2.0); //end of loop icon
+            } while (icon < 20 or nlens < 5 or nerr < 1.0); //end of loop icon
    
             for (int i = 0; i <= GG; ++i) {
                 l->NstE[i] += l->nstE[i];

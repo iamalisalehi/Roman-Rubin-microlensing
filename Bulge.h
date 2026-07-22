@@ -113,7 +113,7 @@ constexpr int nrd = 10000; //rows in "convert_coordinate_2.dat"
 constexpr int Na = 96;     //rows in "sigmaA_LSST.txt"
 constexpr int NaRoman = 123;  // rows in sigma_roman.txt
 constexpr int nq = 15;     //resu
-constexpr int N1 = 258334, N2 = 1957085, N3 = 458784, N4 = 1514; //CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo
+constexpr int N1 = 869440, N2 = 5846960, N3 = 1057319, N4 = 5007; //CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo
 constexpr int Nl = 7373; //BulgeBaseline.dat 18/07/2026
 
 
@@ -311,32 +311,32 @@ struct CMD {
     std::vector<double> mass_thin;
     std::vector<std::array<double, M>> Mab_thin; // M × N1
     std::vector<double> typ_thin;
-    std::vector<int> cl_thin;
-    std::vector<int> age_thin;
+    std::vector<double> cl_thin;
+    std::vector<double> age_thin;
 
     // Bulge
     std::vector<double> logT_bulge;
     std::vector<double> mass_bulge;
     std::vector<std::array<double, M>> Mab_bulge; // M × N2
     std::vector<double> typ_bulge;
-    std::vector<int> cl_bulge;
-    std::vector<int> age_bulge;
+    std::vector<double> cl_bulge;
+    std::vector<double> age_bulge;
 
     // Thick disk
     std::vector<double> logT_thick;
     std::vector<double> mass_thick;
     std::vector<std::array<double, M>> Mab_thick; // M × N3
     std::vector<double> typ_thick;
-    std::vector<int> cl_thick;
-    std::vector<int> age_thick;
+    std::vector<double> cl_thick;
+    std::vector<double> age_thick;
 
     // Halo
     std::vector<double> logT_halo;
     std::vector<double> mass_halo;
     std::vector<std::array<double, M>> Mab_halo; // M × N4
     std::vector<double> typ_halo;
-    std::vector<int> cl_halo;
-    std::vector<int> age_halo;
+    std::vector<double> cl_halo;
+    std::vector<double> age_halo;
 
     // Constructor
     CMD()

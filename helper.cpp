@@ -443,7 +443,7 @@ void readBayestar(extin& ex, const std::string& folder) {
         }
 
 //        std::cout << "k = " << k << "\tNFILES = " << NFILES << endl;
-        CHECK(k <= NFILES);
+        CHECK(k < NFILES);
         Sightline& s = ex.sightlines[k];
 
         fin >> s.l

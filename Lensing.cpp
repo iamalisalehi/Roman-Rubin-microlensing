@@ -19,7 +19,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
         s.nsbl[i] += RandN(sqrt(s.nsbl[i]), 2.0);
         if (s.nsbl[i] <= 1.0)   s.nsbl[i] = 1.0;
         if (s.nsbl[i] > maxnb)  maxnb = s.nsbl[i];
-    cout<<"nsbl[i]:  "<<s.nsbl[i]<<"\t maxnb:  "<<maxnb<<endl;
+//    cout<<"nsbl[i]:  "<<s.nsbl[i]<<"\t maxnb:  "<<maxnb<<endl;
     }
 
     for (int k = 1; k <= int(maxnb + 0.000000034756346); ++k) {
@@ -107,8 +107,8 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
         //cout<<"*****************************"<<endl;
 
         if (k == 1) {
-            cout << "mass:  " << s.mass << "\t age:  " << s.age << "\t type:  " << s.typ  << endl;
-            cout << "cl:  "   << s.cl   << "\t age:  " << s.age << "\t tef:  "  << s.logT << endl;
+//            cout << "mass:  " << s.mass << "\t age:  " << s.age << "\t type:  " << s.typ  << endl;
+//            cout << "cl:  "   << s.cl   << "\t age:  " << s.age << "\t tef:  "  << s.logT << endl;
             s.struc = struc;
             s.Ds = Ds;
             s.nums = nums;
@@ -289,7 +289,7 @@ void func_lens(lens & l, source & s){
     CHECK(s.FWHM >= 0.0);
     CHECK(Am >= 2.0);
 
-    cout<<">>>>>>>>>>>> End of func_lens <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"<<endl;
+//    cout<<">>>>>>>>>>>> End of func_lens <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"<<endl;
 }
 
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//

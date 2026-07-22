@@ -210,7 +210,7 @@ int main() {
                         // If LSST sees the source
                         ls->ct[ndd] = i;
                         if (ndd > 0) {
-                            cade = ls->tim[i] - ls->tim[i-1];
+                            cade = ls->tim[ls->ct[ndd]] - ls->tim[ls->ct[ndd]-1];
 //                            std::cout << "i = " << i << endl;
                             if (minc > cade) minc = cade;
 

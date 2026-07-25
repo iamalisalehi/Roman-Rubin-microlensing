@@ -52,6 +52,10 @@ class MISTBolometricCorrection:
         print(self.input_data.shape)
         feh = mh_to_feh(self.input_data["[M/H]"], self.input_data["[a/Fe]"])
 
+        # Note: these Av/FeH/aFe diagnostics describe Besancon's own catalog values.
+        # Since Av is now forced to 0 before interpolation (see _prepare below),
+        # "Av > 6" no longer predicts which rows get dropped as NaN -- it's
+        # informational only, showing how much extinction Besancon itself assigned.
         print("Av > 6      :", np.sum(self.input_data["Av"] > 6))
         print("FeH > 0.5   :", np.sum(feh > 0.5))
         print("FeH < -3.0  :", np.sum(feh < -3.0))
@@ -64,7 +68,14 @@ class MISTBolometricCorrection:
         self.input_columns = np.column_stack([
             np.log10(self.input_data["Teff"].values),
             self.input_data["logg"].values,
-            self.input_data["Av"].values,
+            np.zeros(len(self.input_data)),  # AV = 0, always. Extinction is applied
+                                               # exactly once, downstream, by
+                                               # interpExtinctionAlongSightline in
+                                               # Lensing.cpp, at each star's *simulated*
+                                               # distance -- not here, at its Besancon
+                                               # distance. Feeding Besancon's own Av
+                                               # into this grid was the double-extinction
+                                               # / NaN root cause.
             feh,
             self.input_data["[a/Fe]"].values,
         ])
@@ -162,4 +173,3 @@ for name in rubin.filter_names:
     roman.filter_names.append(name)
 
 roman.save_components(True)
-

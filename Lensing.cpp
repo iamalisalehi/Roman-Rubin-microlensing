@@ -9,17 +9,21 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
     int nums, num;
     double rho, rf;
     double Ds, Av = -1, Alv;
-//    double test, frand;
     double maxnb = 0.0;
     std::array<double, M> Map{}, Mab{}, Ai{}; 
     GalacticComponent struc;
 
     for (int i = 0; i < M; ++i) {
-        s.nsbl[i]  = fabs(s.Nstart * pow(FWHM[i] * 0.5, 2) * M_PI/(3600.0 * 3600.0));
+        s.nsbl[i]  = fabs(s.Nstart * pow(FWHM[i] * 0.5, 2) * M_PI / (3600.0 * 3600.0));
         s.nsbl[i] += RandN(sqrt(s.nsbl[i]), 2.0);
-        if (s.nsbl[i] <= 1.0)   s.nsbl[i] = 1.0;
-        if (s.nsbl[i] > maxnb)  maxnb = s.nsbl[i];
-//    cout<<"nsbl[i]:  "<<s.nsbl[i]<<"\t maxnb:  "<<maxnb<<endl;
+
+        if (s.nsbl[i] <= 1.0)  {
+            s.nsbl[i] = 1.0;
+        }
+        if (s.nsbl[i] > maxnb) {
+            maxnb = s.nsbl[i];
+        }
+        //cout << "nsbl[i]: " << s.nsbl[i] << "\t maxnb: " << maxnb << endl;
     }
 
     for (int k = 1; k <= int(maxnb + 0.000000034756346); ++k) {
@@ -32,10 +36,18 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
 //        cout<<"k:  "<<k<<"\t Ds:  "<<Ds<<"\t nums:  "<<nums<<endl;
 
         rf = RandR(0.0, s.Rostar0[nums]);
-        if      (rf <=  s.rho_thin[nums])                                                             struc = GalacticComponent::THIN_DISK;
-        else if (rf <= (s.rho_thin[nums] + s.rho_bulge[nums]))                                        struc = GalacticComponent::BULGE;
-        else if (rf <= (s.rho_thin[nums] + s.rho_bulge[nums] + s.rho_thick[nums]))                    struc = GalacticComponent::THICK_DISK;
-        else if (rf <= (s.rho_thin[nums] + s.rho_bulge[nums] + s.rho_thick[nums] + s.rho_halo[nums])) struc = GalacticComponent::HALO;
+        if      (rf <=  s.rho_thin[nums]) {
+            struc = GalacticComponent::THIN_DISK;
+        }
+        else if (rf <= (s.rho_thin[nums] + s.rho_bulge[nums])) {
+            struc = GalacticComponent::BULGE;
+        }
+        else if (rf <= (s.rho_thin[nums] + s.rho_bulge[nums] + s.rho_thick[nums])) {
+            struc = GalacticComponent::THICK_DISK;
+        }
+        else if (rf <= (s.rho_thin[nums] + s.rho_bulge[nums] + s.rho_thick[nums] + s.rho_halo[nums])) {
+            struc = GalacticComponent::HALO;
+        }
         else {
            std::cerr << "Selected Galactic Component can not be initialized with rf =" << rf << ".\n";
            std::exit(EXIT_FAILURE);
@@ -46,7 +58,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
             for (int i = 0; i < M; ++i) { Mab[i] = cm.Mab_thin[num][i]; }
             if (k == 1) {
                 s.mass = cm.mass_thin[num];
-                s.age  = cm.age_thin[num] * 1.0;
+                s.age  = cm.age_thin[num];
                 s.logT = cm.logT_thin[num];
                 s.cl   = cm.cl_thin[num];
                 s.typ  = cm.typ_thin[num];
@@ -58,7 +70,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
             for (int i = 0; i < M; ++i) { Mab[i] = cm.Mab_bulge[num][i]; }
             if (k == 1) {
                 s.mass = cm.mass_bulge[num];
-                s.age  = cm.age_bulge[num] * 1.0;
+                s.age  = cm.age_bulge[num];
                 s.logT = cm.logT_bulge[num];
                 s.cl   = cm.cl_bulge[num];
                 s.typ  = cm.typ_bulge[num];
@@ -70,7 +82,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
             for (int i = 0; i < M; ++i) { Mab[i] = cm.Mab_thick[num][i]; }
             if (k == 1) {
                 s.mass = cm.mass_thick[num];
-                s.age  = cm.age_thick[num] * 1.0;
+                s.age  = cm.age_thick[num];
                 s.logT = cm.logT_thick[num];
                 s.cl   = cm.cl_thick[num];
                 s.typ  = cm.typ_thick[num];
@@ -82,7 +94,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
             for (int i = 0; i < M; ++i) { Mab[i] = cm.Mab_halo[num][i];}
             if (k == 1) {
                 s.mass = cm.mass_halo[num];
-                s.age  = cm.age_halo[num] * 1.0;
+                s.age  = cm.age_halo[num];
                 s.logT = cm.logT_halo[num];
                 s.cl   = cm.cl_halo[num];
                 s.typ  = cm.typ_halo[num];
@@ -92,19 +104,24 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
         Av = interpExtinctionAlongSightline(ex, sightlineIdx, Ds);
 //        cout << "Av: " << Av << endl;
         for (int i = 0; i < M; ++i) {
-            Alv = fabs(a0[i] + b0[i] / Rv[static_cast<int>(struc)]); //Alambda/AV
+            Alv = AlAv(lambda_um[i], Rv[static_cast<int>(struc)]); // A_lambda / A_V
             Ai[i] = Av * Alv + RandN(sigma[i], 1.0); //extinction in other bands
 
-            if(Ai[i] < 0.0)    Ai[i]=0.0;
-        //cout<<"Alv: "<<Alv<<"\t filter:  "<<i<<"\t Rv[struc]:  "<<Rv[struc]<<"\t struc:  "<<struc<<endl;
-        //cout<<"Av:  "<<Av<<"\t Ai[i]:  "<<Ai[i]<<endl;
-        //int yye; cin>>yye;
+            if(Ai[i] < 0.0) {
+                Ai[i] = 0.0;
+            }
+//        cout << "Alv: " << Alv << "\t filter: " << i << "\tRv[struc]: " << Rv[static_cast<int>(struc)]
+//             << "\tstruc: " << static_cast<int>(struc) << endl;
+//        cout << "Av: " << Av << "\t Ai[i]: " << Ai[i] << endl;
             Map[i] = Mab[i] + 5.0 * log10(Ds * 100.0) + Ai[i];
 
-            if(s.nsbl[i] >= k) s.Fluxb[i] += pow(10.0, -0.4 * Map[i]);
-        //cout<<"filter:  "<<i<<"\t Alv:  "<<Alv<<"\t Ext:  "<<Ai[i]<<"\t Mab:  "<<Mab[i]<<"\t Map:  "<<Map[i]<<endl;
+            if(s.nsbl[i] >= k) {
+                s.Fluxb[i] += pow(10.0, -0.4 * Map[i]);
+            }
+//        cout << "filter:  " << i << "\tAlv: " << Alv << "\tExt: " << Ai[i]
+//             << "\tMab: " << Mab[i] << "\tMap: " << Map[i] << endl;
         }
-        //cout<<"*****************************"<<endl;
+//        cout << "*****************************" << endl;
 
         if (k == 1) {
 //            cout << "mass:  " << s.mass << "\t age:  " << s.age << "\t type:  " << s.typ  << endl;
@@ -114,7 +131,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
             s.nums = nums;
             s.Av = Av;
 
-            for(int i = 0; i < (M); ++i) {
+            for (int i = 0; i < (M); ++i) {
                 s.Ai[i]  = Ai[i];
                 s.Map[i] = Map[i];
                 s.Mab[i] = Mab[i];
@@ -131,19 +148,23 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
         CHECK(s.nsbl[i]  >= 1.0);
         CHECK(s.blend[i] <= 1.00001);
         CHECK(s.blend[i] > 0.0);
-        //cout << "nsbl[i]: " << s.nsbl[i] << "\tblend[i]: " << s.blend[i] << endl;
-//        if (s.nsbl[i] == 1) CHECK(s.blend[i] >= 1.0);
+        cout << "i = " << i << "\tnsbl[i]: " << s.nsbl[i] << "\tblend[i]: " << s.blend[i] << endl;
+        if (s.nsbl[i] == 1) {
+            CHECK(s.blend[i] >= 1.0);
+        }
         CHECK(fabs(s.Map[i] - s.Mab[i] - s.Ai[i] - 5.0 * log10(s.Ds * 100.0)) <= 0.1);
         CHECK(s.Ds > 0.0);
         CHECK(Av >= 0.0);
     }
 
     // For purposes of Fisher Matrix calculations
-//    s.fb[0]  = s.blend[2];//r-LSST
-//    s.fb[1]  = s.blend[6];//K-band
-//    s.mbs[0] = s.magb[2];//r-LSST
-//    s.mbs[1] = s.magb[6];//K-band
-   // cout<<"Ds:   "<<s.Ds<<"\t nums: "<<s.nums<<endl;
+    s.fb[0]  = s.blend[2]; // r-LSST
+    s.fb[1]  = s.blend[6]; // F146
+    s.mbs[0] = s.magb[2];  // r-LSST
+    s.mbs[1] = s.magb[6];  // F146
+//    cout << "Ds:   " << s.Ds << "\t nums: " << s.nums << endl;
+//    debug note: enabling the line above showed that func_source runs many many times,
+//    but no star is detectable by criteria stated in main function.
 //cout<<">>>>>>>>>>>>  End of Func_source <<<<<<<<<<<<<<<<<<<<<"<<endl;
 }
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
@@ -180,11 +201,18 @@ void func_lens(lens & l, source & s){
     l.Dl = double(l.numl * step);
 
     double   randflag = RandR(0.0, s.Rostar0[l.numl]);
-    if      (randflag <= (s.rho_thin[l.numl])) l.struc = GalacticComponent::THIN_DISK;
-    else if (randflag <= (s.rho_thin[l.numl] + s.rho_bulge[l.numl])) l.struc=GalacticComponent::BULGE;
-    else if (randflag <= (s.rho_thin[l.numl] + s.rho_bulge[l.numl] + s.rho_thick[l.numl])) l.struc = GalacticComponent::THICK_DISK;
-    else if (randflag <= (s.rho_thin[l.numl] + s.rho_bulge[l.numl] + s.rho_thick[l.numl] + s.rho_halo[l.numl])) l.struc = GalacticComponent::HALO;
-
+    if      (randflag <= (s.rho_thin[l.numl])) {
+        l.struc = GalacticComponent::THIN_DISK;
+    }
+    else if (randflag <= (s.rho_thin[l.numl] + s.rho_bulge[l.numl])) {
+        l.struc = GalacticComponent::BULGE;
+    }
+    else if (randflag <= (s.rho_thin[l.numl] + s.rho_bulge[l.numl] + s.rho_thick[l.numl])) {
+        l.struc = GalacticComponent::THICK_DISK;
+    }
+    else if (randflag <= (s.rho_thin[l.numl] + s.rho_bulge[l.numl] + s.rho_thick[l.numl] + s.rho_halo[l.numl])) {
+        l.struc = GalacticComponent::HALO;
+    }
     else {
         throw std::runtime_error("Invalid randflag: " + std::to_string(randflag) + ", rho_star0: " + std::to_string(s.Rostar0[l.numl]));
     }
@@ -244,25 +272,25 @@ void func_lens(lens & l, source & s){
        } while(test > f);
     }
 
-    l.xls    = double(l.Dl/s.Ds);
-    l.RE     = sqrt(4.0*G*l.Ml*Msun*s.Ds*KP)/velocity;
-    l.RE     = double(l.RE*sqrt(l.xls*(1.0-l.xls)));///meter
-    l.tetE   = double(l.RE/AU/l.Dl);//[mas]
-    s.ros    = double(1.0*Rsun*l.xls/l.RE);
-    l.pirel  = double(1.0/l.Dl- 1.0/s.Ds);//[mas]
-    l.piE    = double(l.pirel/l.tetE);//[]
+    l.xls    = l.Dl / s.Ds;
+    l.RE     = sqrt(4.0 * G * l.Ml * Msun * s.Ds * KP) / velocity;
+    l.RE     = l.RE * sqrt(l.xls * (1.0 - l.xls)); //meter
+    l.tetE   = l.RE / AU / l.Dl; //[mas]
+    s.ros    = 1.0 * Rsun * l.xls / l.RE;
+    l.pirel  = 1.0 / l.Dl - 1.0 / s.Ds; //[mas]
+    l.piE    = l.pirel / l.tetE; //[]
     l.u0     = RandR(0.001, u0m);
-    l.t0     = RandR(2.0,Tobs-2.0);
-    l.DeltaT = sqrt(4.0+l.u0*l.u0)*l.tetE;//[mas]
+    l.t0     = RandR(2.0, Tobs - 2.0);
+    l.DeltaT = sqrt(4.0 + l.u0 * l.u0) * l.tetE; //[mas]
 
     vrel(s,l);
-    l.tE=fabs(l.RE/(l.Vt*1000.0*3600.0*24.0));//[days]
-    l.A0=(l.u0*l.u0+2.0)/sqrt(l.u0*l.u0*(l.u0*l.u0+4.0));
-    l.mi1=s.magb[2]-2.5*log10(fabs(l.A0+1.0)*0.5*s.blend[2] + 1.0 - s.blend[2]);
-    l.mi2=s.magb[2]-2.5*log10(fabs(l.A0-1.0)*0.5*s.blend[2] + 1.0 - s.blend[2]);
-    Am=l.A0+1.0;
-    DD=double(4.0-Am*Am + Am*sqrt(Am*Am-4.0))/(Am*Am*0.5-2.0);
-    s.FWHM=2.0*l.tE*sqrt(fabs(DD-l.u0*l.u0));//days
+    l.tE  = fabs(l.RE / (l.Vt * 1000.0 * 3600.0 * 24.0));//[days]
+    l.A0  = (l.u0 * l.u0 + 2.0) / sqrt(l.u0 * l.u0 * (l.u0 * l.u0 + 4.0));
+    l.mi1 = s.magb[2] - 2.5 * log10(fabs(l.A0 + 1.0) * 0.5 * s.blend[2] + 1.0 - s.blend[2]);
+    l.mi2 = s.magb[2] - 2.5 * log10(fabs(l.A0 - 1.0) * 0.5 * s.blend[2] + 1.0 - s.blend[2]);
+    Am = l.A0 + 1.0;
+    DD = double(4.0 - Am * Am + Am * sqrt(Am * Am - 4.0)) / (Am * Am * 0.5 - 2.0);
+    s.FWHM = 2.0 * l.tE * sqrt(fabs(DD - l.u0 * l.u0));//days
     // if(DD<double(l.u0*l.u0))  s.FWHM=l.tE;
 
     //cout<<"Ml:  "<<l.Ml<<"\t RE:  "<<l.RE/AU<<"\t tE:  "<<l.tE<<endl;

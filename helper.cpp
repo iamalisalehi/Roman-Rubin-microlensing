@@ -476,3 +476,56 @@ void readBayestar(extin& ex, const std::string& folder) {
         << k
         << " sightlines\n";
 }
+
+double CCM89_a(double lambda_um)
+{
+    double x = 1.0 / lambda_um;
+
+    if (x < 1.1) {
+        return 0.574 * pow(x, 1.61);
+    }
+
+    if (x < 3.3) {
+        double y = x - 1.82;
+
+        return 1.0
+             + 0.17699 * y
+             - 0.50447 * pow(y, 2)
+             - 0.02427 * pow(y, 3)
+             + 0.72085 * pow(y, 4)
+             + 0.01979 * pow(y, 5)
+             - 0.77530 * pow(y, 6)
+             + 0.32999 * pow(y, 7);
+    }
+
+    throw std::runtime_error("CCM89 wavelength out of supported range");
+}
+
+double CCM89_b(double lambda_um)
+{
+    double x = 1.0 / lambda_um;
+
+    if (x < 1.1) {
+        return -0.527 * pow(x, 1.61);
+    }
+
+    if (x < 3.3) {
+        double y = x - 1.82;
+
+        return 1.41338 * y
+             + 2.28305 * pow(y, 2)
+             + 1.07233 * pow(y, 3)
+             - 5.38434 * pow(y, 4)
+             - 0.62251 * pow(y, 5)
+             + 5.30260 * pow(y, 6)
+             - 2.09002 * pow(y, 7);
+    }
+
+    throw std::runtime_error("CCM89 wavelength out of supported range");
+}
+
+double AlAv(double lambda_um, double Rv)
+{
+    double x = 1.0 / lambda_um;
+    return CCM89_a(x) + CCM89_b(x) / Rv;
+}

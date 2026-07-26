@@ -21,7 +21,7 @@ int main() {
     auto l  = std::make_unique<lens>();
     auto as = std::make_unique<astromet>();
     auto cm = std::make_unique<CMD>();
-    auto ga = std::make_unique<galactic>();
+//    auto ga = std::make_unique<galactic>();
     auto ex = std::make_unique<extin>();
     auto ls = std::make_unique<lsst>();
     auto ro = std::make_unique<roman>();
@@ -91,20 +91,6 @@ int main() {
     fil.close();
     std::cout << "**** File sigma_roman.txt was read ****\n";
  
-    // --------------------- Read convert_coordinate_2.dat ----------
-    fil.open("./files/convert_coordinate_2.dat");
-    if (!fil) { std::cerr << "Cannot read convert_coordinate_2.dat\n"; return 1; }
-
-    int coo = 0;
-    for (int i = 0; i < 100; ++i) {
-        for (int j = 0; j < 100; ++j) {
-            fil >> ga->RA[coo] >> ga->Dec[coo] >> ga->l[coo] >> ga->b[coo];
-            ++coo;
-        }
-    }
-    fil.close();
-    std::cout << "**** File convert_coordinate_2.dat was read ****\n";
-
     // --------------------- Read extinction ------------------------
     readBayestar(*ex,"./files/ext/");
     std::cout << "**** File extinctionf.txt was read ****\n";
@@ -115,12 +101,12 @@ int main() {
 
     int    save = 0, flagm, flagL, gg = -1; //ss, qq, ww, vv, zz, pp, counter, 
     int    nri = -1, nde = -1, icon;
-    int    nlens, hh; // nde1, nri1, 
+    int    nlens;// hh; // nde1, nri1, 
     int    gi,       ndw, sq, ndd;
     int    flag_det; // nml = 0;
     int    flagf,  fi; // datf1, datf2;
-    double errs,   errg, mind, fdet, minc, cade; // fel, 
-    double magnio, test, dist,  deltaA;
+    double errs,   errg, fdet, minc, cade; // fel, , mind
+    double magnio, test, deltaA; // dist,  
     double Astar0, As1,  As0;
     double initial;
     double trajm, trajp; //  ddf;
@@ -192,15 +178,7 @@ int main() {
             nde += 1;
             cout << ">>>>>>>>>>> NEW STEP " << nde << " <<<<<<<<\t nri:  " << nri << endl;
             cout << "longtitude: " << s->lon << "\t latitude: " << s->lat << endl;
-                //fscanf(filh, "%lf  %lf  %d  %d  %lf  %lf\n", &right1, &decli1, &nri1, &nde1, &NstarLSST, &test);
-                //if(fabs(right1-s.right)>0.05 or fabs(decli1-s.decli)>0.05 or nri1!=nri or nde1!=nde or NstarLSST<=0.0 or test>100.0){
-                //    cout << "Error right1:  " << right1 << "\t right:  " << s.right << endl;
-                //    cout << "decli1:  " << decli1 << "\t decli:  "     <<s.decli   <<endl;
-                //    cout << "nri1:  "   << nri1   << "\r nri:  "       <<nri       << "\t nde1:  " << nde1 << endl;
-                //    cout << "nde:  "    << nde    << "\t NstarLSST:  " <<NstarLSST << "\t test:  " << test << endl;
-                //    int yys;
-                //    cin >> yys;
-                //}
+
                 ndd = 0; minc = 100000.0; cade = 0.0;
                 
                 for (int i = 0; i < 1000; ++i) ls->ct[i] = -1; // Initialize ct
@@ -211,11 +189,10 @@ int main() {
                         ls->ct[ndd] = i;
                         if (ndd > 0) {
                             cade = ls->tim[ls->ct[ndd]] - ls->tim[ls->ct[ndd]-1];
-//                            std::cout << "i = " << i << endl;
+
                             if (minc > cade) minc = cade;
 
-//                            CHECK(ndd <= 999);
-                            if (ndd >= 999) break;
+                            if (ndd >= 999) break; // Break out of the loop when ndd reached 999
                             CHECK(cade > 0.0);
                             CHECK(ls->tim[i] >= 0.0);
                             CHECK(ls->tim[i] <= Tobs);
@@ -237,21 +214,6 @@ int main() {
                 for (int i = 0; i < Num; ++i) { s->nssim[i] = 0.0;  s->nsdet[i] = 0.0; }
                 for (int i = 0; i <= GG; ++i) { l->nstE[i]  = 0.0;  l->ndtE[i]  = 0.0; }
 
-                hh = -1; mind = 100000.0;
-                for (int i = 0; i < nrd; ++i) {
-                    dist = double((s->lon - ga->l[i]) * (s->lon - ga->l[i]) + (s->lat - ga->l[i]) * (s->lat - ga->l[i]));
-                    dist = sqrt(dist);
-                    if (dist <= mind) { mind = dist; hh = i; }
-                }
-
-                if (hh < 0) {
-                    std::cerr << "ERROR: longitude = " << s->lon
-                              << ", latitude = " << s->lat
-                              << ", hh = " << hh << '\n';
-                    CHECK(hh >= 0);
-                }
-                //s.lon = double(ga->l[hh]);//degree
-                //s.lat = double(ga->b[hh]);//degree
                 s->TET = (360.0 - s->lon) / RAa;///radian s.lon/RA;//
                 s->FI  = s->lat / RAa;
                 
@@ -263,6 +225,8 @@ int main() {
                     nsim += 1.0;
                     func_source(*s, *cm, *ex, sightlineIdx);
                     func_lens(*l, *s);
+//                    std::cerr << "nsim=" << nsim << "  Ds=" << s->Ds << "  mass=" << s->mass
+//                              << "  nums=" << s->nums << "  Ml=" << l->Ml << "  u0=" << l->u0 << "\n";
                     optical_depth(*s);
 
                     s->nssim[s->nums] += 1.0;
@@ -290,192 +254,194 @@ int main() {
 
                     for (int i = 0; i < M; ++i) {
                         Mpeak = s->magb[i] - 2.5 * log10(l->A0 * s->blend[i] + 1.0 - s->blend[i]);
+//                            cout << "i=" << i << "  Mab=" << s->Mab[i] << "  Map=" << s->Map[i]
+//                                 << "  blend=" << s->blend[i] << "  Mpeak=" << Mpeak << endl;
                         if (Mpeak <= thre[i] and s->magb[i] > satu[i])    fdet += 1.0;
                     }
 
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
-                if (test <= s->blend[2] and fdet > 1.0) { //at least detectable in two filters
-                    cout << "************** DETECTABLE!!!!!! ********" << endl;
-                    s->nsdet[s->nums] += 1.0;
-                    flagf = 1;
-                    test  = RandR(0.0, 100.0);
-
-                    if (test < 1.0 && save < 0 && IMnum == 1) {
-                        initial = 20.0 * year;
-                        save += 1;
-                        flagm = 1;
-                    }
-
-                    gi = 0;
-                    for (double tim = float(0.0 * year - 100.0 - initial);  tim < float(10.0 * year + 100.0 + initial); tim = tim + dt) {
-                        lightcurve(*s, *l, *as, tim);
-                        Astar0   = double(s->ut0 * s->ut0 + 2.0) / sqrt(s->ut0 * s->ut0 * (s->ut0 * s->ut0 + 4.0)); //MAgnification equation
-                        s->Astar = double(s->ut  * s->ut  + 2.0) / sqrt(s->ut  * s->ut  * (s->ut  * s->ut  + 4.0)); //MAgnification equation
-                        As0      = double(Astar0   * s->blend[2] + 1.0 - s->blend[2]);
-                        As1      = double(s->Astar * s->blend[2] + 1.0 - s->blend[2]); //LSST r-band
-                        vs1      = double(s->mus1 + (s->def1c - def1p) / dt); //[mas/days]
-                        vs2      = double(s->mus2 + (s->def2c - def2p) / dt); //[mas/days]
-                        def1p    = s->def1c; //pervious
-                        def2p    = s->def2c;
-
+                    if (test <= s->blend[2] and fdet > 1.0) { //at least detectable in two filters
+                        cout << "************** DETECTABLE!!!!!! ********" << endl;
+                        s->nsdet[s->nums] += 1.0;
+                        flagf = 1;
+                        test  = RandR(0.0, 100.0);
+    
+                        if (test < 1.0 && save < 0 && IMnum == 1) {
+                            initial = 20.0 * year;
+                            save += 1;
+                            flagm = 1;
+                        }
+    
+                        gi = 0;
+                        for (double tim = float(0.0 * year - 100.0 - initial);  tim < float(10.0 * year + 100.0 + initial); tim = tim + dt) {
+                            lightcurve(*s, *l, *as, tim);
+                            Astar0   = double(s->ut0 * s->ut0 + 2.0) / sqrt(s->ut0 * s->ut0 * (s->ut0 * s->ut0 + 4.0)); //MAgnification equation
+                            s->Astar = double(s->ut  * s->ut  + 2.0) / sqrt(s->ut  * s->ut  * (s->ut  * s->ut  + 4.0)); //MAgnification equation
+                            As0      = double(Astar0   * s->blend[2] + 1.0 - s->blend[2]);
+                            As1      = double(s->Astar * s->blend[2] + 1.0 - s->blend[2]); //LSST r-band
+                            vs1      = double(s->mus1 + (s->def1c - def1p) / dt); //[mas/days]
+                            vs2      = double(s->mus2 + (s->def2c - def2p) / dt); //[mas/days]
+                            def1p    = s->def1c; //pervious
+                            def2p    = s->def2c;
+    
+                            if (flagm > 0) {
+                                fil4 << std::fixed << std::setprecision(4)
+                                     << tim      << " " << s->def1c << " " << s->def2c << " " << As0      << " " << As1 << " "
+                                     << s->pos1b << " " << s->pos2b << " " << s->pos1c << " " << s->pos2c << " "
+                                     << s->def1a << " " << s->def2a << " " << l->pos1  << " " << l->pos2  << "\n";
+                            }
+    
+                            for (int i = 0; i < M; ++i) {
+                                magni0[i] = s->magb[i] - 2.5 * log10(Astar0   * s->blend[i] + 1.0 - s->blend[i]);
+                                magni[i]  = s->magb[i] - 2.5 * log10(s->Astar * s->blend[i] + 1.0 - s->blend[i]);
+                            }
+                            sq = int(ls->ct[gi]);
+    
+                            if (tim >= 0.0 and tim <= Tobs and tim >= ls->tim[int(ls->ct[0])] and tim <= ls->tim[int(ls->ct[ndd - 1])] and
+                                gi < ndd and sq >= 0 and sq <= static_cast<int>(Nl) and tim >= ls->tim[sq]) {
+    
+                                fi = int(ls->filter[sq]);
+    
+                                if (magni[fi] >= satu[fi] and magni[fi] <= thre[fi]) {
+                                    errg = errlsstM(magni[fi], int(fi), double(ls->sig5[sq])); //[mag]
+                                    errs = errlsstA(*ls, magni[2]); ///[mas]
+    
+                                    deltaA = fabs(pow(10.0, -0.4 * errg) - 1.0) * (s->blend[fi] * s->Astar + 1.0 - s->blend[fi]);
+                                    magnio = magni[fi] + RandN(errg, 3.0);
+    
+                                    chi1 += fabs((magnio -   magni[fi]) * (magnio -   magni[fi]) / (errg * errg)); //real
+                                    chi2 += fabs((magnio -  magni0[fi]) * (magnio -  magni0[fi]) / (errg * errg)); //real no parallax
+                                    chi3 += fabs((magnio - s->magb[fi]) * (magnio - s->magb[fi]) / (errg * errg)); //baseline
+    
+                                    sil  = RandN(errs * sqrt(2.0), 3.0);
+                                    sil2 = RandN(errs, 3.0);
+    
+                                    trajm = sqrt(s->pos1b * s->pos1b + s->pos2b * s->pos2b); //stright + parallax
+                                    trajp = sqrt(s->pos1c * s->pos1c + s->pos2c * s->pos2c); //stright + parallax+lensing
+    
+                                    chi1a += fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs * 2.0)); //real trajectory
+                                    chi2a += fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs * 2.0)); //real without lensing
+                                    chi3a += fabs( sil2  * sil2 / (errs * errs));
+     
+                                    l->timn[ndw] = tim;
+                                    l->magn[ndw] = magni[2]; //scale to r-LSST band, but the errors are different
+                                    l->errm[ndw] = errg;
+                                    l->soux[ndw] = s->pos1c;
+                                    l->souy[ndw] = s->pos2c;
+                                    l->erra[ndw] = errs;
+                                    l->tele[ndw] = 0;
+    
+                                    flag2 = 0.0;
+                                    if (fabs(magnio - s->magb[fi]) > fabs(3.0 * errg))    flag2 = 1.0;
+                                    if (ndw > 2 and float(flag0 + flag1 + flag2) > 2.0)   flag_det = 1;
+                                    flag0 = flag1;
+                                    flag1 = flag2;
+    
+                                    if (flagm > 0) {
+                                        fil5 << std::fixed << std::setprecision(4)
+                                             << tim     << "  "
+                                             << std::setprecision(6) << As1 + RandN(deltaA, 3.0)    << "  "
+                                             << deltaA  << "  "
+                                             << std::setprecision(4) << s->pos1c + RandN(errs, 3.0) << "  "
+                                             << s->pos2c + RandN(errs, 3.0) << "  "
+                                             << s->def1c + RandN(errs, 3.0) << "  "
+                                             << s->def2c + RandN(errs, 3.0) << "  "
+                                             << errs    << "  "
+                                             << 1.0     << "  "
+                                             << int(fi) << "\n";
+                                    }
+    
+                                    CHECK(sq >= 0);
+                                    CHECK(sq <= int(Nl - 1));
+                                    CHECK(fi >= 0);
+                                    CHECK(fi <= 5);
+                                    CHECK(ndw <= ndd);
+                                    CHECK(errs >= 0.0);
+                                    CHECK(errg >= 0.0);
+                                    CHECK(deltaA >= 0.0);
+                                    CHECK(gi <= ndd);
+    
+                                    s->errM += deltaA;
+                                    s->errA += errs;
+                                    vsave += sqrt(vs1 * vs1 + vs2 * vs2);
+    
+                                    ndw += 1;
+                                }//magnitude limit
+                                gi += 1;
+                            }
+    
+                            if ( tim < -50.0 or tim > (10.0 * year + 50.0)) dt = 60.0; //days
+    
+                            else if (tim < ls->tim[int(ls->ct[0])] or tim > ls->tim[int(ls->ct[ndd-1])]) dt=3.0; //days
+    
+                            else {
+                                if (gi > 0 and gi < ndd) cade = float(ls->tim[int(ls->ct[gi])] - ls->tim[int(ls->ct[gi-1])]); //days
+                                else  cade = minc;
+                                dt = double(cade);
+                            }
+    
+                        }//end of loop time
                         if (flagm > 0) {
-                            fil4 << std::fixed << std::setprecision(4)
-                                 << tim      << " " << s->def1c << " " << s->def2c << " " << As0      << " " << As1 << " "
-                                 << s->pos1b << " " << s->pos2b << " " << s->pos1c << " " << s->pos2c << " "
-                                 << s->def1a << " " << s->def2a << " " << l->pos1  << " " << l->pos2  << "\n";
+                            fil4.close();
+                            fil5.close();
                         }
-
-                        for (int i = 0; i < M; ++i) {
-                            magni0[i] = s->magb[i] - 2.5 * log10(Astar0   * s->blend[i] + 1.0 - s->blend[i]);
-                            magni[i]  = s->magb[i] - 2.5 * log10(s->Astar * s->blend[i] + 1.0 - s->blend[i]);
-                        }
-                        sq = int(ls->ct[gi]);
-
-                        if (tim >= 0.0 and tim <= Tobs and tim >= ls->tim[int(ls->ct[0])] and tim <= ls->tim[int(ls->ct[ndd - 1])] and
-                            gi < ndd and sq >= 0 and sq <= static_cast<int>(Nl) and tim >= ls->tim[sq]) {
-
-                            fi = int(ls->filter[sq]);
-
-                            if (magni[fi] >= satu[fi] and magni[fi] <= thre[fi]) {
-                                errg = errlsstM(magni[fi], int(fi), double(ls->sig5[sq])); //[mag]
-                                errs = errlsstA(*ls, magni[2]); ///[mas]
-
-                                deltaA = fabs(pow(10.0, -0.4 * errg) - 1.0) * (s->blend[fi] * s->Astar + 1.0 - s->blend[fi]);
-                                magnio = magni[fi] + RandN(errg, 3.0);
-
-                                chi1 += fabs((magnio -   magni[fi]) * (magnio -   magni[fi]) / (errg * errg)); //real
-                                chi2 += fabs((magnio -  magni0[fi]) * (magnio -  magni0[fi]) / (errg * errg)); //real no parallax
-                                chi3 += fabs((magnio - s->magb[fi]) * (magnio - s->magb[fi]) / (errg * errg)); //baseline
-
-                                sil  = RandN(errs * sqrt(2.0), 3.0);
-                                sil2 = RandN(errs, 3.0);
-
-                                trajm = sqrt(s->pos1b * s->pos1b + s->pos2b * s->pos2b); //stright + parallax
-                                trajp = sqrt(s->pos1c * s->pos1c + s->pos2c * s->pos2c); //stright + parallax+lensing
-
-                                chi1a += fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs * 2.0)); //real trajectory
-                                chi2a += fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs * 2.0)); //real without lensing
-                                chi3a += fabs( sil2  * sil2 / (errs * errs));
- 
-                                l->timn[ndw] = tim;
-                                l->magn[ndw] = magni[2]; //scale to r-LSST band, but the errors are different
-                                l->errm[ndw] = errg;
-                                l->soux[ndw] = s->pos1c;
-                                l->souy[ndw] = s->pos2c;
-                                l->erra[ndw] = errs;
-                                l->tele[ndw] = 0;
-
-                                flag2 = 0.0;
-                                if (fabs(magnio - s->magb[fi]) > fabs(3.0 * errg))    flag2 = 1.0;
-                                if (ndw > 2 and float(flag0 + flag1 + flag2) > 2.0)   flag_det = 1;
-                                flag0 = flag1;
-                                flag1 = flag2;
-
-                                if (flagm > 0) {
-                                    fil5 << std::fixed << std::setprecision(4)
-                                         << tim     << "  "
-                                         << std::setprecision(6) << As1 + RandN(deltaA, 3.0)    << "  "
-                                         << deltaA  << "  "
-                                         << std::setprecision(4) << s->pos1c + RandN(errs, 3.0) << "  "
-                                         << s->pos2c + RandN(errs, 3.0) << "  "
-                                         << s->def1c + RandN(errs, 3.0) << "  "
-                                         << s->def2c + RandN(errs, 3.0) << "  "
-                                         << errs    << "  "
-                                         << 1.0     << "  "
-                                         << int(fi) << "\n";
-                                }
-
-                                CHECK(sq >= 0);
-                                CHECK(sq <= int(Nl - 1));
-                                CHECK(fi >= 0);
-                                CHECK(fi <= 5);
-                                CHECK(ndw <= ndd);
-                                CHECK(errs >= 0.0);
-                                CHECK(errg >= 0.0);
-                                CHECK(deltaA >= 0.0);
-                                CHECK(gi <= ndd);
-
-                                s->errM += deltaA;
-                                s->errA += errs;
-                                vsave += sqrt(vs1 * vs1 + vs2 * vs2);
-
-                                ndw += 1;
-                            }//magnitude limit
-                            gi += 1;
-                        }
-
-                        if ( tim < -50.0 or tim > (10.0 * year + 50.0)) dt = 60.0; //days
-
-                        else if (tim < ls->tim[int(ls->ct[0])] or tim > ls->tim[int(ls->ct[ndd-1])]) dt=3.0; //days
-
-                        else {
-                            if (gi > 0 and gi < ndd) cade = float(ls->tim[int(ls->ct[gi])] - ls->tim[int(ls->ct[gi-1])]); //days
-                            else  cade = minc;
-                            dt = double(cade);
-                        }
-
-                    }//end of loop time
-                    if (flagm > 0) {
-                        fil4.close();
-                        fil5.close();
-                    }
-                }// end of visible star
+                    }// end of visible star
 
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH 
-                for (int i = 0; i < nq; ++i) co->resu[i] = -1.0;
-
-                FFG[0] = 0;
-                FFG[1] = 0;
-                FFG[2] = 0;
-
-                //cout << "flagf: " << flagf << "ndw: " << ndw << endl;
-
-                if (flagf == 0 or ndw <= 2) {
-                    errg    = errlsstM(s->magb[2], 2, double(24.43)); //r-band
-                    s->errA = errlsstA(*ls, s->magb[2]); //r-band
-                    s->errM = fabs(pow(10.0, - 0.4 * errg) - 1.0); //r-band
-                    dchiL = 0.0;
-                    dchiP = 0.0;
-                    dchiA = 0.0;
-                    vsave = s->mus;
-                }
-
-                if (flagf > 0 and ndw > 2) { //if star is visible
-                    cout << "************** DETECTABLE!!!!!! ********" << endl;
-                    icon +=1;
-                    vsave   = double(vsave   / (ndw + 0.000065645));
-                    s->errM = double(s->errM / (ndw + 0.000065645));
-                    s->errA = double(s->errA / (ndw + 0.000065645));
-                    dchiL   = fabs(chi3  - chi1);  //lensing_effect
-                    dchiP   = fabs(chi2  - chi1);  //parallax_effect
-                    dchiA   = fabs(chi2a - chi1a); //deflection_effect
-   
-                    if (s->FWHM < Tobs and dchiL > float(2.0 * ndw) and flag_det > 0 and ndw > 10) { //lensing
-                        FFG[0] = 1; //Lensing
-                        nlens += FFG[0];
-                        FisherM(*s, *l, *as, *co, ndw);
-
-                        if (co->flagi > 0) {
-                            nerr += 1.0;
-                            ErrorCal(*co, *l, *s);
-
-                            std::ofstream fil0_append(fnLDt, std::ios::app);
-                            fil0_append << std::fixed << std::setprecision(5)
-                                        << l->Ml       << " " << l->Dl       << " " << l->mul       << " " << s->fb[0]     << " " << s->mbs[0]   << " "
-      << std::setprecision(7)           << l->tE       << " " << l->murel    << " " << l->u0        << " " << s->lon       << " " << s->lat      << " "
-                                        << l->piE      << " " << l->tetE     << " " << co->resu[1]  << " " << co->resu[2]  << " " << co->resu[3] << " "
-                                        << co->resu[5] << " " << co->resu[9] << " " << co->resu[10] << " " << co->resu[13] << "\n";
-                            fil0_append.close();
-                        }
+                    for (int i = 0; i < nq; ++i) co->resu[i] = -1.0;
+    
+                    FFG[0] = 0;
+                    FFG[1] = 0;
+                    FFG[2] = 0;
+    
+                    //cout << "flagf: " << flagf << "ndw: " << ndw << endl;
+    
+                    if (flagf == 0 or ndw <= 2) {
+                        errg    = errlsstM(s->magb[2], 2, double(24.43)); //r-band
+                        s->errA = errlsstA(*ls, s->magb[2]); //r-band
+                        s->errM = fabs(pow(10.0, - 0.4 * errg) - 1.0); //r-band
+                        dchiL = 0.0;
+                        dchiP = 0.0;
+                        dchiA = 0.0;
+                        vsave = s->mus;
                     }
-                    gg = FunctE(*l);
-                    //ss = int(FuncMl(*l));
-                    //qq = int(FuncPi(*l));
-                    //ww = int(Funcu0(*l));
-                    //vv = int(FuncMu(*l));
-                    //zz = int(FuncMb(*l, s->Map[2]));
-                    //pp = int(FuncFb(*l, s->blend[2]));
-                }
+    
+                    if (flagf > 0 and ndw > 2) { //if star is visible
+                        cout << "************** DETECTABLE!!!!!! ********" << endl;
+                        icon +=1;
+                        vsave   = double(vsave   / (ndw + 0.000065645));
+                        s->errM = double(s->errM / (ndw + 0.000065645));
+                        s->errA = double(s->errA / (ndw + 0.000065645));
+                        dchiL   = fabs(chi3  - chi1);  //lensing_effect
+                        dchiP   = fabs(chi2  - chi1);  //parallax_effect
+                        dchiA   = fabs(chi2a - chi1a); //deflection_effect
+       
+                        if (s->FWHM < Tobs and dchiL > float(2.0 * ndw) and flag_det > 0 and ndw > 10) { //lensing
+                            FFG[0] = 1; //Lensing
+                            nlens += FFG[0];
+                            FisherM(*s, *l, *as, *co, ndw);
+    
+                            if (co->flagi > 0) {
+                                nerr += 1.0;
+                                ErrorCal(*co, *l, *s);
+    
+                                std::ofstream fil0_append(fnLDt, std::ios::app);
+                                fil0_append << std::fixed << std::setprecision(5)
+                                            << l->Ml       << " " << l->Dl       << " " << l->mul       << " " << s->fb[0]     << " " << s->mbs[0]   << " "
+          << std::setprecision(7)           << l->tE       << " " << l->murel    << " " << l->u0        << " " << s->lon       << " " << s->lat      << " "
+                                            << l->piE      << " " << l->tetE     << " " << co->resu[1]  << " " << co->resu[2]  << " " << co->resu[3] << " "
+                                            << co->resu[5] << " " << co->resu[9] << " " << co->resu[10] << " " << co->resu[13] << "\n";
+                                fil0_append.close();
+                            }
+                        }
+                        gg = FunctE(*l);
+                        //ss = int(FuncMl(*l));
+                        //qq = int(FuncPi(*l));
+                        //ww = int(Funcu0(*l));
+                        //vv = int(FuncMu(*l));
+                        //zz = int(FuncMb(*l, s->Map[2]));
+                        //pp = int(FuncFb(*l, s->blend[2]));
+                    }
 //                CHECK(gg >= 0);
 
                 records.push_back(EventRecord{
@@ -1234,17 +1200,8 @@ void Disk_model(source& s, int numt)
     double fh    = 1.0;  //No limitation
     double Rdd   = 2.17; //2.53; ///2.17;
     double Rhh   = 1.33; //1.32; //1.33;
-//    double alm   = 2.0;  //2KPC,  Mancini 2004
-//    double rlm_0 = 1.76 * 0.01; //solar mass/ Pc^-3
-
-//    double xb0, yb0, zb0;//kPC
 
     double frac = 0.05; //fraction of halo in the form of compact objects
-//    double qq   = 0.688;
-//    double Rd0  = 1.54;
-
-//    double xol, yol, zol, x0, y0, z0;
-//    double r0, pos1, inc1, Rlm;
 
     char filename[40];
     FILE *filj;
@@ -1269,25 +1226,35 @@ void Disk_model(source& s, int numt)
         xb = x * cos(s.FI) * cos(s.TET) - Dsun;
         Rb = sqrt(xb * xb + yb * yb);
 
-//        double rsun = sqrt(zb * zb + yb * yb + xb * xb);
-
 ///========== Galactic Thin Disk =====================
         for (int ii = 0; ii < 8; ++ii) {
             rdi = Rb * Rb + zb * zb / (epci[ii] * epci[ii]);
-            if (ii == 0)     rho = exp(-rdi / 25.0) - exp(-rdi / 9.0);
-            else if (ii > 0) rho = exp(-sqrt(0.25 + rdi / (Rdd * Rdd))) - exp(-sqrt(0.25 + rdi / (Rhh * Rhh)));
+            if (ii == 0) {
+                rho = exp(-rdi / 25.0) - exp(-rdi / 9.0);
+            }
+            else if (ii > 0) {
+                rho = exp(-sqrt(0.25 + rdi / (Rdd * Rdd))) - exp(-sqrt(0.25 + rdi / (Rhh * Rhh)));
+            }
             s.rho_thin[i] = fabs(s.rho_thin[i] + rho0[ii] * corr[ii] * 0.001 * rho/d0[ii]);
         } //Msun/pc^3
 
 ///========== Galactic Thick Disk =====================
         double rho00 = 1.34 * 0.001 + 3.04 * 0.0001;
-        if (fabs(zb) < 0.4) s.rho_thick[i] = fabs((rho00 / 0.999719) * exp(-(Rb - Dsun) / 2.5) * (1.0 - zb * zb / (0.4 * 0.8 * (2.0 + nnf))));
-        else s.rho_thick[i] = fabs((rho00 / 0.999719) * exp(-(Rb - Dsun) / 2.5) * exp(nnf) * exp(-fabs(zb) / 0.8)/(1.0 + 0.5 * nnf));///Msun/pc^3
+        if (fabs(zb) < 0.4) {
+            s.rho_thick[i] = fabs((rho00 / 0.999719) * exp(-(Rb - Dsun) / 2.5) * (1.0 - zb * zb / (0.4 * 0.8 * (2.0 + nnf))));
+        }
+        else {
+            s.rho_thick[i] = fabs((rho00 / 0.999719) * exp(-(Rb - Dsun) / 2.5) * exp(nnf) * exp(-fabs(zb) / 0.8)/(1.0 + 0.5 * nnf));///Msun/pc^3
+        }
 
 ///========== Galactic Stellar Halo=================
         rdi = sqrt(Rb * Rb + zb * zb / (0.76 * 0.76));
-        if (rdi <= 0.5)  s.rho_halo[i] = fabs(frac * (0.932 * 0.00001 / 867.067) * pow(0.5 / Dsun, - 2.44));
-        else             s.rho_halo[i] = fabs(frac * (0.932 * 0.00001 / 867.067) * pow(rdi / Dsun, - 2.44)); //Msun/pc^3
+        if (rdi <= 0.5) {
+            s.rho_halo[i] = fabs(frac * (0.932 * 0.00001 / 867.067) * pow(0.5 / Dsun, - 2.44));
+        }
+        else {
+            s.rho_halo[i] = fabs(frac * (0.932 * 0.00001 / 867.067) * pow(rdi / Dsun, - 2.44)); //Msun/pc^3
+        }
 
 ///========== Galactic bulge =====================
         xf  =  xb * cos(alfa) + yb * sin(alfa);
@@ -1314,22 +1281,23 @@ void Disk_model(source& s, int numt)
         s.rho_bulge[i] = fabs(rhoS) + fabs(rhoE); ///Msun/pc^3
 ///==================================================================
 
-        s.Rostar0[i] = fabs(s.rho_thin[i] + s.rho_thick[i] + s.rho_bulge[i] + s.rho_halo[i]);///[Msun/pc^3]
-        s.Rostari[i] = s.Rostar0[i] * x * x * step * 1.0e9 * (M_PI / 180.0) * (M_PI / 180.0);///[Msun/deg^2]
+        s.Rostar0[i] = fabs(s.rho_thin[i] + s.rho_thick[i] + s.rho_bulge[i] + s.rho_halo[i]); //[Msun/pc^3]
+        s.Rostari[i] = s.Rostar0[i] * x * x * step * 1.0e9 * (M_PI / 180.0) * (M_PI / 180.0); //[Msun/deg^2]
         s.Nstari[i]  = binary_fraction
           * (s.rho_thin[i] * fd / 0.403445 + s.rho_thick[i] * fh / 0.4542 + s.rho_halo[i] * fh / 0.4542 + s.rho_bulge[i] * fb / 0.308571);////[Nt/pc^3]
-        s.Nstari[i]  = s.Nstari[i] * x * x * step * 1.0e9 * (M_PI / 180.0) * (M_PI / 180.0);///[Ni/deg^2]
+        s.Nstari[i]  = s.Nstari[i] * x * x * step * 1.0e9 * (M_PI / 180.0) * (M_PI / 180.0); //[Ni/deg^2]
 
 
-        s.Nstart  += s.Nstari[i];  ///[Nt/deg^2]
-        s.Rostart += s.Rostari[i]; ///[Mt/deg^2]
-        if (s.Rostari[i] > s.Romaxs) s.Romaxs = s.Rostari[i]; ///source selection
-        if (s.Rostari[i] < s.Romins) s.Romins = s.Rostari[i]; ///source selection
+        s.Nstart  += s.Nstari[i];  //[Nt/deg^2]
+        s.Rostart += s.Rostari[i]; //[Mt/deg^2]
+        if (s.Rostari[i] > s.Romaxs) s.Romaxs = s.Rostari[i]; //source selection
+        if (s.Rostari[i] < s.Romins) s.Romins = s.Rostari[i]; //source selection
 
 
-        if (flagf > 0)
-        fprintf(fill, "%e   %e   %e   %e   %e  %e  %e\n",
-            x, s.rho_thin[i], s.rho_bulge[i], s.rho_thick[i], s.rho_halo[i], s.Rostar0[i], s.Nstari[i]);
+        if (flagf > 0) {
+            fprintf(fill, "%e   %e   %e   %e   %e  %e  %e\n",
+                x, s.rho_thin[i], s.rho_bulge[i], s.rho_thick[i], s.rho_halo[i], s.Rostar0[i], s.Nstari[i]);
+        }
     }
     if (flagf > 0) {
         fprintf(filj, "%.5lf  %.5lf  %.5lf  %.5lf\n", s.lon, s.lat, s.TET * RAa, s.FI * RAa);
@@ -1337,10 +1305,6 @@ void Disk_model(source& s, int numt)
         fclose(filj);
     }
 
-    //cout<<"xLMC:  "<<xLMC<<"\t yLMC:  "<<yLMC<<"\t zLMC:  "<<zLMC<<endl;
-    //cout<<"LMC_distance:  "<<sqrt(xLMC*xLMC + yLMC*yLMC +  zLMC*zLMC)<<endl;
-    //cout<<"xol:  "<<xol<<"\t yol:  "<<yol<<"\t  zol:  "<<zol<<endl;
-    //cout << "distance_LMC_Center:  " << Rlm      << "\t projected_distance:  "  << Rlm       << endl;
     cout << "Nstart [Nt/deg^2]: "    << s.Nstart << "\t Ro_star [Mass/deg^2]: " << s.Rostart << endl;
     cout << "Romaxs:  "              << s.Romaxs << "\t Romins:  "              << s.Romins  << endl;
     cout << ">>>>>>>>>>>>>>>>>>>>>> END OF DISK MODLE <<<<<<<<<<<<<<<<<<<<" << endl;

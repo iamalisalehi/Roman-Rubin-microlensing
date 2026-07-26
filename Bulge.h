@@ -28,6 +28,7 @@
 #include <random>
 constexpr int seed = 42;
 inline std::mt19937_64 rng{seed};
+//inline std::mt19937_64 rng{std::random_device{}()};
 ////
 /// for reading the extinction maps
 namespace fs = std::filesystem;
@@ -92,11 +93,12 @@ constexpr std::array<double, M> km     = {0.451, 0.163, 0.087, 0.065, 0.043, 0.1
 
 
 constexpr std::array<double, M> sigma = {0.022, 0.02, 0.017, 0.017, 0.027, 0.027, 0.04}; // PLACEHOLDER: K-band value, not F146
-constexpr std::array<double, M> thre  = {23.4, 24.6, 24.3, 23.6, 22.9, 21.7, 23.0}; //depth of single visit in ugrizy + F146 Filter (value needs to change)
+constexpr std::array<double, M> thre  = {23.4, 24.6, 24.3, 23.6, 22.9, 21.7, 29.0}; //depth of single visit in ugrizy + F146 Filter (value needs to change)
 constexpr std::array<double, M> satu  = {15.2, 16.3, 16.0, 15.3, 14.6, 13.4, 12.0}; //saturation limit of single visit in ugrizy + F146 Filter (value needs to change)
-constexpr std::array<double, M> FWHM  = {1.22087, 1.10136, 0.993103, 0.967076, 0.951766, 0.936578, 5.0*0.004}; //LSST [arcsec] ugrizy + F146 Filter (value needs to change)
-constexpr std::array<double, M> a0    = {0.9429, 1.0138, 0.94027, 0.8139, 0.6641, 0.5703, 0.1615}; //for calculating the extinction + F146 Filter (value needs to change)
-constexpr std::array<double, M> b0    = {1.9788, 0.5575, -0.2197, -0.4982, -0.6097, -0.5236, -0.1483}; // PLACEHOLDER: K-band value, not F146
+constexpr std::array<double, M> FWHM  = {1.22087, 1.10136, 0.993103, 0.967076, 0.951766, 0.936578, 0.105}; //LSST [arcsec] ugrizy + F146 Filter
+//constexpr std::array<double, M> a0    = {0.9429, 1.0138, 0.94027, 0.8139, 0.6641, 0.5703, 0.1615}; //for calculating the extinction + F146 Filter (value needs to change)
+//constexpr std::array<double, M> b0    = {1.9788, 0.5575, -0.2197, -0.4982, -0.6097, -0.5236, -0.1483}; // PLACEHOLDER: K-band value, not F146
+constexpr std::array<double, M> lambda_um = {0.367, 0.482, 0.622, 0.755, 0.869, 0.971, 1.464};
 
 constexpr double cade1 = 3.0 ;//LSST[days]
 //constexpr double cade2 = 10.0;//ELT [days]
@@ -142,8 +144,8 @@ constexpr double mu_max  = 100.0;
 
 ////=================================== Bulge ====================================
 constexpr int    Num  = 9500;
-constexpr double MaxD = 20.0;///kpc
-constexpr double step = double(MaxD / Num / 1.0);///step in kpc
+constexpr double MaxD = 20.0; //kpc
+constexpr double step = double(MaxD / Num / 1.0); //step in kpc
 //const double RaLMC  =  80.89375;
 //const double DecLMC = -68.2438888888889;
 //const double DLMC =  49.97;///KPC
@@ -156,7 +158,7 @@ constexpr double b2  = -0.85  + 0.2 + 3.5 / 2;
 constexpr double bx  = -1.64  + 0.2 + 3.5 / 2;
 constexpr double wid = 3.5 / 2;
 constexpr double dd  = 0.02;
-constexpr double FoV = double(3.5/2.0);  //the radius of teh Rubin Field of View
+constexpr double FoV = double(3.5 / 2.0);  //the radius of teh Rubin Field of View
 
 ///============================================================================
 struct GSLMatrixDeleter {
@@ -318,7 +320,7 @@ struct CMD {
     std::vector<double> logT_bulge;
     std::vector<double> mass_bulge;
     std::vector<std::array<double, M>> Mab_bulge; // M × N2
-    std::vector<double> typ_bulge;
+    std::vector<double> typ_bulge; 
     std::vector<double> cl_bulge;
     std::vector<double> age_bulge;
 
@@ -344,17 +346,6 @@ struct CMD {
           logT_bulge(N2), mass_bulge(N2), Mab_bulge(N2), typ_bulge(N2), cl_bulge(N2), age_bulge(N2),
           logT_thick(N3), mass_thick(N3), Mab_thick(N3), typ_thick(N3), cl_thick(N3), age_thick(N3),
           logT_halo(N4),  mass_halo(N4),  Mab_halo(N4),  typ_halo(N4),  cl_halo(N4),  age_halo(N4)
-    {}
-};
-
-struct galactic {
-    std::vector<double> l;
-    std::vector<double> b;
-    std::vector<double> RA;
-    std::vector<double> Dec;
-
-    galactic()
-        : l(nrd), b(nrd), RA(nrd), Dec(nrd)
     {}
 };
 
@@ -536,6 +527,9 @@ double errlsstM(double,int,double);
 double errlsstA(lsst & ls,  double);
 double errELT(lsst & ls,double,int);
 
+double CCM89_a(double lambda_um);
+double CCM89_b(double lambda_um);
+double AlAv(double lambda_um, double Rv);
 //void   getCofactorA(double input[Nx][Nx], double temp[Nx][Nx], int , int , int );
 //void   getCofactorB(double input[Ny][Ny], double temp[Ny][Ny], int , int , int );
 //double determinantA(double input[Nx][Nx], int);

@@ -3,7 +3,6 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <math.h>
 #include <dirent.h>
 #include <filesystem>
 #include <fstream>
@@ -12,6 +11,7 @@
 #include <sys/timeb.h>
 #include <cstdlib>
 #include <ctime>
+#include <cmath>
 #include <string>
 #include <array>
 #include <vector>
@@ -57,11 +57,11 @@ constexpr double RAa = 180.0 / M_PI;
 constexpr double pi  = M_PI;
 constexpr double binary_fraction = double(2.0 / 3.0);
 constexpr double velocity = 299792458.0;//velosity of light
-constexpr double Msun = 1.98892 * pow(10., 30); //in [kg].
-constexpr double Rsun = 6.957 * pow(10.0, 8.0); ///solar radius [meter]
-constexpr double KP = 3.08568025 * pow(10., 19); // in meter.
-constexpr double G = 6.67384 * pow(10., -11.0);// in [m^3/s^2*kg].
-constexpr double AU = 1.4960 * pow(10.0, 11.0);
+constexpr double Msun = 1.98892 * std::pow(10., 30); //in [kg].
+constexpr double Rsun = 6.957 * std::pow(10.0, 8.0); ///solar radius [meter]
+constexpr double KP = 3.08568025 * std::pow(10., 19); // in meter.
+constexpr double G = 6.67384 * std::pow(10., -11.0);// in [m^3/s^2*kg].
+constexpr double AU = 1.4960 * std::pow(10.0, 11.0);
 constexpr double vro_sun = 226.0;
 constexpr double VSunR = 11.1;
 constexpr double VSunT = vro_sun*(1.00762 + 0.00712) + 12.24;

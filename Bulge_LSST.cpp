@@ -184,7 +184,7 @@ int main() {
                 for (int i = 0; i < 1000; ++i) ls->ct[i] = -1; // Initialize ct
                 
                 for (int i = 0; i < Nl; ++i) {
-                    if (sqrt((s->lon - ls->l[i]) * (s->lon - ls->l[i]) + (s->lat - ls->b[i]) * (s->lat - ls->b[i])) <= FoV) {
+                    if (std::sqrt((s->lon - ls->l[i]) * (s->lon - ls->l[i]) + (s->lat - ls->b[i]) * (s->lat - ls->b[i])) <= FoV) {
                         // If LSST sees the source
                         ls->ct[ndd] = i;
                         if (ndd > 0) {
@@ -253,7 +253,7 @@ int main() {
                     fdet = 0.0;
 
                     for (int i = 0; i < M; ++i) {
-                        Mpeak = s->magb[i] - 2.5 * log10(l->A0 * s->blend[i] + 1.0 - s->blend[i]);
+                        Mpeak = s->magb[i] - 2.5 * std::log10(l->A0 * s->blend[i] + 1.0 - s->blend[i]);
 //                            cout << "i=" << i << "  Mab=" << s->Mab[i] << "  Map=" << s->Map[i]
 //                                 << "  blend=" << s->blend[i] << "  Mpeak=" << Mpeak << endl;
                         if (Mpeak <= thre[i] and s->magb[i] > satu[i])    fdet += 1.0;
@@ -275,8 +275,8 @@ int main() {
                         gi = 0;
                         for (double tim = float(0.0 * year - 100.0 - initial);  tim < float(10.0 * year + 100.0 + initial); tim = tim + dt) {
                             lightcurve(*s, *l, *as, tim);
-                            Astar0   = double(s->ut0 * s->ut0 + 2.0) / sqrt(s->ut0 * s->ut0 * (s->ut0 * s->ut0 + 4.0)); //MAgnification equation
-                            s->Astar = double(s->ut  * s->ut  + 2.0) / sqrt(s->ut  * s->ut  * (s->ut  * s->ut  + 4.0)); //MAgnification equation
+                            Astar0   = double(s->ut0 * s->ut0 + 2.0) / std::sqrt(s->ut0 * s->ut0 * (s->ut0 * s->ut0 + 4.0)); //MAgnification equation
+                            s->Astar = double(s->ut  * s->ut  + 2.0) / std::sqrt(s->ut  * s->ut  * (s->ut  * s->ut  + 4.0)); //MAgnification equation
                             As0      = double(Astar0   * s->blend[2] + 1.0 - s->blend[2]);
                             As1      = double(s->Astar * s->blend[2] + 1.0 - s->blend[2]); //LSST r-band
                             vs1      = double(s->mus1 + (s->def1c - def1p) / dt); //[mas/days]
@@ -292,8 +292,8 @@ int main() {
                             }
     
                             for (int i = 0; i < M; ++i) {
-                                magni0[i] = s->magb[i] - 2.5 * log10(Astar0   * s->blend[i] + 1.0 - s->blend[i]);
-                                magni[i]  = s->magb[i] - 2.5 * log10(s->Astar * s->blend[i] + 1.0 - s->blend[i]);
+                                magni0[i] = s->magb[i] - 2.5 * std::log10(Astar0   * s->blend[i] + 1.0 - s->blend[i]);
+                                magni[i]  = s->magb[i] - 2.5 * std::log10(s->Astar * s->blend[i] + 1.0 - s->blend[i]);
                             }
                             sq = int(ls->ct[gi]);
     
@@ -306,22 +306,22 @@ int main() {
                                     errg = errlsstM(magni[fi], int(fi), double(ls->sig5[sq])); //[mag]
                                     errs = errlsstA(*ls, magni[2]); ///[mas]
     
-                                    deltaA = fabs(pow(10.0, -0.4 * errg) - 1.0) * (s->blend[fi] * s->Astar + 1.0 - s->blend[fi]);
+                                    deltaA = std::fabs(std::pow(10.0, -0.4 * errg) - 1.0) * (s->blend[fi] * s->Astar + 1.0 - s->blend[fi]);
                                     magnio = magni[fi] + RandN(errg, 3.0);
     
-                                    chi1 += fabs((magnio -   magni[fi]) * (magnio -   magni[fi]) / (errg * errg)); //real
-                                    chi2 += fabs((magnio -  magni0[fi]) * (magnio -  magni0[fi]) / (errg * errg)); //real no parallax
-                                    chi3 += fabs((magnio - s->magb[fi]) * (magnio - s->magb[fi]) / (errg * errg)); //baseline
+                                    chi1 += std::fabs((magnio -   magni[fi]) * (magnio -   magni[fi]) / (errg * errg)); //real
+                                    chi2 += std::fabs((magnio -  magni0[fi]) * (magnio -  magni0[fi]) / (errg * errg)); //real no parallax
+                                    chi3 += std::fabs((magnio - s->magb[fi]) * (magnio - s->magb[fi]) / (errg * errg)); //baseline
     
-                                    sil  = RandN(errs * sqrt(2.0), 3.0);
+                                    sil  = RandN(errs * std::sqrt(2.0), 3.0);
                                     sil2 = RandN(errs, 3.0);
     
-                                    trajm = sqrt(s->pos1b * s->pos1b + s->pos2b * s->pos2b); //stright + parallax
-                                    trajp = sqrt(s->pos1c * s->pos1c + s->pos2c * s->pos2c); //stright + parallax+lensing
+                                    trajm = std::sqrt(s->pos1b * s->pos1b + s->pos2b * s->pos2b); //stright + parallax
+                                    trajp = std::sqrt(s->pos1c * s->pos1c + s->pos2c * s->pos2c); //stright + parallax+lensing
     
-                                    chi1a += fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs * 2.0)); //real trajectory
-                                    chi2a += fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs * 2.0)); //real without lensing
-                                    chi3a += fabs( sil2  * sil2 / (errs * errs));
+                                    chi1a += std::fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs * 2.0)); //real trajectory
+                                    chi2a += std::fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs * 2.0)); //real without lensing
+                                    chi3a += std::fabs( sil2  * sil2 / (errs * errs));
      
                                     l->timn[ndw] = tim;
                                     l->magn[ndw] = magni[2]; //scale to r-LSST band, but the errors are different
@@ -332,7 +332,7 @@ int main() {
                                     l->tele[ndw] = 0;
     
                                     flag2 = 0.0;
-                                    if (fabs(magnio - s->magb[fi]) > fabs(3.0 * errg))    flag2 = 1.0;
+                                    if (std::fabs(magnio - s->magb[fi]) > std::fabs(3.0 * errg))    flag2 = 1.0;
                                     if (ndw > 2 and float(flag0 + flag1 + flag2) > 2.0)   flag_det = 1;
                                     flag0 = flag1;
                                     flag1 = flag2;
@@ -363,7 +363,7 @@ int main() {
     
                                     s->errM += deltaA;
                                     s->errA += errs;
-                                    vsave += sqrt(vs1 * vs1 + vs2 * vs2);
+                                    vsave += std::sqrt(vs1 * vs1 + vs2 * vs2);
     
                                     ndw += 1;
                                 }//magnitude limit
@@ -399,7 +399,7 @@ int main() {
                     if (flagf == 0 or ndw <= 2) {
                         errg    = errlsstM(s->magb[2], 2, double(24.43)); //r-band
                         s->errA = errlsstA(*ls, s->magb[2]); //r-band
-                        s->errM = fabs(pow(10.0, - 0.4 * errg) - 1.0); //r-band
+                        s->errM = std::fabs(std::pow(10.0, - 0.4 * errg) - 1.0); //r-band
                         dchiL = 0.0;
                         dchiP = 0.0;
                         dchiA = 0.0;
@@ -412,9 +412,9 @@ int main() {
                         vsave   = double(vsave   / (ndw + 0.000065645));
                         s->errM = double(s->errM / (ndw + 0.000065645));
                         s->errA = double(s->errA / (ndw + 0.000065645));
-                        dchiL   = fabs(chi3  - chi1);  //lensing_effect
-                        dchiP   = fabs(chi2  - chi1);  //parallax_effect
-                        dchiA   = fabs(chi2a - chi1a); //deflection_effect
+                        dchiL   = std::fabs(chi3  - chi1);  //lensing_effect
+                        dchiP   = std::fabs(chi2  - chi1);  //parallax_effect
+                        dchiA   = std::fabs(chi2a - chi1a); //deflection_effect
        
                         if (s->FWHM < Tobs and dchiL > float(2.0 * ndw) and flag_det > 0 and ndw > 10) { //lensing
                             FFG[0] = 1; //Lensing
@@ -685,14 +685,14 @@ int main() {
 
     fil3 << std::setprecision(8)
          << EffiD      << " " << EffiL        << " "
-         << log10(EFF) << " " << log10(Gamma) << " " << log10(Neven) << " "
+         << std::log10(EFF) << " " << std::log10(Gamma) << " " << std::log10(Neven) << " "
          << Eru0       << " " << ErtE         << " " << Erfb         << " " << ErpiE << " " << ErtetE << " "
          << Erml       << " " << Erdl         << " " << Ermul        << " " << Ermus << " ";
 
     fil3 << std::setprecision(1)
          << nsim              << " " << numd[0]          << " " << numd[1] << " "
          << nerr              << " " << nri              << " " << nde     << " "
-         << log10(s->Rostart) << " " << log10(s->Nstart) << " " << log10(s->nstart)
+         << std::log10(s->Rostart) << " " << std::log10(s->Nstart) << " " << std::log10(s->nstart)
          << "\n";
    
     cout << "nsim:  "  << nsim    << "\t Ndetected:  " << icon    << "\t Nlensing:  " << nlens << "\t NError:  " << nerr << endl;
@@ -807,8 +807,8 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 if (j == 4) {co.diff = double(+co.Delta1[j] * sig[h]) ;      s.xi += co.diff;}
 
                 lightcurve(s, l, as, l.timn[i]);
-                s.Astar = (s.ut * s.ut + 2.0) / sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
-                co.magw = s.mbs[tt] - 2.5 * log10(s.Astar * s.fb[tt] + 1.0 - s.fb[tt]);
+                s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
+                co.magw = s.mbs[tt] - 2.5 * std::log10(s.Astar * s.fb[tt] + 1.0 - s.fb[tt]);
                 co.derm1[h] = double(co.magw - l.magn[i]) / co.diff;
 
                 CHECK(l.tE > 0.0);
@@ -838,8 +838,8 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                     if (k == 4) {co.diff = double(+co.Delta1[k] * sig[h]) ;     s.xi += co.diff;}
 
                     lightcurve(s, l, as, l.timn[i]);
-                    s.Astar = (s.ut * s.ut + 2.0) / sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
-                    co.magw = s.mbs[tt] - 2.5 * log10(s.Astar * s.fb[tt] + 1.0 - s.fb[tt]);
+                    s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
+                    co.magw = s.mbs[tt] - 2.5 * std::log10(s.Astar * s.fb[tt] + 1.0 - s.fb[tt]);
                     co.derm2[h] = double(co.magw - l.magn[i]) / co.diff;
 
                     CHECK(l.tE > 0.0);
@@ -912,7 +912,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 /*
     for (int i = 0; i < Nx; ++i) {
         for (int j = 0; j < Nx; ++j) {
-            if ((i == j and fabs(gsl_matrix_get(co.summA, i, j) - 1.0) > 0.2) or (i != j and fabs(gsl_matrix_get(co.summA, i, j) - 0.0) > 0.2)) {
+            if ((i == j and std::fabs(gsl_matrix_get(co.summA, i, j) - 1.0) > 0.2) or (i != j and std::fabs(gsl_matrix_get(co.summA, i, j) - 0.0) > 0.2)) {
                 //cout<<"Error_Inverse sum:  "<<co.summ[i][j]<<"\t i:  "<<i<<"\t j:  "<<j<<endl;
                 //cout<<""<<l.t0<<"\t"<<l.u0<<"\t"<<l.tE<<"\t"<<s.xi*M_PI/180.0<<"\t"<<s.fb[tt]<<"\t"<<s.mbs[tt]<<"\t"<<l.piE<<endl;
                 co.flagi = -1;
@@ -1027,7 +1027,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 /*
     for (int i = 0; i < Ny; ++i) {
         for (int j = 0; j < Ny; ++j) {
-            if ((i == j and fabs(gsl_matrix_get(co.summB, i, j) - 1.0) > 0.2) or (i != j and fabs(gsl_matrix_get(co.summB, i, j) - 0.0) > 0.2)) {
+            if ((i == j and std::fabs(gsl_matrix_get(co.summB, i, j) - 1.0) > 0.2) or (i != j and std::fabs(gsl_matrix_get(co.summB, i, j) - 0.0) > 0.2)) {
                 //cout<<"Error_Inverse sum:  "<<co.summ[i][j]<<"\t i:  "<<i<<"\t j:  "<<j<<endl;
                 //cout<<""<<l.t0<<"\t"<<l.u0<<"\t"<<l.tE<<"\t"<<s.xi*M_PI/180.0<<"\t"<<s.fb[tt]<<"\t"<<s.mbs[tt]<<"\t"<<l.piE<<endl;
                 co.flagi = -1;
@@ -1053,38 +1053,38 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 void ErrorCal(covarian & co, lens & l , source & s){
   double corr1;
 
-  for(int k=0; k < Nx; ++k)  co.Era[k] = sqrt(fabs(gsl_matrix_get(co.inverA.get(), k, k)));
-  for(int k=0; k < Ny; ++k)  co.Erb[k] = sqrt(fabs(gsl_matrix_get(co.inverB.get(), k, k)));
+  for(int k=0; k < Nx; ++k)  co.Era[k] = std::sqrt(std::fabs(gsl_matrix_get(co.inverA.get(), k, k)));
+  for(int k=0; k < Ny; ++k)  co.Erb[k] = std::sqrt(std::fabs(gsl_matrix_get(co.inverB.get(), k, k)));
 
-  corr1 = double(gsl_matrix_get(co.inverA.get(), 1, 4) / fabs(co.Era[1] * co.Era[4])); //correlation tE  && xi
+  corr1 = double(gsl_matrix_get(co.inverA.get(), 1, 4) / std::fabs(co.Era[1] * co.Era[4])); //correlation tE  && xi
 
-  co.resu[0]  = double(co.Era[0] / (fabs(l.u0)    + eps));
-  co.resu[1]  = double(co.Era[1] / (fabs(l.tE)    + eps));
-  co.resu[2]  = double(co.Era[2] / (fabs(s.fb[0]) + eps));
-  co.resu[3]  = double(co.Era[3] / (fabs(l.piE)   + eps));
-  co.resu[4]  = double(co.Era[4] / (fabs(s.xi)    + eps));
-  co.resu[5]  = double(co.Erb[0] / (fabs(l.tetE)  + eps));
-  co.resu[6]  = double(co.Erb[1] / (fabs(s.mus1)  + eps));
-  co.resu[7]  = double(co.Erb[2] / (fabs(s.mus2)  + eps));
-  co.resu[8]  = double(co.Erb[3] / (fabs(l.piE)   + eps));
+  co.resu[0]  = double(co.Era[0] / (std::fabs(l.u0)    + eps));
+  co.resu[1]  = double(co.Era[1] / (std::fabs(l.tE)    + eps));
+  co.resu[2]  = double(co.Era[2] / (std::fabs(s.fb[0]) + eps));
+  co.resu[3]  = double(co.Era[3] / (std::fabs(l.piE)   + eps));
+  co.resu[4]  = double(co.Era[4] / (std::fabs(s.xi)    + eps));
+  co.resu[5]  = double(co.Erb[0] / (std::fabs(l.tetE)  + eps));
+  co.resu[6]  = double(co.Erb[1] / (std::fabs(s.mus1)  + eps));
+  co.resu[7]  = double(co.Erb[2] / (std::fabs(s.mus2)  + eps));
+  co.resu[8]  = double(co.Erb[3] / (std::fabs(l.piE)   + eps));
 
   co.resu[3]  = MIN(co.resu[3], co.resu[8]);
 
-  co.resu[9]  = sqrt(co.resu[3] * co.resu[3] + co.resu[5] * co.resu[5]); //Lens Mass
-  co.resu[10] = fabs(co.resu[9] * (s.Ds - l.Dl) / s.Ds); //Dl
+  co.resu[9]  = std::sqrt(co.resu[3] * co.resu[3] + co.resu[5] * co.resu[5]); //Lens Mass
+  co.resu[10] = std::fabs(co.resu[9] * (s.Ds - l.Dl) / s.Ds); //Dl
 
-  co.f1 = co.resu[5] * co.resu[5] + co.resu[1] * co.resu[1] + (co.Era[4] * tan(s.xi)) * (co.Era[4] * tan(s.xi))
-    - 2.0 * co.resu[1] * co.Era[4] * tan(s.xi) * corr1;
-  co.f2 = co.resu[5] * co.resu[5] + co.resu[1] * co.resu[1] + (co.Era[4] / tan(s.xi)) * (co.Era[4] / tan(s.xi))
-    - 2.0 * co.resu[1] * co.Era[4] / tan(s.xi) * corr1;
+  co.f1 = co.resu[5] * co.resu[5] + co.resu[1] * co.resu[1] + (co.Era[4] * std::tan(s.xi)) * (co.Era[4] * std::tan(s.xi))
+    - 2.0 * co.resu[1] * co.Era[4] * std::tan(s.xi) * corr1;
+  co.f2 = co.resu[5] * co.resu[5] + co.resu[1] * co.resu[1] + (co.Era[4] / std::tan(s.xi)) * (co.Era[4] / std::tan(s.xi))
+    - 2.0 * co.resu[1] * co.Era[4] / std::tan(s.xi) * corr1;
 
-  co.sigmul1 = sqrt(co.Erb[1] * co.Erb[1] + l.murel * l.murel * cos(s.xi) * cos(s.xi) * fabs(co.f1));
-  co.sigmul2 = sqrt(co.Erb[2] * co.Erb[2] + l.murel * l.murel * sin(s.xi) * sin(s.xi) * fabs(co.f2));
+  co.sigmul1 = std::sqrt(co.Erb[1] * co.Erb[1] + l.murel * l.murel * std::cos(s.xi) * std::cos(s.xi) * std::fabs(co.f1));
+  co.sigmul2 = std::sqrt(co.Erb[2] * co.Erb[2] + l.murel * l.murel * std::sin(s.xi) * std::sin(s.xi) * std::fabs(co.f2));
 
-  co.resu[11] = double(co.sigmul1 / (fabs(l.mul1) + eps)); //mu_lens_1
-  co.resu[12] = double(co.sigmul2 / (fabs(l.mul2) + eps)); //mu_lens_2
-  co.resu[13] = sqrt(co.sigmul1 * co.sigmul1 + co.sigmul2 * co.sigmul2) / (fabs(l.mul) + eps); //mu_lens
-  co.resu[14] = sqrt(co.Erb[1]  * co.Erb[1]  +  co.Erb[2] * co.Erb[2])  / (fabs(s.mus) + eps); // mu_source
+  co.resu[11] = double(co.sigmul1 / (std::fabs(l.mul1) + eps)); //mu_lens_1
+  co.resu[12] = double(co.sigmul2 / (std::fabs(l.mul2) + eps)); //mu_lens_2
+  co.resu[13] = std::sqrt(co.sigmul1 * co.sigmul1 + co.sigmul2 * co.sigmul2) / (std::fabs(l.mul) + eps); //mu_lens
+  co.resu[14] = std::sqrt(co.Erb[1]  * co.Erb[1]  +  co.Erb[2] * co.Erb[2])  / (std::fabs(s.mus) + eps); // mu_source
 }
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
@@ -1104,11 +1104,11 @@ void lightcurve(source & s, lens & l, astromet & as, double timh)
         if(ig == 0) tt = timh;
         if(ig == 1) tt = 0.0;
         
-        dvex = +vearth * sin(omegae * tt + M_PI / 2.0) / omegae;//km/s
-        dvey = -vearth * cos(omegae * tt + M_PI / 2.0) / omegae;//km/s
-        as.Ve_n1 =  cos(tetp) * dvex * sin(l.deltao) - dvey * cos(l.deltao);
-        Ve_x     = -cos(tetp) * dvex * cos(l.deltao) - dvey * sin(l.deltao);
-        as.Ve_n2 = -sin(s.FI) * Ve_x + cos(s.FI) * sin(tetp) * dvex;
+        dvex = +vearth * std::sin(omegae * tt + M_PI / 2.0) / omegae;//km/s
+        dvey = -vearth * std::cos(omegae * tt + M_PI / 2.0) / omegae;//km/s
+        as.Ve_n1 =  std::cos(tetp) * dvex * std::sin(l.deltao) - dvey * std::cos(l.deltao);
+        Ve_x     = -std::cos(tetp) * dvex * std::cos(l.deltao) - dvey * std::sin(l.deltao);
+        as.Ve_n2 = -std::sin(s.FI) * Ve_x + std::cos(s.FI) * std::sin(tetp) * dvex;
 
         if(ig == 0) { int1  = as.Ve_n1; int2  = as.Ve_n2; }
         if(ig == 1) { int1 -= as.Ve_n1; int2 -= as.Ve_n2; }
@@ -1116,11 +1116,11 @@ void lightcurve(source & s, lens & l, astromet & as, double timh)
     as.ue_n1 = int1; //[radian] without dimention
     as.ue_n2 = int2; //[radian] without dimention
 
-    s.ux=-l.u0*sin(s.xi) + (timh-l.t0)*cos(s.xi)/l.tE + l.piE*as.ue_n1;//[] +parallax
-    s.uy= l.u0*cos(s.xi) + (timh-l.t0)*sin(s.xi)/l.tE + l.piE*as.ue_n2;//[] +parallax
+    s.ux=-l.u0*std::sin(s.xi) + (timh-l.t0)*std::cos(s.xi)/l.tE + l.piE*as.ue_n1;//[] +parallax
+    s.uy= l.u0*std::cos(s.xi) + (timh-l.t0)*std::sin(s.xi)/l.tE + l.piE*as.ue_n2;//[] +parallax
 
-    s.ut0=sqrt((s.ux-l.piE*as.ue_n1)*(s.ux-l.piE*as.ue_n1) + (s.uy-l.piE*as.ue_n2)*(s.uy-l.piE*as.ue_n2));
-    s.ut= sqrt(s.ux*s.ux+ s.uy*s.uy);
+    s.ut0=std::sqrt((s.ux-l.piE*as.ue_n1)*(s.ux-l.piE*as.ue_n1) + (s.uy-l.piE*as.ue_n2)*(s.uy-l.piE*as.ue_n2));
+    s.ut= std::sqrt(s.ux*s.ux+ s.uy*s.uy);
 
     if(s.ut==0.0)   s.ut=1.0e-50;
     if(s.ut0==0.0)  s.ut0=1.0e-50;
@@ -1132,11 +1132,11 @@ void lightcurve(source & s, lens & l, astromet & as, double timh)
     s.def1c = s.ux * l.tetE / (s.ut * s.ut + 2.0); //x-deflection[mas]
     s.def2c = s.uy * l.tetE / (s.ut * s.ut + 2.0); //y-deflection[mas]
 
-    s.pos1b = -l.u0 * l.tetE * sin(s.xi) + s.mus1 * (timh - l.t0) - as.ue_n1 * pis; //x-source trajectory+parallax[mas]
-    s.pos2b = +l.u0 * l.tetE * cos(s.xi) + s.mus2 * (timh - l.t0) - as.ue_n2 * pis; //y-source trajectory+parallax[mas]
+    s.pos1b = -l.u0 * l.tetE * std::sin(s.xi) + s.mus1 * (timh - l.t0) - as.ue_n1 * pis; //x-source trajectory+parallax[mas]
+    s.pos2b = +l.u0 * l.tetE * std::cos(s.xi) + s.mus2 * (timh - l.t0) - as.ue_n2 * pis; //y-source trajectory+parallax[mas]
 
-    s.pos1c = -l.u0 * l.tetE * sin(s.xi) + s.mus1 * (timh - l.t0) - as.ue_n1 * pis + s.def1c; //x-source trajectory+parallax[mas]+lensing
-    s.pos2c = +l.u0 * l.tetE * cos(s.xi) + s.mus2 * (timh - l.t0) - as.ue_n2 * pis + s.def2c; //y-source trajectory+parallax[mas]+lensing
+    s.pos1c = -l.u0 * l.tetE * std::sin(s.xi) + s.mus1 * (timh - l.t0) - as.ue_n1 * pis + s.def1c; //x-source trajectory+parallax[mas]+lensing
+    s.pos2c = +l.u0 * l.tetE * std::cos(s.xi) + s.mus2 * (timh - l.t0) - as.ue_n2 * pis + s.def2c; //y-source trajectory+parallax[mas]+lensing
 
     l.pos1  = l.mul1 * (timh - l.t0) - as.ue_n1 * pil ;//x-lens trajectory && parallax[mas]
     l.pos2  = l.mul2 * (timh - l.t0) - as.ue_n2 * pil ;//y-lens trajectory && parallax[mas]
@@ -1158,7 +1158,7 @@ void lightcurve(source & s, lens & l, astromet & as, double timh)
 void optical_depth(source& s)
 {
     double ds = (double)s.nums * step; //kpc
-    double CC = 4.0 * G * M_PI * ds * ds * pow(10.0,9.0) * Msun / (velocity * velocity * KP);
+    double CC = 4.0 * G * M_PI * ds * ds * std::pow(10.0,9.0) * Msun / (velocity * velocity * KP);
     double dl, x, dx;
 
     s.od_disk = s.od_ThD = s.od_bulge = s.od_halo = s.opt = 0.0;
@@ -1172,7 +1172,7 @@ void optical_depth(source& s)
         s.od_bulge += s.rho_bulge[k] * x * (1.0 - x) * dx * CC;
         s.od_halo  += s.rho_halo[k]  * x * (1.0 - x) * dx * CC;
     }
-    s.opt = fabs(s.od_disk + s.od_ThD + s.od_bulge + s.od_halo);// + s.od_dlmc + s.od_blmc + s.od_hlmc);///total
+    s.opt = std::fabs(s.od_disk + s.od_ThD + s.od_bulge + s.od_halo);// + s.od_dlmc + s.od_blmc + s.od_hlmc);///total
     //cout<<"total_opticalD: "<<s.opt<<"\t od_disk: "<<s.od_disk<<endl;
     //cout<<"od_ThD: "<<s.od_ThD<<"\t od_bulge: "<<s.od_bulge<<"\t od_halo: "<<s.od_halo<<endl;
     //cout<<"od_dlmc:  "<<s.od_dlmc<<"\t od_blmc: "<<s.od_blmc<<"\t od_hlmc:  "<<s.od_hlmc<<endl;
@@ -1221,67 +1221,67 @@ void Disk_model(source& s, int numt)
         s.rho_halo[i]  = 0;
         s.rho_thick[i] = 0;
         x  = double(i  * step); //kpc
-        zb = sin(s.FI) * x;
-        yb = cos(s.FI) * sin(s.TET) * x;
-        xb = x * cos(s.FI) * cos(s.TET) - Dsun;
-        Rb = sqrt(xb * xb + yb * yb);
+        zb = std::sin(s.FI) * x;
+        yb = std::cos(s.FI) * std::sin(s.TET) * x;
+        xb = x * std::cos(s.FI) * std::cos(s.TET) - Dsun;
+        Rb = std::sqrt(xb * xb + yb * yb);
 
 ///========== Galactic Thin Disk =====================
         for (int ii = 0; ii < 8; ++ii) {
             rdi = Rb * Rb + zb * zb / (epci[ii] * epci[ii]);
             if (ii == 0) {
-                rho = exp(-rdi / 25.0) - exp(-rdi / 9.0);
+                rho = std::exp(-rdi / 25.0) - std::exp(-rdi / 9.0);
             }
             else if (ii > 0) {
-                rho = exp(-sqrt(0.25 + rdi / (Rdd * Rdd))) - exp(-sqrt(0.25 + rdi / (Rhh * Rhh)));
+                rho = std::exp(-std::sqrt(0.25 + rdi / (Rdd * Rdd))) - std::exp(-std::sqrt(0.25 + rdi / (Rhh * Rhh)));
             }
-            s.rho_thin[i] = fabs(s.rho_thin[i] + rho0[ii] * corr[ii] * 0.001 * rho/d0[ii]);
+            s.rho_thin[i] = std::fabs(s.rho_thin[i] + rho0[ii] * corr[ii] * 0.001 * rho/d0[ii]);
         } //Msun/pc^3
 
 ///========== Galactic Thick Disk =====================
         double rho00 = 1.34 * 0.001 + 3.04 * 0.0001;
-        if (fabs(zb) < 0.4) {
-            s.rho_thick[i] = fabs((rho00 / 0.999719) * exp(-(Rb - Dsun) / 2.5) * (1.0 - zb * zb / (0.4 * 0.8 * (2.0 + nnf))));
+        if (std::fabs(zb) < 0.4) {
+            s.rho_thick[i] = std::fabs((rho00 / 0.999719) * std::exp(-(Rb - Dsun) / 2.5) * (1.0 - zb * zb / (0.4 * 0.8 * (2.0 + nnf))));
         }
         else {
-            s.rho_thick[i] = fabs((rho00 / 0.999719) * exp(-(Rb - Dsun) / 2.5) * exp(nnf) * exp(-fabs(zb) / 0.8)/(1.0 + 0.5 * nnf));///Msun/pc^3
+            s.rho_thick[i] = std::fabs((rho00 / 0.999719) * std::exp(-(Rb - Dsun) / 2.5) * std::exp(nnf) * std::exp(-std::fabs(zb) / 0.8)/(1.0 + 0.5 * nnf));///Msun/pc^3
         }
 
 ///========== Galactic Stellar Halo=================
-        rdi = sqrt(Rb * Rb + zb * zb / (0.76 * 0.76));
+        rdi = std::sqrt(Rb * Rb + zb * zb / (0.76 * 0.76));
         if (rdi <= 0.5) {
-            s.rho_halo[i] = fabs(frac * (0.932 * 0.00001 / 867.067) * pow(0.5 / Dsun, - 2.44));
+            s.rho_halo[i] = std::fabs(frac * (0.932 * 0.00001 / 867.067) * std::pow(0.5 / Dsun, - 2.44));
         }
         else {
-            s.rho_halo[i] = fabs(frac * (0.932 * 0.00001 / 867.067) * pow(rdi / Dsun, - 2.44)); //Msun/pc^3
+            s.rho_halo[i] = std::fabs(frac * (0.932 * 0.00001 / 867.067) * std::pow(rdi / Dsun, - 2.44)); //Msun/pc^3
         }
 
 ///========== Galactic bulge =====================
-        xf  =  xb * cos(alfa) + yb * sin(alfa);
-        yf  = -xb * sin(alfa) + yb * cos(alfa);
+        xf  =  xb * std::cos(alfa) + yb * std::sin(alfa);
+        yf  = -xb * std::sin(alfa) + yb * std::cos(alfa);
         zf  =  zb;
 
         Rx0 = 1.46, Ry0 = 0.49, Rz0 = 0.39; Rc = 3.43; cp = 3.007;  cn = 3.329;  mBarre = 35.45 / 3.84723;
 
-        r4  = pow(pow(fabs(xf / Rx0), cn) + pow(fabs(yf / Ry0), cn), cp / cn) + pow(fabs(zf / Rz0), cp);
-        r4  = pow(fabs(r4), 1.0 / cp);
-        r2  = sqrt(fabs(xf * xf + yf * yf));
+        r4  = std::pow(std::pow(std::fabs(xf / Rx0), cn) + std::pow(std::fabs(yf / Ry0), cn), cp / cn) + std::pow(std::fabs(zf / Rz0), cp);
+        r4  = std::pow(std::fabs(r4), 1.0 / cp);
+        r2  = std::sqrt(std::fabs(xf * xf + yf * yf));
 
-        if (r2 <= Rc) rhoS = mBarre * 1.0 / (cosh(-r4) * cosh(-r4));
-        else          rhoS = mBarre * 1.0 / (cosh(-r4) * cosh(-r4)) * exp(-4.0 * (r2 - Rc) * (r2 - Rc));
+        if (r2 <= Rc) rhoS = mBarre * 1.0 / (std::cosh(-r4) * std::cosh(-r4));
+        else          rhoS = mBarre * 1.0 / (std::cosh(-r4) * std::cosh(-r4)) * std::exp(-4.0 * (r2 - Rc) * (r2 - Rc));
 
         Rx0 = 4.44, Ry0 = 1.31, Rz0 = 0.80; Rc = 6.83; cp = 2.786; cn = 3.917; mBarre = 2.27 / 87.0; //85.3789;
-        r4  = pow(fabs(pow(fabs(xf / Rx0), cn) + pow(fabs(yf / Ry0), cn)), cp / cn) + pow(fabs(zf / Rz0), cp);
-        r4  = pow(r4, 1.0 / cp);
-        r2  = sqrt(fabs(xf * xf + yf * yf));
+        r4  = std::pow(std::fabs(std::pow(std::fabs(xf / Rx0), cn) + std::pow(std::fabs(yf / Ry0), cn)), cp / cn) + std::pow(std::fabs(zf / Rz0), cp);
+        r4  = std::pow(r4, 1.0 / cp);
+        r2  = std::sqrt(std::fabs(xf * xf + yf * yf));
 
-        if (r2 <= Rc) rhoE = mBarre * exp(-r4);
-        else          rhoE = mBarre * exp(-r4) * exp(-4.0 * (r2 - Rc) * (r2 - Rc));
+        if (r2 <= Rc) rhoE = mBarre * std::exp(-r4);
+        else          rhoE = mBarre * std::exp(-r4) * std::exp(-4.0 * (r2 - Rc) * (r2 - Rc));
 
-        s.rho_bulge[i] = fabs(rhoS) + fabs(rhoE); ///Msun/pc^3
+        s.rho_bulge[i] = std::fabs(rhoS) + std::fabs(rhoE); ///Msun/pc^3
 ///==================================================================
 
-        s.Rostar0[i] = fabs(s.rho_thin[i] + s.rho_thick[i] + s.rho_bulge[i] + s.rho_halo[i]); //[Msun/pc^3]
+        s.Rostar0[i] = std::fabs(s.rho_thin[i] + s.rho_thick[i] + s.rho_bulge[i] + s.rho_halo[i]); //[Msun/pc^3]
         s.Rostari[i] = s.Rostar0[i] * x * x * step * 1.0e9 * (M_PI / 180.0) * (M_PI / 180.0); //[Msun/deg^2]
         s.Nstari[i]  = binary_fraction
           * (s.rho_thin[i] * fd / 0.403445 + s.rho_thick[i] * fh / 0.4542 + s.rho_halo[i] * fh / 0.4542 + s.rho_bulge[i] * fb / 0.308571);////[Nt/pc^3]

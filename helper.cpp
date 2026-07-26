@@ -67,7 +67,7 @@ int FuncMl(lens & l) {
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 int FuncPi(lens & l) {
    int gg = -1;
-   double lpi = log10(l.pirel);
+   double lpi = std::log10(l.pirel);
 
    if (lpi <= pi_min)      gg = 0;
    else if (lpi >= pi_max) gg = GG;
@@ -170,8 +170,8 @@ int FuncFb(lens & l, double blen) {
 double errlsstM(double mag, int fi, double sig5){ //LSST Photometric Error 
 
     double x, Delta1 = 0.0;
-    x = pow(10.0, float(0.4 * (mag- sig5 )));
-    Delta1 = double(sqrt(fabs((0.04 - gama[fi]) * x + gama[fi] * x * x)));
+    x = std::pow(10.0, 0.4 * (mag - sig5));
+    Delta1 = std::sqrt(std::fabs((0.04 - gama[fi]) * x + gama[fi] * x * x));
     
     if (Delta1 < 0.0001)   Delta1 = 0.0001;
 
@@ -180,7 +180,7 @@ double errlsstM(double mag, int fi, double sig5){ //LSST Photometric Error
     CHECK(Delta1 >= 0.00001);
     CHECK(x > 0.0);
    
-    return sqrt(delta2 * delta2 + Delta1 * Delta1);
+    return std::sqrt(delta2 * delta2 + Delta1 * Delta1);
 }
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 double errlsstA(lsst & ls, double ghadr){ //LSST Astrometric Error 
@@ -482,7 +482,7 @@ double CCM89_a(double lambda_um)
     double x = 1.0 / lambda_um;
 
     if (x < 1.1) {
-        return 0.574 * pow(x, 1.61);
+        return 0.574 * std::pow(x, 1.61);
     }
 
     if (x < 3.3) {
@@ -490,12 +490,12 @@ double CCM89_a(double lambda_um)
 
         return 1.0
              + 0.17699 * y
-             - 0.50447 * pow(y, 2)
-             - 0.02427 * pow(y, 3)
-             + 0.72085 * pow(y, 4)
-             + 0.01979 * pow(y, 5)
-             - 0.77530 * pow(y, 6)
-             + 0.32999 * pow(y, 7);
+             - 0.50447 * std::pow(y, 2)
+             - 0.02427 * std::pow(y, 3)
+             + 0.72085 * std::pow(y, 4)
+             + 0.01979 * std::pow(y, 5)
+             - 0.77530 * std::pow(y, 6)
+             + 0.32999 * std::pow(y, 7);
     }
 
     throw std::runtime_error("CCM89 wavelength out of supported range");
@@ -506,19 +506,19 @@ double CCM89_b(double lambda_um)
     double x = 1.0 / lambda_um;
 
     if (x < 1.1) {
-        return -0.527 * pow(x, 1.61);
+        return -0.527 * std::pow(x, 1.61);
     }
 
     if (x < 3.3) {
         double y = x - 1.82;
 
         return 1.41338 * y
-             + 2.28305 * pow(y, 2)
-             + 1.07233 * pow(y, 3)
-             - 5.38434 * pow(y, 4)
-             - 0.62251 * pow(y, 5)
-             + 5.30260 * pow(y, 6)
-             - 2.09002 * pow(y, 7);
+             + 2.28305 * std::pow(y, 2)
+             + 1.07233 * std::pow(y, 3)
+             - 5.38434 * std::pow(y, 4)
+             - 0.62251 * std::pow(y, 5)
+             + 5.30260 * std::pow(y, 6)
+             - 2.09002 * std::pow(y, 7);
     }
 
     throw std::runtime_error("CCM89 wavelength out of supported range");

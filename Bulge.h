@@ -115,7 +115,7 @@ constexpr int nrd = 10000; //rows in "convert_coordinate_2.dat"
 constexpr int Na = 96;     //rows in "sigmaA_LSST.txt"
 constexpr int NaRoman = 123;  // rows in sigma_roman.txt
 constexpr int nq = 15;     //resu
-constexpr int N1 = 869440, N2 = 5846960, N3 = 1057319, N4 = 5007; //CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo
+constexpr int N1 = 396593, N2 = 3568010, N3 = 646090, N4 = 3171; //CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo
 constexpr int Nl = 7373; //BulgeBaseline.dat 18/07/2026
 
 
@@ -144,7 +144,7 @@ constexpr double mu_max  = 100.0;
 
 ////=================================== Bulge ====================================
 constexpr int    Num  = 9500;
-constexpr double MaxD = 20.0; //kpc
+constexpr double MaxD = 12.0; //kpc
 constexpr double step = double(MaxD / Num / 1.0); //step in kpc
 //const double RaLMC  =  80.89375;
 //const double DecLMC = -68.2438888888889;

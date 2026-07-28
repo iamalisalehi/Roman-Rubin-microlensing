@@ -170,10 +170,12 @@ int main() {
 
 //    for (s->lon = l1 - wid; s->lon <= l2 + wid; s->lon += dd) {
     for (s->lon = 0.5; s->lon <= 0.6; s->lon += dd) {
+//    for (s->lon = 1.0; s->lon <= 1.1; s->lon += dd) {
         nri +=  1;
         nde  = -1;
 //        for (s->lat = b1 - wid; s->lat <= b2 + wid; s->lat += dd) {
         for (s->lat = -1.4; s->lat <= -1.3; s->lat += dd) {
+//        for (s->lat = -3.9; s->lat <= -3.8; s->lat += dd) {
             if (s->lon < lx and s->lat > bx) continue;
             nde += 1;
             cout << ">>>>>>>>>>> NEW STEP " << nde << " <<<<<<<<\t nri:  " << nri << endl;
@@ -254,8 +256,8 @@ int main() {
 
                     for (int i = 0; i < M; ++i) {
                         Mpeak = s->magb[i] - 2.5 * std::log10(l->A0 * s->blend[i] + 1.0 - s->blend[i]);
-//                            cout << "i=" << i << "  Mab=" << s->Mab[i] << "  Map=" << s->Map[i]
-//                                 << "  blend=" << s->blend[i] << "  Mpeak=" << Mpeak << endl;
+                            cout << "i=" << i << "  Mab=" << s->Mab[i] << "  Map=" << s->Map[i]
+                                 << "  blend=" << s->blend[i] << "  Mpeak=" << Mpeak << endl;
                         if (Mpeak <= thre[i] and s->magb[i] > satu[i])    fdet += 1.0;
                     }
 
@@ -1196,7 +1198,7 @@ void Disk_model(source& s, int numt)
     s.Romins = 10000000000.0;
 
     double fd    = 1.0;  //see the program mass_averaged.cpp.  we do not apply any limitation
-    double fb    = 1.0;  //0.657066;////just stars brighter than V=11.5, but we change to consider all stars
+    double fb    = 1.0;  //just stars brighter than V=11.5, but we change to consider all stars
     double fh    = 1.0;  //No limitation
     double Rdd   = 2.17; //2.53; ///2.17;
     double Rhh   = 1.33; //1.32; //1.33;
@@ -1244,7 +1246,7 @@ void Disk_model(source& s, int numt)
             s.rho_thick[i] = std::fabs((rho00 / 0.999719) * std::exp(-(Rb - Dsun) / 2.5) * (1.0 - zb * zb / (0.4 * 0.8 * (2.0 + nnf))));
         }
         else {
-            s.rho_thick[i] = std::fabs((rho00 / 0.999719) * std::exp(-(Rb - Dsun) / 2.5) * std::exp(nnf) * std::exp(-std::fabs(zb) / 0.8)/(1.0 + 0.5 * nnf));///Msun/pc^3
+            s.rho_thick[i] = std::fabs((rho00 / 0.999719) * std::exp(-(Rb - Dsun) / 2.5) * std::exp(nnf) * std::exp(-std::fabs(zb) / 0.8)/(1.0 + 0.5 * nnf)); //Msun/pc^3
         }
 
 ///========== Galactic Stellar Halo=================
@@ -1257,26 +1259,54 @@ void Disk_model(source& s, int numt)
         }
 
 ///========== Galactic bulge =====================
-        xf  =  xb * std::cos(alfa) + yb * std::sin(alfa);
-        yf  = -xb * std::sin(alfa) + yb * std::cos(alfa);
-        zf  =  zb;
+        constexpr double barMassRescale = 0.24529; // calibrated so bulge column density toward
+                                                   // Baade's Window (l=1, b=-3.9) matches the
+                                                   // Han & Gould (2003) HST benchmark: 2086 Msun/pc^2
+        xf =  xb * std::cos(alfa) + yb * std::sin(alfa);
+        yf = -xb * std::sin(alfa) + yb * std::cos(alfa);
+        zf =  zb;
 
-        Rx0 = 1.46, Ry0 = 0.49, Rz0 = 0.39; Rc = 3.43; cp = 3.007;  cn = 3.329;  mBarre = 35.45 / 3.84723;
+        Rx0    = 1.46;
+        Ry0    = 0.49;
+        Rz0    = 0.39;
+        Rc     = 3.43;
+        cp     = 3.007;
+        cn     = 3.329;
+        mBarre = 35.45 / 3.84723 * barMassRescale;
 
-        r4  = std::pow(std::pow(std::fabs(xf / Rx0), cn) + std::pow(std::fabs(yf / Ry0), cn), cp / cn) + std::pow(std::fabs(zf / Rz0), cp);
+        r4  = std::pow(std::pow(std::fabs(xf / Rx0), cn)
+            + std::pow(std::fabs(yf / Ry0), cn), cp / cn)
+            + std::pow(std::fabs(zf / Rz0), cp);
         r4  = std::pow(std::fabs(r4), 1.0 / cp);
         r2  = std::sqrt(std::fabs(xf * xf + yf * yf));
 
-        if (r2 <= Rc) rhoS = mBarre * 1.0 / (std::cosh(-r4) * std::cosh(-r4));
-        else          rhoS = mBarre * 1.0 / (std::cosh(-r4) * std::cosh(-r4)) * std::exp(-4.0 * (r2 - Rc) * (r2 - Rc));
+        if (r2 <= Rc) {
+            rhoS = mBarre * 1.0 / (std::cosh(-r4) * std::cosh(-r4));
+        }
+        else {
+            rhoS = mBarre * 1.0 / (std::cosh(-r4) * std::cosh(-r4)) * std::exp(-4.0 * (r2 - Rc) * (r2 - Rc));
+        }
 
-        Rx0 = 4.44, Ry0 = 1.31, Rz0 = 0.80; Rc = 6.83; cp = 2.786; cn = 3.917; mBarre = 2.27 / 87.0; //85.3789;
-        r4  = std::pow(std::fabs(std::pow(std::fabs(xf / Rx0), cn) + std::pow(std::fabs(yf / Ry0), cn)), cp / cn) + std::pow(std::fabs(zf / Rz0), cp);
+        Rx0    = 4.44;
+        Ry0    = 1.31;
+        Rz0    = 0.80;
+        Rc     = 6.83;
+        cp     = 2.786;
+        cn     = 3.917;
+        mBarre = 2.27 / 87.0 * barMassRescale; // needs to be normalized
+
+        r4  = std::pow(std::fabs(std::pow(std::fabs(xf / Rx0), cn)
+            + std::pow(std::fabs(yf / Ry0), cn)), cp / cn)
+            + std::pow(std::fabs(zf / Rz0), cp);
         r4  = std::pow(r4, 1.0 / cp);
         r2  = std::sqrt(std::fabs(xf * xf + yf * yf));
 
-        if (r2 <= Rc) rhoE = mBarre * std::exp(-r4);
-        else          rhoE = mBarre * std::exp(-r4) * std::exp(-4.0 * (r2 - Rc) * (r2 - Rc));
+        if (r2 <= Rc) {
+            rhoE = mBarre * std::exp(-r4);
+        }
+        else {
+            rhoE = mBarre * std::exp(-r4) * std::exp(-4.0 * (r2 - Rc) * (r2 - Rc));
+        }
 
         s.rho_bulge[i] = std::fabs(rhoS) + std::fabs(rhoE); ///Msun/pc^3
 ///==================================================================
@@ -1284,14 +1314,21 @@ void Disk_model(source& s, int numt)
         s.Rostar0[i] = std::fabs(s.rho_thin[i] + s.rho_thick[i] + s.rho_bulge[i] + s.rho_halo[i]); //[Msun/pc^3]
         s.Rostari[i] = s.Rostar0[i] * x * x * step * 1.0e9 * (M_PI / 180.0) * (M_PI / 180.0); //[Msun/deg^2]
         s.Nstari[i]  = binary_fraction
-          * (s.rho_thin[i] * fd / 0.403445 + s.rho_thick[i] * fh / 0.4542 + s.rho_halo[i] * fh / 0.4542 + s.rho_bulge[i] * fb / 0.308571);////[Nt/pc^3]
+                     * (s.rho_thin[i] * fd / 0.403445
+                      + s.rho_thick[i] * fh / 0.4542 
+                      + s.rho_halo[i] * fh / 0.4542 
+                      + s.rho_bulge[i] * fb / 0.308571); //[Nt/pc^3]
         s.Nstari[i]  = s.Nstari[i] * x * x * step * 1.0e9 * (M_PI / 180.0) * (M_PI / 180.0); //[Ni/deg^2]
-
 
         s.Nstart  += s.Nstari[i];  //[Nt/deg^2]
         s.Rostart += s.Rostari[i]; //[Mt/deg^2]
-        if (s.Rostari[i] > s.Romaxs) s.Romaxs = s.Rostari[i]; //source selection
-        if (s.Rostari[i] < s.Romins) s.Romins = s.Rostari[i]; //source selection
+
+        if (s.Rostari[i] > s.Romaxs) {
+            s.Romaxs = s.Rostari[i]; //source selection
+        }
+        if (s.Rostari[i] < s.Romins) {
+            s.Romins = s.Rostari[i]; //source selection
+        }
 
 
         if (flagf > 0) {

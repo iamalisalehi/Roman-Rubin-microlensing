@@ -234,12 +234,12 @@ void read_cmd(CMD & cm)
 
     std::getline(fp2, header);   // Skip the header line
     for (size_t j = 0; j < N1; ++j) {
-//        CHECK(cm.mass_thin[j]   >= 0.0);
-//        CHECK(cm.logT_thin[j]   >= 0.0);
-//        CHECK(cm.Mab_thin[j][2] <= 20.0);
-//        CHECK(cm.age_thin[j]    <= 10);
-//        CHECK(cm.cl_thin[j]     <= 7);
-//        CHECK(cm.typ_thin[j]    <= 9.0);
+        CHECK(cm.mass_thin[j]   >= 0.0);
+        CHECK(cm.logT_thin[j]   >= 0.0);
+        CHECK(cm.Mab_thin[j][2] <= 20.0);
+        CHECK(cm.age_thin[j]    <= 10);
+        CHECK(cm.cl_thin[j]     <= 7);
+        CHECK(cm.typ_thin[j]    <= 9.0);
 
           if (!(fp2 >> cm.mass_thin[j]
                     >> cm.logT_thin[j]
@@ -271,12 +271,12 @@ void read_cmd(CMD & cm)
 
     std::getline(fp2, header);   // Skip the header line
     for (size_t j = 0; j < N2; ++j) {
-//        CHECK(cm.mass_bulge[j]   >= 0.0);
-//        CHECK(cm.logT_bulge[j]   >= 0.0);
-//        CHECK(cm.Mab_bulge[j][2] <= 18.0);
-//        CHECK(cm.age_bulge[j]    <= 10);
-//        CHECK(cm.cl_bulge[j]     <= 7);
-//        CHECK(cm.typ_bulge[j]    <= 9.0);
+        CHECK(cm.mass_bulge[j]   >= 0.0);
+        CHECK(cm.logT_bulge[j]   >= 0.0);
+        CHECK(cm.Mab_bulge[j][2] <= 18.0);
+        CHECK(cm.age_bulge[j]    <= 10);
+        CHECK(cm.cl_bulge[j]     <= 7);
+        CHECK(cm.typ_bulge[j]    <= 9.0);
           if (!(fp2 >> cm.mass_bulge[j]
                     >> cm.logT_bulge[j]
                     >> Mbol
@@ -306,12 +306,13 @@ void read_cmd(CMD & cm)
 
     std::getline(fp2, header);   // Skip the header line
     for (size_t j = 0; j < N3; ++j) {
-//        CHECK(cm.mass_thick[j]   >= 0.0);
-//        CHECK(cm.logT_thick[j]   >= 0.0);
-//        CHECK(cm.Mab_thick[j][2] <= 20.0);
+        CHECK(cm.mass_thick[j]   >= 0.0);
+        CHECK(cm.logT_thick[j]   >= 0.0);
+        CHECK(cm.Mab_thick[j][2] <= 20.0);
 //        CHECK(cm.age_thick[j]    <= 8);
-//        CHECK(cm.cl_thick[j]     <= 7);
-//        CHECK(cm.typ_thick[j]    <= 9.0);
+        CHECK(cm.age_thick[j]    <= 13);
+        CHECK(cm.cl_thick[j]     <= 7);
+        CHECK(cm.typ_thick[j]    <= 9.0);
           if (!(fp2 >> cm.mass_thick[j]
                     >> cm.logT_thick[j]
                     >> Mbol
@@ -341,12 +342,13 @@ void read_cmd(CMD & cm)
 
     std::getline(fp2, header);   // Skip the header line
     for (size_t j = 0; j < N4; ++j) {
-//        CHECK(cm.mass_halo[j]   >= 0.0);
-//        CHECK(cm.logT_halo[j]   >= 0.0);
-//        CHECK(cm.Mab_halo[j][2] <= 20.0);
+        CHECK(cm.mass_halo[j]   >= 0.0);
+        CHECK(cm.logT_halo[j]   >= 0.0);
+        CHECK(cm.Mab_halo[j][2] <= 20.0);
 //        CHECK(cm.age_halo[j]    <= 9);
-//        CHECK(cm.cl_halo[j]     <= 7);
-//        CHECK(cm.typ_halo[j]   <= 9.0);
+        CHECK(cm.age_halo[j]    <= 14);
+        CHECK(cm.cl_halo[j]     <= 7);
+        CHECK(cm.typ_halo[j]   <= 9.0);
           if (!(fp2 >> cm.mass_halo[j]
                     >> cm.logT_halo[j]
                     >> Mbol

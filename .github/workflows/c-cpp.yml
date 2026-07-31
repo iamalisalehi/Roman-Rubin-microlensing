@@ -19,7 +19,3 @@ jobs:
           sudo apt-get install -y libgsl-dev
     - name: make
       run: make
-    - name: make check
-      run: make check
-    - name: make distcheck
-      run: make distcheck

@@ -15,14 +15,29 @@ FILE * _randStream;
 // instrument instead of being hardwired to `ls`. Behavior is unchanged for LSST;
 // calling it a second time with Roman's own l/b/tim arrays and its own FoV is what
 // gives Roman its own epoch list instead of inheriting LSST's cadence.
-int matchVisibleEpochs(double lon, double lat, double fov,
-                        const std::vector<double>& l_arr,
-                        const std::vector<double>& b_arr,
-                        const std::vector<double>& tim_arr,
-                        int nEpochs,
-                        std::vector<int>& ct,
-                        double& minCadence) {
+//
+// `label` is purely diagnostic ("LSST" / "Roman") — it identifies which call
+// printed a given warning, since both calls share this one function.
+//
+// Two visits can legitimately share an identical recorded timestamp for a given
+// sky position — most commonly two different fields/pointings whose FoV circles
+// overlap and which happen to share the same observing schedule (this is exactly
+// what can happen between adjacent Roman fields: FoVRoman=0.28 vs ~0.41 field
+// spacing means neighboring fields' circles overlap). There is no meaningful
+// cadence between two simultaneous visits, so rather than treat this as fatally
+// corrupt data, we keep the first and skip the duplicate — but we log it, because
+// if this fires constantly (not just occasionally near field boundaries) that's a
+// sign of a genuine sorting/data problem in the baseline file that needs fixing at
+// the source, not papering over here.
+int matchVisibleEpochs(const char* label, double lon, double lat, double fov,
+                       const std::vector<double>& l_arr,
+                       const std::vector<double>& b_arr,
+                       const std::vector<double>& tim_arr,
+                       int nEpochs,
+                       std::vector<int>& ct,
+                       double& minCadence) {
     int ndd = 0;
+    int nTies = 0;
     minCadence = 100000.0;
 
     for (int i = 0; i < 1000; ++i) ct[i] = -1; // same reset as before
@@ -31,23 +46,40 @@ int matchVisibleEpochs(double lon, double lat, double fov,
         double dl = lon - l_arr[i];
         double db = lat - b_arr[i];
         if (std::sqrt(dl * dl + db * db) <= fov) {
-            ct[ndd] = i;
-            if (ndd > 0) {
-                double cade = tim_arr[ct[ndd]] - tim_arr[ct[ndd] - 1];
-                if (minCadence > cade) minCadence = cade;
 
+            if (ndd > 0) {
+                double cade = tim_arr[i] - tim_arr[ct[ndd - 1]];
+
+                if (cade <= 0.0) {
+                    nTies++;
+                    if (nTies <= 5) {
+                        std::cerr << "[matchVisibleEpochs:" << label << "] skipping tied/out-of-order "
+                                  << "epoch at index " << i << " (tim=" << tim_arr[i]
+                                  << "), previous kept epoch tim=" << tim_arr[ct[ndd - 1]] << "\n";
+                    }
+                    continue; // keep the earlier one, don't record this as a new epoch
+                }
+
+                if (minCadence > cade) minCadence = cade;
                 if (ndd >= 999) break;
-                CHECK(cade > 0.0);
                 CHECK(tim_arr[i] >= 0.0);
                 CHECK(tim_arr[i] <= Tobs);
                 CHECK(minCadence > 0.0);
             }
+            ct[ndd] = i;
             ndd += 1;
         }
     }
+
+    if (nTies > 5) {
+        std::cerr << "[matchVisibleEpochs:" << label << "] ... " << (nTies - 5)
+                  << " more skipped (total " << nTies << " tied/out-of-order epochs for this sky position)\n";
+    } else if (nTies > 0) {
+        std::cerr << "[matchVisibleEpochs:" << label << "] " << nTies << " tied/out-of-order epoch(s) skipped\n";
+    }
+
     return ndd;
 }
-
 // TODO(Ali): PLACEHOLDER. errlsstM interpolates against a per-visit `sig5` (5-sigma
 // depth), which varies visit-to-visit for a ground-based survey (airmass, sky
 // brightness, seeing). Roman is space-based with far more uniform per-visit depth,
@@ -257,7 +289,7 @@ int main() {
         nri +=  1;
         nde  = -1;
 //        for (s->lat = b1 - wid; s->lat <= b2 + wid; s->lat += dd) {
-        for (s->lat = -1.4; s->lat <= -1.3; s->lat += dd) {
+        for (s->lat = -1.0; s->lat <= -0.9; s->lat += dd) {
 //        for (s->lat = -3.9; s->lat <= -3.8; s->lat += dd) {
             if (s->lon < lx and s->lat > bx) {
                 continue;
@@ -268,8 +300,8 @@ int main() {
 
             cade = 0.0;
 
-            ndd  = matchVisibleEpochs(s->lon, s->lat, FoV, ls->l, ls->b, ls->tim, Nl, ls->ct, minc);
-            nddR = matchVisibleEpochs(s->lon, s->lat, FoVRoman, ro->l, ro->b, ro->tim, NlRoman, ro->ct, mincR);
+            ndd  = matchVisibleEpochs("LSST", s->lon, s->lat, FoV, ls->l, ls->b, ls->tim, Nl, ls->ct, minc);
+            nddR = matchVisibleEpochs("Roman", s->lon, s->lat, FoVRoman, ro->l, ro->b, ro->tim, NlRoman, ro->ct, mincR);
 
             cout << "ndd (LSST): "  << ndd  << "\t minc (LSST): "  << minc  << endl;
             cout << "ndd (Roman): " << nddR << "\t minc (Roman): " << mincR << endl;
@@ -913,7 +945,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     else if (s.fb[0] < 0.85) {co.bb[0] =- 0.07; co.bb[1] =+ 0.07;}
     else                     {co.bb[0] =- 0.07; co.bb[1] =- 0.15;}
 
-
+// (K + H + J)/3 = F146
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 ///        Photometry                                  ///
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH

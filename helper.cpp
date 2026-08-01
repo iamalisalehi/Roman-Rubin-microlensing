@@ -183,7 +183,7 @@ double errlsstM(double mag, int fi, double sig5){ //LSST Photometric Error
     return std::sqrt(delta2 * delta2 + Delta1 * Delta1);
 }
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
-double errlsstA(lsst & ls, double ghadr){ //LSST Astrometric Error 
+double errlsstA(lsst & ls, double ghadr){ //LSST Astrometric Error  //Change it!!
 
     double error = -1.0, shib = 0.0;
 

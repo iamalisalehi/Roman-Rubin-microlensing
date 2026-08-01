@@ -569,13 +569,15 @@ double errRomanM(const roman & ro, double mag);
 // filling `ct` with indices into the instrument's own tim/l/b arrays (sorted by time,
 // since the baseline files are pre-sorted). Returns the number of visible epochs (ndd)
 // and reports the smallest gap between consecutive visible epochs via minCadence.
-int matchVisibleEpochs(double lon, double lat, double fov,
-                        const std::vector<double>& l_arr,
-                        const std::vector<double>& b_arr,
-                        const std::vector<double>& tim_arr,
-                        int nEpochs,
-                        std::vector<int>& ct,
-                        double& minCadence);
+// `label` ("LSST"/"Roman") is used only in diagnostic messages if tied/out-of-order
+// timestamps are found and skipped.
+int matchVisibleEpochs(const char* label, double lon, double lat, double fov,
+                       const std::vector<double>& l_arr,
+                       const std::vector<double>& b_arr,
+                       const std::vector<double>& tim_arr,
+                       int nEpochs,
+                       std::vector<int>& ct,
+                       double& minCadence);
 
 double CCM89_a(double lambda_um);
 double CCM89_b(double lambda_um);

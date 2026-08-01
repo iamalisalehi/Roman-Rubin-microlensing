@@ -8,7 +8,66 @@ unsigned int _dummyVal;
 FILE * _randStream;
 
 ///==============================================================//
+///     Instrument-agnostic epoch matching (LSST or Roman)       //
 ///                                                              //
+///==============================================================//
+// Extracted from the sky-position loop in main() so it can be called once per
+// instrument instead of being hardwired to `ls`. Behavior is unchanged for LSST;
+// calling it a second time with Roman's own l/b/tim arrays and its own FoV is what
+// gives Roman its own epoch list instead of inheriting LSST's cadence.
+int matchVisibleEpochs(double lon, double lat, double fov,
+                        const std::vector<double>& l_arr,
+                        const std::vector<double>& b_arr,
+                        const std::vector<double>& tim_arr,
+                        int nEpochs,
+                        std::vector<int>& ct,
+                        double& minCadence) {
+    int ndd = 0;
+    minCadence = 100000.0;
+
+    for (int i = 0; i < 1000; ++i) ct[i] = -1; // same reset as before
+
+    for (int i = 0; i < nEpochs; ++i) {
+        double dl = lon - l_arr[i];
+        double db = lat - b_arr[i];
+        if (std::sqrt(dl * dl + db * db) <= fov) {
+            ct[ndd] = i;
+            if (ndd > 0) {
+                double cade = tim_arr[ct[ndd]] - tim_arr[ct[ndd] - 1];
+                if (minCadence > cade) minCadence = cade;
+
+                if (ndd >= 999) break;
+                CHECK(cade > 0.0);
+                CHECK(tim_arr[i] >= 0.0);
+                CHECK(tim_arr[i] <= Tobs);
+                CHECK(minCadence > 0.0);
+            }
+            ndd += 1;
+        }
+    }
+    return ndd;
+}
+
+// TODO(Ali): PLACEHOLDER. errlsstM interpolates against a per-visit `sig5` (5-sigma
+// depth), which varies visit-to-visit for a ground-based survey (airmass, sky
+// brightness, seeing). Roman is space-based with far more uniform per-visit depth,
+// so a simple mag-vs-error lookup (no per-visit depth term) may be all you need —
+// but confirm that's actually what sigma_roman.txt encodes before trusting this.
+// This does nearest-neighbor lookup in ro.mag; swap in linear interpolation if
+// sigma_roman.txt's mag sampling is coarse.
+double errRomanM(const roman& ro, double mag)
+{
+    int    best = 0;
+    double bestDiff = std::fabs(ro.mag[0] - mag);
+    for (int i = 1; i < NaRoman; ++i) {
+        double diff = std::fabs(ro.mag[i] - mag);
+        if (diff < bestDiff) { bestDiff = diff; best = i; }
+    }
+    return ro.err[best];
+}
+
+///==============================================================//
+///                                                              //                                                    /
 ///                  Main program                                //
 ///                                                              //
 ///==============================================================//
@@ -91,6 +150,28 @@ int main() {
     fil.close();
     std::cout << "**** File sigma_roman.txt was read ****\n";
  
+    // --------------------- Read RomanBaseline.dat -------------------
+    // TODO(Ali): generate this file from the ROTAC 2025 overguide season/cadence design
+    // (analogous to readbaselineBulge.py, but sourced from Roman's own season structure
+    // rather than an LSST OpSim). Format assumed to mirror BulgeBaseline.dat's columns
+    // that matter for matching: ID RA DEC l b time [sig5] ... — adjust the >> list below
+    // to whatever columns you actually emit.
+    fil.open("./Baseline/RomanBaseline.dat");
+    if (!fil) {
+        std::cerr << "Cannot read RomanBaseline.dat\n";
+        return 1;
+    }
+    std::getline(fil, header); // skip header line
+    for (int i = 0; i < NlRoman; ++i) {
+        fil >> ID >> ro->RA[i] >> ro->DEC[i] >> ro->l[i] >> ro->b[i] >> ro->tim[i] >> ro->sig5[i];
+
+        CHECK(ro->tim[i] >= 0.0);
+        CHECK(ro->tim[i] <= Tobs);
+        // Deliberately no filter CHECK here — Roman is single-band (F146, index 6) for now.
+    }
+    fil.close();
+    std::cout << "**** File RomanBaseline.dat was read ****\n";
+
     // --------------------- Read extinction ------------------------
     readBayestar(*ex,"./files/ext/");
     std::cout << "**** File extinctionf.txt was read ****\n";
@@ -103,9 +184,11 @@ int main() {
     int    nri = -1, nde = -1, icon;
     int    nlens;// hh; // nde1, nri1, 
     int    gi,       ndw, sq, ndd;
+    int    giR,      sqR, nddR; // Roman-side cursor/count, parallel to gi/sq/ndd
     int    flag_det; // nml = 0;
     int    flagf,  fi; // datf1, datf2;
     double errs,   errg, fdet, minc, cade; // fel, , mind
+    double mincR, cadeR, errgR; // Roman-side cadence/error tracking, parallel to minc/cade/errg
     double magnio, test, deltaA; // dist,  
     double Astar0, As1,  As0;
     double initial;
@@ -176,344 +259,396 @@ int main() {
 //        for (s->lat = b1 - wid; s->lat <= b2 + wid; s->lat += dd) {
         for (s->lat = -1.4; s->lat <= -1.3; s->lat += dd) {
 //        for (s->lat = -3.9; s->lat <= -3.8; s->lat += dd) {
-            if (s->lon < lx and s->lat > bx) continue;
+            if (s->lon < lx and s->lat > bx) {
+                continue;
+            };
             nde += 1;
             cout << ">>>>>>>>>>> NEW STEP " << nde << " <<<<<<<<\t nri:  " << nri << endl;
             cout << "longtitude: " << s->lon << "\t latitude: " << s->lat << endl;
 
-                ndd = 0; minc = 100000.0; cade = 0.0;
-                
-                for (int i = 0; i < 1000; ++i) ls->ct[i] = -1; // Initialize ct
-                
-                for (int i = 0; i < Nl; ++i) {
-                    if (std::sqrt((s->lon - ls->l[i]) * (s->lon - ls->l[i]) + (s->lat - ls->b[i]) * (s->lat - ls->b[i])) <= FoV) {
-                        // If LSST sees the source
-                        ls->ct[ndd] = i;
-                        if (ndd > 0) {
-                            cade = ls->tim[ls->ct[ndd]] - ls->tim[ls->ct[ndd]-1];
+            cade = 0.0;
 
-                            if (minc > cade) minc = cade;
+            ndd  = matchVisibleEpochs(s->lon, s->lat, FoV, ls->l, ls->b, ls->tim, Nl, ls->ct, minc);
+            nddR = matchVisibleEpochs(s->lon, s->lat, FoVRoman, ro->l, ro->b, ro->tim, NlRoman, ro->ct, mincR);
 
-                            if (ndd >= 999) break; // Break out of the loop when ndd reached 999
-                            CHECK(cade > 0.0);
-                            CHECK(ls->tim[i] >= 0.0);
-                            CHECK(ls->tim[i] <= Tobs);
-                            CHECK(ls->filter[i] >= 0);
-                            CHECK(ls->filter[i] < 6);
-                            CHECK(ls->sig5[i] >= 0.0);
-                            CHECK(ls->sig5[i] <= 40.0);
-                            CHECK(minc > 0.0);
-                        }
-                        ndd += 1;
-                    }
-                }
-                cout << "ndd: " << ndd << "\t minc: " << minc << endl;
+            cout << "ndd (LSST): "  << ndd  << "\t minc (LSST): "  << minc  << endl;
+            cout << "ndd (Roman): " << nddR << "\t minc (Roman): " << mincR << endl;
  
-                icon  = 0;
-                nlens = 0;
-                nsim  = 0.0;
-                nerr  = 0.0;
-                for (int i = 0; i < Num; ++i) { s->nssim[i] = 0.0;  s->nsdet[i] = 0.0; }
-                for (int i = 0; i <= GG; ++i) { l->nstE[i]  = 0.0;  l->ndtE[i]  = 0.0; }
+            icon  = 0;
+            nlens = 0;
+            nsim  = 0.0;
+            nerr  = 0.0;
+            for (int i = 0; i < Num; ++i) { s->nssim[i] = 0.0;  s->nsdet[i] = 0.0; }
+            for (int i = 0; i <= GG; ++i) { l->nstE[i]  = 0.0;  l->ndtE[i]  = 0.0; }
 
-                s->TET = (360.0 - s->lon) / RAa;///radian s.lon/RA;//
-                s->FI  = s->lat / RAa;
-                
-                Disk_model(*s, 1);
-                int sightlineIdx = nearestSightline(*ex, s->lon, s->lat);
+            s->TET = (360.0 - s->lon) / RAa;///radian s.lon/RA;//
+            s->FI  = s->lat / RAa;
+            
+            Disk_model(*s, 1);
+            int sightlineIdx = nearestSightline(*ex, s->lon, s->lat);
 
-                records.clear();
-                do { //Start of visible star
-                    nsim += 1.0;
-                    func_source(*s, *cm, *ex, sightlineIdx);
-                    func_lens(*l, *s);
-//                    std::cerr << "nsim=" << nsim << "  Ds=" << s->Ds << "  mass=" << s->mass
-//                              << "  nums=" << s->nums << "  Ml=" << l->Ml << "  u0=" << l->u0 << "\n";
-                    optical_depth(*s);
+            records.clear();
+            do { //Start of visible star
+                nsim += 1.0;
+                func_source(*s, *cm, *ex, sightlineIdx);
+                func_lens(*l, *s);
+//                std::cerr << "nsim=" << nsim << "  Ds=" << s->Ds << "  mass=" << s->mass
+//                          << "  nums=" << s->nums << "  Ml=" << l->Ml << "  u0=" << l->u0 << "\n";
+                optical_depth(*s);
 
-                    s->nssim[s->nums] += 1.0;
-                    flagf   = 0;
-                    flagm   = 0;
-                    initial = 0.0;
-                    test = RandR(0.0, 1.0);
+                s->nssim[s->nums] += 1.0;
+                flagf   = 0;
+                flagm   = 0;
+                initial = 0.0;
+                test = RandR(0.0, 1.0);
 
-                    for (int i = 0; i < coun; ++i) {
-                        l->timn[i] = 0.0;  l->magn[i] = 0.0; l->soux[i] = 0.0;  l->souy[i] = 0.0;
-                        l->errm[i] = 0.0;  l->erra[i] = 0.0; l->tele[i] = -1;
-                    }
-
-                    ndw     = 0;   flag_det = 0;
-                    flag0   = 0.0; flag1    = 0.0; flag2 = 0.0;
-                    chi1    = 0.0; chi2     = 0.0; chi3  = 0.0;
-                    chi1a   = 0.0; chi2a    = 0.0; chi3a = 0.0;
-                    def1p   = 0.0; s->def1c = 0.0; vsave = 0.0;
-                    def2p   = 0.0; s->def2c = 0.0;
-                    s->errM = 0.0; s->errA  = 0.0;
-                    dchiL   = 0.0; dchiP    = 0.0; dchiA = 0.0;
-
-                    dt   = 60.0;///days
-                    fdet = 0.0;
-
-                    for (int i = 0; i < M; ++i) {
-                        Mpeak = s->magb[i] - 2.5 * std::log10(l->A0 * s->blend[i] + 1.0 - s->blend[i]);
-                            cout << "i=" << i << "  Mab=" << s->Mab[i] << "  Map=" << s->Map[i]
-                                 << "  blend=" << s->blend[i] << "  Mpeak=" << Mpeak << endl;
-                        if (Mpeak <= thre[i] and s->magb[i] > satu[i])    fdet += 1.0;
-                    }
-
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
-                    if (test <= s->blend[2] and fdet > 1.0) { //at least detectable in two filters
-                        cout << "************** DETECTABLE!!!!!! ********" << endl;
-                        s->nsdet[s->nums] += 1.0;
-                        flagf = 1;
-                        test  = RandR(0.0, 100.0);
-    
-                        if (test < 1.0 && save < 0 && IMnum == 1) {
-                            initial = 20.0 * year;
-                            save += 1;
-                            flagm = 1;
-                        }
-    
-                        gi = 0;
-                        for (double tim = float(0.0 * year - 100.0 - initial);  tim < float(10.0 * year + 100.0 + initial); tim = tim + dt) {
-                            lightcurve(*s, *l, *as, tim);
-                            Astar0   = double(s->ut0 * s->ut0 + 2.0) / std::sqrt(s->ut0 * s->ut0 * (s->ut0 * s->ut0 + 4.0)); //MAgnification equation
-                            s->Astar = double(s->ut  * s->ut  + 2.0) / std::sqrt(s->ut  * s->ut  * (s->ut  * s->ut  + 4.0)); //MAgnification equation
-                            As0      = double(Astar0   * s->blend[2] + 1.0 - s->blend[2]);
-                            As1      = double(s->Astar * s->blend[2] + 1.0 - s->blend[2]); //LSST r-band
-                            vs1      = double(s->mus1 + (s->def1c - def1p) / dt); //[mas/days]
-                            vs2      = double(s->mus2 + (s->def2c - def2p) / dt); //[mas/days]
-                            def1p    = s->def1c; //pervious
-                            def2p    = s->def2c;
-    
-                            if (flagm > 0) {
-                                fil4 << std::fixed << std::setprecision(4)
-                                     << tim      << " " << s->def1c << " " << s->def2c << " " << As0      << " " << As1 << " "
-                                     << s->pos1b << " " << s->pos2b << " " << s->pos1c << " " << s->pos2c << " "
-                                     << s->def1a << " " << s->def2a << " " << l->pos1  << " " << l->pos2  << "\n";
-                            }
-    
-                            for (int i = 0; i < M; ++i) {
-                                magni0[i] = s->magb[i] - 2.5 * std::log10(Astar0   * s->blend[i] + 1.0 - s->blend[i]);
-                                magni[i]  = s->magb[i] - 2.5 * std::log10(s->Astar * s->blend[i] + 1.0 - s->blend[i]);
-                            }
-                            sq = int(ls->ct[gi]);
-    
-                            if (tim >= 0.0 and tim <= Tobs and tim >= ls->tim[int(ls->ct[0])] and tim <= ls->tim[int(ls->ct[ndd - 1])] and
-                                gi < ndd and sq >= 0 and sq <= static_cast<int>(Nl) and tim >= ls->tim[sq]) {
-    
-                                fi = int(ls->filter[sq]);
-    
-                                if (magni[fi] >= satu[fi] and magni[fi] <= thre[fi]) {
-                                    errg = errlsstM(magni[fi], int(fi), double(ls->sig5[sq])); //[mag]
-                                    errs = errlsstA(*ls, magni[2]); ///[mas]
-    
-                                    deltaA = std::fabs(std::pow(10.0, -0.4 * errg) - 1.0) * (s->blend[fi] * s->Astar + 1.0 - s->blend[fi]);
-                                    magnio = magni[fi] + RandN(errg, 3.0);
-    
-                                    chi1 += std::fabs((magnio -   magni[fi]) * (magnio -   magni[fi]) / (errg * errg)); //real
-                                    chi2 += std::fabs((magnio -  magni0[fi]) * (magnio -  magni0[fi]) / (errg * errg)); //real no parallax
-                                    chi3 += std::fabs((magnio - s->magb[fi]) * (magnio - s->magb[fi]) / (errg * errg)); //baseline
-    
-                                    sil  = RandN(errs * std::sqrt(2.0), 3.0);
-                                    sil2 = RandN(errs, 3.0);
-    
-                                    trajm = std::sqrt(s->pos1b * s->pos1b + s->pos2b * s->pos2b); //stright + parallax
-                                    trajp = std::sqrt(s->pos1c * s->pos1c + s->pos2c * s->pos2c); //stright + parallax+lensing
-    
-                                    chi1a += std::fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs * 2.0)); //real trajectory
-                                    chi2a += std::fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs * 2.0)); //real without lensing
-                                    chi3a += std::fabs( sil2  * sil2 / (errs * errs));
-     
-                                    l->timn[ndw] = tim;
-                                    l->magn[ndw] = magni[2]; //scale to r-LSST band, but the errors are different
-                                    l->errm[ndw] = errg;
-                                    l->soux[ndw] = s->pos1c;
-                                    l->souy[ndw] = s->pos2c;
-                                    l->erra[ndw] = errs;
-                                    l->tele[ndw] = 0;
-    
-                                    flag2 = 0.0;
-                                    if (std::fabs(magnio - s->magb[fi]) > std::fabs(3.0 * errg))    flag2 = 1.0;
-                                    if (ndw > 2 and float(flag0 + flag1 + flag2) > 2.0)   flag_det = 1;
-                                    flag0 = flag1;
-                                    flag1 = flag2;
-    
-                                    if (flagm > 0) {
-                                        fil5 << std::fixed << std::setprecision(4)
-                                             << tim     << "  "
-                                             << std::setprecision(6) << As1 + RandN(deltaA, 3.0)    << "  "
-                                             << deltaA  << "  "
-                                             << std::setprecision(4) << s->pos1c + RandN(errs, 3.0) << "  "
-                                             << s->pos2c + RandN(errs, 3.0) << "  "
-                                             << s->def1c + RandN(errs, 3.0) << "  "
-                                             << s->def2c + RandN(errs, 3.0) << "  "
-                                             << errs    << "  "
-                                             << 1.0     << "  "
-                                             << int(fi) << "\n";
-                                    }
-    
-                                    CHECK(sq >= 0);
-                                    CHECK(sq <= int(Nl - 1));
-                                    CHECK(fi >= 0);
-                                    CHECK(fi <= 5);
-                                    CHECK(ndw <= ndd);
-                                    CHECK(errs >= 0.0);
-                                    CHECK(errg >= 0.0);
-                                    CHECK(deltaA >= 0.0);
-                                    CHECK(gi <= ndd);
-    
-                                    s->errM += deltaA;
-                                    s->errA += errs;
-                                    vsave += std::sqrt(vs1 * vs1 + vs2 * vs2);
-    
-                                    ndw += 1;
-                                }//magnitude limit
-                                gi += 1;
-                            }
-    
-                            if ( tim < -50.0 or tim > (10.0 * year + 50.0)) dt = 60.0; //days
-    
-                            else if (tim < ls->tim[int(ls->ct[0])] or tim > ls->tim[int(ls->ct[ndd-1])]) dt=3.0; //days
-    
-                            else {
-                                if (gi > 0 and gi < ndd) cade = float(ls->tim[int(ls->ct[gi])] - ls->tim[int(ls->ct[gi-1])]); //days
-                                else  cade = minc;
-                                dt = double(cade);
-                            }
-    
-                        }//end of loop time
-                        if (flagm > 0) {
-                            fil4.close();
-                            fil5.close();
-                        }
-                    }// end of visible star
-
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH 
-                    for (int i = 0; i < nq; ++i) co->resu[i] = -1.0;
-    
-                    FFG[0] = 0;
-                    FFG[1] = 0;
-                    FFG[2] = 0;
-    
-                    //cout << "flagf: " << flagf << "ndw: " << ndw << endl;
-    
-                    if (flagf == 0 or ndw <= 2) {
-                        errg    = errlsstM(s->magb[2], 2, double(24.43)); //r-band
-                        s->errA = errlsstA(*ls, s->magb[2]); //r-band
-                        s->errM = std::fabs(std::pow(10.0, - 0.4 * errg) - 1.0); //r-band
-                        dchiL = 0.0;
-                        dchiP = 0.0;
-                        dchiA = 0.0;
-                        vsave = s->mus;
-                    }
-    
-                    if (flagf > 0 and ndw > 2) { //if star is visible
-                        cout << "************** DETECTABLE!!!!!! ********" << endl;
-                        icon +=1;
-                        vsave   = double(vsave   / (ndw + 0.000065645));
-                        s->errM = double(s->errM / (ndw + 0.000065645));
-                        s->errA = double(s->errA / (ndw + 0.000065645));
-                        dchiL   = std::fabs(chi3  - chi1);  //lensing_effect
-                        dchiP   = std::fabs(chi2  - chi1);  //parallax_effect
-                        dchiA   = std::fabs(chi2a - chi1a); //deflection_effect
-       
-                        if (s->FWHM < Tobs and dchiL > float(2.0 * ndw) and flag_det > 0 and ndw > 10) { //lensing
-                            FFG[0] = 1; //Lensing
-                            nlens += FFG[0];
-                            FisherM(*s, *l, *as, *co, ndw);
-    
-                            if (co->flagi > 0) {
-                                nerr += 1.0;
-                                ErrorCal(*co, *l, *s);
-    
-                                std::ofstream fil0_append(fnLDt, std::ios::app);
-                                fil0_append << std::fixed << std::setprecision(5)
-                                            << l->Ml       << " " << l->Dl       << " " << l->mul       << " " << s->fb[0]     << " " << s->mbs[0]   << " "
-          << std::setprecision(7)           << l->tE       << " " << l->murel    << " " << l->u0        << " " << s->lon       << " " << s->lat      << " "
-                                            << l->piE      << " " << l->tetE     << " " << co->resu[1]  << " " << co->resu[2]  << " " << co->resu[3] << " "
-                                            << co->resu[5] << " " << co->resu[9] << " " << co->resu[10] << " " << co->resu[13] << "\n";
-                                fil0_append.close();
-                            }
-                        }
-                        gg = FunctE(*l);
-                        //ss = int(FuncMl(*l));
-                        //qq = int(FuncPi(*l));
-                        //ww = int(Funcu0(*l));
-                        //vv = int(FuncMu(*l));
-                        //zz = int(FuncMb(*l, s->Map[2]));
-                        //pp = int(FuncFb(*l, s->blend[2]));
-                    }
-//                CHECK(gg >= 0);
-
-                records.push_back(EventRecord{
-                    icon, static_cast<int>(FFG[0]),
-                    l->tE, l->RE/AU, l->piE, l->tetE, l->Vt, l->u0, l->Ml,
-                    s->opt*1.0e6, l->Dl, s->Ds, l->vl, s->vs,
-                    s->mbs[0], s->fb[0],
-                    gg, static_cast<int>(l->struc),
-                    s->FWHM/year, vsave/s->mus, l->DeltaT/s->errA, l->murel*year,
-                    co->resu[0], co->resu[1], co->resu[2], co->resu[3], co->resu[5],
-                    co->resu[9], co->resu[10], co->resu[13], co->resu[14],
-                    s->Map[2], s->nsbl[2],
-                    co->flagi, s->Ai[2]
-                });
-   
-                filg_in.open(testf, std::ios::app);
-                filg_in << icon           << " " << FFG[0]         << " " << l->tE                      << " "
-                        << l->RE / AU     << " " << l->piE         << " " << l->tetE                    << " "
-                        << l->Vt          << " " << l->u0          << " " << l->Ml                      << " " 
-                        << s->opt * 1.0e6 << " " << l->Dl          << " " << s->Ds                      << " "
-                        << l->vl          << " " << s->vs          << " " << s->mbs[0]                  << " "
-                        << s->fb[0]       << " " << gg             << " " << static_cast<int>(l->struc) << " "
-                        << s->FWHM / year << " " << vsave / s->mus << " " << l->DeltaT / s->errA        << " " << l->murel * year << " "
-                        << co->resu[0]    << " " << co->resu[1]    << " " << co->resu[2]                << " " 
-                        << co->resu[3]    << " " << co->resu[5]    << " "
-                        << co->resu[9]    << " " << co->resu[10]   << " " << co->resu[13]               << " " << co->resu[14]    << " "
-                        << s->Map[2]      << " " << s->nsbl[2]     << " " << co->flagi                  << " " << s->Ai[2]        << "\n";
-                filg_in.close();
-//            }
-
-
-                if (flagm > 0 && IMnum == 1) {
-                    std::ofstream fil1_append("./files/MONTLMC/files/BHLSSTMONTS.dat", std::ios::app);
-
-                    fil1_append << save            << " " << std::fixed << std::setprecision(5)
-                                << s->lat          << " " << s->lon         << " "
-                                << static_cast<int>(l->struc)               << " " << l->Ml           << " "
-                                << l->Dl           << " " << l->vl          << " "
-                                << static_cast<int>(s->struc)               << " " << s->cl           << " "
-                                << s->Ds           << " " << s->logT        << " " << s->mass         << " "
-                                << s->vs           << " " << s->Mab[2]      << " " << s->Mab[6]       << " "
-                                << s->Map[2]       << " " << s->Map[6]      << " "
-                                << s->mbs[0]       << " " << s->mbs[1]      << " " << s->fb[0]        << " "
-                                << s->fb[1]        << " " << s->nsbl[2]     << " "
-                                << s->nsbl[6]      << " " << s->Ai[2]       << " " << s->Ai[6]        << " "
-                                << std::setprecision(7)
-                                << l->tE           << " " << l->RE / AU     << " " << l->t0           << " "
-                                << l->mul          << " " << l->Vt          << " " << l->u0           << " "
-                                << s->opt*1.0e6    << " " << l->tetE        << " "
-                                << s->mus1         << " " << s->mus2        << " " << s->xi           << " "
-                                << l->mul1         << " " << l->mul2        << " " << l->piE          << " "
-                                << s->errM         << " " << s->errA        << " "
-                                << flagf           << " " << flag_det       << " " << dchiL           << " "
-                                << dchiP           << " " << dchiA          << " " << ndw             << " "
-                                << FFG[0]          << " " << FFG[1]         << " " << FFG[2]          << " "
-                                << s->Rostart      << " " << s->Nstart      << " " << l->mi1          << " "
-                                << l->mi2          << " " << vsave          << " " << s->FWHM         << " "
-                                << chi3a           << " " << nri            << " " << nde             << " "
-                                << l->betal  * RAa << " " << l->betas * RAa << " " << l->deltal * RAa << " "
-                                << l->deltas * RAa << " "
-                                << l->deltao * RAa << " "
-                                << co->resu[0]     << " " << co->resu[1]    << " " << co->resu[2]     << " "
-                                << co->resu[3]     << " " << co->resu[5]    << " "
-                                << co->resu[9]     << " " << co->resu[10]   << " " << co->resu[13]    << " "
-                                << co->resu[14]    << "\n";
-                    
-                    fil1_append.close();
+                for (int i = 0; i < coun; ++i) {
+                    l->timn[i] = 0.0;  l->magn[i] = 0.0; l->soux[i] = 0.0;  l->souy[i] = 0.0;
+                    l->errm[i] = 0.0;  l->erra[i] = 0.0; l->tele[i] = -1;
                 }
-                //cout << "** End of saving in the file *********" << save << endl;
-                //cout << "icon: " << icon << "\tnlens: " << nlens << "\tnerr: " << nerr << endl;
+
+                ndw     = 0;   flag_det = 0;
+                flag0   = 0.0; flag1    = 0.0; flag2 = 0.0;
+                chi1    = 0.0; chi2     = 0.0; chi3  = 0.0;
+                chi1a   = 0.0; chi2a    = 0.0; chi3a = 0.0;
+                def1p   = 0.0; s->def1c = 0.0; vsave = 0.0;
+                def2p   = 0.0; s->def2c = 0.0;
+                s->errM = 0.0; s->errA  = 0.0;
+                dchiL   = 0.0; dchiP    = 0.0; dchiA = 0.0;
+
+                dt   = 60.0;///days
+                fdet = 0.0;
+
+                for (int i = 0; i < M; ++i) {
+                    Mpeak = s->magb[i] - 2.5 * std::log10(l->A0 * s->blend[i] + 1.0 - s->blend[i]);
+//                        cout << "i=" << i << "  Mab=" << s->Mab[i] << "  Map=" << s->Map[i]
+//                             << "  blend=" << s->blend[i] << "  Mpeak=" << Mpeak << endl;
+                    if (Mpeak <= thre[i] and s->magb[i] > satu[i])    fdet += 1.0;
+                }
+
+///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
+                if (test <= s->blend[2] and fdet > 1.0) { //at least detectable in two filters
+                    cout << "************** DETECTABLE!!!!!! ********" << endl;
+                    s->nsdet[s->nums] += 1.0;
+                    flagf = 1;
+                    test  = RandR(0.0, 100.0);
+    
+                    if (test < 1.0 && save < 0 && IMnum == 1) {
+                        initial = 20.0 * year;
+                        save += 1;
+                        flagm = 1;
+                    }
+    
+                    gi = 0;
+                    gi = 0; giR = 0;
+                    for (double tim = float(0.0 * year - 100.0 - initial);  tim < float(10.0 * year + 100.0 + initial); tim = tim + dt) {
+                        lightcurve(*s, *l, *as, tim);
+                        Astar0   = double(s->ut0 * s->ut0 + 2.0) / std::sqrt(s->ut0 * s->ut0 * (s->ut0 * s->ut0 + 4.0)); //MAgnification equation
+                        s->Astar = double(s->ut  * s->ut  + 2.0) / std::sqrt(s->ut  * s->ut  * (s->ut  * s->ut  + 4.0)); //MAgnification equation
+                        As0      = double(Astar0   * s->blend[2] + 1.0 - s->blend[2]);
+                        As1      = double(s->Astar * s->blend[2] + 1.0 - s->blend[2]); //LSST r-band
+                        vs1      = double(s->mus1 + (s->def1c - def1p) / dt); //[mas/days]
+                        vs2      = double(s->mus2 + (s->def2c - def2p) / dt); //[mas/days]
+                        def1p    = s->def1c; //pervious
+                        def2p    = s->def2c;
+    
+                        if (flagm > 0) {
+                            fil4 << std::fixed << std::setprecision(4)
+                                 << tim      << " " << s->def1c << " " << s->def2c << " " << As0      << " " << As1 << " "
+                                 << s->pos1b << " " << s->pos2b << " " << s->pos1c << " " << s->pos2c << " "
+                                 << s->def1a << " " << s->def2a << " " << l->pos1  << " " << l->pos2  << "\n";
+                        }
+    
+                        for (int i = 0; i < M; ++i) {
+                            magni0[i] = s->magb[i] - 2.5 * std::log10(Astar0   * s->blend[i] + 1.0 - s->blend[i]);
+                            magni[i]  = s->magb[i] - 2.5 * std::log10(s->Astar * s->blend[i] + 1.0 - s->blend[i]);
+                        }
+                        sq = int(ls->ct[gi]);
+                        sq  = int(ls->ct[gi]);
+                        sqR = (nddR > 0 and giR < nddR) ? int(ro->ct[giR]) : -1;
+
+                        // ---------------- LSST (ugrizy) ----------------
+    
+                        if (tim >= 0.0 and tim <= Tobs and tim >= ls->tim[int(ls->ct[0])] and tim <= ls->tim[int(ls->ct[ndd - 1])] and
+                            gi < ndd and sq >= 0 and sq <= static_cast<int>(Nl) and tim >= ls->tim[sq]) {
+    
+                            fi = int(ls->filter[sq]);
+    
+                            if (magni[fi] >= satu[fi] and magni[fi] <= thre[fi]) {
+                                errg = errlsstM(magni[fi], int(fi), double(ls->sig5[sq])); //[mag]
+                                errs = errlsstA(*ls, magni[2]); ///[mas]
+    
+                                deltaA = std::fabs(std::pow(10.0, -0.4 * errg) - 1.0) * (s->blend[fi] * s->Astar + 1.0 - s->blend[fi]);
+                                magnio = magni[fi] + RandN(errg, 3.0);
+    
+                                chi1 += std::fabs((magnio -   magni[fi]) * (magnio -   magni[fi]) / (errg * errg)); //real
+                                chi2 += std::fabs((magnio -  magni0[fi]) * (magnio -  magni0[fi]) / (errg * errg)); //real no parallax
+                                chi3 += std::fabs((magnio - s->magb[fi]) * (magnio - s->magb[fi]) / (errg * errg)); //baseline
+    
+                                sil  = RandN(errs * std::sqrt(2.0), 3.0);
+                                sil2 = RandN(errs, 3.0);
+    
+                                trajm = std::sqrt(s->pos1b * s->pos1b + s->pos2b * s->pos2b); //stright + parallax
+                                trajp = std::sqrt(s->pos1c * s->pos1c + s->pos2c * s->pos2c); //stright + parallax+lensing
+    
+                                chi1a += std::fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs * 2.0)); //real trajectory
+                                chi2a += std::fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs * 2.0)); //real without lensing
+                                chi3a += std::fabs( sil2  * sil2 / (errs * errs));
+
+                                CHECK(ndw < coun); // array-bounds guard — see note on `coun` sizing
+                                l->timn[ndw] = tim;
+                                l->magn[ndw] = magni[2]; //scale to r-LSST band, but the errors are different
+                                l->errm[ndw] = errg;
+                                l->soux[ndw] = s->pos1c;
+                                l->souy[ndw] = s->pos2c;
+                                l->erra[ndw] = errs;
+                                l->tele[ndw] = 0; // 0 = LSST
+    
+                                flag2 = 0.0;
+                                if (std::fabs(magnio - s->magb[fi]) > std::fabs(3.0 * errg))    flag2 = 1.0;
+                                if (ndw > 2 and float(flag0 + flag1 + flag2) > 2.0)   flag_det = 1;
+                                flag0 = flag1;
+                                flag1 = flag2;
+    
+                                if (flagm > 0) {
+                                    fil5 << std::fixed << std::setprecision(4)
+                                         << tim     << "  "
+                                         << std::setprecision(6) << As1 + RandN(deltaA, 3.0)    << "  "
+                                         << deltaA  << "  "
+                                         << std::setprecision(4) << s->pos1c + RandN(errs, 3.0) << "  "
+                                         << s->pos2c + RandN(errs, 3.0) << "  "
+                                         << s->def1c + RandN(errs, 3.0) << "  "
+                                         << s->def2c + RandN(errs, 3.0) << "  "
+                                         << errs    << "  "
+                                         << 1.0     << "  "
+                                         << int(fi) << "\n";
+                                }
+    
+                                CHECK(sq >= 0);
+                                CHECK(sq <= int(Nl - 1));
+                                CHECK(fi >= 0);
+                                CHECK(fi <= 5);
+                                CHECK(errs >= 0.0);
+                                CHECK(errg >= 0.0);
+                                CHECK(deltaA >= 0.0);
+                                CHECK(gi <= ndd);
+    
+                                s->errM += deltaA;
+                                s->errA += errs;
+                                vsave += std::sqrt(vs1 * vs1 + vs2 * vs2);
+    
+                                ndw += 1;
+                            }//magnitude limit
+                            gi += 1;
+                        }
+                        // ---------------- Roman (F146) — new ----------------
+                        // TODO(Ali): chi1/chi2/chi3/flag_det/s->errM/s->errA are the
+                        // LSST-only detection-significance and running-error bookkeeping
+                        // carried over from the original single-instrument code. Roman
+                        // points feed `l->timn/magn/errm/tele` (i.e. the Fisher-matrix
+                        // input) but are deliberately NOT added to those LSST-only
+                        // accumulators yet, so this refactor doesn't silently change your
+                        // existing detection/yield numbers. Decide deliberately whether a
+                        // combined detection-significance metric makes sense before wiring
+                        // Roman into chi1/chi2/chi3 too.
+                        if (nddR > 0 and tim >= 0.0 and tim <= Tobs and
+                            tim >= ro->tim[int(ro->ct[0])] and tim <= ro->tim[int(ro->ct[nddR - 1])] and
+                            giR < nddR and sqR >= 0 and sqR <= static_cast<int>(NlRoman) and tim >= ro->tim[sqR]) {
+
+                            constexpr int fiR = 6; // F146 — the only Roman band modeled so far
+
+                            if (magni[fiR] >= satu[fiR] and magni[fiR] <= thre[fiR]) {
+                                // TODO(Ali): confirm this matches how sigma_roman.txt / ro->mag,ro->err
+                                // are meant to be interpolated (see errRomanM stub near matchVisibleEpochs).
+                                errgR = errRomanM(*ro, magni[fiR]); //[mag]
+
+                                CHECK(ndw < coun); // array-bounds guard — see note on `coun` sizing
+                                l->timn[ndw] = tim;
+                                l->magn[ndw] = magni[fiR]; // F146 magnitude — NOT magni[2]; FisherM's
+                                                            // tt==1 branch compares against s.mbs[1]/s.fb[1],
+                                                            // which are F146-based, so the reference point
+                                                            // recorded here must be F146 too.
+                                l->errm[ndw] = errgR;
+                                l->soux[ndw] = s->pos1c;
+                                l->souy[ndw] = s->pos2c;
+                                // TODO(Ali): Roman has its own astrometric precision (it's the whole
+                                // point of the astrometric-microlensing science case). Reusing LSST's
+                                // `errs` here is a placeholder so the array has *something* consistent
+                                // in it; replace with a Roman astrometric error model when ready.
+                                l->erra[ndw] = errs;
+                                l->tele[ndw] = 1; // 1 = Roman/F146
+
+                                CHECK(sqR >= 0);
+                                CHECK(sqR <= int(NlRoman - 1));
+                                CHECK(errgR >= 0.0);
+                                CHECK(giR <= nddR);
+
+                                ndw += 1;
+                            }//magnitude limit
+                            giR += 1;
+                        }
+
+                        // ---------------- Adaptive step size ----------------
+                        // dt must respect whichever instrument's *next* epoch is sooner.
+                        // Sizing dt to LSST's cadence alone (the original behavior) would
+                        // silently step right over Roman's much denser epochs.
+                        if ( tim < -50.0 or tim > (10.0 * year + 50.0)) {
+                            dt = 60.0; //days
+                        }
+    
+                        else {
+                            bool lsstInWindow  = (tim >= ls->tim[int(ls->ct[0])] and tim <= ls->tim[int(ls->ct[ndd - 1])]);
+                            bool romanInWindow = (nddR > 0 and tim >= ro->tim[int(ro->ct[0])] and tim <= ro->tim[int(ro->ct[nddR - 1])]);
+
+                            if (lsstInWindow) {
+                                if (gi > 0 and gi < ndd) cade = float(ls->tim[int(ls->ct[gi])] - ls->tim[int(ls->ct[gi - 1])]); //days
+                                else cade = minc;
+                            } else {
+                                cade = 3.0; //days — matches the original "outside LSST window" fallback
+                            }
+
+                            if (romanInWindow) {
+                                if (giR > 0 and giR < nddR) cadeR = float(ro->tim[int(ro->ct[giR])] - ro->tim[int(ro->ct[giR - 1])]); //days
+                                else cadeR = mincR;
+                            } else {
+                                cadeR = cade; // Roman not active right now — don't let it constrain dt
+                            }
+
+                            dt = double(std::min(cade, cadeR));
+                        }
+    
+                    }//end of loop time
+                    if (flagm > 0) {
+                        fil4.close();
+                        fil5.close();
+                    }
+                }// end of visible star
+
+///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH 
+                for (int i = 0; i < nq; ++i) co->resu[i] = -1.0;
+    
+                FFG[0] = 0;
+                FFG[1] = 0;
+                FFG[2] = 0;
+    
+                //cout << "flagf: " << flagf << "ndw: " << ndw << endl;
+    
+                if (flagf == 0 or ndw <= 2) {
+                    errg    = errlsstM(s->magb[2], 2, double(24.43)); //r-band
+                    s->errA = errlsstA(*ls, s->magb[2]); //r-band
+                    s->errM = std::fabs(std::pow(10.0, - 0.4 * errg) - 1.0); //r-band
+                    dchiL = 0.0;
+                    dchiP = 0.0;
+                    dchiA = 0.0;
+                    vsave = s->mus;
+                }
+    
+                if (flagf > 0 and ndw > 2) { //if star is visible
+                    cout << "************** DETECTABLE!!!!!! ********" << endl;
+                    icon +=1;
+                    vsave   = double(vsave   / (ndw + 0.000065645));
+                    s->errM = double(s->errM / (ndw + 0.000065645));
+                    s->errA = double(s->errA / (ndw + 0.000065645));
+                    dchiL   = std::fabs(chi3  - chi1);  //lensing_effect
+                    dchiP   = std::fabs(chi2  - chi1);  //parallax_effect
+                    dchiA   = std::fabs(chi2a - chi1a); //deflection_effect
+       
+                    if (s->FWHM < Tobs and dchiL > float(2.0 * ndw) and flag_det > 0 and ndw > 10) { //lensing
+                        FFG[0] = 1; //Lensing
+                        nlens += FFG[0];
+                        FisherM(*s, *l, *as, *co, ndw);
+    
+                        if (co->flagi > 0) {
+                            nerr += 1.0;
+                            ErrorCal(*co, *l, *s);
+    
+                            std::ofstream fil0_append(fnLDt, std::ios::app);
+                            fil0_append << std::fixed << std::setprecision(5)
+                                        << l->Ml       << " " << l->Dl       << " " << l->mul       << " " << s->fb[0]     << " " << s->mbs[0]   << " "
+          <<std::setprecision(7)           << l->tE       << " " << l->murel    << " " << l->u0        << " " << s->lon       << " " << s->lat      << " "
+                                        << l->piE      << " " << l->tetE     << " " << co->resu[1]  << " " << co->resu[2]  << " " << co->resu[3] << " "
+                                        << co->resu[5] << " " << co->resu[9] << " " << co->resu[10] << " " << co->resu[13] << "\n";
+                            fil0_append.close();
+                        }
+                    }
+                    gg = FunctE(*l);
+                    //ss = int(FuncMl(*l));
+                    //qq = int(FuncPi(*l));
+                    //ww = int(Funcu0(*l));
+                    //vv = int(FuncMu(*l));
+                    //zz = int(FuncMb(*l, s->Map[2]));
+                    //pp = int(FuncFb(*l, s->blend[2]));
+                }
+//            CHECK(gg >= 0);
+
+            records.push_back(EventRecord{
+                icon, static_cast<int>(FFG[0]),
+                l->tE, l->RE/AU, l->piE, l->tetE, l->Vt, l->u0, l->Ml,
+                s->opt*1.0e6, l->Dl, s->Ds, l->vl, s->vs,
+                s->mbs[0], s->fb[0],
+                gg, static_cast<int>(l->struc),
+                s->FWHM/year, vsave/s->mus, l->DeltaT/s->errA, l->murel*year,
+                co->resu[0], co->resu[1], co->resu[2], co->resu[3], co->resu[5],
+                co->resu[9], co->resu[10], co->resu[13], co->resu[14],
+                s->Map[2], s->nsbl[2],
+                co->flagi, s->Ai[2]
+            });
+   
+            filg_in.open(testf, std::ios::app);
+            filg_in << icon           << " " << FFG[0]         << " " << l->tE                      << " "
+                    << l->RE / AU     << " " << l->piE         << " " << l->tetE                    << " "
+                    << l->Vt          << " " << l->u0          << " " << l->Ml                      << " " 
+                    << s->opt * 1.0e6 << " " << l->Dl          << " " << s->Ds                      << " "
+                    << l->vl          << " " << s->vs          << " " << s->mbs[0]                  << " "
+                    << s->fb[0]       << " " << gg             << " " << static_cast<int>(l->struc) << " "
+                    << s->FWHM / year << " " << vsave / s->mus << " " << l->DeltaT / s->errA        << " " << l->murel * year << " "
+                    << co->resu[0]    << " " << co->resu[1]    << " " << co->resu[2]                << " " 
+                    << co->resu[3]    << " " << co->resu[5]    << " "
+                    << co->resu[9]    << " " << co->resu[10]   << " " << co->resu[13]               << " " << co->resu[14]    << " "
+                    << s->Map[2]      << " " << s->nsbl[2]     << " " << co->flagi                  << " " << s->Ai[2]        << "\n";
+            filg_in.close();
+//          
+
+
+            if (flagm > 0 && IMnum == 1) {
+                std::ofstream fil1_append("./files/MONTLMC/files/BHLSSTMONTS.dat", std::ios::app);
+
+                fil1_append << save            << " " << std::fixed << std::setprecision(5)
+                            << s->lat          << " " << s->lon         << " "
+                            << static_cast<int>(l->struc)               << " " << l->Ml           << " "
+                            << l->Dl           << " " << l->vl          << " "
+                            << static_cast<int>(s->struc)               << " " << s->cl           << " "
+                            << s->Ds           << " " << s->logT        << " " << s->mass         << " "
+                            << s->vs           << " " << s->Mab[2]      << " " << s->Mab[6]       << " "
+                            << s->Map[2]       << " " << s->Map[6]      << " "
+                            << s->mbs[0]       << " " << s->mbs[1]      << " " << s->fb[0]        << " "
+                            << s->fb[1]        << " " << s->nsbl[2]     << " "
+                            << s->nsbl[6]      << " " << s->Ai[2]       << " " << s->Ai[6]        << " "
+                            << std::setprecision(7)
+                            << l->tE           << " " << l->RE / AU     << " " << l->t0           << " "
+                            << l->mul          << " " << l->Vt          << " " << l->u0           << " "
+                            << s->opt*1.0e6    << " " << l->tetE        << " "
+                            << s->mus1         << " " << s->mus2        << " " << s->xi           << " "
+                            << l->mul1         << " " << l->mul2        << " " << l->piE          << " "
+                            << s->errM         << " " << s->errA        << " "
+                            << flagf           << " " << flag_det       << " " << dchiL           << " "
+                            << dchiP           << " " << dchiA          << " " << ndw             << " "
+                            << FFG[0]          << " " << FFG[1]         << " " << FFG[2]          << " "
+                            << s->Rostart      << " " << s->Nstart      << " " << l->mi1          << " "
+                            << l->mi2          << " " << vsave          << " " << s->FWHM         << " "
+                            << chi3a           << " " << nri            << " " << nde             << " "
+                            << l->betal  * RAa << " " << l->betas * RAa << " " << l->deltal * RAa << " "
+                            << l->deltas * RAa << " "
+                            << l->deltao * RAa << " "
+                            << co->resu[0]     << " " << co->resu[1]    << " " << co->resu[2]     << " "
+                            << co->resu[3]     << " " << co->resu[5]    << " "
+                            << co->resu[9]     << " " << co->resu[10]   << " " << co->resu[13]    << " "
+                            << co->resu[14]    << "\n";
+                
+                fil1_append.close();
+            }
+            //cout << "** End of saving in the file *********" << save << endl;
+            //cout << "icon: " << icon << "\tnlens: " << nlens << "\tnerr: " << nerr << endl;
 //            } while (icon < 850 or nlens < 150 or nerr < 2.0); //end of loop icon
             } while (icon < 20 or nlens < 5 or nerr < 1.0); //end of loop icon
    
@@ -1160,24 +1295,23 @@ void lightcurve(source & s, lens & l, astromet & as, double timh)
 void optical_depth(source& s)
 {
     double ds = (double)s.nums * step; //kpc
-    double CC = 4.0 * G * M_PI * ds * ds * std::pow(10.0,9.0) * Msun / (velocity * velocity * KP);
+    double CC = 4.0 * G * M_PI * ds * ds * std::pow(10.0, 9.0) * Msun / (velocity * velocity * KP);
     double dl, x, dx;
 
-    s.od_disk = s.od_ThD = s.od_bulge = s.od_halo = s.opt = 0.0;
+    s.od_thin = s.od_thick = s.od_bulge = s.od_halo = s.opt = 0.0;
     
     for (int k = 1; k < s.nums; ++k) {
         dl = (double)k * step;///kpc
         x  = dl / ds;
         dx = (double)step / ds / 1.0;
-        s.od_disk  += s.rho_thin[k]  * x * (1.0 - x) * dx * CC;
-        s.od_ThD   += s.rho_thick[k]   * x * (1.0 - x) * dx * CC;
+        s.od_thin  += s.rho_thin[k]  * x * (1.0 - x) * dx * CC;
+        s.od_thick += s.rho_thick[k] * x * (1.0 - x) * dx * CC;
         s.od_bulge += s.rho_bulge[k] * x * (1.0 - x) * dx * CC;
         s.od_halo  += s.rho_halo[k]  * x * (1.0 - x) * dx * CC;
     }
-    s.opt = std::fabs(s.od_disk + s.od_ThD + s.od_bulge + s.od_halo);// + s.od_dlmc + s.od_blmc + s.od_hlmc);///total
-    //cout<<"total_opticalD: "<<s.opt<<"\t od_disk: "<<s.od_disk<<endl;
-    //cout<<"od_ThD: "<<s.od_ThD<<"\t od_bulge: "<<s.od_bulge<<"\t od_halo: "<<s.od_halo<<endl;
-    //cout<<"od_dlmc:  "<<s.od_dlmc<<"\t od_blmc: "<<s.od_blmc<<"\t od_hlmc:  "<<s.od_hlmc<<endl;
+    s.opt = std::fabs(s.od_thin + s.od_thick + s.od_bulge + s.od_halo);
+//    cout << "total_opticalD: " << s.opt << "\t od_thin: " << s.od_thin << endl;
+//    cout << "od_thick: " << s.od_thick << "\t od_bulge: " << s.od_bulge << "\t od_halo: " << s.od_halo << endl;
 }
 
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//

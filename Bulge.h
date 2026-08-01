@@ -18,6 +18,7 @@
 #include <memory>
 #include <iomanip>
 #include <limits>
+#include <algorithm>
 
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_matrix_double.h>
@@ -102,7 +103,16 @@ constexpr std::array<double, M> lambda_um = {0.367, 0.482, 0.622, 0.755, 0.869, 
 
 constexpr double cade1 = 3.0 ;//LSST[days]
 //constexpr double cade2 = 10.0;//ELT [days]
+//
+// TODO(Ali): 500 was sized for LSST-only (~3-day cadence over 10 years). Once Roman's
+// F146 epochs (as dense as ~12 min in high-cadence seasons) are added to the same
+// `l->timn`/`magn`/`errm`/`tele` arrays, `ndw` can grow far past 500 during a single
+// detected event's high-cadence season. Recompute this bound generously (e.g. from the
+// expected number of accepted Roman + LSST points across one event window) before
+// running with Roman enabled — the CHECK(ndw < coun) guards added in Bulge_LSST.cpp
+// will throw immediately if this is too small, rather than corrupting memory silently.
 constexpr int    coun  = int(500);//int(int(460+10)+int(Tobs/cade2+10));
+
 //constexpr int YZ = 3578;   //No.yzma.txt rows
 //constexpr int met = 70;   //No rows metal.txt
 //constexpr int Nel = 7;//rows in "sigma_ELT.txt" (https://academic.oup.com/mnras/article/494/3/4413/5813442)
@@ -118,6 +128,15 @@ constexpr int nq = 15;     //resu
 constexpr int N1 = 396593, N2 = 3568010, N3 = 646090, N4 = 3171; //CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo
 constexpr int Nl = 7373; //BulgeBaseline.dat 18/07/2026
 
+// TODO(Ali): set to the actual row count of RomanBaseline.dat once it is generated
+// from the ROTAC 2025 overguide season/cadence design (6 high-cadence + 4 low-cadence
+// seasons; F146 ~12 min in high-cadence seasons, 3-day in low-cadence seasons).
+constexpr int NlRoman = 309084;
+
+// Roman WFI field of view is much smaller than Rubin's and covers a small number of
+// discrete GBTDS fields, not a rolling-cadence footprint. Do not reuse `FoV` for Roman.
+// TODO(Ali): replace with the actual per-field WFI FoV radius (deg) used in RomanBaseline.dat
+constexpr double FoVRoman = 0.28; // PLACEHOLDER — Roman WFI FoV is ~0.28 deg^2 total
 
 constexpr double tetp   = double(M_PI / 3.0);        //parallax
 constexpr double omegae = double(2.0 * M_PI / year); //radian per day
@@ -205,7 +224,7 @@ struct source {
     double ut, ut0, Astar, xi, ux, uy;
     double Ds, TET, FI, lat, lon, vs;
     double Nstart, Rostart, Romaxs, Romins, nstart, nstarti;
-    double od_disk, od_ThD, od_bulge, od_halo, opt;//, od_dlmc, od_blmc, od_hlmc;
+    double od_thin, od_thick, od_bulge, od_halo, opt;
 
     std::array<double, 2> fb, mbs; // small fixed arrays
 
@@ -407,11 +426,26 @@ struct lsst {
 };
 
 struct roman {
-    std::vector<double> mag;
-    std::vector<double> err;
+    std::vector<double> mag;   // NaRoman: mag-vs-error lookup (sigma_roman.txt)
+    std::vector<double> err;   // NaRoman
+
+    // --- New: per-visit epoch bookkeeping, mirrors lsst's fields ---
+    std::vector<int> ct;        // 1000 — visible-epoch indices for the current sightline
+    std::vector<double> RA;     // NlRoman
+    std::vector<double> DEC;    // NlRoman
+    std::vector<double> l;      // NlRoman
+    std::vector<double> b;      // NlRoman
+    std::vector<double> tim;    // NlRoman
+    std::vector<double> sig5;   // NlRoman — only needed if the Roman photometric error
+                                // model varies per-visit; otherwise mag/err alone may suffice.
+
+    // NOTE: no `filter` array — currently only F146 (constant filter index 6) is modeled
+    // for Roman. If F087/F213 are added later, give roman a `filter` array like lsst's.
 
     roman()
-        : mag(NaRoman), err(NaRoman)
+        : mag(NaRoman), err(NaRoman),
+          ct(1000),
+          RA(NlRoman), DEC(NlRoman), l(NlRoman), b(NlRoman), tim(NlRoman), sig5(NlRoman)
     {}
 };
 
@@ -525,7 +559,23 @@ void   FisherM(source & s, lens & l, astromet & as,  covarian & co, int);
 double interpExtinctionAlongSightline(const extin& ex, int k, double dist);
 double errlsstM(double,int,double);
 double errlsstA(lsst & ls,  double);
-double errELT(lsst & ls,double,int);
+//double errELT(lsst & ls,double,int);
+// TODO(Ali): wire this to whatever sigma_roman.txt actually represents (a fixed
+// mag-vs-error lookup, or a per-visit-depth-dependent formula like errlsstM). Signature
+// below assumes the simpler case (no per-visit depth); adjust if you need `sig5`.
+double errRomanM(const roman & ro, double mag);
+
+// Finds all epochs of a given instrument's baseline within `fov` of (lon,lat),
+// filling `ct` with indices into the instrument's own tim/l/b arrays (sorted by time,
+// since the baseline files are pre-sorted). Returns the number of visible epochs (ndd)
+// and reports the smallest gap between consecutive visible epochs via minCadence.
+int matchVisibleEpochs(double lon, double lat, double fov,
+                        const std::vector<double>& l_arr,
+                        const std::vector<double>& b_arr,
+                        const std::vector<double>& tim_arr,
+                        int nEpochs,
+                        std::vector<int>& ct,
+                        double& minCadence);
 
 double CCM89_a(double lambda_um);
 double CCM89_b(double lambda_um);

@@ -1369,7 +1369,8 @@ void Disk_model(source& s, int numt)
     double Rdd   = 2.17; //2.53; ///2.17;
     double Rhh   = 1.33; //1.32; //1.33;
 
-    double frac = 0.05; //fraction of halo in the form of compact objects
+//    double frac = 0.05; //fraction of halo in the form of compact objects
+//    frac was replaced with 1.0 and some rescaling was applyed manually
 
     char filename[40];
     FILE *filj;
@@ -1403,6 +1404,7 @@ void Disk_model(source& s, int numt)
             else if (ii > 0) {
                 rho = std::exp(-std::sqrt(0.25 + rdi / (Rdd * Rdd))) - std::exp(-std::sqrt(0.25 + rdi / (Rhh * Rhh)));
             }
+            rho *= 1.2; // totalmass= 4.25e10
             s.rho_thin[i] = std::fabs(s.rho_thin[i] + rho0[ii] * corr[ii] * 0.001 * rho/d0[ii]);
         } //Msun/pc^3
 
@@ -1412,17 +1414,19 @@ void Disk_model(source& s, int numt)
             s.rho_thick[i] = std::fabs((rho00 / 0.999719) * std::exp(-(Rb - Dsun) / 2.5) * (1.0 - zb * zb / (0.4 * 0.8 * (2.0 + nnf))));
         }
         else {
-            s.rho_thick[i] = std::fabs((rho00 / 0.999719) * std::exp(-(Rb - Dsun) / 2.5) * std::exp(nnf) * std::exp(-std::fabs(zb) / 0.8)/(1.0 + 0.5 * nnf)); //Msun/pc^3
+            s.rho_thick[i] = std::fabs((rho00 / 0.999719) * std::exp(-(Rb - Dsun) / 2.5) * std::exp(nnf) * std::exp(-std::fabs(zb) / 0.8) / (1.0 + 0.5 * nnf)); //Msun/pc^3
         }
+        s.rho_thick[i] *= 2.67; //total_mass=0.8e10
 
 ///========== Galactic Stellar Halo=================
         rdi = std::sqrt(Rb * Rb + zb * zb / (0.76 * 0.76));
         if (rdi <= 0.5) {
-            s.rho_halo[i] = std::fabs(frac * (0.932 * 0.00001 / 867.067) * std::pow(0.5 / Dsun, - 2.44));
+            s.rho_halo[i] = std::fabs(1.0 * (0.932 * 0.00001 / 867.067) * std::pow(0.5 / Dsun, - 2.44));
         }
         else {
-            s.rho_halo[i] = std::fabs(frac * (0.932 * 0.00001 / 867.067) * std::pow(rdi / Dsun, - 2.44)); //Msun/pc^3
+            s.rho_halo[i] = std::fabs(1.0 * (0.932 * 0.00001 / 867.067) * std::pow(rdi / Dsun, - 2.44)); //Msun/pc^3
         }
+        s.rho_halo[i] *= 5281.0; //Total_mass=1.2e9
 
 ///========== Galactic bulge =====================
         constexpr double barMassRescale = 0.24529; // calibrated so bulge column density toward
@@ -1441,7 +1445,7 @@ void Disk_model(source& s, int numt)
         mBarre = 35.45 / 3.84723 * barMassRescale;
 
         r4  = std::pow(std::pow(std::fabs(xf / Rx0), cn)
-            + std::pow(std::fabs(yf / Ry0), cn), cp / cn)
+                     + std::pow(std::fabs(yf / Ry0), cn), cp / cn)
             + std::pow(std::fabs(zf / Rz0), cp);
         r4  = std::pow(std::fabs(r4), 1.0 / cp);
         r2  = std::sqrt(std::fabs(xf * xf + yf * yf));
@@ -1459,10 +1463,10 @@ void Disk_model(source& s, int numt)
         Rc     = 6.83;
         cp     = 2.786;
         cn     = 3.917;
-        mBarre = 2.27 / 87.0 * barMassRescale; // needs to be normalized
+        mBarre = 2.27 / 87.0 * barMassRescale; // normalized
 
         r4  = std::pow(std::fabs(std::pow(std::fabs(xf / Rx0), cn)
-            + std::pow(std::fabs(yf / Ry0), cn)), cp / cn)
+                               + std::pow(std::fabs(yf / Ry0), cn)), cp / cn)
             + std::pow(std::fabs(zf / Rz0), cp);
         r4  = std::pow(r4, 1.0 / cp);
         r2  = std::sqrt(std::fabs(xf * xf + yf * yf));
@@ -1474,7 +1478,8 @@ void Disk_model(source& s, int numt)
             rhoE = mBarre * std::exp(-r4) * std::exp(-4.0 * (r2 - Rc) * (r2 - Rc));
         }
 
-        s.rho_bulge[i] = std::fabs(rhoS) + std::fabs(rhoE); ///Msun/pc^3
+        s.rho_bulge[i]  = std::fabs(rhoS) + std::fabs(rhoE); ///Msun/pc^3
+        s.rho_bulge[i] *= 0.45; //total mass= 1.7e10
 ///==================================================================
 
         s.Rostar0[i] = std::fabs(s.rho_thin[i] + s.rho_thick[i] + s.rho_bulge[i] + s.rho_halo[i]); //[Msun/pc^3]

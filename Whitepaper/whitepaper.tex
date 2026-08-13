@@ -1,0 +1,734 @@
+\documentclass[english,10pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{mathtools}
+\usepackage{amssymb}
+\usepackage{xcolor}
+\usepackage{babel}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{tablefootnote}
+\usepackage{booktabs}
+\title{Roman-Rubin microlensing observation plan}
+\author{Ali Salehi}
+\begin{document}
+	\maketitle
+	
+	
+	\section{Introduction}
+	\label{sec:intro}
+	
+	This white paper describes the design of a simulation of Galactic bulge microlensing observations combining the Nancy Grace Roman Space Telescope and the Vera C. Rubin Observatory. Both facilities trace back to the same source: the 2010 National Academies decadal survey, \textit{New Worlds, New Horizons in Astronomy and Astrophysics}, which ranked a wide-field infrared space telescope (what became Roman) as its top priority for a new large space mission, and a wide-field ground-based optical survey telescope (what became Rubin/LSST) as its top priority on the ground \cite{Spergel2015WFIRST,RubinAbout}. Fifteen years later, both are reaching maturity within roughly the same window, which is precisely what makes a joint observing and forecasting study like this one possible. The rest of this section summarizes each facility's mission and its relevance to microlensing, then draws the two together.
+	
+	\subsection{The Nancy Grace Roman Space Telescope}
+	\label{subsec:roman_overview}
+	
+	The Nancy Grace Roman Space Telescope (Roman, formerly WFIRST) is NASA's next flagship astrophysics mission, following the James Webb Space Telescope, and is slated to launch no later than May 2027, with the project team working toward a potential launch as early as fall 2026 \cite{RomanMissionOverview}. Roman grew out of the WFIRST-AFTA Science Definition Team study \cite{Spergel2015WFIRST}, which itself merged the science cases of several earlier concepts, including a dedicated microlensing planet-finding mission. Roman carries a 2.4~m primary mirror -- the same aperture as Hubble -- feeding two instruments: the Wide Field Instrument (WFI), which performs all of the mission's survey observations, and the Coronagraph Instrument, a technology demonstration for direct exoplanet imaging that operates separately from the survey program. The WFI's 18 HgCdTe detectors give it a field of view of $0.281\,\mathrm{deg}^2$ -- about 200 times larger than Hubble's infrared channel -- across eight filters spanning $0.48$--$2.3\,\mu\mathrm{m}$; the effective area of the full WFI filter and disperser set is shown in Figure~\ref{fig:WFI}. Roman will orbit the Sun-Earth L2 point in a quasi-halo orbit, giving it a benign, stable thermal environment and an instantaneous sky-visibility annulus spanning $54^{\circ}$ to $126^{\circ}$ in solar elongation, at all ecliptic latitudes \cite{RomanMissionOverview}. The nominal mission is five years long.
+	
+	Roman's science program is organized around three themes -- dark energy, exoplanets, and general astrophysics -- pursued primarily through three Core Community Surveys (CCS) that will consume the majority of the primary mission's observing time \cite{ROTAC2025}: the High Latitude Wide Area Survey (HLWAS), a $\sim$1700--2000$\,\mathrm{deg}^2$ imaging and spectroscopic survey of the extragalactic sky constraining dark energy through weak lensing, baryon acoustic oscillations, and Type Ia supernovae; the High Latitude Time Domain Survey (HLTDS), which revisits one or two fields near the continuous-viewing zone every $\sim$5 days for about two years, expected to yield roughly 100,000 transient light curves in support of the same dark energy goals; and the Galactic Bulge Time Domain Survey (GBTDS), described below, which targets exoplanet demographics through microlensing.
+	
+	\begin{figure}
+		\includegraphics[width=\linewidth]{roman_effective_area_color}
+		\caption{This figure shows the effective area for the full set of Roman filters and dispersers. Source: \href{https://science.nasa.gov/mission/roman-space-telescope/wfi-technical/}{WFI Reference Information}}\label{fig:WFI}
+	\end{figure}
+	
+	\subsubsection{The Galactic Bulge Time Domain Survey}
+	\label{subsubsec:gbtds}
+	
+	The GBTDS's primary science driver -- identified as a high priority in the same 2010 decadal survey that recommended Roman itself -- is the demographics of cold, wide-separation exoplanets, including free-floating planets unbound to any host star, obtained through gravitational microlensing: unlike transit or radial-velocity methods, microlensing does not depend on light from the planet or its host, so it is sensitive to planets (and, more generally, any compact object, luminous or dark) regardless of whether they emit any light of their own \cite{ROTAC2025}. This is what makes microlensing simultaneously well suited to characterizing exoplanet demographics far from their host stars, and to detecting isolated stellar remnants such as neutron stars and black holes.
+	
+	Following the recommendations of the Roman Observations Time Allocation Committee's final report \cite{ROTAC2025}, the GBTDS will observe five contiguous $0.28\,\mathrm{deg}^2$ fields in the southern Galactic bulge plus a sixth field centered on the Galactic Center itself, for a combined footprint of about $1.7\,\mathrm{deg}^2$ -- the same field layout traced out by the footprint constants in \texttt{Bulge.h} and shown in Figure~\ref{fig:twoup_onedown} (Section~\ref{sec:locations}). Observing is concentrated into six high-cadence seasons of about 72 days each, three near the start of the mission and three near the end, timed to the spring and autumn equinoxes when the bulge is visible from L2 -- exactly the spring/autumn split shown in that same figure. During these seasons, each field is imaged roughly every 12.1 minutes in the wide F146 filter (spanning $\sim$0.93--2.00~$\mu$m, chosen to maximize photon throughput for the microlensing search) with 67-second exposures, interleaved with lower-cadence, multi-filter (F087, F213) visits every $\sim$12 hours to characterize source and lens colors. In the intervening seasons, the same fields are revisited at a sparser 3--5 day cadence to catch longer-timescale events. Using the nominal design, Roman's own predictions anticipate detecting on the order of 1400 bound exoplanets down to roughly a tenth of Earth's mass, including about 200 below three Earth masses, with sensitivity extending down to Ganymede-like masses \cite{Spergel2015WFIRST}.
+	
+	Every one of these numbers -- the field layout, the season structure, the F146 cadence and exposure time -- is a direct input to this project's simulation: they define the Roman half of the merged visit list described in Section~\ref{sec:input_datasets}, and the F146 filter is exactly why \texttt{Bulge.h} reserves filter index 6 alongside Rubin's six \textit{ugrizy} bands.
+	
+	\subsection{The Vera C. Rubin Observatory and LSST}
+	\label{subsec:rubin_overview}
+	
+	The Vera C. Rubin Observatory, funded jointly by the NSF and DOE, sits on Cerro Pach\'on in northern Chile and houses the Simonyi Survey Telescope, an 8.4~m telescope with a novel three-mirror design that lets it slew and settle between exposures in only a few seconds \cite{RubinAbout}. Paired with the 3.2-gigapixel LSST Camera -- the largest camera ever built -- the observatory is conducting the Legacy Survey of Space and Time (LSST): a ten-year survey of the southern sky in six optical bands ($ugrizy$, spanning roughly 320--1050~nm), imaging each point on the visible sky several hundred times over the survey's lifetime \cite{Ivezic2019LSST,RubinAbout}. LSST formally began operations on 30 June 2026 and is, as of this writing, an ongoing survey. Like Roman, LSST traces back to the 2010 decadal survey, where it was the top-ranked ground-based project; its design is organized around four science pillars: probing the nature of dark energy and dark matter, taking an inventory of the Solar System, exploring the transient and variable optical sky, and mapping the structure of the Milky Way \cite{RubinAbout,Ivezic2019LSST}.
+	
+	\subsubsection{Microlensing with LSST}
+	\label{subsubsec:lsst_microlensing}
+	
+	Unlike Roman, Rubin was not built around a dedicated microlensing program -- there is no LSST analog to the GBTDS. What LSST does have is depth and area: its main Wide-Fast-Deep (WFD) survey covers roughly $18{,}000\,\mathrm{deg}^2$, including parts of the Galactic plane, the bulge, and the Magellanic Clouds, at an average cadence of about once every three nights \cite{Abrams2025MicrolensingRubin}. Achieving a high microlensing discovery rate generally requires sampling at least every 2--3 days \cite{Abrams2025MicrolensingRubin}, which is finer than the WFD's default cadence but well within reach of a targeted strategy: Rubin's survey-strategy process includes a mechanism for "minisurveys" -- modest reallocations of observing time (each under about 3\% of the total survey) toward regions of particular scientific interest -- and an enhanced-cadence Galactic Plane minisurvey, motivated by more than a dozen community white papers, has been carried through detailed survey-strategy studies as one candidate implementation \cite{Street2023GalacticPlane}.
+	
+	Working through many such candidate cadence strategies via Rubin's own Operations Simulator, Abrams et al.\ \cite{Abrams2025MicrolensingRubin} project that LSST will discover thousands of microlensing events across the Galaxy, and find that discovery and characterization efficiency is dominated, to first order, by how much observing time is actually spent on high stellar density regions such as the bulge -- footprint choices that avoid the bulge and plane cost the survey the large majority of its microlensing yield. They further show that some \textit{rolling} cadence strategies, in which Rubin concentrates on a fraction of the sky in alternating years, can degrade microlensing parallax characterization by 15--20\% in the bulge specifically, and explicitly flag that this parallax characterization is the limiting factor in detecting free-floating black hole lenses -- events with no other observable signature.
+	
+	\subsection{Connecting Roman and Rubin}
+	\label{subsec:connecting}
+	
+	Both of the papers above point toward the same conclusion from the Rubin side: cadence choices in the bulge that coincide with Roman's own high-cadence seasons would produce genuinely complementary, not merely duplicate, data. Street et al.\ \cite{Street2023GalacticPlane} note this explicitly, and Abrams et al.\ \cite{Abrams2025MicrolensingRubin} find that concentrating Rubin observations on the Roman field during Roman's observing windows could improve satellite-style parallax measurements by more than 10\%, with consequences for exoplanet, binary-star, and compact-object events alike. The physical reasoning is straightforward: Roman's six high-cadence seasons cover only about 432 of its five-year mission's $\sim$1825 days, leaving long stretches where the GBTDS alone only sparsely samples the bulge (Section~\ref{subsubsec:gbtds}); Rubin's regular, roughly three-night cadence is available throughout, including in the gaps between Roman's seasons. Ground- and space-based light curves of the same event, gathered simultaneously rather than sequentially, also give two physically independent measurements of the microlensing parallax signal from two different vantage points and instrument systematics -- the same principle satellite-parallax campaigns with Spitzer and Kepler have used before, applied here to a much closer but still independent baseline.
+	
+	This is precisely the synergy this project's simulation is built to quantify rather than assume. \texttt{BulgeBaseline.dat} merges Rubin's and Roman's visit streams into a single, time-ordered list per sightline (Section~\ref{subsec:cadence}) specifically so that a simulated light curve can draw on both instruments' visits together, exactly as they would actually arrive. And the Fisher-forecast machinery in Section~\ref{sec:fisher} is built around two separate parameter constraints for exactly this reason: a photometric one, drawing on the combined Rubin+Roman light curve to constrain the Einstein time and microlensing parallax, and an astrometric one, drawing on Roman's own high-precision centroiding to constrain the angular Einstein radius -- the same two measurements the literature identifies as necessary to break the mass-distance-velocity degeneracy and recover a lens mass at all (Section~\ref{sec:fisher}). Where the existing survey-strategy literature reasons qualitatively about whether combining Rubin and Roman helps, this project's contribution is to simulate that combination directly and report the actual, quantitative gain in event yield and parameter-recovery precision -- which is exactly the goal stated at the start of this document.
+	
+	\subsection{Why the Galactic bulge}
+	\label{subsec:why_bulge}
+	
+	Four reasons, in combination, make the Galactic bulge the target of choice for this project, and for the great majority of microlensing surveys conducted since the method was first proposed.
+	
+	\paragraph{Stellar density.} Microlensing requires a chance alignment, to within about a milliarcsecond, between a foreground lens and a background source; both the optical depth to microlensing and the microlensing event rate consequently scale with the \emph{square} of the stellar surface density along the line of sight \cite{Terry2026HST}. Among all nearby, resolvable stellar populations, no sightline comes close to matching the bulge's surface density, which is why the bulge was the target when Paczy\'nski first proposed Galactic microlensing as an observational program \cite{Paczynski1991}.
+	
+	\paragraph{Distance and resolvability.} At $\sim$8~kpc, the bulge is far enough that the probability of a chance alignment is high, while its stars remain bright enough to resolve and photometer individually, from the ground and from space. This is part of why the bulge has historically been favored over the Magellanic Clouds ($\sim$50--60~kpc), which played their own historical role as a dark-matter microlensing target \cite{Paczynski1991}: at six to eight times the distance, individual Magellanic source stars are considerably fainter and harder to resolve in a crowded field for a given telescope aperture, without a corresponding gain in optical depth to compensate.
+	
+	\paragraph{Bulge self-lensing and the Galactic bar.} The bulge is not just a dense background of \emph{sources} -- it is also, itself, a major population of \emph{lenses}. Kiraga \& Paczy\'nski \cite{KiragaPaczynski1994} showed that a substantial fraction of bulge microlensing events are due to bulge stars lensing other bulge stars, not only foreground disk stars lensing bulge sources, which by itself increases the optical depth well beyond disk-lens-only estimates; they further showed that the remaining excess in the observed optical depth is best explained by the Galactic bar being elongated close to our line of sight, packing still more stellar mass into the same sightline. Both effects are additional to, and independent of, the surface-density argument above, and both are exactly why microlensing toward the bulge is valuable not only for exoplanet demographics but as a probe of the structure and dynamics of the Galaxy itself.
+	
+	\paragraph{A dedicated, comparable survey already exists.} Most importantly for this project specifically: Roman's Galactic Bulge Time Domain Survey (Section~\ref{subsubsec:gbtds}) already targets this exact region, with a well-defined field layout, cadence, and filter set \cite{ROTAC2025}. That gives this project a concrete, well-specified Roman dataset to simulate Rubin observations \emph{against}, rather than having to define a hypothetical joint survey design from scratch: the comparison this project is built around only has a sharp answer because Roman has already committed to observing this specific patch of sky.
+	
+	A smaller, practical point reinforces all four: the bulge's event rate does not actually peak exactly at the Galactic center. Extinction rises sharply toward $b=0^{\circ}$ even as stellar surface density also peaks there, and the two competing trends mean the observed microlensing event rate for optical/near-infrared surveys peaks a few degrees above and below the plane rather than directly on it \cite{Terry2026HST,KiragaPaczynski1994} -- which is exactly why the GBTDS fields, and this project's own footprint (Section~\ref{sec:locations}), sit at $b\approx-1.4^{\circ}$ rather than $b=0^{\circ}$.
+	
+	Finally, the bulge is, right now, a genuine point of convergence for several major facilities at once: alongside Roman's GBTDS, the Euclid mission has recently conducted its own Galactic Bulge Survey, and a dedicated HST program has imaged much of the same footprint specifically to support Roman's future exoplanet characterization \cite{Terry2026HST}. This project's Rubin+Roman combination sits within that same broader, current push to extract as much joint value as possible from bulge observations across facilities.
+	
+	What is this project trying to achieve?
+	
+	\section{Input Datasets}
+	\label{sec:input_datasets}
+	
+	This project draws on three kinds of external data, combined to turn a theoretical population of stars into a realistic, survey-specific prediction: the cadence and depth each telescope actually observes with (this section), a 3D map of interstellar reddening along each sightline (Section~\ref{sec:extinction}), and a synthetic color-magnitude diagram translating simulated stars into observed magnitudes (Section~\ref{subsec:besancon}).
+	
+	\subsection{Survey cadence and depth}
+	\label{subsec:cadence}
+	
+	To be able to run observation simulations, an estimate of the actual observing conditions is needed for both telescopes -- what gets pointed where, when, in which filter, and to what depth.
+	
+	\subsubsection{Rubin}
+	
+	One great advantage of space telescopes is that they are not affected by weather and atmospheric conditions. This enables Roman to keep a constant cadence throughout each of its 72-day observation seasons. This is not the case for a ground-based telescope like Rubin, whose cadence, seeing, and depth all fluctuate with weather and scheduling. That is where operation simulations (OpSims) step in: they simulate the observing conditions for each night of the survey and produce, per simulated visit, information like cadence and seeing, which is then used in the predictions here. The results of these OpSims are published as baselines; Table~\ref{tab:opsim_columns} shows the baseline columns used in this project.
+	
+	
+	\begin{longtable}{p{3.8cm}p{2cm}p{8.2cm}}
+		\caption{Columns contained in the Rubin Observatory baseline survey simulation
+			database (\texttt{baseline\_v5.3.0\_10yrs.db}). The descriptions follow the
+			official Rubin Scheduler output schema unless otherwise noted.\cite{Ivezic2019LSST,Biswas2019OpSim,RubinSchedulerSchema,RubinSim}}
+		\label{tab:opsim_columns}\\
+		
+		\toprule
+		\textbf{Column} & \textbf{Units} & \textbf{Description} \\
+		\midrule
+		\endfirsthead
+		
+		\toprule
+		\textbf{Column} & \textbf{Units} & \textbf{Description} \\
+		\midrule
+		\endhead
+		
+		observationId & -- &
+		Unique identifier (running counter) of the simulated observation. \\&&\\
+		
+		\textbf{fieldRA} & deg &
+		Right Ascension of the telescope boresight (ICRS). \\&&\\
+		
+		\textbf{fieldDec} & deg &
+		Declination of the telescope boresight (ICRS). \\&&\\
+		
+		\textbf{observationStartMJD} & MJD &
+		UTC Modified Julian Date at the beginning of the observation. \\&&\\
+		
+		flush\_by\_mjd & MJD &
+		Time by which the queued observation is removed from scheduler consideration if not executed. \\&&\\
+		
+		visitExposureTime & s &
+		Total on-sky exposure time of the visit. \\&&\\
+		
+		\textbf{band} & -- &
+		Photometric bandpass used (typically $u,g,r,i,z,y$). \\&&\\
+		
+		filter & -- &
+		Physical filter installed in the camera. Usually identical to \texttt{band}. \\&&\\
+		
+		rotSkyPos & deg &
+		Actual orientation of the camera on the sky. \\&&\\
+		
+		rotSkyPos\_desired & deg &
+		Desired sky rotation angle requested by the scheduler before constraints were applied. \\&&\\
+		
+		numExposures & -- &
+		Number of exposures ("snaps") composing the visit. \\&&\\
+		
+		airmass & -- &
+		Atmospheric airmass at the field center. \\&&\\
+		
+		seeingFwhm500 & arcsec &
+		Atmospheric seeing FWHM referenced to 500 nm. \\&&\\
+		
+		\textbf{seeingFwhmEff} & arcsec &
+		Effective delivered image quality used in photometric depth calculations. \\&&\\
+		
+		seeingFwhmGeom & arcsec &
+		Geometric delivered image quality (FWHM). \\&&\\
+		
+		\textbf{skyBrightness} & mag arcsec$^{-2}$ &
+		Predicted sky surface brightness in the observing band. \\&&\\
+		
+		night & -- &
+		Survey night number since the start of operations. \\&&\\
+		
+		slewTime & s &
+		Time required to slew to the field, including telescope motion, settling, readout and filter changes. \\&&\\
+		
+		visitTime & s &
+		Total wall-clock duration of the visit. \\&&\\
+		
+		slewDistance & deg &
+		Angular slew distance from the previous observation. \\&&\\
+		
+		\textbf{fiveSigmaDepth} & mag &
+		Single-visit $5\sigma$ point-source limiting magnitude. \\&&\\
+		
+		altitude & deg &
+		Altitude of the field at observation start. \\&&\\
+		
+		azimuth & deg &
+		Azimuth of the field at observation start. \\&&\\
+		
+		paraAngle & deg &
+		Parallactic angle (angle between celestial north and zenith). \\&&\\
+		
+		pseudoParaAngle & deg &
+		Pseudo-parallactic angle used for camera rotation calculations. \\&&\\
+		
+		cloud & -- &
+		Fraction of the sky covered by clouds in the weather simulation. \\&&\\
+		
+		moonAlt & deg &
+		Altitude of the Moon. \\&&\\
+		
+		sunAlt & deg &
+		Altitude of the Sun. \\&&\\
+		
+		scheduler\_note & -- &
+		Scheduler label identifying the survey component or observing strategy responsible for the visit. \\&&\\
+		
+		target\_name & -- &
+		Human-readable target name. \\&&\\
+		
+		target\_id & -- &
+		Integer identifier of the target. \\&&\\
+		
+		observationStartLST & deg &
+		Local Sidereal Time at the start of the observation. \\&&\\
+		
+		rotTelPos & deg &
+		Mechanical telescope rotator angle. \\&&\\
+		
+		rotTelPos\_backup & deg &
+		Backup rotator angle solution. \\&&\\
+		
+		moonAz & deg &
+		Azimuth of the Moon. \\&&\\
+		
+		sunAz & deg &
+		Azimuth of the Sun. \\&&\\
+		
+		sunRA & deg &
+		Right Ascension of the Sun. \\&&\\
+		
+		sunDec & deg &
+		Declination of the Sun. \\&&\\
+		
+		moonRA & deg &
+		Right Ascension of the Moon. \\&&\\
+		
+		moonDec & deg &
+		Declination of the Moon. \\&&\\
+		
+		moonDistance & deg &
+		Angular separation between the field center and the Moon. \\&&\\
+		
+		solarElong & deg &
+		Solar elongation of the field center. \\&&\\
+		
+		moonPhase & \% &
+		Illuminated fraction of the lunar disk. \\&&\\
+		
+		cummTelAz & deg &
+		Cumulative telescope azimuth position used internally for cable-wrap tracking. \\&&\\
+		
+		observation\_reason & -- &
+		Reason that the observation was executed (e.g., survey, calibration, ToO). \\&&\\
+		
+		\textbf{science\_program} & -- &
+		Science program or scheduler block associated with the observation. \\&&\\
+		
+		cloud\_extinction & mag &
+		Photometric extinction due to clouds. \\&&\\
+		
+		test1 & -- &
+		Reserved diagnostic field; not intended for scientific analysis. \\&&\\
+		
+		test2 & -- &
+		Reserved diagnostic field; not intended for scientific analysis. \\&&\\
+		
+		\bottomrule
+	\end{longtable}
+	
+	\subsubsection{Roman}
+	
+	Unlike Rubin, Roman requires no OpSim-style stochastic modeling of its cadence: from L2, weather and airmass do not apply, so the GBTDS's observing pattern is fixed by design rather than simulated. As described in Section~\ref{subsubsec:gbtds}, the survey's final recommended design \cite{ROTAC2025} places six 72-day high-cadence seasons on the five-contiguous-plus-Galactic-Center field layout, imaging each field every 12.1 minutes in F146 (67 s exposures) during those seasons, with sparser 3--5 day sampling in between. \texttt{Bulge.h} reserves filter index 6 (of \texttt{M = 7}) specifically for F146 alongside Rubin's six \textit{ugrizy} indices, and the error functions in \texttt{helper.cpp} are written generically enough to take any filter index -- confirming that \texttt{BulgeBaseline.dat} is a single, merged visit list, with Rubin's and Roman's visits interleaved chronologically per sightline and distinguished only by which of the seven filter indices each visit uses, rather than by two separate cadence files. What is not yet resolved is the F146-specific noise model: several of the filter-dependent constant arrays in \texttt{Bulge.h} (\texttt{gama}, \texttt{seeing}, \texttt{msky}, \texttt{Cm}, \texttt{Dci}, \texttt{km}) either have no seventh (F146) entry at all, so it silently defaults to zero, or carry the advisor's original K-band placeholder value rather than a real Roman number (Section~\ref{sec:error_models}) -- filling these in with genuine Roman photometric-noise constants is a prerequisite for the numbers in this subsection to translate into correct simulated errors.
+	
+	\subsection{Extinction maps}
+	\label{sec:extinction}
+	
+	Interstellar dust reddens and dims every star in the simulated catalog, and getting this reddening right is what separates a physically meaningful yield prediction from an aspirational one. Toward the Galactic bulge this matters more than almost anywhere else on the sky: the sightline studied here, $(l,b)=(0.5^{\circ},-1.4^{\circ})$, sits only about $1.4^{\circ}$ from the Galactic plane, where dust reddening is both extremely high and extremely patchy on scales of arcminutes. A single, sightline-averaged extinction value is not an adequate description of a $0.1\,\mathrm{deg}^2$ field, let alone the full multi-tile footprint shown in Figure~\ref{fig:twoup_onedown}.
+	
+	Two separate extinction estimates appear in this project, and how they are kept from double-counting is explained in Section~\ref{sec:extinction-fix}:
+	
+	\begin{enumerate}
+		\item \textbf{The Besan\c{c}on model's own, built-in extinction}, applied internally while the synthetic stellar catalog is generated.
+		\item \textbf{A custom 3D dust map}, built separately from public survey data and applied in the C++ simulation at each star's actual simulated position.
+	\end{enumerate}
+	
+	\subsubsection{Besan\c{c}on's built-in extinction options}
+	
+	The Besan\c{c}on model offers three ways of assigning extinction to a simulated star \cite{Robin2003Besancon}:
+	
+	\begin{enumerate}
+		\item \textit{Diffuse extinction by a dusty disk} -- a smooth interstellar layer, with density following the same Einasto profile used for the thin disc, normalized to a single mean absorption rate (in V) at the solar neighbourhood. This project's model run used this option, at the tool's recommended default of $0.7$~mag/kpc for intermediate/high-latitude fields (adjustable).
+		\item \textit{Diffuse extinction with discrete clouds} -- the same diffuse layer, with individually placed high-density cloud clumps superimposed.
+		\item \textit{The Marshall et al. extinction model} -- a genuine 3D extinction map built by comparing observed 2MASS photometry against the Besan\c{c}on model's own predicted intrinsic colors, valid for $-100^{\circ}<l<100^{\circ}$, $-10^{\circ}<b<10^{\circ}$ \cite{Marshall2006Extinction}, falling back to the diffuse-disk law outside that range.
+	\end{enumerate}
+	
+	Option 1 is a reasonable default far from the plane, where dust really is diffuse and roughly uniform. At $b=-1.4^{\circ}$, however, a uniform $0.7$~mag/kpc law is almost certainly a substantial underestimate of the true, highly structured extinction toward the bulge -- which is precisely why this project builds its own 3D map rather than relying on it for the final photometry. Rather than switching the Besan\c{c}on \emph{query} itself to Option 3, this project sidesteps the choice entirely by running the query with diffuse extinction set to zero (Section~\ref{sec:extinction-fix}), leaving the custom map as the sole source of reddening.
+	
+	\subsubsection{A custom 3D map from public dust surveys}
+	
+	The project's own extinction map is generated by \texttt{maps2.py}, using the \texttt{dustmaps} package \cite{Green2018Dustmaps}. For each sightline, extinction is evaluated on an evenly spaced distance grid out to \texttt{MaxD}~$=20$~kpc, drawing on two different underlying surveys depending on declination:
+	
+	\begin{itemize}
+		\item \textbf{Bayestar19} \cite{Green2019Bayestar}, for declinations north of $-30^{\circ}$: a 3D dust map built from Gaia parallaxes and Pan-STARRS1/2MASS photometry of nearby stars.
+		\item \textbf{The Zucker et al. (2025) DECaPS 3D dust map} \cite{Zucker2025DECaPS}, for declinations south of $-30^{\circ}$: built from the deeper DECaPS2 photometric survey, covering the southern Galactic plane ($239^{\circ}<l<6^{\circ}$, $|b|<10^{\circ}$) that Bayestar19 does not reach.
+	\end{itemize}
+	
+	This branch matters concretely for this project: computing the declinations of the published Roman GBTDS field pointings places them at approximately $-28^{\circ}$ to $-30^{\circ}$, straddling the Bayestar/DECaPS boundary closely rather than sitting cleanly on one side, so a per-sightline branch is necessary rather than picking one map for the whole survey footprint.
+	
+	Bayestar19 reports reddening in an internal, arbitrary unit rather than $E(B\!-\!V)$ directly; \texttt{maps2.py} converts it via the commonly used $\times 0.884$ scale factor. The DECaPS map reports $E(B\!-\!V)$ directly. Both are then converted to $A_V$ assuming $R_V=3.1$.
+	
+	\paragraph{Known issue to fix.} The \texttt{dustmaps} documentation specifies $R_V=3.32$, not $3.1$, for converting the DECaPS map's $E(B\!-\!V)$ to $A_V$ \cite{DustmapsDocs}. \texttt{maps2.py} currently uses $3.1$ for both maps uniformly -- worth correcting for the DECaPS branch specifically before the extinction files are regenerated.
+	
+	\paragraph{Open item: reconciling sightline files.} \texttt{maps2.py} writes one output file per sightline (\texttt{bayestar\_\{l\}\_\{b\}.txt}), while the C++ simulation (\texttt{Bulge\_LSST.cpp}) reads a single combined file, \texttt{Marshalmap.txt}. Either a concatenation step exists outside the files reviewed here, or this needs to be added. Relatedly, \texttt{maps2.py} draws its sightline list from every row of \texttt{BulgeBaseline.dat}, which is a per-\emph{visit} file; the same field pointing is revisited many times over a 10-year baseline, so the sightline list should likely be deduplicated on $(l,b)$ before generating extinction files, to avoid redundant identical sightlines.
+	
+	\paragraph{A structural note.} The sightlines used for the extinction map are read directly from \texttt{BulgeBaseline.dat} -- i.e., extinction is mapped exactly where the survey will actually point, rather than on an independently chosen grid. This is a genuine, load-bearing link between two of this project's three core datasets, not just a downstream convenience.
+	
+	\subsubsection{Reconciling Besan\c{c}on's extinction with the custom map}
+	\label{sec:extinction-fix}
+	
+	The double-extinction risk described above is avoided by construction: the Besan\c{c}on catalog used in this project (\texttt{bos7.dat}) is generated with diffuse extinction (Section~\ref{sec:extinction}) set to zero, rather than the tool's recommended $0.7$~mag/kpc default. Every native Besan\c{c}on magnitude, and \texttt{Mbol} in particular, is therefore already intrinsic, and the catalog's own \texttt{Av} column is uniformly zero -- so passing it directly into the MIST bolometric-correction interpolation (Section~\ref{subsec:interpolation}) has no effect, and every filter magnitude \texttt{interpolate2.py} writes out is already a true, unreddened absolute magnitude. \texttt{Mab[i]} then flows into \texttt{Map[i]} in \texttt{Lensing.cpp} as an absolute magnitude plus distance modulus plus exactly one extinction term (\texttt{Ai[i]}, from the custom 3D map at the star's simulated distance) -- the single-reddening structure this pipeline is intended to have.
+	
+	This choice also sidesteps the query-time selection-effect concern raised in earlier drafts of this document: Besan\c{c}on's own apparent-magnitude window ($10<V<29$) is now evaluated at zero extinction, which is the most permissive assumption possible at the faint end -- no star that would fall within the survey's true magnitude range under any realistic (larger) extinction is excluded by this cut, since real reddening can only push a star fainter, never brighter, relative to the zero-extinction case used for selection. A residual, likely negligible edge case remains at the bright end: a star intrinsically brighter than $V=10$ could in principle be excluded here even though real extinction would have pushed it fainter into range; given this project's sources of interest span $15$--$26$~mag (Section~\ref{subsec:besancon}), this is not expected to matter in practice.
+	
+	\subsection{Color maps}
+	
+	A color-magnitude diagram (CMD), in the sense used throughout this project, is the bridge between theoretical stellar population synthesis and the actual observables a survey records. The Besan\c{c}on model (Section~\ref{subsec:besancon}) supplies the physical population of stars along a given sightline -- their masses, ages, temperatures, and evolutionary state -- but not, in this pipeline, their photometry in Rubin or Roman's own filters. MIST's bolometric correction tables (Section~\ref{subsec:mist}) supply the translation from those intrinsic stellar parameters into specific instrumental bandpasses. \texttt{interpolate2.py} (Section~\ref{subsec:interpolation}) is the numerical machinery that carries out that translation, star by star, producing the synthetic Rubin+Roman photometry that the C++ simulation treats as its library of possible source and lens types.
+	
+	\subsubsection{The Besan\c{c}on Galaxy Model}
+	\label{subsec:besancon}
+	
+	The Besan\c{c}on model is a semi-empirical stellar population synthesis model of the Milky Way \cite{Robin2003Besancon}. For an assumed scenario of Galactic formation and evolution, it simulates the stellar content of the Galaxy across four populations -- thin disc, thick disc, bulge, and stellar halo/spheroid -- returning, for each simulated star, its mass, age, effective temperature, surface gravity, metallicity, population membership, distance, and (subject to the extinction option chosen; Section~\ref{sec:extinction}) its native photometry.
+	
+	\paragraph{Query configuration for this project}
+	
+	The catalog used in this project (\texttt{bos7.dat}) was generated for a single pencil-beam sightline at $(l,b)=(0.5^{\circ},-1.4^{\circ})$, covering $0$--$8$~kpc in distance over a solid angle of $0.1\,\mathrm{deg}^2$ -- matching \texttt{DBulge = 8} in \texttt{Bulge.h}. The relevant model parameters, taken directly from the run header, are:
+	
+	\begin{itemize}
+		\item \textbf{Initial mass function:} a broken power law, shallow ($\propto M^{-0.6}$) below $1\,M_\odot$ across three sub-bins, steepening to a Salpeter-like $\propto M^{-2}$ above $1\,M_\odot$.
+		\item \textbf{Star formation history:} constant star-formation rate for the disc ($\nu=0.4$).
+		\item \textbf{Density laws:} an Einasto thin disc, a flared, warped bar/bulge, a two-episode $\mathrm{sech}^2$ thick disc, and a Hernquist spheroid.
+		\item \textbf{Atmosphere models:} Basel 3.1, with $R_V=3.1$ -- matching the $R_V$ assumed by the MIST bolometric-correction grid (Section~\ref{subsec:mist}).
+		\item \textbf{Kinematics: explicitly disabled} in this run (\texttt{No kinematics} in the header). This is the reason \texttt{vrel()} exists in \texttt{Lensing.cpp} at all: source and lens velocities are not supplied by Besan\c{c}on, but synthesized independently from population-dependent velocity-dispersion draws ($\sigma_R,\sigma_T,\sigma_Z$ per component) plus solar reflex motion.
+		\item \textbf{Apparent-magnitude selection:} $10<V<29$ -- evaluated at zero extinction for this project's catalog (Section~\ref{sec:extinction-fix}).
+	\end{itemize}
+	
+	\paragraph{Population codes}
+	
+	The catalog's \texttt{Pop} column identifies which of eleven sub-populations a star belongs to. The mapping below is read directly off the run header's metallicity table, and lines up exactly with the grouping used in \texttt{interpolate2.py} (thin disc: \texttt{Pop} 1--7; thick disc: \texttt{Pop} 8 and 11; halo: \texttt{Pop} 9; bulge: \texttt{Pop} 10), consistent with the seven-age-subcomponent division of the thin disc described in \cite{Robin2003Besancon}.
+	
+	\begin{table}[htbp]
+		\centering
+		\begin{tabular}{clcc}
+			\toprule
+			\textbf{Pop} & \textbf{Component} & \textbf{Age (Gyr)} & \textbf{$\langle\mathrm{[M/H]}\rangle$} \\
+			\midrule
+			1  & Thin disc            & 0.15 & $+0.01$ \\
+			2  & Thin disc            & 1    & $\phantom{+}0.00$ \\
+			3  & Thin disc            & 2    & $-0.02$ \\
+			4  & Thin disc            & 3    & $-0.03$ \\
+			5  & Thin disc            & 5    & $-0.05$ \\
+			6  & Thin disc            & 7    & $-0.09$ \\
+			7  & Thin disc            & 10   & $-0.12$ \\
+			8  & Thick disc (young)   & --   & $-0.47$ \\
+			9  & Halo (spheroid)      & --   & $-1.48$ \\
+			10 & Bulge (bar)          & --   & $\phantom{+}0.00$ \\
+			11 & Thick disc (old)     & --   & $-0.78$ \\
+			\bottomrule
+		\end{tabular}
+		\caption{Population codes in the Besan\c{c}on output, reconstructed from the model run header's metallicity table. Ages for the thick disc, halo, and bulge sub-populations are not single-valued in the model and are omitted here.}
+		\label{tab:pop_codes}
+	\end{table}
+	
+	\paragraph{Columns used downstream}
+	
+	Of the columns the model returns, this pipeline uses \texttt{Teff}, \texttt{logg}, \texttt{Mass}, \texttt{Age}, \texttt{Mbol}, \texttt{[M/H]}, \texttt{[a/Fe]}, \texttt{Av}, \texttt{Dist}, and \texttt{Pop}. The model's own native photometry (V, B, U, R, I, J, H, K, and their colors) is not used -- Rubin and Roman magnitudes are computed independently via the MIST bolometric-correction tables instead (Section~\ref{subsec:mist}), which is also why the model's kinematics being disabled has no further consequence beyond the velocities themselves.
+	
+	\subsubsection{MIST bolometric correction tables}
+	\label{subsec:mist}
+	
+	The MIST project provides theoretical stellar evolutionary tracks and isochrones computed with the MESA stellar evolution code \cite{Choi2016MIST}, and, alongside them, precomputed bolometric correction (BC) tables: grids of $\mathrm{BC}(T_{\mathrm{eff}}, \log g, A_V, \mathrm{[Fe/H]}, \mathrm{[\alpha/Fe]})$ for a range of photometric systems, spanning $A_V=0$ to $6$ at $R_V=3.1$. This project uses the v2 tables for both the Rubin/LSST $ugrizy$ system and the Roman WFI filter set (including F146).
+	
+	A bolometric correction converts a star's bolometric magnitude into its apparent magnitude in one specific filter:
+	\[
+	m_{\mathrm{filter}} = M_{\mathrm{bol}} - \mathrm{BC}_{\mathrm{filter}}(T_{\mathrm{eff}}, \log g, A_V, \mathrm{[Fe/H]}, \mathrm{[\alpha/Fe]})
+	\]
+	This is the mechanism that turns Besan\c{c}on's intrinsic stellar parameters into the specific, instrument-dependent magnitudes the survey simulation needs. Because $A_V$ is one of the grid's five axes, the same BC table could, in principle, also supply extinction -- but for this project's catalog that axis is uniformly zero already (Section~\ref{sec:extinction-fix}), so reddening is supplied solely by the project's own 3D map rather than by the BC table's own $A_V$ dimension.
+	
+	\subsubsection{Interpolation: from catalog to synthetic photometry}
+	\label{subsec:interpolation}
+	
+	\texttt{interpolate2.py} is the code that carries out the translation described above, for every star in the Besan\c{c}on catalog. Its steps are:
+	
+	\begin{enumerate}
+		\item \textbf{Metallicity conversion.} Besan\c{c}on reports \texttt{[M/H]} and \texttt{[a/Fe]} separately; MIST's grid is indexed by \texttt{[Fe/H]} and \texttt{[a/Fe]}. The two are related by the standard alpha-enhanced metallicity relation, $\mathrm{[Fe/H]} = \mathrm{[M/H]} - \log_{10}\!\left(0.638\times10^{\mathrm{[a/Fe]}} + 0.362\right)$.
+		\item \textbf{Grid construction.} The MIST BC table (all files in the relevant \texttt{Rubin} or \texttt{Roman} directory) is loaded, and a five-dimensional \texttt{RegularGridInterpolator} is built over $(\log T_{\mathrm{eff}}, \log g, A_V, \mathrm{[Fe/H]}, \mathrm{[\alpha/Fe]})$.
+		\item \textbf{Per-star interpolation.} For every filter in the chosen photometric system, each star's parameters are evaluated against the grid and combined with \texttt{Mbol} to give an apparent magnitude, as in Section~\ref{subsec:mist}. Stars whose parameters fall outside the grid's coverage (extreme temperature, metallicity, or -- currently -- $A_V$) come back as \texttt{NaN} and are dropped.
+		\item \textbf{Assembly.} The Rubin and Roman filter sets are computed in two passes over the same underlying catalog and combined, then split by galactic component (thin disc / thick disc / halo / bulge, using the \texttt{Pop} mapping in Table~\ref{tab:pop_codes}) into the per-component files (\texttt{thin\_disk.dat}, \texttt{bulge.dat}, etc.) that the C++ simulation reads as \texttt{cm.Mab\_thin}, \texttt{cm.Mab\_bulge}, and so on.
+	\end{enumerate}
+	
+	One coverage caveat worth quantifying rather than assuming away: the MIST v2 grid's $\mathrm{[\alpha/Fe]}$ axis appears to extend only to $+0.6$, while the Besan\c{c}on run allowed $\mathrm{[\alpha/Fe]}$ up to $+0.70$ (Section~\ref{subsec:besancon}). Some genuine fraction of alpha-enhanced stars will therefore be silently dropped as \texttt{NaN}; the diagnostic print statement already present in \texttt{read\_input()} (\texttt{aFe > 0.6}) reports exactly this count and is worth citing directly as a completeness caveat in the methods section, rather than leaving it as an unreported side effect.
+	
+	For why the $A_V$ axis is kept at zero for this project's catalog, see Section~\ref{sec:extinction-fix}.
+	
+	\section{Locations}
+	\label{sec:locations}
+	
+	\begin{figure}[htbp]
+		\centering
+		
+		% Top row
+		\begin{subfigure}{0.48\textwidth}
+			\centering
+			\includegraphics[width=\linewidth]{roman_967_spring_aladinX}
+			\caption{Locations of Spring surveys}
+			\label{fig:a}
+		\end{subfigure}
+		\hfill
+		\begin{subfigure}{0.48\textwidth}
+			\centering
+			\includegraphics[width=\linewidth]{roman_967_autumn_aladinX}
+			\caption{Locations of Autumn surveys}
+			\label{fig:b}
+		\end{subfigure}
+		
+		\vspace{0.5cm}
+		
+		% Bottom row
+		\begin{subfigure}{0.48\textwidth}
+			\centering
+			\includegraphics[width=\linewidth]{roman_967_both_aladinX}
+			\caption{Both locations combined}
+			\label{fig:c}
+		\end{subfigure}
+		
+		\caption{A Galactic coordinate grid is shown (green), which shows that the mid-line of the five contiguous tiles are at the desired galactic coordinates (0.5, -1.4), and there is one non-contiguous tile at the Galactic Center.}
+		\label{fig:twoup_onedown}
+	\end{figure}
+	
+	\section{Observational Error Models}
+	\label{sec:error_models}
+	
+	Every simulated measurement in this project carries one of two fundamentally different kinds of uncertainty. \textbf{Photometric error} is the uncertainty on a star's measured brightness, and to first order depends only on how many photons were collected relative to the noise (sky background, detector read noise, Poisson statistics on the source itself) -- it does not depend strongly on how sharply focused the image is. \textbf{Astrometric error} is the uncertainty on a star's measured \emph{position}, and depends on both the photon budget \emph{and} the width of the point-spread function (PSF): a star's centroid can, in principle, be measured far more precisely than the PSF's own width would naively suggest, because that precision comes from how the collected light is distributed across the PSF, not from resolving the PSF itself. For a wide range of realistic PSF shapes, the achievable 1$\sigma$ centroiding precision scales as
+	\[
+	\sigma_{\mathrm{ast}} \approx 0.7\,\frac{\mathrm{FWHM}}{\mathrm{S/N}},
+	\]
+	a relation established for exactly this kind of crowded, bulge-field astrometry \cite{KuijkenRich2002}, and shown to be close to the fundamental Cram\'er-Rao information limit for standard centroiding estimators \cite{VakiliHogg2016}. This is the reason a sharper PSF (space-based Roman, Section~\ref{subsec:roman_errors}) buys astrometric precision so much more efficiently than a wider, seeing-limited one (ground-based Rubin, Section~\ref{subsec:rubin_errors}), even when the two instruments collect comparable numbers of photons.
+	
+	\subsection{Rubin}
+	\label{subsec:rubin_errors}
+	
+	Photometric error (\texttt{errlsstM}) follows the standard random-photometric-error model adopted for LSST's own survey design \cite{Ivezic2019LSST}:
+	\[
+	\sigma_{\mathrm{phot}}^2 = \delta^2 + \left[(0.04-\gamma)\,x + \gamma\,x^2\right], \qquad x \equiv 10^{0.4(m-m_5)},
+	\]
+	where $m_5$ is that visit's actual $5\sigma$ depth (Table~\ref{tab:opsim_columns}), $\gamma$ is a band-dependent constant controlling where the error transitions from source-photon-dominated to sky-background-dominated, and $\delta=0.005$ is a fixed photometric systematic floor. Astrometric error (\texttt{errlsstA}) is instead a direct lookup against a digitized empirical precision-vs-magnitude curve for LSST, rather than an evaluation of the FWHM/SNR relation above -- a reasonable simplification given that ground-based seeing genuinely varies visit to visit (the per-band \texttt{FWHM} entries in \texttt{Bulge.h}, $\sim$0.9--1.2 arcsec, are typical, seeing-limited values, roughly ten times wider than Roman's diffraction-limited PSF; Section~\ref{subsec:roman_errors}), but it does mean this project's Rubin astrometric errors reflect a single representative seeing curve rather than the actual per-visit conditions already available elsewhere in the pipeline (Table~\ref{tab:opsim_columns}).
+	
+	\subsection{Roman}
+	\label{subsec:roman_errors}
+	
+	The advisor's original code paired Rubin's detection survey with a proposed Extremely Large Telescope (ELT) running a \emph{separate}, dedicated ground-based astrometric follow-up campaign in the K band, using adaptive optics to approach space-like image sharpness (\texttt{errELT}, \texttt{sigma\_ELT.txt}). Roman removes the need for that second campaign entirely: the same F146 imaging used to detect an event also supplies its astrometric centroid, natively, from space -- which is exactly why \texttt{errELT} was removed rather than adapted (Coding\_context; Section~\ref{subsec:cadence}), and why F146 photometric and astrometric errors should really be computed from Roman-specific constants rather than repurposed ELT/K-band ones.
+	
+	That repurposing has not yet fully happened. Roman's WFI delivers a much sharper, and far more stable, PSF than either the ELT concept or Rubin: its F146 point-spread function has a FWHM of roughly 90--105~mas \cite{Fardeen2024PBH,ROTAC2025} (against a 110~mas pixel scale), compared to Rubin's seeing-limited $\sim$0.9~arcsec -- almost a factor of ten sharper, with no night-to-night atmospheric variation to average over. Combined over many exposures across a full observing season, this level of image quality is what lets Roman reach sub-milliarcsecond astrometric precision (single-exposure centroiding of order 1~mas, degrading to a season-combined precision near 0.013~mas for well-measured stars \cite{Fardeen2024PBH}), which is precisely the $\theta_E$ measurement the Fisher forecast (Section~\ref{sec:fisher}) relies on Roman, and only Roman, to supply. Yet the \texttt{FWHM} array in \texttt{Bulge.h} still carries $5.0\times0.004=0.02$~arcsec in the F146 slot -- a leftover ELT-scale value, explicitly flagged in the source as needing to change, and roughly five times narrower than Roman's real PSF; left uncorrected, this would make simulated Roman astrometric errors substantially more optimistic than the mission can actually deliver.
+	
+	The photometric side has an equivalent, well-characterized fix available. Wilson et al.\ \cite{Wilson2023GBTDS} derive a pixel-level photometric noise model for F146 directly from simulated GBTDS images, identifying $F146\approx22$ as the magnitude at which noise transitions from source-photon-dominated to background-dominated -- exactly the physical transition the $\gamma$ constant in the Rubin photometric-error formula above is designed to encode. The \texttt{gama} array in \texttt{Bulge.h}, however, only lists six values for Rubin's \textit{ugrizy} bands; its seventh (F146) entry is never assigned and silently defaults to zero, rather than to a value derived from this Roman-specific transition.
+	
+	In short: Roman's own imaging is far better suited to precision astrometry than the ELT-based scheme it replaced, but the simulation does not yet reflect that -- the F146 noise constants it needs (a $\sim$100~mas FWHM in place of the current 20~mas, and a $\gamma$ value reflecting Wilson et al.'s F146$\approx$22 transition rather than a silent zero) are available in the literature and simply have not been transcribed into \texttt{Bulge.h} yet.
+	
+	\section{Monte Carlo Simulation}
+	\label{sec:montecarlo}
+	
+	For each field pointing (Section~\ref{sec:locations}), the simulation estimates a detection efficiency, an expected event rate, and -- via the Fisher forecast (Section~\ref{sec:fisher}) -- a parameter-recovery precision, by repeatedly drawing a random source and a random lens along the sightline, generating the light curve and astrometric trajectory that the combined Roman+Rubin observations would actually record, and testing whether that simulated data stream would be flagged as a detected microlensing event. This simulate-detect-forecast structure follows the same general approach used to produce Roman's own exoplanet-yield predictions \cite{penny2019predictions}, applied here to the combined Roman+Rubin case rather than Roman alone.
+	
+	\subsection{Field-by-field scan}
+	
+	For each $(l,b)$ pointing in the footprint (Section~\ref{sec:locations}), the code first collects every observation within one field of view ($\mathrm{FoV}=1.75^{\circ}$) of that pointing from the merged visit list (Section~\ref{subsec:cadence}), recording the minimum gap between consecutive visits (\texttt{minc}) -- this sets the finest time resolution the simulated light curve needs to sample. \texttt{Disk\_model} then evaluates the stellar density laws at that pointing (Section~\ref{subsec:besancon}), and \texttt{nearestSightline} identifies the closest extinction sightline (Section~\ref{sec:extinction}) to use for that field.
+	
+	\subsection{Event generation and pre-selection}
+	
+	For each simulated star, \texttt{func\_source} draws a random source (distance, population, and, per the zero-extinction convention described in Section~\ref{sec:extinction-fix}, magnitude in each filter) and \texttt{func\_lens} draws a random lens (distance, mass, impact parameter $u_0$, and time of closest approach $t_0$) along the same sightline; \texttt{optical\_depth} accumulates the microlensing optical depth out to the source's distance. Before any light curve is generated, a cheap pre-selection is applied: the source must be detectable (between saturation and threshold, Table~\ref{tab:opsim_columns}) in at least two filters, and a random draw against the source's blend fraction decides whether it is bright enough, relative to its blended neighbours, to be the one actually monitored.
+	
+	\subsection{Synthetic light curves and detection}
+	
+	For stars that pass pre-selection, \texttt{lightcurve} is evaluated at every timestep from $100$~days before the survey start to $100$~days after its end (extended further for the one example event saved to disk in full detail), producing the magnification -- via the standard point-lens formula $A(u)=(u^2+2)/(u\sqrt{u^2+4})$ \cite{Paczynski1986} -- and centroid position, with and without annual parallax. The timestep itself is adaptive: a coarse $60$-day step far outside the observing window, a $3$-day step just outside it, and the actual inter-visit gap (\texttt{cade}) while inside it -- so the light curve is only finely sampled where real data actually exists.
+	
+	At each timestep that lands on an actual visit (matched against the merged Rubin+Roman visit list) with a magnitude between saturation and threshold, the photometric error (Section~\ref{sec:error_models}) is used to inject simulated noise into an otherwise noiseless model magnitude, and three running $\chi^2$ statistics are accumulated: relative to the true lensed model, relative to the same model without parallax, and relative to the unlensed baseline. The equivalent astrometric-position $\chi^2$ statistics are accumulated at the same time. A star is provisionally flagged if three consecutive simulated points each deviate from baseline by more than $3\sigma$ -- a sequential-run test in the same family as OGLE's original Early Warning System, which flagged candidates using five consecutive points above a $3\sigma$ threshold rather than three \cite{Udalski1994EWS}.
+	
+	Once the full light curve has been generated, a star only counts as a genuine detected \emph{lensing} event if all of the following hold: its full width at half maximum is shorter than the survey duration, the accumulated $\Delta\chi^2_{\mathrm{lensing}} = |\chi^2_{\mathrm{baseline}}-\chi^2_{\mathrm{model}}|$ exceeds twice the number of data points (a significance threshold that scales with how much data the event actually has), the three-consecutive-point flag was raised, and there are more than ten usable data points. Only for stars meeting this bar is \texttt{FisherM} (Section~\ref{sec:fisher}) invoked at all -- the Monte Carlo detection test is deliberately run first, since forecasting parameter precision for an event the survey would never have flagged as real would be meaningless.
+	
+	\subsection{Stopping criteria and per-field aggregation}
+	
+	Each field's simulation continues, generating new random stars, until three separate statistical floors are all satisfied: at least $850$ detected stars, at least $150$ detected lensing events, and at least $2$ events with a well-conditioned Fisher matrix (Section~\ref{sec:fisher}). These specific thresholds are an analysis choice trading runtime against how noisy the resulting per-field efficiency and precision estimates are; the last of the three is a comparatively weak floor and worth revisiting if per-field parameter-precision estimates turn out to be volatile -- see the caveats in Section~\ref{sec:fisher_caveats}.
+	
+	Each simulated star's summary quantities are appended to an in-memory buffer (\texttt{std::vector<EventRecord>}) rather than written to disk and re-read, avoiding both an I/O bottleneck and a precision-loss bug present in the advisor's original code (the text round-trip there silently truncated several columns to 4--7 significant figures). At the end of the field's simulation, this buffer is used to build detection-efficiency curves as a function of each physical parameter (Einstein time, lens mass, parallax, impact parameter, blend fraction, baseline magnitude, relative proper motion), the microlensing optical depth and event rate $\Gamma$, and the expected number of events for that field, before moving on to the next pointing.
+	
+	\section{Fisher Forecast}
+	\label{sec:fisher}
+	
+	Once the Monte Carlo simulation (Section~\ref{sec:montecarlo}) has flagged a simulated event as a detection, the next question is how precisely the survey could actually recover that event's physical parameters. This is answered with a Fisher-matrix forecast: rather than fitting the noisy simulated data directly (which would require an expensive full light-curve fit for every one of the hundreds of thousands of simulated events), the local curvature of the $\chi^2$ surface around the known, true parameters is computed directly, and its inverse gives the Cram\'er-Rao lower bound on the achievable parameter uncertainties -- the best precision the data could support, given its actual sampling and noise.
+	
+	\subsection{Why two Fisher matrices}
+	
+	Einstein time $t_E$ alone -- the only parameter a standard, single-lens light curve \cite{Paczynski1986} robustly measures -- is a degenerate combination of the lens mass, distance, and relative proper motion, and cannot be inverted into a mass on its own. Breaking that degeneracy requires two additional, independent measurements \cite{Gould2000Formalism}: the microlensing parallax $\pi_E$ (from the light curve's deviation from the standard point-lens form, due to Earth's orbital motion) and the angular Einstein radius $\theta_E$ (from Roman's own high-precision astrometry of the source's deflection). This is exactly why the simulation builds two separate Fisher matrices -- one photometric, one astrometric -- rather than one.
+	
+	\subsection{Photometric parameters}
+	
+	The photometric Fisher matrix is built over five parameters: impact parameter $u_0$, Einstein time $t_E$, blend fraction $f_b$, microlens parallax $\pi_E$, and the trajectory angle $\xi$. For each pair of parameters $(j,k)$, the model magnitude is recomputed after perturbing each parameter by a small step, and the resulting finite-difference derivative is accumulated, weighted by the photometric measurement uncertainty at that data point:
+	\[
+	F_{jk} = \sum_{i=1}^{n_{\mathrm{dw}}} \frac{1}{\sigma_{m,i}^2}\,\frac{\partial m_i}{\partial\theta_j}\,\frac{\partial m_i}{\partial\theta_k}, \qquad \theta \in \{u_0,\, t_E,\, f_b,\, \pi_E,\, \xi\}.
+	\]
+	Each derivative is estimated from two perturbed evaluations of the model, averaged. For $u_0$ and $\xi$, the two steps are equal and opposite, which is algebraically equivalent to a standard central difference. For $t_E$, $\pi_E$, and $f_b$, both steps are taken on the same (positive) side, at two different magnitudes -- plausibly because these three parameters are physically constrained to stay positive (or, for $f_b$, within $[0,1]$; see the \texttt{CHECK} assertions throughout \texttt{Lensing.cpp}), and a large negative perturbation risks evaluating the model at an unphysical parameter value. \textbf{Worth confirming this reasoning is actually why, rather than assuming it.}
+	
+	The resulting matrix is inverted using GSL's LU decomposition \cite{GalassiGSL2009} (\texttt{invert\_matrix}); a small diagonal regularization term ($10^{-10}$) is added if the matrix is found to be exactly singular. Formally, the Fisher matrix's inverse is exactly the Cram\'er-Rao bound on achievable parameter precision \cite{VakiliHogg2016} referenced in Section~\ref{sec:error_models} -- so this step is the multi-parameter generalization of the same information-theoretic limit that sets the single-parameter centroiding precision discussed there.
+	
+	\subsection{Astrometric parameters}
+	
+	The astrometric Fisher matrix follows the same construction over four parameters -- $\theta_E$, the source's proper motion components $\mu_{s,1}$ and $\mu_{s,2}$, and $\pi_E$ again -- using the astrometric centroid residual and its uncertainty $\sigma_a$ in place of the magnitude residual:
+	\[
+	F^{\mathrm{astro}}_{jk} = \sum_{i=1}^{n_{\mathrm{dw}}} \frac{1}{2\sigma_{a,i}^2}\left(\frac{\partial x_i}{\partial\theta_j}\frac{\partial x_i}{\partial\theta_k} + \frac{\partial y_i}{\partial\theta_j}\frac{\partial y_i}{\partial\theta_k}\right), \qquad \theta \in \{\theta_E,\, \mu_{s,1},\, \mu_{s,2},\, \pi_E\}.
+	\]
+	Since $\pi_E$ appears in both matrices, the simulation ends up with two independent estimates of its precision -- one photometric, one astrometric -- and \texttt{ErrorCal} (below) keeps whichever is tighter.
+	
+	\subsection{From parameter covariances to physical quantities}
+	
+	Once both matrices are inverted, \texttt{ErrorCal} converts the diagonal of each covariance matrix into a fractional uncertainty on each parameter ($\sigma_\theta/|\theta|$), then propagates those into the quantities the survey actually cares about, following the standard microlensing mass-distance relation \cite{Gould2000Formalism}:
+	\[
+	M_L = \frac{\theta_E}{\kappa\,\pi_E}, \qquad \pi_{\mathrm{rel}} = \pi_E\,\theta_E, \qquad \kappa \equiv \frac{4G}{c^2\,\mathrm{AU}} \approx 8.14\ \frac{\mathrm{mas}}{M_\odot}.
+	\]
+	Because mass is a simple ratio of $\theta_E$ and $\pi_E$, their fractional uncertainties add in quadrature,
+	\[
+	\left(\frac{\sigma_{M_L}}{M_L}\right)^2 = \left(\frac{\sigma_{\pi_E}}{\pi_E}\right)^2 + \left(\frac{\sigma_{\theta_E}}{\theta_E}\right)^2,
+	\]
+	which is exactly \texttt{co.resu[9]} in \texttt{ErrorCal}; the lens distance's fractional uncertainty follows by propagating that same combined uncertainty through the relative-parallax relation $\pi_{\mathrm{rel}}=\mathrm{AU}(1/D_L-1/D_S)$, scaled by $(D_S-D_L)/D_S$ (\texttt{co.resu[10]}). The lens and source proper motions get an analogous, slightly more involved treatment (\texttt{co.resu[11--14]}) that additionally accounts for the correlation between $t_E$ and the trajectory angle $\xi$ through the off-diagonal covariance term \texttt{corr1}.
+	
+	\subsection{Caveats}
+	\label{sec:fisher_caveats}
+	
+	Two things worth flagging before treating these forecasts as final:
+	\begin{itemize}
+		\item The Monte Carlo stopping criterion (Section~\ref{sec:montecarlo}) only requires \emph{two} events per field with a well-conditioned Fisher matrix before moving on to the next pointing. Per-field average precision built from only two events will be noisy; whether that matters depends on how the per-field results are ultimately used (e.g., averaged again across many fields, or reported individually per field).
+		\item A Fisher matrix is only as good as the error model that weights it (Section~\ref{sec:error_models}) -- in particular, the still-unresolved question of what astrometric precision curve is actually appropriate for Roman's own F146 measurements (rather than reusing Rubin's ground-based curve) directly affects every astrometric parameter uncertainty computed here.
+	\end{itemize}
+	
+	\section{Reference Constants and Parameters}
+	\label{sec:reference_tables}
+	
+	This section collects the physical constants and design parameters underlying every dataset and model in this project, drawn from published sources rather than transcribed from \texttt{Bulge.h}. Several code constants are known to be placeholders or approximations (Sections~\ref{sec:extinction}, \ref{sec:error_models}); the tables below are the reference values those constants should ultimately match, with known discrepancies noted explicitly rather than silently corrected.
+	
+	\subsection{Roman WFI instrument}
+	
+	\begin{table}[htbp]
+		\centering
+		\begin{tabular}{lll}
+			\toprule
+			Quantity & Value & Source \\
+			\midrule
+			Primary mirror diameter & 2.4~m & \cite{RomanMissionOverview} \\
+			WFI field of view & 0.281~deg$^2$ & \cite{RomanMissionOverview} \\
+			Detector format & 18 $\times$ 4096$\times$4096 HgCdTe & \cite{RomanMissionOverview} \\
+			Plate scale & 0.11~arcsec/pixel & \cite{Wang2023RomanFilters} \\
+			Orbit & Sun--Earth L2, quasi-halo & \cite{RomanMissionOverview} \\
+			Sky visibility annulus & $54^{\circ}$--$126^{\circ}$ solar elongation & \cite{RomanMissionOverview} \\
+			Nominal mission duration & 5~years & \cite{RomanMissionOverview} \\
+			\bottomrule
+		\end{tabular}
+		\caption{Roman WFI instrument-level constants.}
+		\label{tab:roman_instrument}
+	\end{table}
+	
+	\begin{table}[htbp]
+		\centering
+		\footnotesize
+		\begin{tabular}{llccl}
+			\toprule
+			Filter & Common name & Central $\lambda$ ($\mu$m) & Bandwidth ($\mu$m) & GBTDS role \\
+			\midrule
+			F062 & R & 0.620 & 0.280 & not used \\
+			F087 & Z & 0.869 & 0.217 & characterization (low cadence) \\
+			F106 & Y & 1.060 & 0.265 & not used \\
+			F129 & J & 1.293 & 0.323 & not used \\
+			F146 & W (wide) & 1.464 & 1.030 & primary detection filter \\
+			F158 & H & 1.577 & 0.394 & not used \\
+			F184 & F & 1.842 & 0.317 & not used \\
+			F213 & K & 2.125 & 0.350 & characterization (low cadence) \\
+			\bottomrule
+		\end{tabular}
+		\caption{Roman WFI imaging filters \cite{Wang2023RomanFilters}. \texttt{Bulge.h} models only F146 (its filter index~6); the low-cadence F087/F213 characterization visits described in Section~\ref{subsubsec:gbtds} are not currently represented as separate filter indices.}
+		\label{tab:roman_filters}
+	\end{table}
+	
+	\subsection{Roman GBTDS survey design and F146 noise model}
+	
+	\begin{table}[htbp]
+		\centering
+		\begin{tabular}{lll}
+			\toprule
+			Quantity & Value & Source \\
+			\midrule
+			Field layout & 5 contiguous + 1 Galactic Center field & \cite{ROTAC2025} \\
+			Total footprint & $\approx1.7\,\mathrm{deg}^2$ & \cite{ROTAC2025} \\
+			High-cadence seasons & 6 seasons $\times$ 72 days & \cite{ROTAC2025} \\
+			F146 cadence (in-season) & 12.1~minutes & \cite{ROTAC2025} \\
+			F146 exposure time & 67~s & \cite{ROTAC2025} \\
+			Out-of-season cadence & 3--5 days & \cite{ROTAC2025} \\
+			F146 PSF FWHM & $\approx$90--105~mas & \cite{Fardeen2024PBH,ROTAC2025} \\
+			Source/background noise transition & $F146\approx22$ & \cite{Wilson2023GBTDS} \\
+			Bright-end quality limit & $F146\lesssim15$--16 (nonlinearity, charge leakage) & \cite{Wilson2023GBTDS} \\
+			Single-exposure centroiding precision & $\approx$1.1~mas & \cite{Fardeen2024PBH} \\
+			Season-combined astrometric precision & $\approx$0.013~mas & \cite{Fardeen2024PBH} \\
+			Final parallax precision & $\approx$0.005~mas & \cite{Fardeen2024PBH} \\
+			\bottomrule
+		\end{tabular}
+		\caption{Roman GBTDS survey design and F146 noise characteristics. Compare against \texttt{Bulge.h}'s current F146 (filter index~6) placeholders: \texttt{FWHM}$=0.02''$ (an ELT-scale value, roughly 5$\times$ narrower than the real PSF above) and \texttt{gama}$=0$ by omission (should instead reflect the $F146\approx22$ transition; Section~\ref{subsec:roman_errors}).}
+		\label{tab:gbtds_design}
+	\end{table}
+	
+	\subsection{Rubin Observatory / LSST}
+	
+	\begin{table}[htbp]
+		\centering
+		\begin{tabular}{lll}
+			\toprule
+			Quantity & Value & Source \\
+			\midrule
+			Primary mirror diameter & 8.4~m (6.5~m effective) & \cite{RubinAbout} \\
+			Camera & LSST Camera, 3.2~Gigapixel & \cite{RubinAbout} \\
+			Field of view & 9.6~deg$^2$ & \cite{Ivezic2019LSST} \\
+			Plate scale & 0.2~arcsec/pixel & \cite{Ivezic2019LSST} \\
+			Median site seeing ($r$-band, free-air) & $\approx$0.65--0.7~arcsec & \cite{Ivezic2019LSST} \\
+			Survey duration & 10~years & \cite{Ivezic2019LSST} \\
+			Median visits per field (WFD) & $\approx$825 & \cite{Ivezic2019LSST} \\
+			Photometric systematic floor ($\delta$) & 0.005~mag & \cite{Ivezic2019LSST} \\
+			\bottomrule
+		\end{tabular}
+		\caption{Rubin Observatory / LSST instrument and survey constants.}
+		\label{tab:rubin_instrument}
+	\end{table}
+	
+	\begin{table}[htbp]
+		\centering
+		\begin{tabular}{lcc}
+			\toprule
+			Filter & Approx. central $\lambda$ (nm) & Median single-visit $5\sigma$ depth (mag) \\
+			\midrule
+			$u$ & 365 & 23.9 \\
+			$g$ & 475 & 25.0 \\
+			$r$ & 622 & 24.7 \\
+			$i$ & 763 & 24.0 \\
+			$z$ & 905 & 23.3 \\
+			$y$ & 990 & 21.7 \\
+			\bottomrule
+		\end{tabular}
+		\caption{Rubin/LSST $ugrizy$ filters and median Wide-Fast-Deep single-visit depths \cite{Ivezic2019LSST}. \textbf{Not independently re-verified here:} the per-band $\gamma$ constants in \texttt{Bulge.h}'s \texttt{gama} array (0.037--0.040 for $ugrizy$); these should be checked directly against the LSST Science Requirements Document before being relied on for F146-equivalent precision claims.}
+		\label{tab:rubin_filters}
+	\end{table}
+	
+	\subsection{The Besan\c{c}on Galaxy Model}
+	
+	\begin{table}[htbp]
+		\centering
+		\begin{tabular}{lll}
+			\toprule
+			Quantity & Value (this project's run) & Source \\
+			\midrule
+			Sightline & $(l,b)=(0.5^{\circ},-1.4^{\circ})$ & run header \\
+			Distance range & 0--8~kpc & run header \\
+			Solid angle & $0.1\,\mathrm{deg}^2$ & run header \\
+			IMF (below/above $1\,M_\odot$) & $\propto M^{-0.6}$ / $\propto M^{-2}$ & run header \\
+			Disc star-formation rate & constant, $\nu=0.4$ & run header \\
+			Atmosphere models & Basel 3.1 & run header \\
+			Assumed $R_V$ & 3.1 & run header \\
+			Diffuse extinction rate & 0~mag/kpc (this project; default 0.7) & run header; \cite{Robin2003Besancon} \\
+			Sun--Galactic Center distance & 8.0~kpc (model default) & run header \\
+			\bottomrule
+		\end{tabular}
+		\caption{Besan\c{c}on model configuration, read directly from this project's run header rather than the general literature (Section~\ref{subsec:besancon}). The model's assumed solar distance (8.0~kpc) is a round default, not a current best-fit measurement -- see Table~\ref{tab:galactic_constants} for the latter.}
+		\label{tab:besancon_config}
+	\end{table}
+	
+	\subsection{MIST bolometric-correction table grid}
+	
+	\begin{table}[htbp]
+		\centering
+		\begin{tabular}{ll}
+			\toprule
+			Grid axis & Coverage \\
+			\midrule
+			$A_V$ & 0 -- 6 mag, at fixed $R_V=3.1$ \\
+			Photometric systems available & Rubin/LSST $ugrizy$; Roman WFI (all 8 filters) \\
+			\bottomrule
+		\end{tabular}
+		\caption{MIST v2 bolometric-correction table grid ranges relevant to this project \cite{Choi2016MIST}. Note the potential coverage mismatch already flagged in Section~\ref{subsec:interpolation}: the Besan\c{c}on run allows $\mathrm{[\alpha/Fe]}$ up to $+0.70$, while MIST's own grid is understood to extend only to $+0.6$.}
+		\label{tab:mist_grid}
+	\end{table}
+	
+	\subsection{Extinction maps}
+	
+	\begin{table}[htbp]
+		\centering
+		\begin{tabular}{lll}
+			\toprule
+			Quantity & Value & Source \\
+			\midrule
+			Bayestar19 coverage & $\mathrm{Dec}>-30^{\circ}$ (roughly) & \cite{Green2019Bayestar} \\
+			Bayestar19 unit conversion & $\times0.884$ (native units $\to E(B-V)$) & commonly used; not independently re-derived here \\
+			DECaPS (Zucker et al. 2025) coverage & $239^{\circ}<l<6^{\circ}$, $|b|<10^{\circ}$ & \cite{Zucker2025DECaPS} \\
+			DECaPS $R_V$ for $A_V=R_V\,E(B-V)$ & \textbf{3.32} (not 3.1) & \cite{DustmapsDocs} \\
+			\bottomrule
+		\end{tabular}
+		\caption{Extinction map coverage and unit-conversion constants (Section~\ref{sec:extinction}). The boldface $R_V=3.32$ is the known, still-unfixed discrepancy in \texttt{maps2.py}, which currently applies $R_V=3.1$ to both maps.}
+		\label{tab:extinction_maps}
+	\end{table}
+	
+	\subsection{Reddening law ($a(\lambda)$, $b(\lambda)$)}
+	
+	The per-filter extinction ratios used in \texttt{Lensing.cpp} (\texttt{a0[i]}, \texttt{b0[i]}, combined as $A_\lambda/A_V = a(\lambda) + b(\lambda)/R_V$) follow the functional form of the standard Galactic reddening law \cite{Cardelli1989}, which showed that this ratio is well described, across a wide wavelength range, by a single parameter $R_V$. This project's code applies that law with population-dependent $R_V$ (Table~\ref{tab:galactic_constants} note), rather than the single average Galactic value of $R_V\approx3.1$ the law is most often quoted with \cite{Cardelli1989}.
+	
+	\subsection{Solar position and Galactic kinematics}
+	
+	\begin{table}[htbp]
+		\centering
+		\begin{tabular}{lll}
+			\toprule
+			Quantity & Code value & Current literature value \\
+			\midrule
+			Sun--Galactic Center distance ($R_0$) & 8.0~kpc & $8.178\pm0.013\pm0.022$~kpc \cite{Gravity2019R0} \\
+			Solar peculiar motion $(U,V,W)_\odot$ & $(11.1,\,{-},\,7.25)$~km/s\tablefootnote{Only $U_\odot$ and $W_\odot$ appear as named constants (\texttt{VSunR}, \texttt{VSunZ}); $V_\odot=12.24$~km/s is embedded inside the \texttt{VSunT} formula rather than given its own named constant.} & $(11.1^{+0.69}_{-0.75},\,12.24\pm0.47,\,7.25^{+0.37}_{-0.36})$~km/s \cite{SchonrichBinneyDehnen2010} \\
+			Local circular rotation speed & 226~km/s & commonly quoted range $\approx$220--233~km/s (method-dependent) \\
+			\bottomrule
+		\end{tabular}
+		\caption{Solar position and peculiar-motion constants used in \texttt{vrel()} (\texttt{Lensing.cpp}) and \texttt{Bulge.h}. The code's solar peculiar motion values match Schönrich, Binney \& Dehnen (2010) exactly; $R_0=8.0$~kpc is a round, commonly used working value rather than a current best-fit measurement, and is $\approx2\%$ smaller than the GRAVITY Collaboration's direct geometric measurement.}
+		\label{tab:galactic_constants}
+	\end{table}
+	
+	
+	
+	
+	\bibliographystyle{ieeetr}
+	\bibliography{refs}
+\end{document}

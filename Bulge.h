@@ -39,7 +39,7 @@ using std::cout;
 using std::endl;
 using std::cin;
 
-#define Nx 5
+#define Nx 6
 #define Ny 4
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 

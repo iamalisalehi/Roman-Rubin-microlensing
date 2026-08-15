@@ -212,7 +212,7 @@ int main() {
     read_cmd(*cm);
     std::cout << "******* read_cmd was done ************" << std::endl;
 
-    int    save = 0, flagm, flagL, gg = -1; //ss, qq, ww, vv, zz, pp, counter, 
+    int    save = 0, flagm, flagL, gg = -1; //ss, qq, ww, vv, zz, pp, counter,
     int    nri = -1, nde = -1, icon;
     int    nlens;// hh; // nde1, nri1,
     int    nDetNeither, nDetRubinOnly, nDetRomanOnly, nDetJointOnly, nDetBoth; // per-field label counts
@@ -1080,6 +1080,9 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     co.Delta1[1] = l.tE * 0.254674;//tE [days]
     co.Delta1[3] = 0.2509463534656 * l.piE;//piE
     co.Delta1[4] = 3.0 * M_PI / 180.0; //for xi [radian]
+    co.Delta1[5] = l.tE * 0.254674; // t0 [days] -- same fractional-of-tE step as tE itself,
+    // since t0's local curvature scale is set by the same characteristic timescale.
+    // Placeholder pending Step C3's step-size convergence sweep, like the other four.
 
     for (int j = 0; j < Nx; ++j) {
         for (int k = 0; k < Nx; ++k) {
@@ -1119,6 +1122,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 if (j == 2) {co.diff = double(co.bb[h]);               s.fb[tt] += co.diff;}
                 if (j == 3) {co.diff = double(+co.Delta1[j] * sig2[h]);     l.piE += co.diff;}
                 if (j == 4) {co.diff = double(+co.Delta1[j] * sig[h]) ;      s.xi += co.diff;}
+                if (j == 5) {co.diff = double(+co.Delta1[j] * sig[h]) ;      l.t0 += co.diff;}
 
                 lightcurve(s, l, as, l.timn[i]);
                 s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
@@ -1138,6 +1142,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 if (j == 2)  s.fb[tt] -= co.diff;
                 if (j == 3)     l.piE -= co.diff;
                 if (j == 4)      s.xi -= co.diff;
+                if (j == 5)      l.t0 -= co.diff;
             }
 
             co.derm1f = double(co.derm1[0] + co.derm1[1]) * 0.5;
@@ -1150,6 +1155,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                     if (k == 2) {co.diff = double(co.bb[h]);                s.fb[tt] += co.diff;}
                     if (k == 3) {co.diff = double(+co.Delta1[k] * sig2[h]);    l.piE += co.diff;}
                     if (k == 4) {co.diff = double(+co.Delta1[k] * sig[h]) ;     s.xi += co.diff;}
+                    if (k == 5) {co.diff = double(+co.Delta1[k] * sig[h]) ;     l.t0 += co.diff;}
 
                     lightcurve(s, l, as, l.timn[i]);
                     s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
@@ -1169,6 +1175,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                     if (k == 2)  s.fb[tt] -= co.diff;
                     if (k == 3)     l.piE -= co.diff;
                     if (k == 4)      s.xi -= co.diff;
+                    if (k == 5)      l.t0 -= co.diff;
                 }
 
                 co.derm2f = double(co.derm2[0] + co.derm2[1]) * 0.5;

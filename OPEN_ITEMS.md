@@ -29,6 +29,31 @@ both currently consume `l->erra[]` values for Roman epochs that trace back to th
 placeholder. Detection itself (Step B1's `FFG[0]` gate) is unaffected, since it's driven
 by `dchiL` (photometric), not `dchiA`.
 
+## Controlled Fisher-matrix test harness (from Step C1)
+
+Step C1 needed to verify a numerical claim (adding `t0` to the photometric Fisher parameter
+set must not *decrease* `sigma(tE)` for any event). Two attempts to check this concretely both
+failed for practical, not physical, reasons:
+
+- The live Monte Carlo's detection efficiency in the current test field (`s->lon` 0.5-0.6,
+  `s->lat` -1.0 to -0.9) is far too low (about 1 detected-and-Fisher-scored event per 2600 star
+  draws) to gather "a handful" of real events inside a reasonable wall-clock budget.
+- A hand-built synthetic single event (temporary code, not committed) produced a numerically
+  degenerate Fisher matrix — absurd sigma values (sigma(u0) ~ 7.7e4, sigma(tE) ~ 1.5e9 days for a
+  25-day event) across *every* parameter, not just `t0`, meaning the test configuration itself
+  was ill-conditioned rather than the code being wrong.
+
+**What's needed:** a small, deliberately well-conditioned synthetic lens/source/light-curve
+fixture (or a short list of a few), checked in as an actual reusable test rather than throwaway
+code, that a future Fisher-matrix change (Steps C2-C5 all touch `FisherM`) can run quickly to
+confirm sigma values move in the expected direction — without depending on the live Monte Carlo's
+detection efficiency. Whoever builds it should figure out *why* the first attempt degenerated
+(likely a poorly-chosen epoch cadence/parameter combination producing a near-singular design
+matrix) before trusting its output.
+
+**Where this should land:** before or alongside Step C3 (the finite-difference step-size
+convergence sweep), since both need the same kind of controlled, repeatable single-event setup.
+
 ## §5.1 visit-list model (from Step A2)
 
 `whitepaper.tex` §5.1 still describes a single merged Roman+Rubin visit list with `FoV = 1.75°`.

@@ -214,20 +214,36 @@ int main() {
 
     int    save = 0, flagm, flagL, gg = -1; //ss, qq, ww, vv, zz, pp, counter, 
     int    nri = -1, nde = -1, icon;
-    int    nlens;// hh; // nde1, nri1, 
+    int    nlens;// hh; // nde1, nri1,
+    int    nDetNeither, nDetRubinOnly, nDetRomanOnly, nDetJointOnly, nDetBoth; // per-field label counts
     int    gi,       ndw, sq, ndd;
     int    giR,      sqR, nddR; // Roman-side cursor/count, parallel to gi/sq/ndd
     int    flag_det; // nml = 0;
+    int    ndw_L, ndw_R;           // per-instrument epoch counts (ndw stays the joint/shared total)
+    int    flag_det_L, flag_det_R; // per-instrument run-test result (flag_det stays the joint one)
+    int    detL, detR, detJ;       // per-instrument / joint detection booleans; FFG[0] = detL or detR or detJ
     int    flagf,  fi; // datf1, datf2;
     double errs,   errg, fdet, minc, cade; // fel, , mind
     double mincR, cadeR, errgR; // Roman-side cadence/error tracking, parallel to minc/cade/errg
-    double magnio, test, deltaA; // dist,  
+    // PLACEHOLDER: no Roman astrometric error model exists yet — see the TODO(Ali) on
+    // errsR's use in the Roman branch below, and JOINT_FIT_REFACTOR_PLAN.md's Deferred
+    // section ("The Roman astrometric error model decision"). errsR/magnioR are scratch
+    // for the placeholder computation, standing in until a real errRomanA()-style
+    // function + F146 astrometric-error dataset exist.
+    double errsR, magnioR; // Roman-side astrometric-error placeholder / noisy-magnitude scratch
+    double magnio, test, deltaA; // dist,
     double Astar0, As1,  As0;
     double initial;
     double trajm, trajp; //  ddf;
     double chi1,  chi2,   chi3, chi1a, chi2a, chi3a, sil, sil2;
+    // Per-instrument duplicates. chi1/chi2/chi3/chi1a/chi2a/chi3a above are the JOINT
+    // accumulators (fed by both branches); _L/_R are Rubin-only/Roman-only respectively.
+    double chi1_L, chi2_L, chi3_L, chi1a_L, chi2a_L, chi3a_L;
+    double chi1_R, chi2_R, chi3_R, chi1a_R, chi2a_R, chi3a_R, silR, sil2R;
     double dchiL, dchiP,  dchiA;
+    double dchiL_L, dchiP_L, dchiA_L, dchiL_R, dchiP_R, dchiA_R;
     double flag0, flag1,  flag2;
+    double flag0_L, flag1_L, flag2_L, flag0_R, flag1_R, flag2_R;
     double vs1,   vs2,    def1p,  def2p, vsave, dt,    Mpeak;
     double ErtE,  ErpiE,  ErtetE, Erml,  Erdl,  Ermul, Ermus, Eru0, Erfb, nsim;
     double mbase, fblend, Gamma,  Neven, EFF,   EffiD, EffiL, nerr=0.0;
@@ -308,6 +324,7 @@ int main() {
  
             icon  = 0;
             nlens = 0;
+            nDetNeither = 0; nDetRubinOnly = 0; nDetRomanOnly = 0; nDetJointOnly = 0; nDetBoth = 0;
             nsim  = 0.0;
             nerr  = 0.0;
             for (int i = 0; i < Num; ++i) { s->nssim[i] = 0.0;  s->nsdet[i] = 0.0; }
@@ -340,13 +357,23 @@ int main() {
                 }
 
                 ndw     = 0;   flag_det = 0;
+                ndw_L   = 0;   ndw_R    = 0;
+                flag_det_L = 0; flag_det_R = 0;
                 flag0   = 0.0; flag1    = 0.0; flag2 = 0.0;
+                flag0_L = 0.0; flag1_L  = 0.0; flag2_L = 0.0;
+                flag0_R = 0.0; flag1_R  = 0.0; flag2_R = 0.0;
                 chi1    = 0.0; chi2     = 0.0; chi3  = 0.0;
+                chi1_L  = 0.0; chi2_L   = 0.0; chi3_L = 0.0;
+                chi1_R  = 0.0; chi2_R   = 0.0; chi3_R = 0.0;
                 chi1a   = 0.0; chi2a    = 0.0; chi3a = 0.0;
+                chi1a_L = 0.0; chi2a_L  = 0.0; chi3a_L = 0.0;
+                chi1a_R = 0.0; chi2a_R  = 0.0; chi3a_R = 0.0;
                 def1p   = 0.0; s->def1c = 0.0; vsave = 0.0;
                 def2p   = 0.0; s->def2c = 0.0;
                 s->errM = 0.0; s->errA  = 0.0;
                 dchiL   = 0.0; dchiP    = 0.0; dchiA = 0.0;
+                dchiL_L = 0.0; dchiP_L  = 0.0; dchiA_L = 0.0;
+                dchiL_R = 0.0; dchiP_R  = 0.0; dchiA_R = 0.0;
 
                 dt   = 60.0;///days
                 fdet = 0.0;
@@ -383,7 +410,13 @@ int main() {
                         vs2      = double(s->mus2 + (s->def2c - def2p) / dt); //[mas/days]
                         def1p    = s->def1c; //pervious
                         def2p    = s->def2c;
-    
+
+                        // Computed once per timestep (not just inside the LSST branch) since both
+                        // instruments' astrometric chi-square terms need it, and it only depends on
+                        // s->pos1b/pos2b/pos1c/pos2c, which lightcurve() already refreshed above.
+                        trajm = std::sqrt(s->pos1b * s->pos1b + s->pos2b * s->pos2b); //stright + parallax
+                        trajp = std::sqrt(s->pos1c * s->pos1c + s->pos2c * s->pos2c); //stright + parallax+lensing
+
                         if (flagm > 0) {
                             fil4 << std::fixed << std::setprecision(4)
                                  << tim      << " " << s->def1c << " " << s->def2c << " " << As0      << " " << As1 << " "
@@ -416,16 +449,19 @@ int main() {
                                 chi1 += std::fabs((magnio -   magni[fi]) * (magnio -   magni[fi]) / (errg * errg)); //real
                                 chi2 += std::fabs((magnio -  magni0[fi]) * (magnio -  magni0[fi]) / (errg * errg)); //real no parallax
                                 chi3 += std::fabs((magnio - s->magb[fi]) * (magnio - s->magb[fi]) / (errg * errg)); //baseline
-    
+                                chi1_L += std::fabs((magnio -   magni[fi]) * (magnio -   magni[fi]) / (errg * errg));
+                                chi2_L += std::fabs((magnio -  magni0[fi]) * (magnio -  magni0[fi]) / (errg * errg));
+                                chi3_L += std::fabs((magnio - s->magb[fi]) * (magnio - s->magb[fi]) / (errg * errg));
+
                                 sil  = RandN(errs * std::sqrt(2.0), 3.0);
                                 sil2 = RandN(errs, 3.0);
-    
-                                trajm = std::sqrt(s->pos1b * s->pos1b + s->pos2b * s->pos2b); //stright + parallax
-                                trajp = std::sqrt(s->pos1c * s->pos1c + s->pos2c * s->pos2c); //stright + parallax+lensing
-    
+
                                 chi1a += std::fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs * 2.0)); //real trajectory
                                 chi2a += std::fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs * 2.0)); //real without lensing
                                 chi3a += std::fabs( sil2  * sil2 / (errs * errs));
+                                chi1a_L += std::fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs * 2.0));
+                                chi2a_L += std::fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs * 2.0));
+                                chi3a_L += std::fabs( sil2  * sil2 / (errs * errs));
 
                                 CHECK(ndw < coun); // array-bounds guard — see note on `coun` sizing
                                 l->timn[ndw] = tim;
@@ -438,9 +474,13 @@ int main() {
     
                                 flag2 = 0.0;
                                 if (std::fabs(magnio - s->magb[fi]) > std::fabs(3.0 * errg))    flag2 = 1.0;
-                                if (ndw > 2 and float(flag0 + flag1 + flag2) > 2.0)   flag_det = 1;
+                                if (ndw_L > 2 and float(flag0 + flag1 + flag2) > 2.0)   flag_det = 1;
                                 flag0 = flag1;
                                 flag1 = flag2;
+                                flag2_L = flag2; // identical test; kept as an explicit Rubin-labeled copy
+                                if (ndw_L > 2 and float(flag0_L + flag1_L + flag2_L) > 2.0)   flag_det_L = 1;
+                                flag0_L = flag1_L;
+                                flag1_L = flag2_L;
     
                                 if (flagm > 0) {
                                     fil5 << std::fixed << std::setprecision(4)
@@ -468,21 +508,19 @@ int main() {
                                 s->errM += deltaA;
                                 s->errA += errs;
                                 vsave += std::sqrt(vs1 * vs1 + vs2 * vs2);
-    
+
                                 ndw += 1;
+                                ndw_L += 1;
                             }//magnitude limit
                             gi += 1;
                         }
                         // ---------------- Roman (F146) — new ----------------
-                        // TODO(Ali): chi1/chi2/chi3/flag_det/s->errM/s->errA are the
-                        // LSST-only detection-significance and running-error bookkeeping
-                        // carried over from the original single-instrument code. Roman
-                        // points feed `l->timn/magn/errm/tele` (i.e. the Fisher-matrix
-                        // input) but are deliberately NOT added to those LSST-only
-                        // accumulators yet, so this refactor doesn't silently change your
-                        // existing detection/yield numbers. Decide deliberately whether a
-                        // combined detection-significance metric makes sense before wiring
-                        // Roman into chi1/chi2/chi3 too.
+                        // Roman now feeds its own chi1_R/chi2_R/chi3_R (+ astrometric _R,
+                        // placeholder error — see errsR below) and the joint chi1/chi2/chi3,
+                        // alongside the Rubin-only _L versions built in the LSST branch above.
+                        // See Step B1 of JOINT_FIT_REFACTOR_PLAN.md. s->errM/s->errA remain
+                        // Rubin-only by design (ORIENTATION.md: they're specifically the
+                        // LSST-only running-error accumulators, unrelated to detection).
                         if (nddR > 0 and tim >= 0.0 and tim <= Tobs and
                             tim >= ro->tim[int(ro->ct[0])] and tim <= ro->tim[int(ro->ct[nddR - 1])] and
                             giR < nddR and sqR >= 0 and sqR <= static_cast<int>(NlRoman) and tim >= ro->tim[sqR]) {
@@ -493,6 +531,42 @@ int main() {
                                 // TODO(Ali): confirm this matches how sigma_roman.txt / ro->mag,ro->err
                                 // are meant to be interpolated (see errRomanM stub near matchVisibleEpochs).
                                 errgR = errRomanM(*ro, magni[fiR]); //[mag]
+
+                                magnioR = magni[fiR] + RandN(errgR, 3.0);
+                                chi1 += std::fabs((magnioR -   magni[fiR]) * (magnioR -   magni[fiR]) / (errgR * errgR));
+                                chi2 += std::fabs((magnioR -  magni0[fiR]) * (magnioR -  magni0[fiR]) / (errgR * errgR));
+                                chi3 += std::fabs((magnioR - s->magb[fiR]) * (magnioR - s->magb[fiR]) / (errgR * errgR));
+                                chi1_R += std::fabs((magnioR -   magni[fiR]) * (magnioR -   magni[fiR]) / (errgR * errgR));
+                                chi2_R += std::fabs((magnioR -  magni0[fiR]) * (magnioR -  magni0[fiR]) / (errgR * errgR));
+                                chi3_R += std::fabs((magnioR - s->magb[fiR]) * (magnioR - s->magb[fiR]) / (errgR * errgR));
+
+                                // TODO(Ali): PLACEHOLDER astrometric error — no Roman/F146 astrometric
+                                // error model exists yet. Stands in with LSST's astrometric-error curve
+                                // (errlsstA) evaluated at Roman's own magnitude/epoch, so it's at least
+                                // deterministic and epoch-correct (not a stale `errs` left over from
+                                // whichever epoch last set it). Per JOINT_FIT_REFACTOR_PLAN.md's
+                                // Deferred section ("Roman astrometric error model decision" — the
+                                // ~100 mas FWHM and gamma value for the F146~22 transition), replace
+                                // this call with a real errRomanA()-style function reading a real F146
+                                // astrometric-error dataset (mirroring errlsstA/sigmaA_LSST.txt) before
+                                // relying on chi1a_R/chi2a_R/chi3a_R, dchiA_R, or the astrometric Fisher
+                                // matrix (inputB/inverB, Ny params tetE/mus1/mus2/piE — Phase C, Step C4)
+                                // for any real conclusion. Logged in OPEN_ITEMS.md.
+                                errsR = errlsstA(*ls, magni[fiR]); //[mas]
+                                silR  = RandN(errsR * std::sqrt(2.0), 3.0);
+                                sil2R = RandN(errsR, 3.0);
+                                chi1a += std::fabs((trajp + silR - trajp) * (trajp + silR - trajp) / (errsR * errsR * 2.0));
+                                chi2a += std::fabs((trajp + silR - trajm) * (trajp + silR - trajm) / (errsR * errsR * 2.0));
+                                chi3a += std::fabs( sil2R * sil2R / (errsR * errsR));
+                                chi1a_R += std::fabs((trajp + silR - trajp) * (trajp + silR - trajp) / (errsR * errsR * 2.0));
+                                chi2a_R += std::fabs((trajp + silR - trajm) * (trajp + silR - trajm) / (errsR * errsR * 2.0));
+                                chi3a_R += std::fabs( sil2R * sil2R / (errsR * errsR));
+
+                                flag2_R = 0.0;
+                                if (std::fabs(magnioR - s->magb[fiR]) > std::fabs(3.0 * errgR))    flag2_R = 1.0;
+                                if (ndw_R > 2 and float(flag0_R + flag1_R + flag2_R) > 2.0)   flag_det_R = 1;
+                                flag0_R = flag1_R;
+                                flag1_R = flag2_R;
 
                                 CHECK(ndw < coun); // array-bounds guard — see note on `coun` sizing
                                 l->timn[ndw] = tim;
@@ -516,6 +590,7 @@ int main() {
                                 CHECK(giR <= nddR);
 
                                 ndw += 1;
+                                ndw_R += 1;
                             }//magnitude limit
                             giR += 1;
                         }
@@ -562,9 +637,10 @@ int main() {
                 FFG[0] = 0;
                 FFG[1] = 0;
                 FFG[2] = 0;
-    
+                detL = 0; detR = 0; detJ = 0;
+
                 //cout << "flagf: " << flagf << "ndw: " << ndw << endl;
-    
+
                 if (flagf == 0 or ndw <= 2) {
                     errg    = errlsstM(s->magb[2], 2, double(24.43)); //r-band
                     s->errA = errlsstA(*ls, s->magb[2]); //r-band
@@ -572,9 +648,11 @@ int main() {
                     dchiL = 0.0;
                     dchiP = 0.0;
                     dchiA = 0.0;
+                    dchiL_L = 0.0; dchiP_L = 0.0; dchiA_L = 0.0;
+                    dchiL_R = 0.0; dchiP_R = 0.0; dchiA_R = 0.0;
                     vsave = s->mus;
                 }
-    
+
                 if (flagf > 0 and ndw > 2) { //if star is visible
                     cout << "************** DETECTABLE!!!!!! ********" << endl;
                     icon +=1;
@@ -584,16 +662,36 @@ int main() {
                     dchiL   = std::fabs(chi3  - chi1);  //lensing_effect
                     dchiP   = std::fabs(chi2  - chi1);  //parallax_effect
                     dchiA   = std::fabs(chi2a - chi1a); //deflection_effect
-       
-                    if (s->FWHM < Tobs and dchiL > float(2.0 * ndw) and flag_det > 0 and ndw > 10) { //lensing
+                    dchiL_L = std::fabs(chi3_L  - chi1_L);
+                    dchiP_L = std::fabs(chi2_L  - chi1_L);
+                    dchiA_L = std::fabs(chi2a_L - chi1a_L);
+                    dchiL_R = std::fabs(chi3_R  - chi1_R);
+                    dchiP_R = std::fabs(chi2_R  - chi1_R);
+                    dchiA_R = std::fabs(chi2a_R - chi1a_R);
+
+                    // Three independent detection tests. detL/detR use each instrument's own
+                    // epoch count (ndw_L/ndw_R) and run-test result — mixing in the joint ndw
+                    // here would let Roman's dense epochs silently raise the bar for a purely
+                    // Rubin-driven signal (and vice versa). detJ requires a persistent run in
+                    // EITHER instrument's own cadence (flag_det_L or flag_det_R) rather than an
+                    // interleaved run across two different cadences, which wouldn't mean anything
+                    // (see Step B1 teaching brief). FFG[0] — the boolean that gates FisherM below,
+                    // preserving the existing detection-then-Fisher ordering (plan §0.4) — is the
+                    // union of all three, so an event Rubin alone clearly detects is never dropped
+                    // from characterization just because the joint-scaled threshold happens to miss.
+                    if (s->FWHM < Tobs and dchiL_L > float(2.0 * ndw_L) and flag_det_L > 0 and ndw_L > 10) detL = 1;
+                    if (s->FWHM < Tobs and dchiL_R > float(2.0 * ndw_R) and flag_det_R > 0 and ndw_R > 10) detR = 1;
+                    if (s->FWHM < Tobs and dchiL   > float(2.0 * ndw)   and (flag_det_L > 0 or flag_det_R > 0) and ndw > 10) detJ = 1;
+
+                    if (detL or detR or detJ) { //lensing — detected by Rubin, Roman, or the joint test
                         FFG[0] = 1; //Lensing
                         nlens += FFG[0];
                         FisherM(*s, *l, *as, *co, ndw);
-    
+
                         if (co->flagi > 0) {
                             nerr += 1.0;
                             ErrorCal(*co, *l, *s);
-    
+
                             std::ofstream fil0_append(fnLDt, std::ios::app);
                             fil0_append << std::fixed << std::setprecision(5)
                                         << l->Ml       << " " << l->Dl       << " " << l->mul       << " " << s->fb[0]     << " " << s->mbs[0]   << " "
@@ -603,6 +701,15 @@ int main() {
                             fil0_append.close();
                         }
                     }
+
+                    // Five-way detection label — diagnostics for Step B1's acceptance check.
+                    // Not yet persisted to EventRecord; that's Step D1's job.
+                    if      (detL and detR)  nDetBoth      += 1;
+                    else if (detL)           nDetRubinOnly += 1;
+                    else if (detR)           nDetRomanOnly += 1;
+                    else if (detJ)           nDetJointOnly += 1;
+                    else                     nDetNeither   += 1;
+
                     gg = FunctE(*l);
                     //ss = int(FuncMl(*l));
                     //qq = int(FuncPi(*l));
@@ -865,6 +972,11 @@ int main() {
          << "\n";
    
     cout << "nsim:  "  << nsim    << "\t Ndetected:  " << icon    << "\t Nlensing:  " << nlens << "\t NError:  " << nerr << endl;
+    cout << "Detection label counts — neither: " << nDetNeither
+         << "  Rubin-only: " << nDetRubinOnly
+         << "  Roman-only: " << nDetRomanOnly
+         << "  joint-only: " << nDetJointOnly
+         << "  both: "       << nDetBoth << endl;
     cout << "numd0:  " << numd[0] << "\t numd1:  "     << numd[1] << endl;
     cout << "EFF:  "   << EFF     << "\t Gamma:  "     << Gamma   << "\t Neven:  "    << Neven << endl;
     cout << "l.tE:  "  << l->tE   << "\t l.Ml:  "      << l->Ml   << endl;

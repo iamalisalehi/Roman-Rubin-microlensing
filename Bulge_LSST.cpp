@@ -1072,10 +1072,6 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     co.flagi =+ 1;
     int tt; // tev;
 
-    if (s.fb[0] < 0.15)      {co.bb[0] =+ 0.07; co.bb[1] =+ 0.15;}
-    else if (s.fb[0] < 0.85) {co.bb[0] =- 0.07; co.bb[1] =+ 0.07;}
-    else                     {co.bb[0] =- 0.07; co.bb[1] =- 0.15;}
-
 // (K + H + J)/3 = F146
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 ///        Photometry                                  ///
@@ -1096,6 +1092,24 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 
     for (int i = 0; i < ndw; ++i) {//data
         tt = int(l.tele[i]);//telescope[0,1] LSST, ELT
+
+        // Step size for the fb (blend fraction) derivative must be binned against
+        // *this epoch's own telescope's* blend fraction, s.fb[tt] -- not always
+        // s.fb[0] (Rubin). fb is a flux ratio, physically bounded to [0,1]; these
+        // bin edges (0.15, 0.85) and step sizes (0.07, 0.15) are chosen so that
+        // fb[tt] + bb[1] never crosses 1.0 and fb[tt] + bb[0] never crosses 0.0 --
+        // but only if bb[] is computed from the same fb it perturbs. Binning off
+        // s.fb[0] while perturbing s.fb[tt] (tt=1, Roman) broke that guarantee:
+        // Roman's F146 blend fraction is routinely much higher than Rubin's r-band
+        // one (see Step B3 -- F146's PSF is ~10x smaller), so a low-fb[0] bin's
+        // large "+0.15" step, applied to an already-high fb[1], pushed fb[tt] past
+        // 1.0 and tripped CHECK(s.fb[tt] <= 1.0) -- an uncaught std::runtime_error
+        // that hard-crashed the whole program. Discovered running Step C1's
+        // acceptance test; unrelated to that step, fixed here first because it
+        // blocks numerical verification of every Fisher-matrix step.
+        if (s.fb[tt] < 0.15)      {co.bb[0] =+ 0.07; co.bb[1] =+ 0.15;}
+        else if (s.fb[tt] < 0.85) {co.bb[0] =- 0.07; co.bb[1] =+ 0.07;}
+        else                      {co.bb[0] =- 0.07; co.bb[1] =- 0.15;}
 
         for (int j = 0; j < Nx; ++j) {
             for (int h = 0; h < 2; ++h) {

@@ -103,15 +103,6 @@ constexpr std::array<double, M> lambda_um = {0.367, 0.482, 0.622, 0.755, 0.869, 
 
 constexpr double cade1 = 3.0 ;//LSST[days]
 //constexpr double cade2 = 10.0;//ELT [days]
-//
-// TODO(Ali): 500 was sized for LSST-only (~3-day cadence over 10 years). Once Roman's
-// F146 epochs (as dense as ~12 min in high-cadence seasons) are added to the same
-// `l->timn`/`magn`/`errm`/`tele` arrays, `ndw` can grow far past 500 during a single
-// detected event's high-cadence season. Recompute this bound generously (e.g. from the
-// expected number of accepted Roman + LSST points across one event window) before
-// running with Roman enabled — the CHECK(ndw < coun) guards added in Bulge_LSST.cpp
-// will throw immediately if this is too small, rather than corrupting memory silently.
-constexpr int    coun  = int(500);//int(int(460+10)+int(Tobs/cade2+10));
 
 //constexpr int YZ = 3578;   //No.yzma.txt rows
 //constexpr int met = 70;   //No rows metal.txt
@@ -132,6 +123,14 @@ constexpr int Nl = 7373; //BulgeBaseline.dat 18/07/2026
 // from the ROTAC 2025 overguide season/cadence design (6 high-cadence + 4 low-cadence
 // seasons; F146 ~12 min in high-cadence seasons, 3-day in low-cadence seasons).
 constexpr int NlRoman = 309084;
+
+// `coun` bounds the length of one event's light-curve buffers (lens::timn/magn/errm/
+// soux/souy/erra/tele). `ndw`, the running count of accepted epochs (Rubin + Roman
+// combined) for a single star, can never exceed the total number of visit rows that
+// exist for either instrument — Nl + NlRoman is therefore an unconditionally safe
+// upper bound at any sky position, in any season. One-time memory cost since `lens`
+// is allocated once, not per event: (Nl+NlRoman) * 7 buffers * 8 bytes ~= 17.7 MB.
+constexpr int    coun  = Nl + NlRoman;
 
 // Roman WFI field of view is much smaller than Rubin's and covers a small number of
 // discrete GBTDS fields, not a rolling-cadence footprint. Do not reuse `FoV` for Roman.

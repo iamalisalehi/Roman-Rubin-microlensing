@@ -223,7 +223,9 @@ int main() {
     int    flag_det_L, flag_det_R; // per-instrument run-test result (flag_det stays the joint one)
     int    detL, detR, detJ;       // per-instrument / joint detection booleans; FFG[0] = detL or detR or detJ
     int    flagf,  fi; // datf1, datf2;
-    double errs,   errg, fdet, minc, cade; // fel, , mind
+    double errs,   errg, minc, cade; // fel, , mind
+    double fdetRubin, testL, testR; // Step B2: per-survey pre-selection (fdet retired)
+    bool   rubinDetectable, romanDetectable, acceptRubin, acceptRoman;
     double mincR, cadeR, errgR; // Roman-side cadence/error tracking, parallel to minc/cade/errg
     // PLACEHOLDER: no Roman astrometric error model exists yet — see the TODO(Ali) on
     // errsR's use in the Roman branch below, and JOINT_FIT_REFACTOR_PLAN.md's Deferred
@@ -349,7 +351,9 @@ int main() {
                 flagf   = 0;
                 flagm   = 0;
                 initial = 0.0;
-                test = RandR(0.0, 1.0);
+                // (Step B2: the old single `test = RandR(0.0,1.0)` draw consumed here by
+                // `test <= s->blend[2]` is gone — testL/testR are now drawn fresh right
+                // before the per-survey pre-selection check, below.)
 
                 for (int i = 0; i < coun; ++i) {
                     l->timn[i] = 0.0;  l->magn[i] = 0.0; l->soux[i] = 0.0;  l->souy[i] = 0.0;
@@ -376,17 +380,32 @@ int main() {
                 dchiL_R = 0.0; dchiP_R  = 0.0; dchiA_R = 0.0;
 
                 dt   = 60.0;///days
-                fdet = 0.0;
+                fdetRubin = 0.0;
+                romanDetectable = false;
 
                 for (int i = 0; i < M; ++i) {
                     Mpeak = s->magb[i] - 2.5 * std::log10(l->A0 * s->blend[i] + 1.0 - s->blend[i]);
 //                        cout << "i=" << i << "  Mab=" << s->Mab[i] << "  Map=" << s->Map[i]
 //                             << "  blend=" << s->blend[i] << "  Mpeak=" << Mpeak << endl;
-                    if (Mpeak <= thre[i] and s->magb[i] > satu[i])    fdet += 1.0;
+                    if (i < 6) { // LSST ugrizy
+                        if (Mpeak <= thre[i] and s->magb[i] > satu[i])    fdetRubin += 1.0;
+                    } else {     // i == 6, Roman F146 — single band, no ">=2 filters" bar applies
+                        if (Mpeak <= thre[i] and s->magb[i] > satu[i])    romanDetectable = true;
+                    }
                 }
+                rubinDetectable = (fdetRubin > 1.0); // at least 2 of the 6 LSST bands
+
+                testL = RandR(0.0, 1.0);
+                testR = RandR(0.0, 1.0);
+                // Independent draws per survey — reusing one draw for both would correlate
+                // the Rubin-accept and Roman-accept decisions for no physical reason. Each
+                // draw is weighted by that survey's OWN blend fraction (Step B2), replacing
+                // the old single test <= s->blend[2] (LSST r-band only, for both surveys).
+                acceptRubin = rubinDetectable and (testL <= s->blend[2]);
+                acceptRoman = romanDetectable and (testR <= s->blend[6]);
 
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
-                if (test <= s->blend[2] and fdet > 1.0) { //at least detectable in two filters
+                if (acceptRubin or acceptRoman) { //detectable by Rubin (>=2 LSST bands) or by Roman (F146)
                     cout << "************** DETECTABLE!!!!!! ********" << endl;
                     s->nsdet[s->nums] += 1.0;
                     flagf = 1;

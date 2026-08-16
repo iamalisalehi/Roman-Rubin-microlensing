@@ -33,26 +33,47 @@ by `dchiL` (photometric), not `dchiA`.
 
 Step C1 needed to verify a numerical claim (adding `t0` to the photometric Fisher parameter
 set must not *decrease* `sigma(tE)` for any event). Two attempts to check this concretely both
-failed for practical, not physical, reasons:
+failed:
 
 - The live Monte Carlo's detection efficiency in the current test field (`s->lon` 0.5-0.6,
   `s->lat` -1.0 to -0.9) is far too low (about 1 detected-and-Fisher-scored event per 2600 star
   draws) to gather "a handful" of real events inside a reasonable wall-clock budget.
 - A hand-built synthetic single event (temporary code, not committed) produced a numerically
-  degenerate Fisher matrix — absurd sigma values (sigma(u0) ~ 7.7e4, sigma(tE) ~ 1.5e9 days for a
-  25-day event) across *every* parameter, not just `t0`, meaning the test configuration itself
-  was ill-conditioned rather than the code being wrong.
+  degenerate Fisher matrix — absurd sigma values across *every* parameter, not just `t0`.
 
-**What's needed:** a small, deliberately well-conditioned synthetic lens/source/light-curve
+**CORRECTION (Step C0).** The second failure was originally recorded here as "the test
+configuration itself was ill-conditioned rather than the code being wrong." That diagnosis was
+wrong. The real cause was the Fisher-accumulation defect fixed in Step C0: `FisherM` used
+`gsl_matrix_set` (overwrite) instead of accumulating the per-epoch information sum, so the matrix
+held only the last data point's contribution and was rank-1 by construction. The synthetic test
+was reporting a genuine bug, and the same pathology was present in the live Monte Carlo (a real
+detected event reported relative sigma of 1.8e7 on `tE`). Every Fisher number produced before
+Step C0 is meaningless.
+
+**What's still needed:** a small, deliberately well-conditioned synthetic lens/source/light-curve
 fixture (or a short list of a few), checked in as an actual reusable test rather than throwaway
 code, that a future Fisher-matrix change (Steps C2-C5 all touch `FisherM`) can run quickly to
 confirm sigma values move in the expected direction — without depending on the live Monte Carlo's
-detection efficiency. Whoever builds it should figure out *why* the first attempt degenerated
-(likely a poorly-chosen epoch cadence/parameter combination producing a near-singular design
-matrix) before trusting its output.
+detection efficiency. The "why did it degenerate" question is now answered, so such a fixture
+should be straightforward to build and trust.
 
 **Where this should land:** before or alongside Step C3 (the finite-difference step-size
 convergence sweep), since both need the same kind of controlled, repeatable single-event setup.
+
+## Joint `flag_det` is Rubin-only (from Step C0)
+
+`flag_det` (`Bulge_LSST.cpp`, in the Rubin epoch branch) is described as the joint run-test flag,
+but it is only ever set inside the **Rubin** branch and is gated on `ndw_L`. There is no equivalent
+update in the Roman branch, so an event with a strong persistent Roman signal and no Rubin signal
+leaves `flag_det` at 0.
+
+**Why this is not currently a live bug:** `flag_det` does not feed the detection decision. `detL`,
+`detR`, and `detJ` are built from `flag_det_L` and `flag_det_R` (the explicit per-survey flags added
+in Step B1), and `FFG[0]` is their union. `flag_det` is only written to the diagnostic output stream.
+
+**What's needed:** either make it a genuine joint flag (set from either branch) or retire it and stop
+writing it to output, since as it stands the column is mislabeled — a reader would reasonably take it
+for a joint quantity. Decide when Step D1 reworks `EventRecord` and the output table.
 
 ## §5.1 visit-list model (from Step A2)
 

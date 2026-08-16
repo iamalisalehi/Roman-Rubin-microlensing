@@ -447,6 +447,11 @@ int main() {
                             magni0[i] = s->magb[i] - 2.5 * std::log10(Astar0   * s->blend[i] + 1.0 - s->blend[i]);
                             magni[i]  = s->magb[i] - 2.5 * std::log10(s->Astar * s->blend[i] + 1.0 - s->blend[i]);
                         }
+                        // Rubin's representative-band model magnitude (RUBIN_REF_BANDS, Bulge.h) --
+                        // replaces the old hardcoded magni[2] (r-band) at the two use sites below.
+                        // Reduces to exactly magni[2] when RUBIN_REF_BANDS = {2} (the default), since
+                        // s->mbs[0]/s->fb[0] were built from the same combination in func_source.
+                        double magniRubinRef = s->mbs[0] - 2.5 * std::log10(s->Astar * s->fb[0] + 1.0 - s->fb[0]);
                         sq = int(ls->ct[gi]);
                         sq  = int(ls->ct[gi]);
                         sqR = (nddR > 0 and giR < nddR) ? int(ro->ct[giR]) : -1;
@@ -460,7 +465,7 @@ int main() {
     
                             if (magni[fi] >= satu[fi] and magni[fi] <= thre[fi]) {
                                 errg = errlsstM(magni[fi], int(fi), double(ls->sig5[sq])); //[mag]
-                                errs = errlsstA(*ls, magni[2]); ///[mas]
+                                errs = errlsstA(*ls, magniRubinRef); ///[mas]
     
                                 deltaA = std::fabs(std::pow(10.0, -0.4 * errg) - 1.0) * (s->blend[fi] * s->Astar + 1.0 - s->blend[fi]);
                                 magnio = magni[fi] + RandN(errg, 3.0);
@@ -484,7 +489,7 @@ int main() {
 
                                 CHECK(ndw < coun); // array-bounds guard — see note on `coun` sizing
                                 l->timn[ndw] = tim;
-                                l->magn[ndw] = magni[2]; //scale to r-LSST band, but the errors are different
+                                l->magn[ndw] = magniRubinRef; // Rubin representative-band model value (RUBIN_REF_BANDS)
                                 l->errm[ndw] = errg;
                                 l->soux[ndw] = s->pos1c;
                                 l->souy[ndw] = s->pos2c;

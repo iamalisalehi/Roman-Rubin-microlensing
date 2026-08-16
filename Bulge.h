@@ -101,6 +101,17 @@ constexpr std::array<double, M> FWHM  = {1.22087, 1.10136, 0.993103, 0.967076, 0
 //constexpr std::array<double, M> b0    = {1.9788, 0.5575, -0.2197, -0.4982, -0.6097, -0.5236, -0.1483}; // PLACEHOLDER: K-band value, not F146
 constexpr std::array<double, M> lambda_um = {0.367, 0.482, 0.622, 0.755, 0.869, 0.971, 1.464};
 
+// Which LSST filter(s) (indices 0-5 = u,g,r,i,z,y) form the single "Rubin representative
+// band" standing in for the whole LSST light curve in the Fisher matrix, the recorded
+// per-epoch Rubin model magnitude, and the LSST astrometric-error evaluation magnitude.
+// {2} = r-band only, matching the pre-existing hardcoded behavior. Listing more than one
+// index combines them by *summing* their baseline fluxes and source fluxes separately
+// (see Lensing.cpp) -- an equal-weighted flux sum, not throughput-weighted (no per-filter
+// throughput curve exists in this codebase yet). Does NOT change which real filter's noise
+// model (errlsstM) applies to a given epoch -- that always reflects the epoch's own actual
+// filter, regardless of this setting.
+inline const std::vector<int> RUBIN_REF_BANDS = {2};
+
 constexpr double cade1 = 3.0 ;//LSST[days]
 //constexpr double cade2 = 10.0;//ELT [days]
 

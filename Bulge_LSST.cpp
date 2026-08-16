@@ -1184,7 +1184,20 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 }
 
                 co.derm2f = double(co.derm2[0] + co.derm2[1]) * 0.5;
-                gsl_matrix_set(co.inputA.get(), j, k, co.derm1f * co.derm2f / (l.errm[i] * l.errm[i]));
+
+                // ACCUMULATE, do not overwrite. A Fisher matrix is by definition a sum of
+                // information over independent measurements:
+                //     F_jk = sum_i (dm_i/dtheta_j)(dm_i/dtheta_k) / sigma_i^2
+                // Each light-curve epoch i contributes one term. Using gsl_matrix_set with the
+                // bare term (as this line previously did) discarded every epoch but the last,
+                // leaving a rank-1 matrix: singular for any Nx > 1, so invert_matrix fell into
+                // its deter==0 branch, nudged the diagonal by 1e-10, and returned an inverse of
+                // order 1e10 -- which is why every reported sigma was astronomically large
+                // (relative sigma ~1e7 on tE for real detected events). The pre-loop zeroing of
+                // inputA is what makes this running sum well-defined.
+                gsl_matrix_set(co.inputA.get(), j, k,
+                               gsl_matrix_get(co.inputA.get(), j, k)
+                                 + co.derm1f * co.derm2f / (l.errm[i] * l.errm[i]));
             }
         }//end of for J
     }//end of data for
@@ -1326,7 +1339,15 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 
                 co.dera2f = (co.dera2[0] + co.dera2[1]) * 0.5;
                 co.derb2f = (co.derb2[0] + co.derb2[1]) * 0.5;
-                gsl_matrix_set(co.inputB.get(), j, k, (co.dera1f * co.dera2f + co.derb1f * co.derb2f) / (l.erra[i] * l.erra[i] * 2.0));
+
+                // ACCUMULATE, do not overwrite -- same defect and same reasoning as the
+                // photometric matrix above, applied to the astrometric one. Here each epoch
+                // contributes both sky coordinates (pos1c/pos2c), hence the two derivative
+                // products summed before dividing by the per-epoch astrometric variance.
+                gsl_matrix_set(co.inputB.get(), j, k,
+                               gsl_matrix_get(co.inputB.get(), j, k)
+                                 + (co.dera1f * co.dera2f + co.derb1f * co.derb2f)
+                                     / (l.erra[i] * l.erra[i] * 2.0));
             }
         }//end of loop J
     }//end of loop data

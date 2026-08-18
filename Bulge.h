@@ -40,7 +40,15 @@ using std::cout;
 using std::endl;
 using std::cin;
 
-#define Nx 6
+// Photometric Fisher parameters, in index order:
+//   0 u0   1 tE   2 fb0   3 piE   4 xi   5 t0   6 mbs0   7 fb1   8 mbs1
+// fb0/mbs0 are Rubin's source-flux fraction and baseline magnitude; fb1/mbs1 are Roman's.
+// (fb is the fraction of aperture flux coming from the SOURCE, despite the name -- see
+// Lensing.cpp. Together with the baseline magnitude it is a bijective reparametrization of
+// the source-flux / blend-flux pair: F_src = fb * 10^(-0.4 mbs), F_bl = (1-fb) * 10^(-0.4 mbs).)
+// t0, mbs0, fb1 and mbs1 were appended rather than inserted so that indices 0-4 keep the
+// meanings hard-coded throughout co.resu[]. See DEVIATIONS.md.
+#define Nx 9
 #define Ny 4
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 
@@ -477,6 +485,44 @@ enum SurveyIdx { SJOINT = 0, SRUBIN = 1, SROMAN = 2, NSURV = 3 };
 
 // Maps a per-epoch telescope tag (lens::tele[i]: 0 = Rubin, 1 = Roman) to its survey index.
 inline int surveyOfTele(int tele) { return (tele == 0) ? SRUBIN : SROMAN; }
+
+// Which photometric parameters a given survey partition can actually constrain.
+//
+// Rubin's epochs carry no information whatsoever about Roman's flux parameters (fb1, mbs1) and
+// vice versa: perturbing them leaves the model magnitude of the other telescope's epochs exactly
+// unchanged, so those rows and columns of the single-survey information matrices are identically
+// zero. Inverting the full Nx x Nx matrix for a single survey would therefore be singular by
+// construction, not by accident. Each partition instead inverts only the submatrix it can
+// constrain; parameters outside the subset report sigma = -1.
+//
+// The joint matrix keeps all Nx parameters, which is the point -- it is the only one that sees
+// both telescopes' flux scales at once, and the chromatic difference between them is part of what
+// breaks the u0-tE-fb degeneracy.
+// A parameter is only active for a partition if that partition's data can constrain it.
+//
+// Rubin's epochs carry no information about Roman's flux parameters (fb1, mbs1) and vice versa:
+// perturbing them leaves the other telescope's model magnitudes exactly unchanged, so those rows
+// and columns are identically zero. Inverting the full Nx x Nx matrix for such a partition would
+// be singular by construction, not by accident.
+//
+// The joint set additionally depends on which surveys actually contributed epochs for THIS event.
+// A short event peaking in a Roman gap has no Roman data at all, so the joint fit cannot solve for
+// Roman's flux scale either and must fall back to Rubin's parameter set. Without this the joint
+// matrix would go singular on exactly the gap-peaking events the project is about.
+inline std::vector<int> activePhotParams(int surv, int nRubinEpochs, int nRomanEpochs)
+{
+    const std::vector<int> shared = {0, 1, 3, 4, 5};  //u0, tE, piE, xi, t0
+    const std::vector<int> rubinFlux = {2, 6};        //fb0, mbs0
+    const std::vector<int> romanFlux = {7, 8};        //fb1, mbs1
+
+    std::vector<int> out = shared;
+    const bool wantRubin = (surv == SRUBIN) || (surv == SJOINT && nRubinEpochs > 0);
+    const bool wantRoman = (surv == SROMAN) || (surv == SJOINT && nRomanEpochs > 0);
+    if (wantRubin) out.insert(out.end(), rubinFlux.begin(), rubinFlux.end());
+    if (wantRoman) out.insert(out.end(), romanFlux.begin(), romanFlux.end());
+    std::sort(out.begin(), out.end());
+    return out;
+}
 
 struct covarian {
     int    sign;

@@ -277,9 +277,22 @@ bool checkAdditivity(const covarian& co, const char* evName, int dim, bool photo
     return ok;
 }
 
-// Adding data can never increase Fisher information, so the joint forecast can never be worse
-// than either single-survey forecast. The plan states this as an absolute rule: a ratio above 1
-// is a bug, not a result.
+// Joint forecast versus single-survey forecast, for the SHARED parameters only.
+//
+// Restricted to the geometric parameters {u0, tE, piE, xi, t0} on purpose. The naive statement
+// "adding data can never increase Fisher information" applies to a fixed parameter set. Here the
+// partitions deliberately have different parameter sets: the joint fit marginalizes over BOTH
+// telescopes' flux parameters, while a single-survey fit carries only its own. For a
+// telescope-specific flux parameter that makes the comparison meaningless -- sigma(fb1) is
+// legitimately larger in the joint fit, because the joint fit must also solve for Rubin's flux
+// scale while Rubin's epochs contribute nothing to fb1 itself.
+//
+// Even on the shared parameters this is an empirical expectation rather than a theorem: by the
+// Schur complement, the joint fit's effective information for the shared block is
+// F_rubin + F_roman(shared) minus a positive semi-definite penalty for marginalizing over the
+// extra flux parameters. In practice the added data dominates by a wide margin, so a violation
+// here is a strong signal that something is wrong and worth investigating -- which is why it is
+// still a hard failure.
 bool checkJointNoWorse(const covarian& co, const char* evName,
                        const char* const* pnames, int dim, bool photometric)
 {
@@ -289,8 +302,15 @@ bool checkJointNoWorse(const covarian& co, const char* evName,
         const bool okPart  = photometric ? co.okA[q]      : co.okB[q];
         if (!okJoint || !okPart) continue;  // nothing to compare against
         for (int k = 0; k < dim; ++k) {
+            // Shared geometric parameters only (photometric indices 0,1,3,4,5). Index 2 is fb0,
+            // 6 mbs0, 7 fb1, 8 mbs1 -- all telescope-specific. The astrometric set has no
+            // telescope-specific parameters, so all of it is comparable.
+            if (photometric && (k == 2 || k >= 6)) continue;
             const double sJoint = photometric ? co.Era[SJOINT][k] : co.Erb[SJOINT][k];
             const double sPart  = photometric ? co.Era[q][k]      : co.Erb[q][k];
+            // A negative sigma means the parameter is not in this partition's active subset
+            // (Rubin's matrix says nothing about Roman's flux scale). Nothing to compare.
+            if (sJoint < 0.0 || sPart < 0.0) continue;
             // 1e-9 relative slack absorbs floating-point noise in the inversion.
             if (sJoint > sPart * (1.0 + 1e-9)) {
                 std::cerr << "FAIL [" << evName << "] sigma(" << pnames[k] << ") joint="
@@ -324,12 +344,18 @@ bool checkT0Marginalization(const covarian& co, const char* evName, bool verbose
     for (int q = 0; q < NSURV; ++q) {
         if (!co.okA[q]) continue;
 
-        gsl_matrix      *F5 = gsl_matrix_alloc(5, 5);
-        gsl_matrix      *I5 = gsl_matrix_alloc(5, 5);
-        gsl_permutation *p5 = gsl_permutation_alloc(5);
-        for (int a = 0; a < 5; ++a)
-            for (int b = 0; b < 5; ++b)
-                gsl_matrix_set(F5, a, b, gsl_matrix_get(co.inputA[q].get(), a, b));
+        // Pre-C1 parameter set {u0, tE, fb, piE, xi} = indices 0-4, intersected with this
+        // partition's active subset (Roman's matrix has no fb0 at index 2).
+        std::vector<int> sub;
+        for (int k : activePhotParams(q, co.nepochA[SRUBIN], co.nepochA[SROMAN])) if (k <= 4) sub.push_back(k);
+        const int nsub = static_cast<int>(sub.size());
+
+        gsl_matrix      *F5 = gsl_matrix_alloc(nsub, nsub);
+        gsl_matrix      *I5 = gsl_matrix_alloc(nsub, nsub);
+        gsl_permutation *p5 = gsl_permutation_alloc(nsub);
+        for (int a = 0; a < nsub; ++a)
+            for (int b = 0; b < nsub; ++b)
+                gsl_matrix_set(F5, a, b, gsl_matrix_get(co.inputA[q].get(), sub[a], sub[b]));
 
         int s5;
         gsl_linalg_LU_decomp(F5, p5, &s5);
@@ -337,7 +363,7 @@ bool checkT0Marginalization(const covarian& co, const char* evName, bool verbose
 
         if (det5 != 0.0 && std::isfinite(det5)) {
             gsl_linalg_LU_invert(F5, p5, I5);
-            const double v = gsl_matrix_get(I5, 1, 1);
+            const double v = gsl_matrix_get(I5, 1, 1); //index 1 is tE in every subset
             if (std::isfinite(v) && v >= 0.0) {
                 const double sigFixed = std::sqrt(v);
                 const double sigFree  = co.Era[q][1];
@@ -383,20 +409,42 @@ bool checkInverseRoundTrip(const covarian& co, const char* evName, int dim, bool
         const gsl_matrix* Fi = photometric ? co.inverA[q].get() : co.inverB[q].get();
         const double cond    = photometric ? co.condA[q] : co.condB[q];
 
+        // Only the active submatrix was inverted, so only it can round-trip to the identity.
+        static const std::vector<int> kAllAst = {0, 1, 2, 3};
+        const std::vector<int> actP = photometric
+            ? activePhotParams(q, co.nepochA[SRUBIN], co.nepochA[SROMAN]) : std::vector<int>();
+        const std::vector<int>& act = photometric ? actP : kAllAst;
+        (void)dim;
+        const int n = static_cast<int>(act.size());
+
+        // Measure the residual in the NORMALIZED basis, which is the one the inversion actually
+        // worked in. Evaluating F * F^-1 in raw units means multiplying entries that span many
+        // orders of magnitude, and the cancellation in that product swamps the answer for reasons
+        // that have nothing to do with whether the inverse is correct. With
+        // s_i = 1/sqrt(F_ii), Ftilde = D F D and Ftilde^-1 = D^-1 F^-1 D^-1, every term of the
+        // product is O(1) and the residual measures what we actually care about.
+        std::vector<double> s(n);
+        for (int a = 0; a < n; ++a) {
+            const double d = gsl_matrix_get(F, act[a], act[a]);
+            s[a] = (d > 0.0) ? 1.0 / std::sqrt(d) : 0.0;
+        }
         double worst = 0.0;
-        for (int a = 0; a < dim; ++a) {
-            for (int b = 0; b < dim; ++b) {
+        for (int a = 0; a < n; ++a) {
+            for (int b = 0; b < n; ++b) {
                 double sum = 0.0;
-                for (int c = 0; c < dim; ++c) {
-                    sum += gsl_matrix_get(F, a, c) * gsl_matrix_get(Fi, c, b);
+                for (int c = 0; c < n; ++c) {
+                    const double Ft  = gsl_matrix_get(F,  act[a], act[c]) * s[a] * s[c];
+                    const double Fti = (s[c] > 0.0 && s[b] > 0.0)
+                        ? gsl_matrix_get(Fi, act[c], act[b]) / (s[c] * s[b]) : 0.0;
+                    sum += Ft * Fti;
                 }
                 const double target = (a == b) ? 1.0 : 0.0;
                 const double err = std::fabs(sum - target);
                 if (err > worst) worst = err;
             }
         }
-        // Expect to lose roughly `cond` worth of relative precision from a ~1e-16 base.
-        const double tol = std::max(1e-8, 1e-14 * (cond > 0.0 ? cond : 1.0));
+        // Losing roughly log10(cond) digits from a ~1e-16 base is expected and unavoidable.
+        const double tol = std::max(1e-9, 1e-14 * (cond > 0.0 ? cond : 1.0));
         if (worst > tol) {
             const char* qn = (q == SJOINT) ? "joint" : (q == SRUBIN ? "rubin" : "roman");
             std::cerr << "FAIL [" << evName << "/" << qn << "] "
@@ -409,7 +457,7 @@ bool checkInverseRoundTrip(const covarian& co, const char* evName, int dim, bool
     return ok;
 }
 
-const char* kPhotNames[] = {"u0", "tE", "fb", "piE", "xi", "t0"};
+const char* kPhotNames[] = {"u0", "tE", "fb0", "piE", "xi", "t0", "mbs0", "fb1", "mbs1"};
 const char* kAstNames[]  = {"tetE", "mus1", "mus2", "piE"};
 
 void printRow(const char* label, int nep, int ok, double cond,
@@ -525,6 +573,19 @@ int main()
             }
             // A rejected partition must not carry a condition number at all. Without this, a
             // stale value from the previous event survives and looks like a real measurement.
+            // Parameters outside a partition's active subset must never carry a number.
+            if (co->okA[q]) {
+                const auto act = activePhotParams(q, co->nepochA[SRUBIN], co->nepochA[SROMAN]);
+                for (int k = 0; k < Nx; ++k) {
+                    const bool isActive = std::find(act.begin(), act.end(), k) != act.end();
+                    if (!isActive && co->Era[q][k] >= 0.0) {
+                        std::cerr << "FAIL [" << ev.name << "] partition " << q << " reports "
+                                  << "sigma(" << kPhotNames[k] << ")=" << co->Era[q][k]
+                                  << " for a parameter it carries no information about\n";
+                        ++failures;
+                    }
+                }
+            }
             if (!co->okA[q] && co->condA[q] != -1.0) {
                 std::cerr << "FAIL [" << ev.name << "] rejected photometric partition " << q
                           << " carries a stale condition number " << co->condA[q] << "\n";

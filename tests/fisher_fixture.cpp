@@ -277,22 +277,23 @@ bool checkAdditivity(const covarian& co, const char* evName, int dim, bool photo
     return ok;
 }
 
-// Joint forecast versus single-survey forecast, for the SHARED parameters only.
+// The joint forecast can never be worse than a single-survey forecast, for EVERY parameter that
+// survey constrains -- including its own telescope-specific flux parameters.
 //
-// Restricted to the geometric parameters {u0, tE, piE, xi, t0} on purpose. The naive statement
-// "adding data can never increase Fisher information" applies to a fixed parameter set. Here the
-// partitions deliberately have different parameter sets: the joint fit marginalizes over BOTH
-// telescopes' flux parameters, while a single-survey fit carries only its own. For a
-// telescope-specific flux parameter that makes the comparison meaningless -- sigma(fb1) is
-// legitimately larger in the joint fit, because the joint fit must also solve for Rubin's flux
-// scale while Rubin's epochs contribute nothing to fb1 itself.
+// This is a theorem, not an expectation, and it is worth spelling out because an earlier version
+// of this comment got it wrong. Partition the joint parameters into A (the single survey's active
+// set) and B (the other survey's flux parameters). The other survey contributes nothing to B, so
+// by the Schur complement the joint fit's effective information on A is
 //
-// Even on the shared parameters this is an empirical expectation rather than a theorem: by the
-// Schur complement, the joint fit's effective information for the shared block is
-// F_rubin + F_roman(shared) minus a positive semi-definite penalty for marginalizing over the
-// extra flux parameters. In practice the added data dominates by a wide margin, so a violation
-// here is a strong signal that something is wrong and worth investigating -- which is why it is
-// still a hard failure.
+//     S = F_thisSurvey[A,A] + ( F_other[A,A] - F_other[A,B] F_other[B,B]^-1 F_other[B,A] )
+//
+// and the bracketed term is the Schur complement of the other survey's own information matrix,
+// which is positive semi-definite. Hence S >= F_thisSurvey[A,A] in the Loewner order, so every
+// diagonal element of the inverse can only shrink: sigma_joint <= sigma_single, always.
+//
+// A violation therefore means a bug, never a physical effect. It caught exactly that once: fb0
+// was still perturbing s.fb[tt] rather than s.fb[0], so on Roman epochs parameters 2 and 7 both
+// moved Roman's blend fraction and the joint matrix carried a duplicated direction.
 bool checkJointNoWorse(const covarian& co, const char* evName,
                        const char* const* pnames, int dim, bool photometric)
 {
@@ -302,10 +303,6 @@ bool checkJointNoWorse(const covarian& co, const char* evName,
         const bool okPart  = photometric ? co.okA[q]      : co.okB[q];
         if (!okJoint || !okPart) continue;  // nothing to compare against
         for (int k = 0; k < dim; ++k) {
-            // Shared geometric parameters only (photometric indices 0,1,3,4,5). Index 2 is fb0,
-            // 6 mbs0, 7 fb1, 8 mbs1 -- all telescope-specific. The astrometric set has no
-            // telescope-specific parameters, so all of it is comparable.
-            if (photometric && (k == 2 || k >= 6)) continue;
             const double sJoint = photometric ? co.Era[SJOINT][k] : co.Erb[SJOINT][k];
             const double sPart  = photometric ? co.Era[q][k]      : co.Erb[q][k];
             // A negative sigma means the parameter is not in this partition's active subset

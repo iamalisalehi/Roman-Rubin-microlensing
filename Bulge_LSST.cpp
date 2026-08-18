@@ -1174,7 +1174,13 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 
                 if (j == 0) {co.diff = double(+co.Delta1[j] * sig[h]) ;      l.u0 += co.diff;}
                 if (j == 1) {co.diff = double(+co.Delta1[j] * sig2[h]);      l.tE += co.diff;}
-                if (j == 2) {co.diff = double(co.bb[h]);               s.fb[tt] += co.diff;}
+                // fb0 is RUBIN's source-flux fraction. It must perturb s.fb[0] on Rubin epochs
+                // only -- never s.fb[tt]. Perturbing s.fb[tt] here (correct before Step C2b, when
+                // index 2 was a single telescope-selected fb) makes parameters 2 and 7 both move
+                // s.fb[1] on Roman epochs, i.e. exactly degenerate, which corrupts the joint
+                // matrix with a duplicated direction.
+                if (j == 2) {co.diff = (tt == 0) ? double(co.bb[h]) : 1.0;
+                             if (tt == 0) s.fb[0] += co.diff;}
                 // Per-telescope flux parameters (Step C2b). Each affects ONLY its own telescope's
                 // epochs. On an epoch from the other telescope the model magnitude is unchanged, so
                 // the derivative is identically zero and that epoch contributes nothing to this
@@ -1205,7 +1211,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 
                 if (j == 0)      l.u0 -= co.diff;
                 if (j == 1)      l.tE -= co.diff;
-                if (j == 2)  s.fb[tt] -= co.diff;
+                if (j == 2 and tt == 0)  s.fb[0] -= co.diff;
                 if (j == 3)     l.piE -= co.diff;
                 if (j == 4)      s.xi -= co.diff;
                 if (j == 5)      l.t0 -= co.diff;
@@ -1221,7 +1227,8 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 
                     if (k == 0) {co.diff = double(+co.Delta1[k] * sig[h]) ;     l.u0 += co.diff;}
                     if (k == 1) {co.diff = double(+co.Delta1[k] * sig2[h]);     l.tE += co.diff;}
-                    if (k == 2) {co.diff = double(co.bb[h]);                s.fb[tt] += co.diff;}
+                    if (k == 2) {co.diff = (tt == 0) ? double(co.bb[h]) : 1.0;
+                                 if (tt == 0) s.fb[0] += co.diff;}
                     // Per-telescope flux parameters (Step C2b). Each affects ONLY its own telescope's
                     // epochs. On an epoch from the other telescope the model magnitude is unchanged, so
                     // the derivative is identically zero and that epoch contributes nothing to this
@@ -1252,7 +1259,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 
                     if (k == 0)      l.u0 -= co.diff;
                     if (k == 1)      l.tE -= co.diff;
-                    if (k == 2)  s.fb[tt] -= co.diff;
+                    if (k == 2 and tt == 0)  s.fb[0] -= co.diff;
                     if (k == 3)     l.piE -= co.diff;
                     if (k == 4)      s.xi -= co.diff;
                     if (k == 5)      l.t0 -= co.diff;

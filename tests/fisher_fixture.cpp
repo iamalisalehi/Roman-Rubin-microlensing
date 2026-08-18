@@ -362,15 +362,63 @@ bool checkT0Marginalization(const covarian& co, const char* evName, bool verbose
     return ok;
 }
 
+// The direct acceptance test for Step C4: F * F^-1 must be the identity.
+//
+// This validates the entire normalize / invert / rescale round trip in one shot -- if the
+// diagonal scaling were applied inconsistently, or undone in the wrong order, the product would
+// not come back as I even though every individual step looked reasonable. It only works because
+// invert_matrix operates on scratch copies and leaves the accumulated information matrix intact.
+//
+// Tolerance is scaled by the condition number: losing about log10(cond) digits is expected and
+// unavoidable, so a fixed tolerance would either be vacuous for well-conditioned matrices or
+// spuriously fail for legitimately degenerate ones.
+bool checkInverseRoundTrip(const covarian& co, const char* evName, int dim, bool photometric)
+{
+    bool ok = true;
+    for (int q = 0; q < NSURV; ++q) {
+        const bool valid = photometric ? co.okA[q] : co.okB[q];
+        if (!valid) continue;
+
+        const gsl_matrix* F  = photometric ? co.inputA[q].get() : co.inputB[q].get();
+        const gsl_matrix* Fi = photometric ? co.inverA[q].get() : co.inverB[q].get();
+        const double cond    = photometric ? co.condA[q] : co.condB[q];
+
+        double worst = 0.0;
+        for (int a = 0; a < dim; ++a) {
+            for (int b = 0; b < dim; ++b) {
+                double sum = 0.0;
+                for (int c = 0; c < dim; ++c) {
+                    sum += gsl_matrix_get(F, a, c) * gsl_matrix_get(Fi, c, b);
+                }
+                const double target = (a == b) ? 1.0 : 0.0;
+                const double err = std::fabs(sum - target);
+                if (err > worst) worst = err;
+            }
+        }
+        // Expect to lose roughly `cond` worth of relative precision from a ~1e-16 base.
+        const double tol = std::max(1e-8, 1e-14 * (cond > 0.0 ? cond : 1.0));
+        if (worst > tol) {
+            const char* qn = (q == SJOINT) ? "joint" : (q == SRUBIN ? "rubin" : "roman");
+            std::cerr << "FAIL [" << evName << "/" << qn << "] "
+                      << (photometric ? "photometric" : "astrometric")
+                      << " F*Finv deviates from identity by " << worst
+                      << " (tol " << tol << ", cond " << cond << ")\n";
+            ok = false;
+        }
+    }
+    return ok;
+}
+
 const char* kPhotNames[] = {"u0", "tE", "fb", "piE", "xi", "t0"};
 const char* kAstNames[]  = {"tetE", "mus1", "mus2", "piE"};
 
-void printRow(const char* label, int nep, int ok,
+void printRow(const char* label, int nep, int ok, double cond,
               const std::vector<double>& era, const std::vector<double>& erb)
 {
     std::cout << std::left << std::setw(10) << label
               << std::right << std::setw(7) << nep
-              << std::setw(5) << ok;
+              << std::setw(5) << ok
+              << std::scientific << std::setprecision(2) << std::setw(11) << cond;
     std::cout << std::scientific << std::setprecision(3);
     for (int k = 0; k < Nx; ++k) std::cout << std::setw(12) << era[k];
     std::cout << std::setw(12) << erb[0] << "\n";
@@ -431,13 +479,13 @@ int main()
                   << "  t0=" << ev.t0 << "  ndw=" << ndw
                   << "  (rubin=" << nL << ", roman=" << nR << ")\n";
         std::cout << std::left << std::setw(10) << "# survey"
-                  << std::right << std::setw(7) << "nep" << std::setw(5) << "ok";
+                  << std::right << std::setw(7) << "nep" << std::setw(5) << "ok" << std::setw(11) << "cond";
         for (int k = 0; k < Nx; ++k) std::cout << std::setw(12) << kPhotNames[k];
         std::cout << std::setw(12) << kAstNames[0] << "\n";
 
-        printRow("joint", co->nepochA[SJOINT], co->okA[SJOINT], co->Era[SJOINT], co->Erb[SJOINT]);
-        printRow("rubin", co->nepochA[SRUBIN], co->okA[SRUBIN], co->Era[SRUBIN], co->Erb[SRUBIN]);
-        printRow("roman", co->nepochA[SROMAN], co->okA[SROMAN], co->Era[SROMAN], co->Erb[SROMAN]);
+        printRow("joint", co->nepochA[SJOINT], co->okA[SJOINT], co->condA[SJOINT], co->Era[SJOINT], co->Erb[SJOINT]);
+        printRow("rubin", co->nepochA[SRUBIN], co->okA[SRUBIN], co->condA[SRUBIN], co->Era[SRUBIN], co->Erb[SRUBIN]);
+        printRow("roman", co->nepochA[SROMAN], co->okA[SROMAN], co->condA[SROMAN], co->Era[SROMAN], co->Erb[SROMAN]);
 
         {
             static const char* kSyn[] = {"none", "both-alone", "rubin-only-alone",
@@ -465,6 +513,24 @@ int main()
         if (!checkJointNoWorse(*co, ev.name, kPhotNames, Nx, true))  ++failures;
         if (!checkJointNoWorse(*co, ev.name, kAstNames,  Ny, false)) ++failures;
         if (!checkT0Marginalization(*co, ev.name, true)) ++failures;
+        if (!checkInverseRoundTrip(*co, ev.name, Nx, true))  ++failures;
+        if (!checkInverseRoundTrip(*co, ev.name, Ny, false)) ++failures;
+
+        // Condition numbers must be finite and >= 1 wherever a partition was accepted.
+        for (int q = 0; q < NSURV; ++q) {
+            if (co->okA[q] && !(std::isfinite(co->condA[q]) && co->condA[q] >= 1.0)) {
+                std::cerr << "FAIL [" << ev.name << "] accepted photometric partition " << q
+                          << " has bad condition number " << co->condA[q] << "\n";
+                ++failures;
+            }
+            // A rejected partition must not carry a condition number at all. Without this, a
+            // stale value from the previous event survives and looks like a real measurement.
+            if (!co->okA[q] && co->condA[q] != -1.0) {
+                std::cerr << "FAIL [" << ev.name << "] rejected photometric partition " << q
+                          << " carries a stale condition number " << co->condA[q] << "\n";
+                ++failures;
+            }
+        }
 
         // A partition with no epochs must be flagged not-characterizable, never given numbers.
         if (nR == 0 && co->okA[SROMAN] != 0) {

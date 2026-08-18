@@ -666,6 +666,7 @@ int main() {
                 // reaches FisherM must not inherit the previous event's sigmas.
                 for (int q = 0; q < NSURV; ++q) {
                     co->okA[q] = 0; co->okB[q] = 0; co->nepochA[q] = 0;
+                    co->condA[q] = -1.0; co->condB[q] = -1.0;
                     for (int k = 0; k < Nx; ++k) co->Era[q][k] = -1.0;
                     for (int k = 0; k < Ny; ++k) co->Erb[q][k] = -1.0;
                 }
@@ -773,7 +774,8 @@ int main() {
                 co->Era[SJOINT][1], co->Era[SRUBIN][1], co->Era[SROMAN][1],   //sigma(tE)
                 co->Era[SJOINT][3], co->Era[SRUBIN][3], co->Era[SROMAN][3],   //sigma(piE)
                 co->Erb[SJOINT][0], co->Erb[SRUBIN][0], co->Erb[SROMAN][0],   //sigma(tetE)
-                synergyClass(*co)
+                synergyClass(*co),
+                co->condA[SJOINT], co->condA[SRUBIN], co->condA[SROMAN]
             });
    
             filg_in.open(testf, std::ios::app);
@@ -795,7 +797,8 @@ int main() {
                     << co->Era[SJOINT][1] << " " << co->Era[SRUBIN][1] << " " << co->Era[SROMAN][1] << " "
                     << co->Era[SJOINT][3] << " " << co->Era[SRUBIN][3] << " " << co->Era[SROMAN][3] << " "
                     << co->Erb[SJOINT][0] << " " << co->Erb[SRUBIN][0] << " " << co->Erb[SROMAN][0] << " "
-                    << synergyClass(*co) << "\n";
+                    << synergyClass(*co) << " "
+                    << co->condA[SJOINT] << " " << co->condA[SRUBIN] << " " << co->condA[SROMAN] << "\n";
             filg_in.close();
 //          
 
@@ -1122,6 +1125,10 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         co.nepochA[q] = 0;
         co.okA[q] = 0;
         co.okB[q] = 0;
+        // Must be reset here too: a partition rejected for having too few epochs never reaches
+        // invert_matrix, so without this it would silently carry the previous event's value.
+        co.condA[q] = -1.0;
+        co.condB[q] = -1.0;
         for (int j = 0; j < Nx; ++j) {
             for (int k = 0; k < Nx; ++k) {
                 gsl_matrix_set(co.inputA[q].get(), j, k, 0.0);
@@ -1779,46 +1786,123 @@ void Disk_model(source& s, int numt)
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 
 ////////////////////// Matrix
+// Largest condition number we will still trust an inverse from.
+//
+// A double carries ~16 significant decimal digits; inverting a matrix with condition number 10^k
+// costs roughly k of them. The precision gains this project sets out to measure are at the
+// few-percent level, so we need at least 3-4 trustworthy digits in the result, leaving room for
+// about 10^12. Past that the reported sigma is dominated by round-off rather than by data.
+//
+// This threshold is applied to the NORMALIZED matrix, where a large value can no longer be
+// blamed on parameters being measured in different units and instead means the data genuinely
+// cannot constrain some combination of them. The per-event condition number is stored regardless,
+// so a stricter (or looser) cut can be applied during analysis without rerunning the simulation.
+constexpr double kMaxCondition = 1.0e12;
+
 int invert_matrix(covarian & co, int flag, int surv)
 {
-    // Returns 1 on a usable inverse, 0 if the information matrix is singular.
-    //
-    // The previous behaviour on a singular matrix was to nudge every diagonal element by 1e-10
-    // and invert anyway, which produced an inverse of order 1e10 and hence nonsense sigmas that
-    // looked like numbers. A singular Fisher matrix is a physical statement -- this data cannot
-    // constrain these parameters -- and must be reported as such, not smoothed over.
+    // Returns 1 on a usable inverse, 0 if the information matrix cannot be trusted -- either
+    // singular or too ill-conditioned. A rejected partition means "this data cannot characterize
+    // this event", which is a physical result and must be reported as such, never smoothed over
+    // by inverting anyway and handing back a plausible-looking number.
     const int    dim = (flag == 0) ? Nx : Ny;
     gsl_matrix*  in  = (flag == 0) ? co.inputA[surv].get() : co.inputB[surv].get();
     gsl_matrix*  out = (flag == 0) ? co.inverA[surv].get() : co.inverB[surv].get();
+    double&      cond = (flag == 0) ? co.condA[surv] : co.condB[surv];
 
-    // Work on a scratch copy. gsl_linalg_LU_decomp overwrites its input, and the information
-    // matrix itself is a quantity we want to keep: it is what makes F[JOINT] == F[RUBIN] +
-    // F[ROMAN] checkable, and Step C4's per-event condition number needs the undecomposed
-    // matrix. Destroying it in place would silently break both.
-    gsl_matrix *lu = gsl_matrix_alloc(dim, dim);
-    if (!lu) throw std::runtime_error("GSL matrix allocation failed");
-    gsl_matrix_memcpy(lu, in);
+    cond = -1.0;
+    gsl_matrix_set_zero(out);
 
-    gsl_permutation *p = gsl_permutation_alloc(dim);
+    // ---- 1. Build the normalizing scale D = diag(1/sqrt(F_ii)) ----
+    //
+    // F_jk carries units of 1/(theta_j theta_k), so with tE in days (~30), u0 dimensionless
+    // (~0.3) and xi in radians, the entries span many orders of magnitude before any physics
+    // enters. That is ill-conditioning caused purely by our choice of units, and it is removable.
+    // A non-positive diagonal entry means the corresponding parameter has no information at all
+    // (an identically zero derivative), which is singular by inspection.
+    std::vector<double> scale(dim);
+    for (int i = 0; i < dim; ++i) {
+        const double d = gsl_matrix_get(in, i, i);
+        if (!std::isfinite(d) || d <= 0.0) return 0;
+        scale[i] = 1.0 / std::sqrt(d);
+    }
+
+    // ---- 2. Normalized matrix Ftilde = D F D, which has unit diagonal ----
+    gsl_matrix *Ft = gsl_matrix_alloc(dim, dim);
+    if (!Ft) throw std::runtime_error("GSL matrix allocation failed");
+    for (int i = 0; i < dim; ++i) {
+        for (int j = 0; j < dim; ++j) {
+            gsl_matrix_set(Ft, i, j, gsl_matrix_get(in, i, j) * scale[i] * scale[j]);
+        }
+    }
+
+    // ---- 3. Condition number of the normalized matrix ----
+    //
+    // The information matrix is symmetric positive semi-definite, so its condition number in the
+    // 2-norm is just lambda_max/lambda_min. gsl_eigen_symm destroys its input, hence the copy.
+    {
+        gsl_matrix *ev = gsl_matrix_alloc(dim, dim);
+        gsl_vector *ew = gsl_vector_alloc(dim);
+        gsl_eigen_symm_workspace *w = gsl_eigen_symm_alloc(dim);
+        gsl_matrix_memcpy(ev, Ft);
+        gsl_eigen_symm(ev, ew, w);
+
+        double lmin = gsl_vector_get(ew, 0), lmax = lmin;
+        for (int i = 1; i < dim; ++i) {
+            const double v = gsl_vector_get(ew, i);
+            if (v < lmin) lmin = v;
+            if (v > lmax) lmax = v;
+        }
+        gsl_eigen_symm_free(w);
+        gsl_vector_free(ew);
+        gsl_matrix_free(ev);
+
+        // A non-positive smallest eigenvalue means the matrix is singular (or numerically
+        // indefinite): some parameter combination carries no information whatsoever.
+        if (!std::isfinite(lmin) || !std::isfinite(lmax) || lmin <= 0.0) {
+            gsl_matrix_free(Ft);
+            return 0;
+        }
+        cond = lmax / lmin;
+        if (cond > kMaxCondition) {
+            gsl_matrix_free(Ft);
+            return 0;   // genuinely degenerate: report not-characterizable
+        }
+    }
+
+    // ---- 4. Invert the normalized matrix ----
+    gsl_matrix      *lu = gsl_matrix_alloc(dim, dim);
+    gsl_matrix      *Fi = gsl_matrix_alloc(dim, dim);
+    gsl_permutation *p  = gsl_permutation_alloc(dim);
+    gsl_matrix_memcpy(lu, Ft);
+
     int s;
-
     gsl_linalg_LU_decomp(lu, p, &s);
     const double det = gsl_linalg_LU_det(lu, s);
     co.deter = det;
 
-    // Reject exact zeros and non-finite determinants alike. A finite-but-tiny determinant is
-    // handled downstream by the condition-number work in Step C4; this guard only catches the
-    // unambiguously singular case.
     if (det == 0.0 || !std::isfinite(det)) {
-        gsl_permutation_free(p);
-        gsl_matrix_free(lu);
-        gsl_matrix_set_zero(out);
+        gsl_permutation_free(p); gsl_matrix_free(Fi);
+        gsl_matrix_free(lu); gsl_matrix_free(Ft);
         return 0;
     }
+    gsl_linalg_LU_invert(lu, p, Fi);
 
-    gsl_linalg_LU_invert(lu, p, out);
+    // ---- 5. Undo the scaling: F^-1 = D Ftilde^-1 D ----
+    //
+    // Exact, not approximate: (D F D)^-1 = D^-1 F^-1 D^-1, so F^-1 = D (D F D)^-1 D. The whole
+    // manoeuvre is algebraically a no-op; its entire purpose is that the matrix actually handed
+    // to the LU routine has unit diagonal and therefore a far smaller condition number.
+    for (int i = 0; i < dim; ++i) {
+        for (int j = 0; j < dim; ++j) {
+            gsl_matrix_set(out, i, j, gsl_matrix_get(Fi, i, j) * scale[i] * scale[j]);
+        }
+    }
+
     gsl_permutation_free(p);
+    gsl_matrix_free(Fi);
     gsl_matrix_free(lu);
+    gsl_matrix_free(Ft);
 
     // A valid covariance matrix has non-negative variances on the diagonal.
     for (int i = 0; i < dim; ++i) {

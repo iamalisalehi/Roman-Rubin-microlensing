@@ -91,6 +91,26 @@ light curve, which constrains `mbs1` but says almost nothing about `fb1`. The ga
 survives strongly (joint/Roman = 0.0065 for `long_ingap`); the symmetric "Roman helps Rubin" and
 in-season joint gains largely do not.
 
+**Follow-up fix (same step).** The first C2b commit (`385a6c1`) left `fb0` perturbing `s.fb[tt]`
+rather than `s.fb[0]` — correct before the split, when index 2 was a single telescope-selected
+blend fraction, but wrong once index 7 became Roman's own. On Roman epochs parameters 2 and 7 both
+moved `s.fb[1]`, so the joint matrix carried a duplicated direction and reported
+`sigma(fb1) = 1.14e-2` against Roman-alone's `6.25e-3` — a joint fit worse than a single survey,
+which is impossible.
+
+That commit's message and an earlier version of the fixture comment both explained the violation as
+a legitimate consequence of the partitions having different parameter sets. **That explanation was
+wrong.** By the Schur complement the inequality is a theorem: partition the joint parameters into A
+(the single survey's active set) and B (the other survey's flux parameters); the other survey
+contributes nothing to B, so the joint fit's effective information on A is
+`F_thisSurvey[A,A] + Schur(F_other)`, and a Schur complement of a positive semi-definite matrix is
+positive semi-definite. So `sigma_joint <= sigma_single` for every parameter the survey constrains,
+including its own flux parameters. A violation is always a bug.
+
+Fixed, and the fixture assertion restored to full strength rather than restricted to the shared
+geometric parameters. The corruption was confined to the flux parameters — every `sigma(tE)` ratio
+is byte-identical before and after — so the joint-gain findings above are unaffected.
+
 **Still outstanding from Step C2:** model magnitudes are not stored in their native band. Every
 Rubin epoch, whatever filter it was actually taken in, still collapses to the single representative
 band chosen by `RUBIN_REF_BANDS`, so the chromatic information across `ugrizy` never reaches the

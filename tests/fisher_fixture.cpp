@@ -471,8 +471,74 @@ void printRow(const char* label, int nep, int ok, double cond,
 
 } // namespace
 
-int main()
+// ---------------------------------------------------------------------------------------------
+// Step C3: finite-difference step-size convergence sweep.
+//
+// For each event, each photometric parameter and each survey partition, vary that parameter's
+// step over about two decades with everything else at default, and record the recovered sigma.
+//
+// What to expect. Finite-difference error is U-shaped in the step h: truncation error grows with
+// h (the model is not linear over the step), round-off error grows as 1/h (subtracting two nearly
+// equal model values and dividing by a small number). The flat bottom is the plateau, and a
+// trustworthy step sits in the middle of it.
+//
+// mbs (indices 6 and 8) is the control: the model magnitude is exactly linear in baseline
+// magnitude, so its finite difference is exact at any step and its curve must be perfectly flat.
+// Structure there means the sweep itself is broken, not the physics.
+int runSweep()
 {
+    auto s  = std::make_unique<source>();
+    auto l  = std::make_unique<lens>();
+    auto as = std::make_unique<astromet>();
+    auto co = std::make_unique<covarian>();
+
+    // ~2 decades, geometric, centred on the production value (scale = 1).
+    static const double kScales[] = {0.1, 0.2, 0.3, 0.5, 0.7, 1.0,
+                                     1.5, 2.0, 3.0, 5.0, 7.0, 10.0};
+
+    std::cout << "event,tE,survey,param,param_idx,scale,sigma,cond,ok\n";
+
+    for (const auto& ev : kEvents) {
+        for (int pidx = 0; pidx < Nx; ++pidx) {
+            for (double sc : kScales) {
+                setupStatic(*s, *l);
+                l->tE  = ev.tE;  l->t0 = ev.t0;
+                l->u0  = ev.u0;  l->piE = ev.piE;
+
+                int nL = 0, nR = 0;
+                const int ndw = buildLightCurve(*s, *l, *as, nL, nR);
+
+                l->tE  = ev.tE;  l->t0 = ev.t0;
+                l->u0  = ev.u0;  l->piE = ev.piE;
+                s->xi  = kXi;
+                s->fb[0] = kFbRubin;  s->fb[1] = kFbRoman;
+                s->mbs[0] = kMbsRubin; s->mbs[1] = kMbsRoman;
+
+                for (int q = 0; q < Nx; ++q) co->deltaScale[q] = 1.0;
+                co->deltaScale[pidx] = sc;
+
+                FisherM(*s, *l, *as, *co, ndw);
+                ErrorCal(*co, *l, *s);
+
+                for (int q = 0; q < NSURV; ++q) {
+                    const char* qn = (q == SJOINT) ? "joint" : (q == SRUBIN ? "rubin" : "roman");
+                    std::cout << ev.name << ',' << ev.tE << ',' << qn << ','
+                              << kPhotNames[pidx] << ',' << pidx << ','
+                              << sc << ','
+                              << std::scientific << std::setprecision(10) << co->Era[q][pidx]
+                              << ',' << co->condA[q] << ',' << co->okA[q]
+                              << std::defaultfloat << '\n';
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+int main(int argc, char** argv)
+{
+    if (argc > 1 && std::string(argv[1]) == "--sweep") return runSweep();
+
     auto s  = std::make_unique<source>();
     auto l  = std::make_unique<lens>();
     auto as = std::make_unique<astromet>();

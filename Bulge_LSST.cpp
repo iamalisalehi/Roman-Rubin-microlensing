@@ -1121,6 +1121,9 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     // Placeholder pending Step C3's step-size convergence sweep, like the other four.
     co.Delta1[6] = 0.05; // mbs0 [mag] -- Rubin baseline magnitude
     co.Delta1[8] = 0.05; // mbs1 [mag] -- Roman baseline magnitude
+
+    // Step C3 step-size sweep hook. deltaScale is 1.0 in production, making this an exact no-op.
+    for (int q = 0; q < Nx; ++q) co.Delta1[q] *= co.deltaScale[q];
     // The model magnitude depends on mbs linearly with unit slope, so the finite difference is
     // exact for any step and this value only has to avoid underflow. fb0 (index 2) and fb1
     // (index 7) reuse the telescope-keyed co.bb[] steps set inside the data loop below, which
@@ -1168,6 +1171,23 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         if (s.fb[tt] < 0.15)      {co.bb[0] =+ 0.07; co.bb[1] =+ 0.15;}
         else if (s.fb[tt] < 0.85) {co.bb[0] =- 0.07; co.bb[1] =+ 0.07;}
         else                      {co.bb[0] =- 0.07; co.bb[1] =- 0.15;}
+
+        // Step C3: scale the fb step, then clamp so it still cannot leave the physical range
+        // [0,1]. The bin edges above guarantee bound-safety only at the unscaled sizes, so a
+        // scaled-up sweep point would otherwise trip CHECK(s.fb[tt] <= 1.0) and abort. Clamping
+        // rather than skipping keeps every sweep point usable; the plot shows where the clamp
+        // starts to bite as a flattening at large scale.
+        {
+            const double fscale = co.deltaScale[(tt == 0) ? 2 : 7];
+            for (int b = 0; b < 2; ++b) {
+                double step = co.bb[b] * fscale;
+                const double lo = 1.0e-6 - s.fb[tt];        //keeps fb strictly above 0
+                const double hi = 1.0 - 1.0e-6 - s.fb[tt];  //keeps fb strictly below 1
+                if (step < lo) step = lo;
+                if (step > hi) step = hi;
+                co.bb[b] = step;
+            }
+        }
 
         for (int j = 0; j < Nx; ++j) {
             for (int h = 0; h < 2; ++h) {
@@ -1409,7 +1429,21 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 CHECK(l.tetE > 0.0);
                 CHECK(l.piE > 0.0);
                 CHECK(co.diff != 0.0);
-                CHECK(!(s.pos1c == l.soux[i] && s.pos2c == l.souy[i]));
+                // A perturbation that leaves BOTH modelled coordinates unchanged is legitimate,
+                // not an error, and the arithmetic above already handles it: the numerator is zero,
+                // so the derivative is zero and this epoch contributes nothing to that parameter's
+                // row -- exactly right, because this epoch carries no information about it.
+                //
+                // It happens for real, structural reasons:
+                //   - An epoch at t == t0 makes the mus1/mus2 terms vanish identically.
+                //   - An epoch at t == 0 has zero parallax offset BY CONSTRUCTION: lightcurve()
+                //     builds ue_n1/ue_n2 as Ve(t) - Ve(0), so at t=0 they are exactly zero and piE
+                //     multiplies nothing. Every light curve starting at t=0 hits this.
+                //   - Far from peak the astrometric deflection falls as 1/u^2, so a piE
+                //     perturbation can move the position by less than a double can represent.
+                //
+                // The previous CHECK aborted the whole program (uncaught std::runtime_error) on all
+                // of these. Removed rather than softened; see OPEN_ITEMS.md.
                 CHECK(l.erra[i] > 0.0);
 
                 if (j==0) l.tetE -= co.diff;
@@ -1436,7 +1470,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                     CHECK(l.tetE > 0.0);
                     CHECK(l.piE > 0.0);
                     CHECK(co.diff != 0.0);
-                    CHECK(!(s.pos1c == l.soux[i] && s.pos2c == l.souy[i]));
+                    // Null derivative is legitimate here too -- see the note in the j-loop above.
 
                     if (k==0) l.tetE -= co.diff;
                     if (k==1) s.mus1 -= co.diff;

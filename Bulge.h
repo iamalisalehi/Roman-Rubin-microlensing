@@ -566,6 +566,13 @@ struct covarian {
     std::array<double, NSURV> condA;
     std::array<double, NSURV> condB;
 
+    // Multiplicative override on each photometric parameter's finite-difference step (Step C3).
+    // Default 1.0 is an exact no-op, so production behaviour is byte-identical; the step-size
+    // convergence sweep drives these at runtime. A runtime knob rather than a compile flag
+    // because a sweep needs many step values within a single process -- a compile flag would
+    // mean one rebuild, and for the live binary one multi-minute CMD reload, per sweep point.
+    std::array<double, Nx> deltaScale;
+
     gsl_matrix_uptr summA; //size Nx (diagnostic only, joint)
     gsl_matrix_uptr summB; //size Ny (diagnostic only, joint)
 
@@ -590,6 +597,9 @@ struct covarian {
             okB[q] = 0;
             condA[q] = -1.0;
             condB[q] = -1.0;
+        }
+        for (int k = 0; k < Nx; ++k) {
+            deltaScale[k] = 1.0;
         }
         if (!summA || !summB) {
             throw std::runtime_error("GSL matrix allocation failed");

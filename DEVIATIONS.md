@@ -65,13 +65,36 @@ band, or a custom combination) rather than fixed to r. That is a self-contained 
 exact acceptance test — byte-identical output under the default — so it was worth landing on its
 own before the much larger parameter-set change.
 
-**What remains outstanding in C2b:**
-- Baseline/source flux `s.mbs[]` is **not a free Fisher parameter at all** — only `fb` is. This is
-  the same class of error that Step C1 fixed for `t0`: treating a genuinely free parameter as
-  perfectly known makes every forecast too optimistic. It affects all three survey partitions.
-- Model magnitudes are still not stored in their native band. Every Rubin epoch, whatever filter it
-  was taken in, still collapses to one representative-band magnitude.
-- The `Nx` growth / runtime / conditioning analysis the plan explicitly asks for.
+**C2b since implemented.** `Nx` 6 -> 9, layout
+`{u0, tE, fb0, piE, xi, t0, mbs0, fb1, mbs1}`. Each telescope's source-flux fraction and baseline
+magnitude are now free parameters affecting only that telescope's epochs. In these coordinates
+`(mbs, fb)` is a bijective reparametrization of the plan's `(source flux, blend flux)`:
+`F_src = fb * 10^(-0.4 mbs)`, `F_bl = (1-fb) * 10^(-0.4 mbs)`.
+
+Because a single-survey partition carries no information about the other telescope's flux
+parameters, each partition inverts only the submatrix it can constrain (`activePhotParams`). That
+set is also epoch-aware: an event with no Roman epochs drops `fb1`/`mbs1` from the *joint* set too,
+without which the joint matrix went singular on exactly the gap-peaking events the project is about.
+
+The cost the plan asked to be explicit about: derivative evaluations per epoch go 54 -> 108
+(exactly 2x), measured fixture runtime 1.81 s -> 4.47 s (2.5x), and conditioning worsens by roughly
+an order of magnitude in the fixture, far more on some live events (joint condition number 612 ->
+4.5e6 on a 936-day event). Step C4 landing first is what makes that safe to absorb.
+
+**The scientific consequence was larger than expected and is worth flagging loudly.** Marginalizing
+over the flux parameters inflates sigma(tE) by 12-680% depending on event, and substantially
+*reduces* the measured joint gain: joint/Roman-alone for a long in-season event went 0.723 -> 0.993,
+and joint/Rubin-alone for a long gap-peaking event went 0.212 -> 0.979. The earlier, larger gains
+were inflated by holding baseline flux and blend fraction fixed at their true values, which
+over-credits data that only measures baseline — for a gap-peaking event Roman's epochs see a flat
+light curve, which constrains `mbs1` but says almost nothing about `fb1`. The gap-filling claim
+survives strongly (joint/Roman = 0.0065 for `long_ingap`); the symmetric "Roman helps Rubin" and
+in-season joint gains largely do not.
+
+**Still outstanding from Step C2:** model magnitudes are not stored in their native band. Every
+Rubin epoch, whatever filter it was actually taken in, still collapses to the single representative
+band chosen by `RUBIN_REF_BANDS`, so the chromatic information across `ugrizy` never reaches the
+Fisher matrix. This is the one part of the plan's Step C2 not done.
 
 ---
 

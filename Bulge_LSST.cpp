@@ -1119,6 +1119,12 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     co.Delta1[5] = l.tE * 0.254674; // t0 [days] -- same fractional-of-tE step as tE itself,
     // since t0's local curvature scale is set by the same characteristic timescale.
     // Placeholder pending Step C3's step-size convergence sweep, like the other four.
+    co.Delta1[6] = 0.05; // mbs0 [mag] -- Rubin baseline magnitude
+    co.Delta1[8] = 0.05; // mbs1 [mag] -- Roman baseline magnitude
+    // The model magnitude depends on mbs linearly with unit slope, so the finite difference is
+    // exact for any step and this value only has to avoid underflow. fb0 (index 2) and fb1
+    // (index 7) reuse the telescope-keyed co.bb[] steps set inside the data loop below, which
+    // are binned so that fb + step never leaves the physical range [0,1].
 
     // Three matrices, zeroed together: joint, Rubin-only, Roman-only (see SurveyIdx in Bulge.h).
     for (int q = 0; q < NSURV; ++q) {
@@ -1169,6 +1175,17 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 if (j == 0) {co.diff = double(+co.Delta1[j] * sig[h]) ;      l.u0 += co.diff;}
                 if (j == 1) {co.diff = double(+co.Delta1[j] * sig2[h]);      l.tE += co.diff;}
                 if (j == 2) {co.diff = double(co.bb[h]);               s.fb[tt] += co.diff;}
+                // Per-telescope flux parameters (Step C2b). Each affects ONLY its own telescope's
+                // epochs. On an epoch from the other telescope the model magnitude is unchanged, so
+                // the derivative is identically zero and that epoch contributes nothing to this
+                // parameter's row -- which is exactly right: Rubin's data says nothing about Roman's
+                // blend fraction. co.diff is still set to a nonzero dummy so the division is safe.
+                if (j == 6) {co.diff = (tt == 0) ? double(+co.Delta1[j] * sig[h]) : 1.0;
+                                 if (tt == 0) s.mbs[0] += co.diff;}
+                if (j == 7) {co.diff = (tt == 1) ? double(co.bb[h]) : 1.0;
+                                 if (tt == 1) s.fb[1]  += co.diff;}
+                if (j == 8) {co.diff = (tt == 1) ? double(+co.Delta1[j] * sig[h]) : 1.0;
+                                 if (tt == 1) s.mbs[1] += co.diff;}
                 if (j == 3) {co.diff = double(+co.Delta1[j] * sig2[h]);     l.piE += co.diff;}
                 if (j == 4) {co.diff = double(+co.Delta1[j] * sig[h]) ;      s.xi += co.diff;}
                 if (j == 5) {co.diff = double(+co.Delta1[j] * sig[h]) ;      l.t0 += co.diff;}
@@ -1192,6 +1209,9 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 if (j == 3)     l.piE -= co.diff;
                 if (j == 4)      s.xi -= co.diff;
                 if (j == 5)      l.t0 -= co.diff;
+                if (j == 6 and tt == 0) s.mbs[0] -= co.diff;
+                if (j == 7 and tt == 1)  s.fb[1] -= co.diff;
+                if (j == 8 and tt == 1) s.mbs[1] -= co.diff;
             }
 
             co.derm1f = double(co.derm1[0] + co.derm1[1]) * 0.5;
@@ -1202,6 +1222,17 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                     if (k == 0) {co.diff = double(+co.Delta1[k] * sig[h]) ;     l.u0 += co.diff;}
                     if (k == 1) {co.diff = double(+co.Delta1[k] * sig2[h]);     l.tE += co.diff;}
                     if (k == 2) {co.diff = double(co.bb[h]);                s.fb[tt] += co.diff;}
+                    // Per-telescope flux parameters (Step C2b). Each affects ONLY its own telescope's
+                    // epochs. On an epoch from the other telescope the model magnitude is unchanged, so
+                    // the derivative is identically zero and that epoch contributes nothing to this
+                    // parameter's row -- which is exactly right: Rubin's data says nothing about Roman's
+                    // blend fraction. co.diff is still set to a nonzero dummy so the division is safe.
+                    if (k == 6) {co.diff = (tt == 0) ? double(+co.Delta1[k] * sig[h]) : 1.0;
+                                     if (tt == 0) s.mbs[0] += co.diff;}
+                    if (k == 7) {co.diff = (tt == 1) ? double(co.bb[h]) : 1.0;
+                                     if (tt == 1) s.fb[1]  += co.diff;}
+                    if (k == 8) {co.diff = (tt == 1) ? double(+co.Delta1[k] * sig[h]) : 1.0;
+                                     if (tt == 1) s.mbs[1] += co.diff;}
                     if (k == 3) {co.diff = double(+co.Delta1[k] * sig2[h]);    l.piE += co.diff;}
                     if (k == 4) {co.diff = double(+co.Delta1[k] * sig[h]) ;     s.xi += co.diff;}
                     if (k == 5) {co.diff = double(+co.Delta1[k] * sig[h]) ;     l.t0 += co.diff;}
@@ -1225,6 +1256,9 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                     if (k == 3)     l.piE -= co.diff;
                     if (k == 4)      s.xi -= co.diff;
                     if (k == 5)      l.t0 -= co.diff;
+                    if (k == 6 and tt == 0) s.mbs[0] -= co.diff;
+                    if (k == 7 and tt == 1)  s.fb[1] -= co.diff;
+                    if (k == 8 and tt == 1) s.mbs[1] -= co.diff;
                 }
 
                 co.derm2f = double(co.derm2[0] + co.derm2[1]) * 0.5;
@@ -1268,7 +1302,11 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         // instead of inverting it into a meaningless ~1e10 sigma. This is a physical statement,
         // not a numerical workaround -- a short event peaking in a Roman gap genuinely has no
         // Roman data, and "Roman cannot characterize this event" is the correct answer.
-        co.okA[q] = (co.nepochA[q] >= Nx) ? invert_matrix(co, 0, q) : 0;
+        // Guard against a partition with fewer epochs than the parameters it must constrain.
+        // The relevant count is the ACTIVE subset for that survey, not the full Nx.
+        co.okA[q] = (co.nepochA[q] >= static_cast<int>(
+                         activePhotParams(q, co.nepochA[SRUBIN], co.nepochA[SROMAN]).size()))
+                        ? invert_matrix(co, 0, q) : 0;
     }
 
 /*cout<<"Covariance matrix Photometry"<<endl;
@@ -1473,9 +1511,15 @@ void ErrorCal(covarian & co, lens & l , source & s){
   // sentinel, rather than a plausible-looking number derived from a nudged singular matrix.
   // Downstream analysis MUST test okA/okB before using these.
   for (int q = 0; q < NSURV; ++q) {
-      for (int k = 0; k < Nx; ++k) {
-          co.Era[q][k] = co.okA[q] ? std::sqrt(std::fabs(gsl_matrix_get(co.inverA[q].get(), k, k)))
-                                   : -1.0;
+      // -1.0 marks both "partition not characterizable" and "parameter not in this partition's
+      // active subset" -- Rubin's matrix says nothing about Roman's flux parameters and vice
+      // versa. Downstream code must test okA[] and skip negative sigmas rather than treat them
+      // as measurements.
+      for (int k = 0; k < Nx; ++k) co.Era[q][k] = -1.0;
+      if (co.okA[q]) {
+          for (int k : activePhotParams(q, co.nepochA[SRUBIN], co.nepochA[SROMAN])) {
+              co.Era[q][k] = std::sqrt(std::fabs(gsl_matrix_get(co.inverA[q].get(), k, k)));
+          }
       }
       for (int k = 0; k < Ny; ++k) {
           co.Erb[q][k] = co.okB[q] ? std::sqrt(std::fabs(gsl_matrix_get(co.inverB[q].get(), k, k)))
@@ -1801,45 +1845,54 @@ constexpr double kMaxCondition = 1.0e12;
 
 int invert_matrix(covarian & co, int flag, int surv)
 {
-    // Returns 1 on a usable inverse, 0 if the information matrix cannot be trusted -- either
-    // singular or too ill-conditioned. A rejected partition means "this data cannot characterize
-    // this event", which is a physical result and must be reported as such, never smoothed over
-    // by inverting anyway and handing back a plausible-looking number.
-    const int    dim = (flag == 0) ? Nx : Ny;
-    gsl_matrix*  in  = (flag == 0) ? co.inputA[surv].get() : co.inputB[surv].get();
-    gsl_matrix*  out = (flag == 0) ? co.inverA[surv].get() : co.inverB[surv].get();
-    double&      cond = (flag == 0) ? co.condA[surv] : co.condB[surv];
+    // Returns 1 on a usable inverse, 0 if the information matrix cannot be trusted -- singular,
+    // or too ill-conditioned. A rejected partition means "this data cannot characterize this
+    // event", a physical result that must be reported as such rather than smoothed over.
+    //
+    // For the photometric matrix only a subset of parameters is inverted, since a single-survey
+    // partition carries no information about the other telescope's flux parameters (see
+    // activePhotParams). The reduced inverse is scattered back into the full-size matrix, leaving
+    // inactive rows and columns at zero; ErrorCal reports sigma = -1 for those.
+    const bool photometric = (flag == 0);
+    gsl_matrix*  in   = photometric ? co.inputA[surv].get() : co.inputB[surv].get();
+    gsl_matrix*  out  = photometric ? co.inverA[surv].get() : co.inverB[surv].get();
+    double&      cond = photometric ? co.condA[surv] : co.condB[surv];
+
+    static const std::vector<int> kAllAst = {0, 1, 2, 3};
+    const std::vector<int> actPhot = photometric
+        ? activePhotParams(surv, co.nepochA[SRUBIN], co.nepochA[SROMAN])
+        : std::vector<int>();
+    const std::vector<int>& act = photometric ? actPhot : kAllAst;
+    const int dim = static_cast<int>(act.size());
 
     cond = -1.0;
     gsl_matrix_set_zero(out);
 
-    // ---- 1. Build the normalizing scale D = diag(1/sqrt(F_ii)) ----
+    // ---- 1. Normalizing scale D = diag(1/sqrt(F_ii)) over the active parameters ----
     //
-    // F_jk carries units of 1/(theta_j theta_k), so with tE in days (~30), u0 dimensionless
-    // (~0.3) and xi in radians, the entries span many orders of magnitude before any physics
-    // enters. That is ill-conditioning caused purely by our choice of units, and it is removable.
-    // A non-positive diagonal entry means the corresponding parameter has no information at all
-    // (an identically zero derivative), which is singular by inspection.
+    // F_jk carries units of 1/(theta_j theta_k), and with tE in days (~30), u0 dimensionless
+    // (~0.3), xi in radians and mbs in magnitudes, the entries span many orders of magnitude
+    // before any physics enters. That ill-conditioning is an artifact of our choice of units and
+    // is removable. A non-positive diagonal means the parameter has no information at all.
     std::vector<double> scale(dim);
     for (int i = 0; i < dim; ++i) {
-        const double d = gsl_matrix_get(in, i, i);
+        const double d = gsl_matrix_get(in, act[i], act[i]);
         if (!std::isfinite(d) || d <= 0.0) return 0;
         scale[i] = 1.0 / std::sqrt(d);
     }
 
-    // ---- 2. Normalized matrix Ftilde = D F D, which has unit diagonal ----
+    // ---- 2. Reduced, normalized matrix Ftilde = D F D, unit diagonal ----
     gsl_matrix *Ft = gsl_matrix_alloc(dim, dim);
     if (!Ft) throw std::runtime_error("GSL matrix allocation failed");
-    for (int i = 0; i < dim; ++i) {
-        for (int j = 0; j < dim; ++j) {
-            gsl_matrix_set(Ft, i, j, gsl_matrix_get(in, i, j) * scale[i] * scale[j]);
-        }
-    }
+    for (int i = 0; i < dim; ++i)
+        for (int j = 0; j < dim; ++j)
+            gsl_matrix_set(Ft, i, j,
+                           gsl_matrix_get(in, act[i], act[j]) * scale[i] * scale[j]);
 
     // ---- 3. Condition number of the normalized matrix ----
     //
-    // The information matrix is symmetric positive semi-definite, so its condition number in the
-    // 2-norm is just lambda_max/lambda_min. gsl_eigen_symm destroys its input, hence the copy.
+    // Symmetric positive semi-definite, so the 2-norm condition number is lambda_max/lambda_min.
+    // gsl_eigen_symm destroys its input, hence the copy.
     {
         gsl_matrix *ev = gsl_matrix_alloc(dim, dim);
         gsl_vector *ew = gsl_vector_alloc(dim);
@@ -1857,11 +1910,9 @@ int invert_matrix(covarian & co, int flag, int surv)
         gsl_vector_free(ew);
         gsl_matrix_free(ev);
 
-        // A non-positive smallest eigenvalue means the matrix is singular (or numerically
-        // indefinite): some parameter combination carries no information whatsoever.
         if (!std::isfinite(lmin) || !std::isfinite(lmax) || lmin <= 0.0) {
             gsl_matrix_free(Ft);
-            return 0;
+            return 0;   // some parameter combination carries no information at all
         }
         cond = lmax / lmin;
         if (cond > kMaxCondition) {
@@ -1870,7 +1921,7 @@ int invert_matrix(covarian & co, int flag, int surv)
         }
     }
 
-    // ---- 4. Invert the normalized matrix ----
+    // ---- 4. Invert the reduced normalized matrix ----
     gsl_matrix      *lu = gsl_matrix_alloc(dim, dim);
     gsl_matrix      *Fi = gsl_matrix_alloc(dim, dim);
     gsl_permutation *p  = gsl_permutation_alloc(dim);
@@ -1888,16 +1939,15 @@ int invert_matrix(covarian & co, int flag, int surv)
     }
     gsl_linalg_LU_invert(lu, p, Fi);
 
-    // ---- 5. Undo the scaling: F^-1 = D Ftilde^-1 D ----
+    // ---- 5. Undo the scaling and scatter back to full size: F^-1 = D Ftilde^-1 D ----
     //
-    // Exact, not approximate: (D F D)^-1 = D^-1 F^-1 D^-1, so F^-1 = D (D F D)^-1 D. The whole
-    // manoeuvre is algebraically a no-op; its entire purpose is that the matrix actually handed
-    // to the LU routine has unit diagonal and therefore a far smaller condition number.
-    for (int i = 0; i < dim; ++i) {
-        for (int j = 0; j < dim; ++j) {
-            gsl_matrix_set(out, i, j, gsl_matrix_get(Fi, i, j) * scale[i] * scale[j]);
-        }
-    }
+    // Exact, not approximate: (D F D)^-1 = D^-1 F^-1 D^-1. The whole manoeuvre is algebraically
+    // a no-op; its purpose is that the matrix handed to LU has unit diagonal and a far smaller
+    // condition number.
+    for (int i = 0; i < dim; ++i)
+        for (int j = 0; j < dim; ++j)
+            gsl_matrix_set(out, act[i], act[j],
+                           gsl_matrix_get(Fi, i, j) * scale[i] * scale[j]);
 
     gsl_permutation_free(p);
     gsl_matrix_free(Fi);
@@ -1906,7 +1956,7 @@ int invert_matrix(covarian & co, int flag, int surv)
 
     // A valid covariance matrix has non-negative variances on the diagonal.
     for (int i = 0; i < dim; ++i) {
-        const double v = gsl_matrix_get(out, i, i);
+        const double v = gsl_matrix_get(out, act[i], act[i]);
         if (!std::isfinite(v) || v < 0.0) {
             gsl_matrix_set_zero(out);
             return 0;

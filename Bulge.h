@@ -24,6 +24,7 @@
 #include <gsl/gsl_matrix_double.h>
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_linalg.h>
+#include <gsl/gsl_eigen.h>
 
 ////
 #include <random>
@@ -508,6 +509,17 @@ struct covarian {
     std::array<int, NSURV> okA;     //1 = inverted and usable, 0 = not characterizable
     std::array<int, NSURV> okB;     //same for the astrometric matrix
 
+    // Condition number (lambda_max/lambda_min) of the NORMALIZED information matrix, per survey.
+    // Normalized, not raw: dividing row and column i by sqrt(F_ii) removes the spread that comes
+    // merely from the parameters being expressed in different units (tE in days ~30, u0
+    // dimensionless ~0.3, xi in radians), leaving only genuine parameter degeneracy. A large
+    // value after normalization is a physical statement -- some combination of parameters is
+    // unconstrained by this data, classically the u0-tE-fb degeneracy -- not a units artifact.
+    // Stored rather than only thresholded so the cut can be chosen during analysis.
+    // -1.0 means "not computed" (partition rejected before it got this far).
+    std::array<double, NSURV> condA;
+    std::array<double, NSURV> condB;
+
     gsl_matrix_uptr summA; //size Nx (diagnostic only, joint)
     gsl_matrix_uptr summB; //size Ny (diagnostic only, joint)
 
@@ -530,6 +542,8 @@ struct covarian {
             nepochA[q] = 0;
             okA[q] = 0;
             okB[q] = 0;
+            condA[q] = -1.0;
+            condB[q] = -1.0;
         }
         if (!summA || !summB) {
             throw std::runtime_error("GSL matrix allocation failed");
@@ -623,6 +637,9 @@ struct EventRecord {
     double sigtetE_J, sigtetE_L, sigtetE_R;  //absolute 1-sigma on tetE [mas]
     int    synClass;            //SynergyClass -- see the note above the enum. Do NOT drop rows
                                 //with a not-characterizable single-survey sigma; use this.
+    double condA_J, condA_L, condA_R;   //photometric condition numbers (normalized matrix);
+                                //-1 where that partition was not characterizable. Stored so the
+                                //ill-conditioning cut can be chosen in analysis, not baked in.
 };
 ///===================== FUNCTION ===========================================//
 int    Funcu0(lens & l);

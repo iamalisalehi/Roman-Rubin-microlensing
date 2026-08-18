@@ -155,10 +155,17 @@ Invalid partitions report sigma `-1` as an explicit sentinel.
 event peaking in a Roman gap genuinely has no Roman data. Without this, C5's own output would have
 been garbage on exactly the events that matter most.
 
-**Still outstanding in C4:** normalization before inversion, per-event condition numbers, and
-rejection of *near*-singular matrices. The current check only catches exactly-singular ones. A live
-run found a 936-day event where Roman contributed 760 epochs and still produced a singular
-photometric matrix, which the coarse check happened to catch — near-singular cases will not be.
+**Since completed.** Step C4 was taken next and finished the remaining work: symmetric
+normalization before inversion (`F~ = D F D` with `D = diag(1/sqrt(F_ii))`, inverted, then
+rescaled — algebraically identical, numerically far better behaved), per-event condition numbers
+computed from the normalized matrix and stored in the output, and rejection above a documented
+threshold. All sigmas came out bit-identical to the pre-C4 values, confirming the normalization is
+the no-op it should be.
+
+**Caveat worth carrying forward:** on the current event set the `kMaxCondition` threshold has never
+actually fired — every rejection so far came from the zero-epoch or exactly-singular checks that
+already existed. Its behaviour on a genuinely near-singular matrix is therefore still unverified.
+A fixture event deliberately constructed to sit near the threshold would close that gap.
 
 **Related fix in the same commit:** `invert_matrix` was destroying its input, because
 `gsl_linalg_LU_decomp` overwrites in place. It now works on a scratch copy. This was found by the

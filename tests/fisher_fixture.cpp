@@ -242,6 +242,83 @@ int buildLightCurve(source& s, lens& l, astromet& as, int& nL, int& nR)
 
 } // namespace
 
+namespace {
+
+// Recompute F[SRUBIN] + F[SROMAN] and compare against F[SJOINT] element by element.
+//
+// This is the sharpest available check that the partitioning is correct. Fisher information is
+// a sum of independent per-epoch terms, and every epoch feeds the joint matrix and exactly one
+// single-survey matrix, so the identity is exact up to floating-point summation order.
+bool checkAdditivity(const covarian& co, const char* evName, int dim, bool photometric)
+{
+    bool ok = true;
+    double worst = 0.0;
+    for (int j = 0; j < dim; ++j) {
+        for (int k = 0; k < dim; ++k) {
+            const double joint = photometric
+                ? gsl_matrix_get(co.inputA[SJOINT].get(), j, k)
+                : gsl_matrix_get(co.inputB[SJOINT].get(), j, k);
+            const double parts = photometric
+                ? gsl_matrix_get(co.inputA[SRUBIN].get(), j, k)
+                    + gsl_matrix_get(co.inputA[SROMAN].get(), j, k)
+                : gsl_matrix_get(co.inputB[SRUBIN].get(), j, k)
+                    + gsl_matrix_get(co.inputB[SROMAN].get(), j, k);
+            const double scale = std::fabs(joint) + std::fabs(parts) + 1e-300;
+            const double rel   = std::fabs(joint - parts) / scale;
+            if (rel > worst) worst = rel;
+            if (rel > 1e-9) ok = false;
+        }
+    }
+    if (!ok) {
+        std::cerr << "FAIL [" << evName << "] " << (photometric ? "photometric" : "astrometric")
+                  << " matrix: F[JOINT] != F[RUBIN] + F[ROMAN]; worst relative mismatch "
+                  << worst << "\n";
+    }
+    return ok;
+}
+
+// Adding data can never increase Fisher information, so the joint forecast can never be worse
+// than either single-survey forecast. The plan states this as an absolute rule: a ratio above 1
+// is a bug, not a result.
+bool checkJointNoWorse(const covarian& co, const char* evName,
+                       const char* const* pnames, int dim, bool photometric)
+{
+    bool ok = true;
+    for (int q = 1; q < NSURV; ++q) {
+        const bool okJoint = photometric ? co.okA[SJOINT] : co.okB[SJOINT];
+        const bool okPart  = photometric ? co.okA[q]      : co.okB[q];
+        if (!okJoint || !okPart) continue;  // nothing to compare against
+        for (int k = 0; k < dim; ++k) {
+            const double sJoint = photometric ? co.Era[SJOINT][k] : co.Erb[SJOINT][k];
+            const double sPart  = photometric ? co.Era[q][k]      : co.Erb[q][k];
+            // 1e-9 relative slack absorbs floating-point noise in the inversion.
+            if (sJoint > sPart * (1.0 + 1e-9)) {
+                std::cerr << "FAIL [" << evName << "] sigma(" << pnames[k] << ") joint="
+                          << sJoint << " > " << (q == SRUBIN ? "rubin=" : "roman=") << sPart
+                          << "  -- adding data made the forecast worse\n";
+                ok = false;
+            }
+        }
+    }
+    return ok;
+}
+
+const char* kPhotNames[] = {"u0", "tE", "fb", "piE", "xi", "t0"};
+const char* kAstNames[]  = {"tetE", "mus1", "mus2", "piE"};
+
+void printRow(const char* label, int nep, int ok,
+              const std::vector<double>& era, const std::vector<double>& erb)
+{
+    std::cout << std::left << std::setw(10) << label
+              << std::right << std::setw(7) << nep
+              << std::setw(5) << ok;
+    std::cout << std::scientific << std::setprecision(3);
+    for (int k = 0; k < Nx; ++k) std::cout << std::setw(12) << era[k];
+    std::cout << std::setw(12) << erb[0] << "\n";
+}
+
+} // namespace
+
 int main()
 {
     auto s  = std::make_unique<source>();
@@ -249,25 +326,13 @@ int main()
     auto as = std::make_unique<astromet>();
     auto co = std::make_unique<covarian>();
 
-    std::cout << "# Fisher-matrix fixture -- synthetic events, no data files required\n"
-              << "# Nx=" << Nx << " (photometric)   Ny=" << Ny << " (astrometric)\n"
-              << "# sigma columns are ABSOLUTE 1-sigma forecast uncertainties from co.Era[]/co.Erb[]\n"
-              << "#\n";
+    int failures = 0;
 
-    std::cout << std::left << std::setw(16) << "# event"
-              << std::right
-              << std::setw(8)  << "tE"
-              << std::setw(9)  << "t0"
-              << std::setw(7)  << "ndw"
-              << std::setw(7)  << "nL"
-              << std::setw(7)  << "nR"
-              << std::setw(13) << "sig_u0"
-              << std::setw(13) << "sig_tE"
-              << std::setw(13) << "sig_fb"
-              << std::setw(13) << "sig_piE"
-              << std::setw(13) << "sig_xi";
-    if (Nx > 5) std::cout << std::setw(13) << "sig_t0";
-    std::cout << std::setw(13) << "sig_tetE" << "\n";
+    std::cout << "# Fisher-matrix fixture -- synthetic events, no data files required\n"
+              << "# Nx=" << Nx << " (photometric)  Ny=" << Ny << " (astrometric)\n"
+              << "# One block per event, one row per survey partition (Step C5).\n"
+              << "# ok=1 usable inverse, ok=0 not characterizable (sigmas print as -1).\n"
+              << "# Asserted: F[joint] == F[rubin] + F[roman] exactly, and sigma_joint <= both.\n";
 
     for (const auto& ev : kEvents) {
         setupStatic(*s, *l);
@@ -279,9 +344,8 @@ int main()
         int nL = 0, nR = 0;
         const int ndw = buildLightCurve(*s, *l, *as, nL, nR);
 
-        // Rebuild the true-parameter state before handing off: buildLightCurve left
-        // lightcurve() evaluated at the final epoch, and FisherM perturbs from whatever the
-        // struct currently holds.
+        // buildLightCurve left lightcurve() evaluated at the final epoch; FisherM perturbs from
+        // whatever the structs currently hold, so restore the true parameter point first.
         l->tE  = ev.tE;
         l->t0  = ev.t0;
         l->u0  = ev.u0;
@@ -290,15 +354,8 @@ int main()
         s->fb[0] = kFbRubin;
         s->fb[1] = kFbRoman;
 
-        // Guard against an epoch landing exactly on t0. At such an epoch the source-motion
-        // terms mus1*(timh - t0) and mus2*(timh - t0) vanish identically, so perturbing mus1
-        // (or mus2) leaves BOTH modelled coordinates bit-identical and FisherM's astrometric
-        // branch aborts on
-        //     CHECK(!(s.pos1c == l.soux[i] && s.pos2c == l.souy[i]))
-        // The t0 values above are deliberately off-grid to avoid this. If you change the
-        // cadence or the events, this guard tells you what went wrong instead of leaving you
-        // with an opaque abort. See OPEN_ITEMS.md -- the underlying fragility is in the
-        // production CHECK, not in this fixture.
+        // See OPEN_ITEMS.md: an epoch exactly at t0 makes the mus1/mus2 perturbations no-ops and
+        // trips FisherM's astrometric CHECK. The t0 values are offset off-grid to avoid it.
         for (int i = 0; i < ndw; ++i) {
             if (l->timn[i] == l->t0) {
                 std::cerr << "fixture error: event '" << ev.name << "' has an epoch exactly at "
@@ -310,23 +367,47 @@ int main()
         FisherM(*s, *l, *as, *co, ndw);
         ErrorCal(*co, *l, *s);
 
-        std::cout << std::left << std::setw(16) << ev.name
-                  << std::right << std::fixed
-                  << std::setw(8) << std::setprecision(1) << ev.tE
-                  << std::setw(9) << std::setprecision(1) << ev.t0
-                  << std::setw(7) << ndw
-                  << std::setw(7) << nL
-                  << std::setw(7) << nR
-                  << std::scientific << std::setprecision(4)
-                  << std::setw(13) << co->Era[0]
-                  << std::setw(13) << co->Era[1]
-                  << std::setw(13) << co->Era[2]
-                  << std::setw(13) << co->Era[3]
-                  << std::setw(13) << co->Era[4];
-        if (Nx > 5) std::cout << std::setw(13) << co->Era[5];
-        std::cout << std::setw(13) << co->Erb[0] << "\n";
+        std::cout << "\n# " << ev.name << "  tE=" << std::fixed << std::setprecision(1) << ev.tE
+                  << "  t0=" << ev.t0 << "  ndw=" << ndw
+                  << "  (rubin=" << nL << ", roman=" << nR << ")\n";
+        std::cout << std::left << std::setw(10) << "# survey"
+                  << std::right << std::setw(7) << "nep" << std::setw(5) << "ok";
+        for (int k = 0; k < Nx; ++k) std::cout << std::setw(12) << kPhotNames[k];
+        std::cout << std::setw(12) << kAstNames[0] << "\n";
+
+        printRow("joint", co->nepochA[SJOINT], co->okA[SJOINT], co->Era[SJOINT], co->Erb[SJOINT]);
+        printRow("rubin", co->nepochA[SRUBIN], co->okA[SRUBIN], co->Era[SRUBIN], co->Erb[SRUBIN]);
+        printRow("roman", co->nepochA[SROMAN], co->okA[SROMAN], co->Era[SROMAN], co->Erb[SROMAN]);
+
+        // ---- assertions ----
+        if (!checkAdditivity(*co, ev.name, Nx, true))  ++failures;
+        if (!checkAdditivity(*co, ev.name, Ny, false)) ++failures;
+        if (!checkJointNoWorse(*co, ev.name, kPhotNames, Nx, true))  ++failures;
+        if (!checkJointNoWorse(*co, ev.name, kAstNames,  Ny, false)) ++failures;
+
+        // A partition with no epochs must be flagged not-characterizable, never given numbers.
+        if (nR == 0 && co->okA[SROMAN] != 0) {
+            std::cerr << "FAIL [" << ev.name << "] Roman has zero epochs but okA[SROMAN]="
+                      << co->okA[SROMAN] << "; a partition with no data must not be usable\n";
+            ++failures;
+        }
+        if (nL == 0 && co->okA[SRUBIN] != 0) {
+            std::cerr << "FAIL [" << ev.name << "] Rubin has zero epochs but okA[SRUBIN]="
+                      << co->okA[SRUBIN] << "\n";
+            ++failures;
+        }
+        // Epoch counts must partition exactly.
+        if (co->nepochA[SJOINT] != co->nepochA[SRUBIN] + co->nepochA[SROMAN]) {
+            std::cerr << "FAIL [" << ev.name << "] epoch counts do not partition\n";
+            ++failures;
+        }
     }
 
-    std::cout << "#\n# done\n";
-    return 0;
+    std::cout << "\n#\n";
+    if (failures == 0) {
+        std::cout << "# PASS -- all assertions held\n";
+        return 0;
+    }
+    std::cout << "# FAIL -- " << failures << " assertion failure(s)\n";
+    return 1;
 }

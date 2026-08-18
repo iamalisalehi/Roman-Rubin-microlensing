@@ -662,6 +662,13 @@ int main() {
 
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH 
                 for (int i = 0; i < nq; ++i) co->resu[i] = -1.0;
+                // Same sentinel discipline for the per-survey results: an event that never
+                // reaches FisherM must not inherit the previous event's sigmas.
+                for (int q = 0; q < NSURV; ++q) {
+                    co->okA[q] = 0; co->okB[q] = 0; co->nepochA[q] = 0;
+                    for (int k = 0; k < Nx; ++k) co->Era[q][k] = -1.0;
+                    for (int k = 0; k < Ny; ++k) co->Erb[q][k] = -1.0;
+                }
     
                 FFG[0] = 0;
                 FFG[1] = 0;
@@ -759,7 +766,13 @@ int main() {
                 co->resu[0], co->resu[1], co->resu[2], co->resu[3], co->resu[5],
                 co->resu[9], co->resu[10], co->resu[13], co->resu[14],
                 s->Map[2], s->nsbl[2],
-                co->flagi, s->Ai[2]
+                co->flagi, s->Ai[2],
+                ndw_L, ndw_R,
+                detL, detR, detJ,
+                co->okA[SJOINT], co->okA[SRUBIN], co->okA[SROMAN],
+                co->Era[SJOINT][1], co->Era[SRUBIN][1], co->Era[SROMAN][1],   //sigma(tE)
+                co->Era[SJOINT][3], co->Era[SRUBIN][3], co->Era[SROMAN][3],   //sigma(piE)
+                co->Erb[SJOINT][0], co->Erb[SRUBIN][0], co->Erb[SROMAN][0]    //sigma(tetE)
             });
    
             filg_in.open(testf, std::ios::app);
@@ -773,7 +786,14 @@ int main() {
                     << co->resu[0]    << " " << co->resu[1]    << " " << co->resu[2]                << " " 
                     << co->resu[3]    << " " << co->resu[5]    << " "
                     << co->resu[9]    << " " << co->resu[10]   << " " << co->resu[13]               << " " << co->resu[14]    << " "
-                    << s->Map[2]      << " " << s->nsbl[2]     << " " << co->flagi                  << " " << s->Ai[2]        << "\n";
+                    << s->Map[2]      << " " << s->nsbl[2]     << " " << co->flagi                  << " " << s->Ai[2]        << " "
+                    // per-survey bookkeeping (Step C5), appended so existing column indices hold
+                    << ndw_L << " " << ndw_R << " "
+                    << detL  << " " << detR  << " " << detJ << " "
+                    << co->okA[SJOINT] << " " << co->okA[SRUBIN] << " " << co->okA[SROMAN] << " "
+                    << co->Era[SJOINT][1] << " " << co->Era[SRUBIN][1] << " " << co->Era[SROMAN][1] << " "
+                    << co->Era[SJOINT][3] << " " << co->Era[SRUBIN][3] << " " << co->Era[SROMAN][3] << " "
+                    << co->Erb[SJOINT][0] << " " << co->Erb[SRUBIN][0] << " " << co->Erb[SROMAN][0] << "\n";
             filg_in.close();
 //          
 
@@ -1095,10 +1115,16 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     // since t0's local curvature scale is set by the same characteristic timescale.
     // Placeholder pending Step C3's step-size convergence sweep, like the other four.
 
-    for (int j = 0; j < Nx; ++j) {
-        for (int k = 0; k < Nx; ++k) {
-            gsl_matrix_set(co.inputA.get(), j, k, 0.0);
-            gsl_matrix_set(co.inverA.get(), j, k, 0.0);
+    // Three matrices, zeroed together: joint, Rubin-only, Roman-only (see SurveyIdx in Bulge.h).
+    for (int q = 0; q < NSURV; ++q) {
+        co.nepochA[q] = 0;
+        co.okA[q] = 0;
+        co.okB[q] = 0;
+        for (int j = 0; j < Nx; ++j) {
+            for (int k = 0; k < Nx; ++k) {
+                gsl_matrix_set(co.inputA[q].get(), j, k, 0.0);
+                gsl_matrix_set(co.inverA[q].get(), j, k, 0.0);
+            }
         }
     }
 
@@ -1106,6 +1132,9 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 
     for (int i = 0; i < ndw; ++i) {//data
         tt = int(l.tele[i]);//telescope[0,1] LSST, ELT
+        const int surv = surveyOfTele(tt); // which single-survey matrix this epoch also feeds
+        co.nepochA[SJOINT] += 1;
+        co.nepochA[surv]   += 1;
 
         // Step size for the fb (blend fraction) derivative must be binned against
         // *this epoch's own telescope's* blend fraction, s.fb[tt] -- not always
@@ -1201,21 +1230,37 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 // order 1e10 -- which is why every reported sigma was astronomically large
                 // (relative sigma ~1e7 on tE for real detected events). The pre-loop zeroing of
                 // inputA is what makes this running sum well-defined.
-                gsl_matrix_set(co.inputA.get(), j, k,
-                               gsl_matrix_get(co.inputA.get(), j, k)
-                                 + co.derm1f * co.derm2f / (l.errm[i] * l.errm[i]));
+                // Partitioned accumulation (Step C5). The derivatives above are identical for
+                // all three matrices -- same event, same model. What differs is only which
+                // epochs are allowed to contribute. Each epoch feeds the joint matrix and
+                // exactly one single-survey matrix, which is why
+                //     F[SJOINT] == F[SRUBIN] + F[SROMAN]
+                // holds exactly, element by element.
+                {
+                    const double contrib = co.derm1f * co.derm2f / (l.errm[i] * l.errm[i]);
+                    gsl_matrix_set(co.inputA[SJOINT].get(), j, k,
+                                   gsl_matrix_get(co.inputA[SJOINT].get(), j, k) + contrib);
+                    gsl_matrix_set(co.inputA[surv].get(), j, k,
+                                   gsl_matrix_get(co.inputA[surv].get(), j, k) + contrib);
+                }
             }
         }//end of for J
     }//end of data for
 
-    for (int j = 0; j < Nx; ++j) {
-        for (int k = (j + 1); k < Nx; ++k) {
-            double element = gsl_matrix_get(co.inputA.get(), k, j);
-            gsl_matrix_set(co.inputA.get(), j, k, element);
+    for (int q = 0; q < NSURV; ++q) {
+        for (int j = 0; j < Nx; ++j) {
+            for (int k = (j + 1); k < Nx; ++k) {
+                double element = gsl_matrix_get(co.inputA[q].get(), k, j);
+                gsl_matrix_set(co.inputA[q].get(), j, k, element);
+            }
         }
+        // A partition with fewer epochs than free parameters cannot possibly constrain them:
+        // the information matrix is rank-deficient by construction. Report that honestly
+        // instead of inverting it into a meaningless ~1e10 sigma. This is a physical statement,
+        // not a numerical workaround -- a short event peaking in a Roman gap genuinely has no
+        // Roman data, and "Roman cannot characterize this event" is the correct answer.
+        co.okA[q] = (co.nepochA[q] >= Nx) ? invert_matrix(co, 0, q) : 0;
     }
-    //gsl_matrix_transpose_memcpy()
-    invert_matrix(co, 0);
 
 /*cout<<"Covariance matrix Photometry"<<endl;
    for(int i=0; i<Nx; ++i){ for(int j=0; j<Nx; ++j){cout<<co.inputA[i][j]<<"\t   ";}  cout<<"\n"; }
@@ -1281,10 +1326,11 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     co.Delta2[1] = s.mus1 * 0.2500465923465493;
     co.Delta2[2] = s.mus2 * 0.25000465936443;
     co.Delta2[3] = 0.25000375423543264 * l.piE;
+    for (int q = 0; q < NSURV; ++q)
     for(int j = 0; j < Ny; ++j){
         for(int k = 0; k < Ny; ++k){
-            gsl_matrix_set(co.inputB.get(), j, k, 0.0);
-            gsl_matrix_set(co.inverB.get(), j, k, 0.0);
+            gsl_matrix_set(co.inputB[q].get(), j, k, 0.0);
+            gsl_matrix_set(co.inverB[q].get(), j, k, 0.0);
             //gsl_matrix_set(co.adjunB, j, k, 0.0);
             //gsl_matrix_set(co.tempoB, j, k, 0.0);
             //gsl_matrix_set(co.summ, j, k, 0.0);
@@ -1292,6 +1338,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     }
 
     for (int i = 0; i < ndw; ++i) {
+        const int survB = surveyOfTele(int(l.tele[i])); // same partition as the photometric side
         for (int j = 0; j < Ny;  ++j) {
 
             for (int h = 0; h < 2; ++h) {
@@ -1350,21 +1397,27 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 // photometric matrix above, applied to the astrometric one. Here each epoch
                 // contributes both sky coordinates (pos1c/pos2c), hence the two derivative
                 // products summed before dividing by the per-epoch astrometric variance.
-                gsl_matrix_set(co.inputB.get(), j, k,
-                               gsl_matrix_get(co.inputB.get(), j, k)
-                                 + (co.dera1f * co.dera2f + co.derb1f * co.derb2f)
-                                     / (l.erra[i] * l.erra[i] * 2.0));
+                {
+                    const double contribB = (co.dera1f * co.dera2f + co.derb1f * co.derb2f)
+                                              / (l.erra[i] * l.erra[i] * 2.0);
+                    gsl_matrix_set(co.inputB[SJOINT].get(), j, k,
+                                   gsl_matrix_get(co.inputB[SJOINT].get(), j, k) + contribB);
+                    gsl_matrix_set(co.inputB[survB].get(), j, k,
+                                   gsl_matrix_get(co.inputB[survB].get(), j, k) + contribB);
+                }
             }
         }//end of loop J
     }//end of loop data
 
-    for(int j = 0; j < Ny; ++j) {
-        for(int k = (j+1); k < Ny; ++k) {
-            double element = gsl_matrix_get(co.inputB.get(), k, j);
-            gsl_matrix_set(co.inputB.get(), j, k, element);
+    for (int q = 0; q < NSURV; ++q) {
+        for(int j = 0; j < Ny; ++j) {
+            for(int k = (j+1); k < Ny; ++k) {
+                double element = gsl_matrix_get(co.inputB[q].get(), k, j);
+                gsl_matrix_set(co.inputB[q].get(), j, k, element);
+            }
         }
+        co.okB[q] = (co.nepochA[q] >= Ny) ? invert_matrix(co, 1, q) : 0;
     }
-    invert_matrix(co, 1);
 
     /*for(int i = 0; i < Ny; ++i) {
         for(int j = 0; j < Ny; ++j) {
@@ -1376,7 +1429,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         }
     }*/
 
-    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, co.inverB.get(), co.inputB.get(), 0.0, co.summB.get());
+    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, co.inverB[SJOINT].get(), co.inputB[SJOINT].get(), 0.0, co.summB.get());
 /*
     for (int i = 0; i < Ny; ++i) {
         for (int j = 0; j < Ny; ++j) {
@@ -1406,38 +1459,56 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 void ErrorCal(covarian & co, lens & l , source & s){
   double corr1;
 
-  for(int k=0; k < Nx; ++k)  co.Era[k] = std::sqrt(std::fabs(gsl_matrix_get(co.inverA.get(), k, k)));
-  for(int k=0; k < Ny; ++k)  co.Erb[k] = std::sqrt(std::fabs(gsl_matrix_get(co.inverB.get(), k, k)));
+  // Per-survey 1-sigma forecasts (Step C5). An invalid partition -- too few epochs, or a
+  // singular information matrix -- gets sigma = -1.0 as an explicit "not characterizable"
+  // sentinel, rather than a plausible-looking number derived from a nudged singular matrix.
+  // Downstream analysis MUST test okA/okB before using these.
+  for (int q = 0; q < NSURV; ++q) {
+      for (int k = 0; k < Nx; ++k) {
+          co.Era[q][k] = co.okA[q] ? std::sqrt(std::fabs(gsl_matrix_get(co.inverA[q].get(), k, k)))
+                                   : -1.0;
+      }
+      for (int k = 0; k < Ny; ++k) {
+          co.Erb[q][k] = co.okB[q] ? std::sqrt(std::fabs(gsl_matrix_get(co.inverB[q].get(), k, k)))
+                                   : -1.0;
+      }
+  }
 
-  corr1 = double(gsl_matrix_get(co.inverA.get(), 1, 4) / std::fabs(co.Era[1] * co.Era[4])); //correlation tE  && xi
+  // Everything below is the JOINT event summary, unchanged in meaning: resu[] keeps its existing
+  // semantics and index layout so the output columns and per-field aggregation still work.
+  // The per-survey numbers live in Era[]/Erb[] and are reported separately.
+  const auto& Era = co.Era[SJOINT];
+  const auto& Erb = co.Erb[SJOINT];
 
-  co.resu[0]  = double(co.Era[0] / (std::fabs(l.u0)    + eps));
-  co.resu[1]  = double(co.Era[1] / (std::fabs(l.tE)    + eps));
-  co.resu[2]  = double(co.Era[2] / (std::fabs(s.fb[0]) + eps));
-  co.resu[3]  = double(co.Era[3] / (std::fabs(l.piE)   + eps));
-  co.resu[4]  = double(co.Era[4] / (std::fabs(s.xi)    + eps));
-  co.resu[5]  = double(co.Erb[0] / (std::fabs(l.tetE)  + eps));
-  co.resu[6]  = double(co.Erb[1] / (std::fabs(s.mus1)  + eps));
-  co.resu[7]  = double(co.Erb[2] / (std::fabs(s.mus2)  + eps));
-  co.resu[8]  = double(co.Erb[3] / (std::fabs(l.piE)   + eps));
+  corr1 = double(gsl_matrix_get(co.inverA[SJOINT].get(), 1, 4) / std::fabs(Era[1] * Era[4])); //correlation tE  && xi
+
+  co.resu[0]  = double(Era[0] / (std::fabs(l.u0)    + eps));
+  co.resu[1]  = double(Era[1] / (std::fabs(l.tE)    + eps));
+  co.resu[2]  = double(Era[2] / (std::fabs(s.fb[0]) + eps));
+  co.resu[3]  = double(Era[3] / (std::fabs(l.piE)   + eps));
+  co.resu[4]  = double(Era[4] / (std::fabs(s.xi)    + eps));
+  co.resu[5]  = double(Erb[0] / (std::fabs(l.tetE)  + eps));
+  co.resu[6]  = double(Erb[1] / (std::fabs(s.mus1)  + eps));
+  co.resu[7]  = double(Erb[2] / (std::fabs(s.mus2)  + eps));
+  co.resu[8]  = double(Erb[3] / (std::fabs(l.piE)   + eps));
 
   co.resu[3]  = MIN(co.resu[3], co.resu[8]);
 
   co.resu[9]  = std::sqrt(co.resu[3] * co.resu[3] + co.resu[5] * co.resu[5]); //Lens Mass
   co.resu[10] = std::fabs(co.resu[9] * (s.Ds - l.Dl) / s.Ds); //Dl
 
-  co.f1 = co.resu[5] * co.resu[5] + co.resu[1] * co.resu[1] + (co.Era[4] * std::tan(s.xi)) * (co.Era[4] * std::tan(s.xi))
-    - 2.0 * co.resu[1] * co.Era[4] * std::tan(s.xi) * corr1;
-  co.f2 = co.resu[5] * co.resu[5] + co.resu[1] * co.resu[1] + (co.Era[4] / std::tan(s.xi)) * (co.Era[4] / std::tan(s.xi))
-    - 2.0 * co.resu[1] * co.Era[4] / std::tan(s.xi) * corr1;
+  co.f1 = co.resu[5] * co.resu[5] + co.resu[1] * co.resu[1] + (Era[4] * std::tan(s.xi)) * (Era[4] * std::tan(s.xi))
+    - 2.0 * co.resu[1] * Era[4] * std::tan(s.xi) * corr1;
+  co.f2 = co.resu[5] * co.resu[5] + co.resu[1] * co.resu[1] + (Era[4] / std::tan(s.xi)) * (Era[4] / std::tan(s.xi))
+    - 2.0 * co.resu[1] * Era[4] / std::tan(s.xi) * corr1;
 
-  co.sigmul1 = std::sqrt(co.Erb[1] * co.Erb[1] + l.murel * l.murel * std::cos(s.xi) * std::cos(s.xi) * std::fabs(co.f1));
-  co.sigmul2 = std::sqrt(co.Erb[2] * co.Erb[2] + l.murel * l.murel * std::sin(s.xi) * std::sin(s.xi) * std::fabs(co.f2));
+  co.sigmul1 = std::sqrt(Erb[1] * Erb[1] + l.murel * l.murel * std::cos(s.xi) * std::cos(s.xi) * std::fabs(co.f1));
+  co.sigmul2 = std::sqrt(Erb[2] * Erb[2] + l.murel * l.murel * std::sin(s.xi) * std::sin(s.xi) * std::fabs(co.f2));
 
   co.resu[11] = double(co.sigmul1 / (std::fabs(l.mul1) + eps)); //mu_lens_1
   co.resu[12] = double(co.sigmul2 / (std::fabs(l.mul2) + eps)); //mu_lens_2
   co.resu[13] = std::sqrt(co.sigmul1 * co.sigmul1 + co.sigmul2 * co.sigmul2) / (std::fabs(l.mul) + eps); //mu_lens
-  co.resu[14] = std::sqrt(co.Erb[1]  * co.Erb[1]  +  co.Erb[2] * co.Erb[2])  / (std::fabs(s.mus) + eps); // mu_source
+  co.resu[14] = std::sqrt(Erb[1]  * Erb[1]  +  Erb[2] * Erb[2])  / (std::fabs(s.mus) + eps); // mu_source
 }
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
@@ -1706,45 +1777,56 @@ void Disk_model(source& s, int numt)
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 
 ////////////////////// Matrix
-void invert_matrix(covarian & co, int flag)
+int invert_matrix(covarian & co, int flag, int surv)
 {
-    if (flag == 0){//Nx
-        gsl_permutation *p = gsl_permutation_alloc(Nx);
-        int s;
+    // Returns 1 on a usable inverse, 0 if the information matrix is singular.
+    //
+    // The previous behaviour on a singular matrix was to nudge every diagonal element by 1e-10
+    // and invert anyway, which produced an inverse of order 1e10 and hence nonsense sigmas that
+    // looked like numbers. A singular Fisher matrix is a physical statement -- this data cannot
+    // constrain these parameters -- and must be reported as such, not smoothed over.
+    const int    dim = (flag == 0) ? Nx : Ny;
+    gsl_matrix*  in  = (flag == 0) ? co.inputA[surv].get() : co.inputB[surv].get();
+    gsl_matrix*  out = (flag == 0) ? co.inverA[surv].get() : co.inverB[surv].get();
 
-        gsl_linalg_LU_decomp(co.inputA.get(), p, &s);
-        co.deter = gsl_linalg_LU_det(co.inputA.get(), s);
+    // Work on a scratch copy. gsl_linalg_LU_decomp overwrites its input, and the information
+    // matrix itself is a quantity we want to keep: it is what makes F[JOINT] == F[RUBIN] +
+    // F[ROMAN] checkable, and Step C4's per-event condition number needs the undecomposed
+    // matrix. Destroying it in place would silently break both.
+    gsl_matrix *lu = gsl_matrix_alloc(dim, dim);
+    if (!lu) throw std::runtime_error("GSL matrix allocation failed");
+    gsl_matrix_memcpy(lu, in);
 
-        if (co.deter == 0.0) {
-            for (int i = 0; i < Nx; i++) {
-                double val = gsl_matrix_get(co.inputA.get(), i, i);
-                gsl_matrix_set(co.inputA.get(), i, i, val + 1e-10);
-            }
-        }
+    gsl_permutation *p = gsl_permutation_alloc(dim);
+    int s;
 
-        gsl_linalg_LU_invert(co.inputA.get(), p, co.inverA.get());
+    gsl_linalg_LU_decomp(lu, p, &s);
+    const double det = gsl_linalg_LU_det(lu, s);
+    co.deter = det;
 
+    // Reject exact zeros and non-finite determinants alike. A finite-but-tiny determinant is
+    // handled downstream by the condition-number work in Step C4; this guard only catches the
+    // unambiguously singular case.
+    if (det == 0.0 || !std::isfinite(det)) {
         gsl_permutation_free(p);
+        gsl_matrix_free(lu);
+        gsl_matrix_set_zero(out);
+        return 0;
     }
 
-    if (flag == 1){//Ny
-        gsl_permutation *p = gsl_permutation_alloc(Ny);
-        int s;
+    gsl_linalg_LU_invert(lu, p, out);
+    gsl_permutation_free(p);
+    gsl_matrix_free(lu);
 
-        gsl_linalg_LU_decomp(co.inputB.get(), p, &s);
-        co.deter = gsl_linalg_LU_det(co.inputB.get(), s);
-
-        if (co.deter == 0.0) {
-            for (int i = 0; i < Ny; i++) {
-                double val = gsl_matrix_get(co.inputB.get(), i, i);
-                gsl_matrix_set(co.inputB.get(), i, i, val + 1e-10);
-            }
+    // A valid covariance matrix has non-negative variances on the diagonal.
+    for (int i = 0; i < dim; ++i) {
+        const double v = gsl_matrix_get(out, i, i);
+        if (!std::isfinite(v) || v < 0.0) {
+            gsl_matrix_set_zero(out);
+            return 0;
         }
-
-        gsl_linalg_LU_invert(co.inputB.get(), p, co.inverB.get());
-
-        gsl_permutation_free(p);
     }
+    return 1;
 }
 
 void print_mat_contents(gsl_matrix *matrix, int size)

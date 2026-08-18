@@ -459,6 +459,24 @@ struct roman {
     {}
 };
 
+// ---------------------------------------------------------------------------------------------
+// Which subset of a single event's light curve a Fisher matrix was accumulated from.
+//
+// The model, and therefore every derivative, is identical across all three -- the same event,
+// the same physics. Only the set of epochs summed over differs. Because each epoch contributes
+// an independent, positive semi-definite term to the information sum, and the epochs partition
+// cleanly by observatory, the matrices satisfy exactly
+//
+//     F[SJOINT] == F[SRUBIN] + F[SROMAN]
+//
+// element by element. tests/fisher_fixture.cpp asserts this; if it ever fails, the partitioning
+// is wrong. It also follows that sigma from the joint matrix can never exceed sigma from either
+// single-survey matrix: adding information can only sharpen a forecast.
+enum SurveyIdx { SJOINT = 0, SRUBIN = 1, SROMAN = 2, NSURV = 3 };
+
+// Maps a per-epoch telescope tag (lens::tele[i]: 0 = Rubin, 1 = Roman) to its survey index.
+inline int surveyOfTele(int tele) { return (tele == 0) ? SRUBIN : SROMAN; }
+
 struct covarian {
     int    sign;
     int    flagi;
@@ -470,30 +488,50 @@ struct covarian {
 
     std::array<double, nq> resu;
     std::array<double, 2> derm1, derm2, dera1, derb1, dera2, derb2, bb;
-    std::vector<double> Era, Erb; //size Nx, Ny
     std::vector<double> Delta1, Delta2; //size Nx, Ny
-    
-    gsl_matrix_uptr inputA; //size Nx
-    gsl_matrix_uptr inverA; //size Nx
 
-    gsl_matrix_uptr inputB; //size Ny
-    gsl_matrix_uptr inverB; //size Ny
-   
-    gsl_matrix_uptr summA; //size Nx
-    gsl_matrix_uptr summB; //size Ny
+    // One photometric and one astrometric Fisher matrix per survey subset (see SurveyIdx).
+    // Index with SJOINT / SRUBIN / SROMAN.
+    std::array<gsl_matrix_uptr, NSURV> inputA; //size Nx each
+    std::array<gsl_matrix_uptr, NSURV> inverA; //size Nx each
+    std::array<gsl_matrix_uptr, NSURV> inputB; //size Ny each
+    std::array<gsl_matrix_uptr, NSURV> inverB; //size Ny each
+
+    std::array<std::vector<double>, NSURV> Era; //size Nx each: 1-sigma photometric
+    std::array<std::vector<double>, NSURV> Erb; //size Ny each: 1-sigma astrometric
+
+    // Per-survey epoch counts and characterizability flags. A partition with no epochs at all
+    // (a short event peaking in a Roman gap genuinely has no Roman data), or with fewer epochs
+    // than free parameters, is rank-deficient by construction: it must be reported as
+    // not-characterizable, NOT inverted into a meaningless ~1e10 sigma.
+    std::array<int, NSURV> nepochA; //epochs contributing to each photometric matrix
+    std::array<int, NSURV> okA;     //1 = inverted and usable, 0 = not characterizable
+    std::array<int, NSURV> okB;     //same for the astrometric matrix
+
+    gsl_matrix_uptr summA; //size Nx (diagnostic only, joint)
+    gsl_matrix_uptr summB; //size Ny (diagnostic only, joint)
 
     // Constructor
     covarian()
-        : Era(Nx), Erb(Ny),
-          Delta1(Nx), Delta2(Ny),
-          inputA(gsl_matrix_alloc(Nx, Nx)),
-          inverA(gsl_matrix_alloc(Nx, Nx)),
-          inputB(gsl_matrix_alloc(Ny, Ny)),
-          inverB(gsl_matrix_alloc(Ny, Ny)),
+        : Delta1(Nx), Delta2(Ny),
           summA(gsl_matrix_alloc(Nx, Nx)),
           summB(gsl_matrix_alloc(Ny, Ny))
     {
-        if (!inputA || !inverA || !inputB || !inverB || !summA || !summB) {
+        for (int q = 0; q < NSURV; ++q) {
+            inputA[q].reset(gsl_matrix_alloc(Nx, Nx));
+            inverA[q].reset(gsl_matrix_alloc(Nx, Nx));
+            inputB[q].reset(gsl_matrix_alloc(Ny, Ny));
+            inverB[q].reset(gsl_matrix_alloc(Ny, Ny));
+            if (!inputA[q] || !inverA[q] || !inputB[q] || !inverB[q]) {
+                throw std::runtime_error("GSL matrix allocation failed");
+            }
+            Era[q].assign(Nx, 0.0);
+            Erb[q].assign(Ny, 0.0);
+            nepochA[q] = 0;
+            okA[q] = 0;
+            okB[q] = 0;
+        }
+        if (!summA || !summB) {
             throw std::runtime_error("GSL matrix allocation failed");
         }
     }
@@ -544,6 +582,17 @@ struct EventRecord {
     double Map2, nsbl2;
     int    flagi;
     double Ai2;
+
+    // ---- per-survey bookkeeping (Step C5) ----
+    // Without these, nothing downstream can tell a Rubin-only detection from a Roman-only one,
+    // nor apply the "both surveys have data" cut that the joint-gain ratio requires. Appended
+    // rather than interleaved so the positional aggregate initialiser above stays valid.
+    int    ndwL, ndwR;          //epochs actually contributed by each survey
+    int    detL, detR, detJ;    //independent per-survey and joint detection outcomes
+    int    okJoint, okRubin, okRoman;   //1 = that Fisher partition is characterizable
+    double sigtE_J,   sigtE_L,   sigtE_R;    //absolute 1-sigma on tE   [days]
+    double sigpiE_J,  sigpiE_L,  sigpiE_R;   //absolute 1-sigma on piE  []
+    double sigtetE_J, sigtetE_L, sigtetE_R;  //absolute 1-sigma on tetE [mas]
 };
 ///===================== FUNCTION ===========================================//
 int    Funcu0(lens & l);
@@ -597,7 +646,11 @@ double AlAv(double lambda_um, double Rv);
 //double determinantA(double input[Nx][Nx], int);
 //double determinantB(double input[Ny][Ny], int);
 //void   inverse(covarian & co, int );
-void   invert_matrix(covarian & co, int);
+// Inverts one of the Fisher matrices in place. `flag` selects photometric (0, Nx) or
+// astrometric (1, Ny); `surv` selects which SurveyIdx partition. Returns 1 if the matrix was
+// non-singular and the inverse is usable, 0 if it was singular -- in which case the caller must
+// treat that partition as not-characterizable rather than reading numbers out of it.
+int    invert_matrix(covarian & co, int flag, int surv);
 void   print_mat_contents(gsl_matrix *matrix, int);
 
 double RandN(double , double);

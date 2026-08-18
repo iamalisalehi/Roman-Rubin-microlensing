@@ -104,6 +104,11 @@ double errRomanM(const roman& ro, double mag)
 ///                                                              //
 ///==============================================================//
 
+#ifndef FISHER_FIXTURE_BUILD
+// main() is excluded when this translation unit is linked into the Fisher-matrix
+// test fixture (tests/fisher_fixture.cpp), which supplies its own main(). Everything
+// below main() -- FisherM, ErrorCal, lightcurve, invert_matrix -- is what the fixture
+// links against, so it must stay outside this guard.
 int main() {
     srand(static_cast<unsigned int>(time(0)));
 
@@ -1066,6 +1071,7 @@ int main() {
    //fclose(filh);  
    return(0);
 }
+#endif // FISHER_FIXTURE_BUILD
 
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
 //                                                                    //

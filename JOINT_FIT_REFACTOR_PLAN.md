@@ -212,7 +212,17 @@ Everything in this phase is about making the *precision* numbers trustworthy bef
 
 **This is the step the entire thesis novelty claim rests on.**
 
-**Current behaviour:** `FisherM` accumulates `for (int i = 0; i < ndw; ++i)` over **all** data points, producing one matrix.
+**Current behaviour:** `FisherM` loops `for (int i = 0; i < ndw; ++i)` over **all** data points, producing one matrix.
+
+> **Correction (Step C0, 2026-08-18).** This step's original text said `FisherM` *accumulates* over
+> all data points. It did not. Both accumulation sites used `gsl_matrix_set` (overwrite) rather than
+> a running sum, and the zeroing loops run once *before* the data loop, so every epoch clobbered the
+> previous one and the final matrix held a single data point's contribution -- rank 1, hence singular,
+> hence `invert_matrix` nudged the diagonal by `1e-10` and returned an inverse of order `1e10`. Every
+> sigma reported before Step C0 was meaningless (a real detected event showed relative sigma of 1.8e7
+> on `tE`). Fixed in commit `d5c8867`; the partitioning described below is now built on a matrix that
+> genuinely sums information over epochs. This also explains the degenerate synthetic-event result
+> during Step C1, which was misdiagnosed at the time as a bad test fixture.
 
 **The change:** in the same pass over the data, accumulate **three** matrices:
 - `F_joint` — all points

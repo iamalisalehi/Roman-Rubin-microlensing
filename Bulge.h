@@ -571,6 +571,34 @@ struct yfilter{
 };
 */
 //==========================================//
+// How the three Fisher partitions came out for one event.
+//
+// This exists so that events where a survey contributes real information but cannot characterize
+// the event on its own are LABELLED rather than silently lost. They are the strongest evidence
+// for the joint fit: data that is insufficient alone still sharpens the combined result. A naive
+// analysis computing sigma_joint / sigma_roman would hit a not-characterizable sentinel on
+// exactly these events and, if it dropped the row, would discard the best synergy cases and bias
+// the reported gain downward -- the mirror image of the selection bias the plan warns about at
+// Step C5. Never drop a row on the basis of a missing single-survey sigma; classify it.
+enum SynergyClass {
+    SYN_NONE       = 0, //joint not characterizable either -- no usable Fisher information
+    SYN_BOTH_ALONE = 1, //both surveys characterize alone; joint/single ratio defined both ways
+    SYN_RUBIN_ONLY = 2, //only Rubin alone; Roman's epochs still sharpen the joint fit
+    SYN_ROMAN_ONLY = 3, //only Roman alone; Rubin's epochs still sharpen the joint fit
+    SYN_JOINT_ONLY = 4, //NEITHER survey alone, but the joint fit works -- pure joint-fit rescue
+};
+
+// Classify from the photometric characterizability flags. SYN_JOINT_ONLY and the two
+// *_ONLY classes are the scientifically interesting ones; see the note above.
+inline int synergyClass(const covarian& co)
+{
+    if (!co.okA[SJOINT])                    return SYN_NONE;
+    if ( co.okA[SRUBIN] &&  co.okA[SROMAN]) return SYN_BOTH_ALONE;
+    if ( co.okA[SRUBIN] && !co.okA[SROMAN]) return SYN_RUBIN_ONLY;
+    if (!co.okA[SRUBIN] &&  co.okA[SROMAN]) return SYN_ROMAN_ONLY;
+    return SYN_JOINT_ONLY;
+}
+
 struct EventRecord {
     int    counter, flagL;
     double tE, RE, piE, tetE, Vt, u0, Ml;
@@ -593,6 +621,8 @@ struct EventRecord {
     double sigtE_J,   sigtE_L,   sigtE_R;    //absolute 1-sigma on tE   [days]
     double sigpiE_J,  sigpiE_L,  sigpiE_R;   //absolute 1-sigma on piE  []
     double sigtetE_J, sigtetE_L, sigtetE_R;  //absolute 1-sigma on tetE [mas]
+    int    synClass;            //SynergyClass -- see the note above the enum. Do NOT drop rows
+                                //with a not-characterizable single-survey sigma; use this.
 };
 ///===================== FUNCTION ===========================================//
 int    Funcu0(lens & l);

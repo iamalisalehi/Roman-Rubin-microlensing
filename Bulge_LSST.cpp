@@ -772,7 +772,8 @@ int main() {
                 co->okA[SJOINT], co->okA[SRUBIN], co->okA[SROMAN],
                 co->Era[SJOINT][1], co->Era[SRUBIN][1], co->Era[SROMAN][1],   //sigma(tE)
                 co->Era[SJOINT][3], co->Era[SRUBIN][3], co->Era[SROMAN][3],   //sigma(piE)
-                co->Erb[SJOINT][0], co->Erb[SRUBIN][0], co->Erb[SROMAN][0]    //sigma(tetE)
+                co->Erb[SJOINT][0], co->Erb[SRUBIN][0], co->Erb[SROMAN][0],   //sigma(tetE)
+                synergyClass(*co)
             });
    
             filg_in.open(testf, std::ios::app);
@@ -793,7 +794,8 @@ int main() {
                     << co->okA[SJOINT] << " " << co->okA[SRUBIN] << " " << co->okA[SROMAN] << " "
                     << co->Era[SJOINT][1] << " " << co->Era[SRUBIN][1] << " " << co->Era[SROMAN][1] << " "
                     << co->Era[SJOINT][3] << " " << co->Era[SRUBIN][3] << " " << co->Era[SROMAN][3] << " "
-                    << co->Erb[SJOINT][0] << " " << co->Erb[SRUBIN][0] << " " << co->Erb[SROMAN][0] << "\n";
+                    << co->Erb[SJOINT][0] << " " << co->Erb[SRUBIN][0] << " " << co->Erb[SROMAN][0] << " "
+                    << synergyClass(*co) << "\n";
             filg_in.close();
 //          
 

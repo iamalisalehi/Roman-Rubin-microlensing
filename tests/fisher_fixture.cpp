@@ -303,6 +303,65 @@ bool checkJointNoWorse(const covarian& co, const char* evName,
     return ok;
 }
 
+// Step C1's acceptance criterion, checked on every event and every survey partition.
+//
+// The pre-C1 parameter set {u0, tE, fb, piE, xi} is exactly the leading 5x5 submatrix of the
+// current 6-parameter information matrix -- dropping t0's row and column is the same thing as
+// asserting perfect knowledge of when the peak occurred. So both numbers come from the SAME
+// accumulated information on the SAME event: a perfectly paired comparison, no second run and
+// no rebuild.
+//
+// Cramer-Rao: marginalizing over a genuinely free parameter can only loosen the bound on the
+// others. sigma(tE) with t0 free must therefore be >= sigma(tE) with t0 held fixed. A decrease
+// anywhere means the extra parameter is somehow adding information, which is impossible.
+//
+// This works only because invert_matrix operates on a scratch copy and leaves inputA intact.
+bool checkT0Marginalization(const covarian& co, const char* evName, bool verbose)
+{
+    if (Nx < 6) return true;  // nothing to compare against
+    bool ok = true;
+
+    for (int q = 0; q < NSURV; ++q) {
+        if (!co.okA[q]) continue;
+
+        gsl_matrix      *F5 = gsl_matrix_alloc(5, 5);
+        gsl_matrix      *I5 = gsl_matrix_alloc(5, 5);
+        gsl_permutation *p5 = gsl_permutation_alloc(5);
+        for (int a = 0; a < 5; ++a)
+            for (int b = 0; b < 5; ++b)
+                gsl_matrix_set(F5, a, b, gsl_matrix_get(co.inputA[q].get(), a, b));
+
+        int s5;
+        gsl_linalg_LU_decomp(F5, p5, &s5);
+        const double det5 = gsl_linalg_LU_det(F5, s5);
+
+        if (det5 != 0.0 && std::isfinite(det5)) {
+            gsl_linalg_LU_invert(F5, p5, I5);
+            const double v = gsl_matrix_get(I5, 1, 1);
+            if (std::isfinite(v) && v >= 0.0) {
+                const double sigFixed = std::sqrt(v);
+                const double sigFree  = co.Era[q][1];
+                const char*  qn = (q == SJOINT) ? "joint" : (q == SRUBIN ? "rubin" : "roman");
+                if (sigFree + 1e-12 < sigFixed) {
+                    std::cerr << "FAIL [" << evName << "/" << qn << "] sigma(tE) DECREASED when "
+                              << "t0 was added: fixed=" << sigFixed << " free=" << sigFree << "\n";
+                    ok = false;
+                } else if (verbose) {
+                    std::cout << "#   t0-marginalization " << std::setw(5) << qn
+                              << ": sigma(tE) fixed=" << std::scientific << std::setprecision(4)
+                              << sigFixed << "  free=" << sigFree
+                              << "  ratio=" << std::fixed << std::setprecision(4)
+                              << sigFree / sigFixed << "\n";
+                }
+            }
+        }
+        gsl_permutation_free(p5);
+        gsl_matrix_free(I5);
+        gsl_matrix_free(F5);
+    }
+    return ok;
+}
+
 const char* kPhotNames[] = {"u0", "tE", "fb", "piE", "xi", "t0"};
 const char* kAstNames[]  = {"tetE", "mus1", "mus2", "piE"};
 
@@ -332,7 +391,8 @@ int main()
               << "# Nx=" << Nx << " (photometric)  Ny=" << Ny << " (astrometric)\n"
               << "# One block per event, one row per survey partition (Step C5).\n"
               << "# ok=1 usable inverse, ok=0 not characterizable (sigmas print as -1).\n"
-              << "# Asserted: F[joint] == F[rubin] + F[roman] exactly, and sigma_joint <= both.\n";
+              << "# Asserted: F[joint] == F[rubin] + F[roman] exactly, sigma_joint <= both, and\n"
+              << "# sigma(tE) never decreases when t0 is marginalized over (Step C1 acceptance).\n";
 
     for (const auto& ev : kEvents) {
         setupStatic(*s, *l);
@@ -379,11 +439,32 @@ int main()
         printRow("rubin", co->nepochA[SRUBIN], co->okA[SRUBIN], co->Era[SRUBIN], co->Erb[SRUBIN]);
         printRow("roman", co->nepochA[SROMAN], co->okA[SROMAN], co->Era[SROMAN], co->Erb[SROMAN]);
 
+        {
+            static const char* kSyn[] = {"none", "both-alone", "rubin-only-alone",
+                                         "roman-only-alone", "joint-only-RESCUE"};
+            const int sc = synergyClass(*co);
+            std::cout << "#   synergy: " << kSyn[sc];
+            // Quantify what the joint fit bought over the best either survey managed alone.
+            double best = -1.0;
+            if (co->okA[SRUBIN]) best = co->Era[SRUBIN][1];
+            if (co->okA[SROMAN] && (best < 0.0 || co->Era[SROMAN][1] < best))
+                best = co->Era[SROMAN][1];
+            if (co->okA[SJOINT] && best > 0.0) {
+                std::cout << "   sigma(tE) joint/best-single = "
+                          << std::fixed << std::setprecision(4)
+                          << co->Era[SJOINT][1] / best;
+            } else if (sc == SYN_JOINT_ONLY) {
+                std::cout << "   (neither survey alone could characterize this event)";
+            }
+            std::cout << "\n";
+        }
+
         // ---- assertions ----
         if (!checkAdditivity(*co, ev.name, Nx, true))  ++failures;
         if (!checkAdditivity(*co, ev.name, Ny, false)) ++failures;
         if (!checkJointNoWorse(*co, ev.name, kPhotNames, Nx, true))  ++failures;
         if (!checkJointNoWorse(*co, ev.name, kAstNames,  Ny, false)) ++failures;
+        if (!checkT0Marginalization(*co, ev.name, true)) ++failures;
 
         // A partition with no epochs must be flagged not-characterizable, never given numbers.
         if (nR == 0 && co->okA[SROMAN] != 0) {

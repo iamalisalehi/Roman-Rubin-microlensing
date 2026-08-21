@@ -14,6 +14,18 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
     GalacticComponent struc;
 
     for (int i = 0; i < M; ++i) {
+        // Reset the blended-flux accumulator for THIS star. Fluxb is a running sum over the
+        // source (k == 1) and its unresolved neighbours (k = 2..nsbl), built by the k-loop
+        // below with `+=`. Without this line it is never cleared, so every star inherits the
+        // blend flux of every star drawn before it: magb brightens without limit as
+        // magb(N) ~ magb(1) - 2.5*log10(N), and blend = F_source/Fluxb decays as 1/N until no
+        // event can pass the acceptance test and the Monte Carlo silently stops detecting
+        // anything at all. Measured on a 300k-draw run before this fix: the blend fraction
+        // fell from 0.130 on the first star to 0.0017 on the second, and the blended baseline
+        // magnitude drifted from 17.6 to 3.5 -- brighter than Sirius, and past the saturation
+        // guard. Present since the initial commit, inherited from the legacy LMC code.
+        s.Fluxb[i] = 0.0;
+
         s.nsbl[i]  = std::fabs(s.Nstart * std::pow(FWHM[i] * 0.5, 2) * M_PI / (3600.0 * 3600.0));
         s.nsbl[i] += RandN(std::sqrt(s.nsbl[i]), 2.0);
 

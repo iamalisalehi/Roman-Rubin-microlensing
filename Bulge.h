@@ -668,6 +668,52 @@ struct yfilter{
 // exactly these events and, if it dropped the row, would discard the best synergy cases and bias
 // the reported gain downward -- the mirror image of the selection bias the plan warns about at
 // Step C5. Never drop a row on the basis of a missing single-survey sigma; classify it.
+// Detection taxonomy. A microlensing event is only meaningfully "detected" if the joint fit
+// detects it: the joint stream contains strictly more data than either survey alone, so a
+// single-telescope detection that the joint test misses is not a real category but a symptom
+// of an inconsistent threshold (see DET_ANOMALY below).
+//
+// That leaves four ways an event can be detected, distinguished by which surveys ALSO detect
+// it on their own -- which is the quantity the joint-fit science case is about:
+enum DetClass {
+    DET_NONE         = 0, //nothing detected it
+    DET_JOINT_ONLY   = 1, //only the combined stream -- neither telescope alone would have found it
+    DET_RUBIN_JOINT  = 2, //Rubin alone, and the joint fit
+    DET_ROMAN_JOINT  = 3, //Roman alone, and the joint fit
+    DET_BOTH_JOINT   = 4, //both telescopes alone, and the joint fit
+    DET_ANOMALY      = 5, //a telescope detected it but the joint test did NOT -- see below
+    NDETCLASS        = 6,
+};
+
+// DET_ANOMALY must stay empty. Adding data cannot destroy signal, so if either survey alone
+// clears its detection bar the combined stream must clear its own. That this counter is NOT
+// currently zero is a real finding, not a bookkeeping artifact: the detection test compares
+// dchi against 2*ndw, i.e. it thresholds the MEAN per-epoch chi-squared improvement. Pooling a
+// survey with many low-signal epochs therefore raises the joint bar without adding signal, and
+// can veto a detection the other survey made alone. Counted explicitly rather than folded into
+// a neighbouring class, so the inconsistency stays visible instead of being silently absorbed.
+inline int detClass(int detL, int detR, int detJ)
+{
+    if (!detJ) return (detL or detR) ? DET_ANOMALY : DET_NONE;
+    if (detL and detR) return DET_BOTH_JOINT;
+    if (detL)          return DET_RUBIN_JOINT;
+    if (detR)          return DET_ROMAN_JOINT;
+    return DET_JOINT_ONLY;
+}
+
+inline const char* detClassName(int c)
+{
+    switch (c) {
+        case DET_NONE:        return "none";
+        case DET_JOINT_ONLY:  return "joint-only";
+        case DET_RUBIN_JOINT: return "Rubin+joint";
+        case DET_ROMAN_JOINT: return "Roman+joint";
+        case DET_BOTH_JOINT:  return "both+joint";
+        case DET_ANOMALY:     return "ANOMALY(single-not-joint)";
+        default:              return "?";
+    }
+}
+
 enum SynergyClass {
     SYN_NONE       = 0, //joint not characterizable either -- no usable Fisher information
     SYN_BOTH_ALONE = 1, //both surveys characterize alone; joint/single ratio defined both ways
@@ -709,6 +755,7 @@ struct EventRecord {
     double sigtE_J,   sigtE_L,   sigtE_R;    //absolute 1-sigma on tE   [days]
     double sigpiE_J,  sigpiE_L,  sigpiE_R;   //absolute 1-sigma on piE  []
     double sigtetE_J, sigtetE_L, sigtetE_R;  //absolute 1-sigma on tetE [mas]
+    int    detCls;              //DetClass -- which combination of surveys detected it
     int    synClass;            //SynergyClass -- see the note above the enum. Do NOT drop rows
                                 //with a not-characterizable single-survey sigma; use this.
     double condA_J, condA_L, condA_R;   //photometric condition numbers (normalized matrix);

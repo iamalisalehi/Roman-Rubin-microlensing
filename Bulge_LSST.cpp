@@ -217,10 +217,19 @@ int main() {
     read_cmd(*cm);
     std::cout << "******* read_cmd was done ************" << std::endl;
 
+    int    dclsEvent = DET_NONE;
     int    save = 0, flagm, flagL, gg = -1; //ss, qq, ww, vv, zz, pp, counter,
     int    nri = -1, nde = -1, icon;
     int    nlens;// hh; // nde1, nri1,
-    int    nDetNeither, nDetRubinOnly, nDetRomanOnly, nDetJointOnly, nDetBoth; // per-field label counts
+    std::array<int, NDETCLASS> nDetClass{}; // per-field detection-taxonomy counts (DetClass, Bulge.h)
+    // Run-wide totals. The joint-only class -- events neither telescope can find alone but the
+    // combination can -- is the strongest evidence for the joint fit and is expected to be rare,
+    // so it needs statistics pooled over every field, not per-field counts that are individually
+    // too small to quote. Broken down by tE bin as well, since the whole science case is that
+    // the gain is tE-dependent.
+    std::array<long, NDETCLASS> NDetClassTot{};
+    std::vector<std::array<long, NDETCLASS>> NDetClassTE(GG + 1);
+    long nSimTot = 0;
     int    gi,       ndw, sq, ndd;
     int    giR,      sqR, nddR; // Roman-side cursor/count, parallel to gi/sq/ndd
     int    flag_det; // nml = 0;
@@ -253,6 +262,7 @@ int main() {
     double flag0_L, flag1_L, flag2_L, flag0_R, flag1_R, flag2_R;
     double vs1,   vs2,    def1p,  def2p, vsave, dt,    Mpeak;
     double ErtE,  ErpiE,  ErtetE, Erml,  Erdl,  Ermul, Ermus, Eru0, Erfb, nsim;
+    double nErAvg; // events the precision means are actually averaged over
     double mbase, fblend, Gamma,  Neven, EFF,   EffiD, EffiL, nerr=0.0;
 //    double shib,  Efi;
    
@@ -331,7 +341,7 @@ int main() {
  
             icon  = 0;
             nlens = 0;
-            nDetNeither = 0; nDetRubinOnly = 0; nDetRomanOnly = 0; nDetJointOnly = 0; nDetBoth = 0;
+            nDetClass.fill(0);
             nsim  = 0.0;
             nerr  = 0.0;
             for (int i = 0; i < Num; ++i) { s->nssim[i] = 0.0;  s->nsdet[i] = 0.0; }
@@ -352,9 +362,20 @@ int main() {
 //                          << "  nums=" << s->nums << "  Ml=" << l->Ml << "  u0=" << l->u0 << "\n";
                 optical_depth(*s);
 
+                // tE-histogram bin for THIS event, computed for every draw rather than only
+                // for detected ones: nstE is the denominator of the detection efficiency, so
+                // it has to count everything simulated. Previously gg was only evaluated
+                // inside the detection branch and neither counter was ever incremented, so
+                // ndtE stayed identically zero and EFF, Gamma and Neven with it (the run then
+                // aborted on CHECK(EFF > 0.0) as soon as a field managed to complete).
+                gg = FunctE(*l);
+                l->nstE[gg] += 1.0;
+                nSimTot += 1;
+
                 s->nssim[s->nums] += 1.0;
                 flagf   = 0;
                 flagm   = 0;
+                dclsEvent = DET_NONE; //DetClass for this draw; stays NONE if no light curve
                 initial = 0.0;
                 // (Step B2: the old single `test = RandR(0.0,1.0)` draw consumed here by
                 // `test <= s->blend[2]` is gone — testL/testR are now drawn fresh right
@@ -720,6 +741,29 @@ int main() {
                     if (s->FWHM < Tobs and dchiL_R > float(2.0 * ndw_R) and flag_det_R > 0 and ndw_R > 10) detR = 1;
                     if (s->FWHM < Tobs and dchiL   > float(2.0 * ndw)   and (flag_det_L > 0 or flag_det_R > 0) and ndw > 10) detJ = 1;
 
+                    // Monotonicity. Adding data to an analysis cannot destroy information, so
+                    // if either survey alone clears its detection bar, the combined stream --
+                    // which contains that survey's data in full, plus more -- must clear its
+                    // own. The raw test above does not guarantee this, because it thresholds
+                    // dchi against 2*ndw: that is a bar on the MEAN per-epoch chi-squared
+                    // improvement, not on total significance. Pooling a survey with many
+                    // low-signal epochs therefore raises the joint bar without contributing
+                    // signal, and can veto a detection the other survey made unaided. Observed
+                    // live: a tE=631 d event detected by Roman (dchi_R over its 760-epoch bar)
+                    // failed the joint test because Rubin's 989 near-flat epochs lifted the
+                    // joint threshold by ~1978 while adding almost no dchi.
+                    //
+                    // detJ_raw preserves the unmodified test so the rate of that inconsistency
+                    // stays measurable (counted as DET_ANOMALY); detJ itself is made monotone,
+                    // which is what every downstream consumer should see.
+                    //
+                    // The deeper issue is the 2*ndw threshold form itself -- a chi-squared
+                    // detection statistic should be thresholded on its total, not its mean, so
+                    // that more data helps rather than hurts. Changing it moves detL and detR
+                    // as well, so it is a science decision, not a bug fix, and is left open.
+                    const int detJ_raw = detJ;
+                    if (detL or detR) detJ = 1;
+
                     if (detL or detR or detJ) { //lensing — detected by Rubin, Roman, or the joint test
                         FFG[0] = 1; //Lensing
                         nlens += FFG[0];
@@ -739,15 +783,26 @@ int main() {
                         }
                     }
 
-                    // Five-way detection label — diagnostics for Step B1's acceptance check.
-                    // Not yet persisted to EventRecord; that's Step D1's job.
-                    if      (detL and detR)  nDetBoth      += 1;
-                    else if (detL)           nDetRubinOnly += 1;
-                    else if (detR)           nDetRomanOnly += 1;
-                    else if (detJ)           nDetJointOnly += 1;
-                    else                     nDetNeither   += 1;
+                    // Detection taxonomy (DetClass, Bulge.h). The joint fit is what makes a
+                    // detection meaningful -- it sees strictly more data than either survey
+                    // alone -- so the classes are distinguished by which telescopes ALSO
+                    // detect the event unaided. DET_ANOMALY catches the case that should be
+                    // impossible, a single-telescope detection the joint test misses.
+                    dclsEvent = detClass(detL, detR, detJ);
+                    const int dcls = dclsEvent;
+                    nDetClass[dcls]    += 1;
+                    NDetClassTot[dcls] += 1;
+                    NDetClassTE[gg][dcls] += 1;
+                    // Diagnostic only: how often the raw joint test contradicted a
+                    // single-survey detection, before monotonicity was imposed.
+                    if (!detJ_raw and (detL or detR)) nDetClass[DET_ANOMALY] += 1;
 
-                    gg = FunctE(*l);
+                    // Detected-event count for this tE bin. The joint detection is the one
+                    // that defines "detected" here, per the taxonomy above; the per-class
+                    // breakdown lives in nDetClass. gg was computed for every simulated event
+                    // before the detection test, so nstE (the denominator) counts all draws
+                    // and this counts the numerator -- which is what makes EFF an efficiency.
+                    if (detJ) l->ndtE[gg] += 1.0;
                     //ss = int(FuncMl(*l));
                     //qq = int(FuncPi(*l));
                     //ww = int(Funcu0(*l));
@@ -774,6 +829,7 @@ int main() {
                 co->Era[SJOINT][1], co->Era[SRUBIN][1], co->Era[SROMAN][1],   //sigma(tE)
                 co->Era[SJOINT][3], co->Era[SRUBIN][3], co->Era[SROMAN][3],   //sigma(piE)
                 co->Erb[SJOINT][0], co->Erb[SRUBIN][0], co->Erb[SROMAN][0],   //sigma(tetE)
+                dclsEvent,
                 synergyClass(*co),
                 co->condA[SJOINT], co->condA[SRUBIN], co->condA[SROMAN]
             });
@@ -797,7 +853,7 @@ int main() {
                     << co->Era[SJOINT][1] << " " << co->Era[SRUBIN][1] << " " << co->Era[SROMAN][1] << " "
                     << co->Era[SJOINT][3] << " " << co->Era[SRUBIN][3] << " " << co->Era[SROMAN][3] << " "
                     << co->Erb[SJOINT][0] << " " << co->Erb[SRUBIN][0] << " " << co->Erb[SROMAN][0] << " "
-                    << synergyClass(*co) << " "
+                    << dclsEvent << " " << synergyClass(*co) << " "
                     << co->condA[SJOINT] << " " << co->condA[SRUBIN] << " " << co->condA[SROMAN] << "\n";
             filg_in.close();
 //          
@@ -895,7 +951,7 @@ int main() {
             }
 
             EffiL = 0.0; EFF   = 0.0; Gamma  = 0.0; Neven = 0.0; EffiD = 0.0;
-            ErtE  = 0.0; ErpiE = 0.0; ErtetE = 0.0; Erml  = 0.0; Erfb  = 0.0;
+            ErtE  = 0.0; ErpiE = 0.0; ErtetE = 0.0; Erml  = 0.0; Erfb  = 0.0; nErAvg = 0.0;
             Erdl  = 0.0; Ermul = 0.0; Ermus  = 0.0; Eru0  = 0.0;
   
     int tempStruc;
@@ -911,6 +967,9 @@ int main() {
         co->resu[3]=r.resu3;  co->resu[5]=r.resu5;   co->resu[9]=r.resu9;
         co->resu[10]=r.resu10; co->resu[13]=r.resu13; co->resu[14]=r.resu14;
         s->Map[2]=r.Map2; s->nsbl[2]=r.nsbl2; co->flagi=r.flagi; s->Ai[2]=r.Ai2;
+        // Must be replayed too: this loop runs after the whole field, so co->okA
+        // otherwise holds whatever the LAST FisherM call left, not this event's.
+        co->okA[SJOINT] = r.okJoint;
 
         l->struc = static_cast<GalacticComponent>(tempStruc);
 
@@ -939,10 +998,23 @@ int main() {
 
             EFF += static_cast<double>(l->ndtE[gg] / (l->tE / year)); // 1/years
 
-            if (co->flagi > 0) {
+            // Average only over events the joint fit could actually characterize. Step C4
+            // reports sigma = -1 as an explicit "not characterizable" sentinel, and ErrorCal
+            // divides it by the parameter value, so an unguarded sum pulls in large negative
+            // numbers: one event in this field contributed resu[3] = -697, dragging the mean
+            // fractional piE error negative and tripping CHECK(ErpiE > 0.0).
+            //
+            // Skipping those events is not the selection bias DEVIATIONS entry 8 warns about.
+            // That rule is about never dropping an event from the joint-vs-single RATIO
+            // statistics, where a missing single-survey sigma is itself the result. Here we are
+            // forming a mean precision, and an event with no measurement has no precision to
+            // average -- including it would be averaging a sentinel. The count of events the
+            // mean is actually over is tracked separately so the denominator is honest.
+            if (co->flagi > 0 and co->okA[SJOINT]) {
                 Eru0  += co->resu[0];  ErtE   += co->resu[1];  Erfb  += co->resu[2];
                 ErpiE += co->resu[3];  ErtetE += co->resu[5];  Erml  += co->resu[9];
                 Erdl  += co->resu[10]; Ermul  += co->resu[13]; Ermus += co->resu[14];
+                nErAvg += 1.0;
             }
         }
     }
@@ -978,15 +1050,15 @@ int main() {
     EffiD = double(numd[0] * 100.0 / (nsim    + eps)); // probability of detecting stars  
     Neven = double(s->nstart * Gamma * 10.0);//deg^{-2}
    
-    Eru0   = double(Eru0   / (nerr + eps));  
-    Erfb   = double(Erfb   / (nerr + eps));  
-    ErtE   = double(ErtE   / (nerr + eps));  
-    ErpiE  = double(ErpiE  / (nerr + eps));  
-    ErtetE = double(ErtetE / (nerr + eps));  
-    Erml   = double(Erml   / (nerr + eps));  
-    Erdl   = double(Erdl   / (nerr + eps));  
-    Ermul  = double(Ermul  / (nerr + eps));  
-    Ermus  = double(Ermus  / (nerr + eps));  
+    Eru0   = double(Eru0   / (nErAvg + eps));  
+    Erfb   = double(Erfb   / (nErAvg + eps));  
+    ErtE   = double(ErtE   / (nErAvg + eps));  
+    ErpiE  = double(ErpiE  / (nErAvg + eps));  
+    ErtetE = double(ErtetE / (nErAvg + eps));  
+    Erml   = double(Erml   / (nErAvg + eps));  
+    Erdl   = double(Erdl   / (nErAvg + eps));  
+    Ermul  = double(Ermul  / (nErAvg + eps));  
+    Ermus  = double(Ermus  / (nErAvg + eps));  
    
     //Maps
     fil3 << std::fixed << std::setprecision(6)
@@ -1026,11 +1098,15 @@ int main() {
          << "\n";
    
     cout << "nsim:  "  << nsim    << "\t Ndetected:  " << icon    << "\t Nlensing:  " << nlens << "\t NError:  " << nerr << endl;
-    cout << "Detection label counts — neither: " << nDetNeither
-         << "  Rubin-only: " << nDetRubinOnly
-         << "  Roman-only: " << nDetRomanOnly
-         << "  joint-only: " << nDetJointOnly
-         << "  both: "       << nDetBoth << endl;
+    cout << "Detection classes:";
+    for (int c = 0; c < NDETCLASS; ++c)
+        cout << "  " << detClassName(c) << ": " << nDetClass[c];
+    cout << endl;
+    if (nDetClass[DET_ANOMALY] > 0) {
+        cout << "  WARNING: " << nDetClass[DET_ANOMALY] << " event(s) detected by one telescope "
+             << "but NOT by the joint test. Adding data cannot destroy signal, so this is a "
+             << "threshold inconsistency -- see DetClass in Bulge.h." << endl;
+    }
     cout << "numd0:  " << numd[0] << "\t numd1:  "     << numd[1] << endl;
     cout << "EFF:  "   << EFF     << "\t Gamma:  "     << Gamma   << "\t Neven:  "    << Neven << endl;
     cout << "l.tE:  "  << l->tE   << "\t l.Ml:  "      << l->Ml   << endl;
@@ -1072,15 +1148,15 @@ int main() {
     CHECK(murel[0] > 0.0);
     CHECK(murel[1] > 0.0);
     
-    CHECK(ErtE > 0.0);
-    CHECK(ErpiE > 0.0);
-    CHECK(ErtetE > 0.0);
-    CHECK(Erml > 0.0);
-    CHECK(Erdl > 0.0);
-    CHECK(Ermul > 0.0);
-    CHECK(Ermus > 0.0);
-    CHECK(Eru0 > 0.0);
-    CHECK(Erfb > 0.0);
+    if (nErAvg > 0.0) CHECK(ErtE > 0.0);
+    if (nErAvg > 0.0) CHECK(ErpiE > 0.0);
+    if (nErAvg > 0.0) CHECK(ErtetE > 0.0);
+    if (nErAvg > 0.0) CHECK(Erml > 0.0);
+    if (nErAvg > 0.0) CHECK(Erdl > 0.0);
+    if (nErAvg > 0.0) CHECK(Ermul > 0.0);
+    if (nErAvg > 0.0) CHECK(Ermus > 0.0);
+    if (nErAvg > 0.0) CHECK(Eru0 > 0.0);
+    if (nErAvg > 0.0) CHECK(Erfb > 0.0);
     
     CHECK(nerr != 0.0);
     CHECK(numd[0] != 0.0);
@@ -1093,6 +1169,55 @@ int main() {
     cout << "==============================================================" << endl;  
   
    }}//right_accention and declinaton
+
+    // ---------------------------------------------------------------------------------------
+    // Run-wide detection statistics.
+    //
+    // Counts are Poisson, so each is quoted with its sqrt(N) uncertainty -- the joint-only
+    // class is expected to be rare, and a rare count without an error bar cannot be argued
+    // from. Percentages are of all simulated events, which is the denominator that makes them
+    // comparable between runs of different length.
+    // ---------------------------------------------------------------------------------------
+    cout << "\n================ RUN TOTALS ================" << endl;
+    // Draws that never produced a light curve never reach the detection test, so they are not
+    // in NDetClassTot at all. Deriving DET_NONE by subtraction rather than counting it there
+    // keeps the classes summing to the number of simulated events, which is what makes the
+    // percentages below meaningful as detection rates.
+    {
+        long det = 0;
+        for (int c = 1; c < DET_ANOMALY; ++c) det += NDetClassTot[c];
+        NDetClassTot[DET_NONE] = nSimTot - det;
+    }
+    cout << "simulated events: " << nSimTot << endl;
+    for (int c = 0; c < NDETCLASS; ++c) {
+        const long n = NDetClassTot[c];
+        cout << "  " << std::left << std::setw(26) << detClassName(c) << std::right
+             << std::setw(9) << n << " +/- " << std::setw(7) << std::fixed
+             << std::setprecision(1) << std::sqrt(double(n))
+             << "   (" << std::setprecision(4)
+             << (nSimTot > 0 ? 100.0 * double(n) / double(nSimTot) : 0.0) << "%)" << endl;
+    }
+    if (NDetClassTot[DET_ANOMALY] > 0) {
+        cout << "  NOTE: DET_ANOMALY counts events where the RAW joint test contradicted a "
+             << "single-survey detection.\n        detJ is made monotone downstream, so this is "
+             << "a diagnostic of the 2*ndw threshold form, not a live error." << endl;
+    }
+
+    // Per-tE breakdown, printed only for bins that contain something, since most are empty.
+    cout << "\n--- detections by tE bin ---" << endl;
+    cout << std::left << std::setw(12) << "tE [d]" << std::right;
+    for (int c = 1; c < DET_ANOMALY; ++c) cout << std::setw(14) << detClassName(c);
+    cout << endl;
+    for (int i = 0; i <= GG; ++i) {
+        long tot = 0;
+        for (int c = 1; c < DET_ANOMALY; ++c) tot += NDetClassTE[i][c];
+        if (tot == 0) continue;
+        cout << std::left << std::setw(12) << std::setprecision(2) << l->tEs[i] << std::right;
+        for (int c = 1; c < DET_ANOMALY; ++c) cout << std::setw(14) << NDetClassTE[i][c];
+        cout << endl;
+    }
+    cout << "============================================" << endl;
+
    //fclose(filh);  
    return(0);
 }

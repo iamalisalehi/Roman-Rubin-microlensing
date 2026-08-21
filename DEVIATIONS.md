@@ -432,3 +432,91 @@ for every simulated event in the bin and `ndtE[gg]` for every detected one -- bu
 three meanings (`detL`, `detR`, `detJ`), so this needs a decision rather than a guess, and it is
 really the per-survey efficiency question of Phase F. Until then the per-field efficiency, event
 rate and yield outputs cannot be trusted and `./roman` cannot complete a field.
+
+---
+
+## 14. New plan section inserted between Phases C and D: detection taxonomy and run statistics
+
+**Added at the user's request.** The plan goes straight from Phase C (the Fisher matrices) to Phase
+D (the output table). Fixing entry 12 let a field complete for the first time, which made the
+per-field aggregation code reachable and exposed a cluster of problems that belong together and
+are not Phase C work. They are grouped here as **Phase C-D**.
+
+### C-D.1 A detection taxonomy, replacing the old five-way label
+
+The user's framing: an event is only meaningfully detected if the **joint** fit detects it, because
+the joint stream contains strictly more data than either survey alone. That leaves four ways an
+event can be detected, distinguished by which telescopes *also* detect it unaided:
+
+| class | meaning |
+|---|---|
+| `DET_JOINT_ONLY`  | neither telescope alone, but the combination does — **the most interesting class, and expected to be rare** |
+| `DET_RUBIN_JOINT` | Rubin alone, and the joint fit |
+| `DET_ROMAN_JOINT` | Roman alone, and the joint fit |
+| `DET_BOTH_JOINT`  | both telescopes alone, and the joint fit — more interesting than either single class |
+
+The old labelling (`nDetBoth` / `nDetRubinOnly` / `nDetRomanOnly` / `nDetJointOnly` / `nDetNeither`)
+ignored `detJ` except in its last branch, so "Rubin-only" meant "Rubin detected", regardless of
+whether the joint fit did. Replaced by `DetClass` (`Bulge.h`) and `nDetClass[]`.
+
+### C-D.2 The joint detection test was not monotone in the data
+
+`DET_ANOMALY` exists to catch the case that should be impossible: a single telescope detecting an
+event the joint test misses. **It occurred immediately** — 1 of 5 detections in the first field.
+
+The cause is a threshold form, not a coding slip. All three tests compare `dchi` against
+`2 * ndw`, i.e. they threshold the **mean per-epoch** chi-squared improvement. Since
+`dchi_joint ~ dchi_L + dchi_R` and `ndw = ndw_L + ndw_R`, pooling a survey with many low-signal
+epochs raises the joint bar without contributing signal. Observed live: a `tE = 631` d event
+cleared Roman's bar on its 760 epochs, then failed the joint test because Rubin's 989 near-flat
+epochs lifted the joint threshold by ~1978 while adding almost no `dchi`.
+
+This contradicts a basic principle — conditioning on more data cannot destroy information — so
+`detJ` is now made monotone: if either survey alone detects, the joint detects. `detJ_raw`
+preserves the unmodified test so the rate of the inconsistency stays measurable as `DET_ANOMALY`.
+
+**Left open, deliberately:** the `2 * ndw` threshold form itself. A chi-squared detection statistic
+should be thresholded on its total, not its mean, so that more data helps rather than hurts.
+Changing it moves `detL` and `detR` too, which makes it a science decision about detection
+criteria rather than a bug fix. It belongs with Phase F's yield work.
+
+### C-D.3 Filling `nstE` / `ndtE` (closes entry 13)
+
+`gg = FunctE(*l)` is now evaluated for **every** simulated draw rather than only inside the
+detection branch, and `nstE[gg]` incremented there, so the efficiency denominator counts
+everything simulated. `ndtE[gg]` is incremented on `detJ`, the taxonomy's definition of detected.
+`EFF` went from identically zero to `0.2016` on the first field, and `Gamma` and `Neven` with it.
+
+### C-D.4 The not-characterizable sentinel was poisoning the precision averages
+
+The per-field means `Eru0`, `ErtE`, `ErpiE` and the rest summed `co.resu[]` over every event that
+reached `FisherM`. Step C4 reports sigma `-1` for a partition it cannot characterize, and
+`ErrorCal` divides that by the parameter value, so one such event contributed `resu[3] = -697` and
+dragged the mean fractional `piE` error negative, tripping `CHECK(ErpiE > 0.0)`.
+
+The means are now taken only over events whose joint partition is characterizable, with `nErAvg`
+tracking the true denominator, and the `CHECK`s apply only when `nErAvg > 0` — a field with no
+characterizable event has no mean precision, which is a legitimate outcome rather than a crash.
+
+**This is not the selection bias DEVIATIONS entry 8 warns about.** That rule governs the
+joint-vs-single *ratio* statistics, where a missing single-survey sigma is itself the result and
+dropping the row would discard the best synergy cases. Here we are forming a *mean precision*, and
+an event with no measurement has no precision to contribute; including the sentinel would be
+averaging a placeholder.
+
+A related replay bug was fixed in the same place: the per-field aggregation loop restores each
+event's `resu[]` from its `EventRecord`, but `co->okA[SJOINT]` was not restored, so it held
+whatever the last `FisherM` call had left. `okJoint` is now replayed with the rest.
+
+### C-D.5 Run-wide statistics
+
+Per-field counts are too small to quote for a rare class, so `DetClass` counts are also accumulated
+run-wide and broken down by `tE` bin, printed at the end of the run with `sqrt(N)` Poisson
+uncertainties and as a percentage of all simulated events. The class is additionally persisted per
+event (`EventRecord::detCls`, and a new output column) so any cut can be made offline without
+rerunning. The `tE` breakdown matters because the entire science case is that the joint gain is
+`tE`-dependent.
+
+**Acceptance for this section:** a run completes without aborting, `DET_ANOMALY` is zero, and the
+run totals give each class with its Poisson error — including an honest number, possibly zero, for
+`DET_JOINT_ONLY`.

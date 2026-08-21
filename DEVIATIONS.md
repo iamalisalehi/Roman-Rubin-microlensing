@@ -249,3 +249,102 @@ in entry 5. It was closed later across all fixture events and every survey parti
 The result quantified the specific bias the plan predicted — that omitting `t0` "systematically
 flatters the Rubin-alone column." Rubin's sigma(`tE`) was understated by up to a factor of 3.2,
 while Roman's densely sampled partition barely moved (ratios ~1.00-1.02).
+
+---
+
+## 10. Step C3: the sweep window in the plan was in the wrong place, and the result was not a confirmation
+
+**Commit:** this step. **Plot:** `c3_step_sweep.png`, from `c3_sweep.csv` via `tests/c3_step_sweep.py`.
+
+**Plan said:** sweep each `Delta1[]` entry "over about a decade", expect a plateau, pick steps in
+the middle of it, and confirm sigma is stable to well under 1%. The tone of the step is that this
+is a check the code is expected to pass.
+
+**What happened instead:** over a decade either side of the legacy steps there is no plateau for
+any nonlinear parameter — `sigma(u0)` varies by four orders of magnitude across that window. The
+window was in the wrong place. The legacy steps are ~25% of the parameter value (`u0` perturbed by
+0.15 on a `u0` of ~0.3; `tE` and `t0` by `0.25*tE`), which is enormous for a derivative step, so
+the entire assumed window sits up the truncation-error branch.
+
+Widening the sweep to nine decades (`1e-8` to `10` times the legacy steps) exposes both walls of
+the expected U and a very wide plateau: sigma is flat to **<0.2%** over `1e-6..1e-3` of the legacy
+values, with round-off taking over below and truncation above. So the plan's acceptance criterion
+is met — but only at steps four orders of magnitude smaller than the ones in use.
+
+**What this cost.** The legacy steps were not merely imprecise, they were biased, and unevenly:
+
+| parameter | error in sigma at the legacy step (median / worst over the fixture) |
+|---|---|
+| `u0`  | 57% / 110% |
+| `t0`  | 71% / 92% |
+| `tE`  | 26% / 55% |
+| `piE` | 9.6% / 93% |
+| `xi`, `fb0`, `fb1` | 0.05–0.3% (worst 3.5%) |
+| `mbs0`, `mbs1` | 0.00% — linear in the model, exactly flat at every step, the sweep's control |
+
+**Where the error lived, and why it matters more than the percentages suggest.** Diagonalizing the
+normalized Fisher matrix (`./fishertest --eigen`) shows the six best-constrained eigenvalues are
+essentially unchanged by the step correction. The entire discrepancy sits in the flattest
+directions: for `short_inseason` the smallest normalized eigenvalue was inflated by a factor of
+~4e7, and the condition number fell from a healthy-looking 3.4e2 to its true 1.5e10. Since the
+normalized matrix has unit diagonal its trace is fixed at the dimension, so this was information
+*redistributed* into the degenerate directions, not created. In physical terms, truncation error
+was papering over real parameter degeneracies — reporting a 0.2% parallax measurement for a 5-day
+event, which cannot measure annual parallax at all.
+
+**Consequence to be aware of: every absolute sigma printed before this step is too small**, badly
+so for short events. This step invalidates absolute-precision numbers, it does not merely refine
+them. Condition numbers rise correspondingly and are now genuine; `kMaxCondition = 1e12` is
+consequently much closer to firing than DEVIATIONS entry 7 recorded, and short events now land
+within about two decades of it.
+
+**What survives, and this is the load-bearing part:** the joint-vs-single-survey *ratios* are
+essentially unchanged, because Step C5's paired comparison cancels the common inflation.
+`sigma(tE)` joint / best-single, legacy steps → corrected steps:
+
+| event | legacy | corrected | | event | legacy | corrected |
+|---|---|---|---|---|---|---|
+| short_inseason | 0.9995 | 0.9981 | | long_inseason | 0.9935 | 0.9717 |
+| short_ingap | 1.0000 | 1.0000 | | long_ingap | 0.9788 | 0.9827 |
+| mid_inseason | 0.9980 | 0.9902 | | verylong | 0.7588 | 0.7951 |
+| mid_ingap | 1.0000 | 1.0000 | | | | |
+
+Same ordering, same physics, gains slightly larger in most cases. The two events where the gain
+*shrank* (`long_ingap`, `verylong`) both have the correction hitting the *helper* survey harder
+than the leader: in `long_ingap` Roman is a weak helper (peaks in a Roman gap) and its `sigma(tE)`
+inflated 2.14x against Rubin's 1.28x; in `verylong` Rubin's contribution is the parallax channel
+and its `sigma(piE)` inflated 2.18x against Roman's 1.10x. Read that mechanism as a hypothesis
+from seven fixture events, not an established property — it wants re-testing on live events.
+
+**Implementation choice:** a single `kFDStepScale = 1.0e-4` multiplying `Delta1[]` (and the
+telescope-keyed `bb[]` blend-fraction steps), rather than five rewritten constants. This keeps the
+change auditable against the legacy values and keeps the sweep — which is defined in units of the
+production step — directly comparable. `1e-5` reproduces every sigma to 0.3%, so the choice is not
+delicate.
+
+## 11. Unplanned: `tE` and `piE` were on a first-order, biased finite-difference stencil
+
+**Commit:** same as entry 10. **Not in the plan** — found while doing C3's sweep.
+
+`Bulge.h` defines two stencils. `sig = {+1,-1}` averages a forward and a backward difference,
+giving a **central difference, accurate to O(h^2)**. `sig2 = {+0.5,+1.0}` averages two *forward*
+differences (at `h/2` and `h`); nothing cancels, and the result is `f'(x) + (3/8) f''(x) h + O(h^2)`
+— **first order and biased**. Verified numerically on a smooth test function: `sig` gains 2.00
+decades of accuracy per decade of step reduction, `sig2` gains 1.00, and `sig2` carries ~22x the
+error at equal step.
+
+`sig2` was applied to `tE` and `piE` in the photometric matrix — two of the three parameters the
+thesis novelty claims rest on — and to `tetE` and `piE` in the astrometric one. The pattern is
+exactly the strictly-positive parameters, which suggests the legacy intent was to avoid stepping
+them through zero. That is not a real constraint: the steps are a small fraction of the parameter,
+and after entry 10 they are four orders of magnitude smaller still.
+
+**Done:** the photometric `tE` and `piE` now use `sig`. The astrometric uses are left alone pending
+a `Delta2[]` sweep (logged in `OPEN_ITEMS.md`) — the astrometric matrix has its own unswept steps
+and a placeholder Roman error model, so fixing its stencil in isolation would be a change whose
+effect could not be verified.
+
+**Numerical effect at the corrected step size: none measurable** — every fixture sigma and every
+joint/single ratio is unchanged to four significant figures. This is expected, since the bias term
+scales with `h` and `h` is now tiny. It is a correctness fix that removes a trap: it means the
+`tE` and `piE` derivatives no longer degrade faster than the others if steps are ever revisited.

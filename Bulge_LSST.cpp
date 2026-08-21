@@ -1122,8 +1122,32 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     co.Delta1[6] = 0.05; // mbs0 [mag] -- Rubin baseline magnitude
     co.Delta1[8] = 0.05; // mbs1 [mag] -- Roman baseline magnitude
 
-    // Step C3 step-size sweep hook. deltaScale is 1.0 in production, making this an exact no-op.
-    for (int q = 0; q < Nx; ++q) co.Delta1[q] *= co.deltaScale[q];
+    // Step C3. The five constants above came from the legacy LMC codebase and are ~25% of the
+    // parameter value -- u0 is perturbed by 0.15 on a u0 of ~0.3, tE and t0 by 0.25*tE. That is
+    // enormous for a derivative step, and the sweep (./fishertest --sweep, plotted by
+    // tests/c3_step_sweep.py) showed every nonlinear parameter sitting far up the
+    // truncation-error branch: sigma(u0) off by ~57% median and sigma(t0) by ~71%.
+    //
+    // Scaling them into the convergence plateau, where sigma is flat to <0.2% over the decades
+    // 1e-6..1e-3 of the legacy values. Below ~1e-6 round-off takes over (subtracting two model
+    // magnitudes that agree to ~1e-9 leaves too few significant digits); above ~1e-3 truncation
+    // does. 1e-4 sits two decades clear of the round-off wall, and 1e-5 reproduces every sigma
+    // to 0.3%, so the choice is not delicate.
+    //
+    // Expressed as a scale factor rather than five rewritten constants so the change stays
+    // auditable against the legacy values and the sweep -- which is defined in these units --
+    // remains directly comparable.
+    //
+    // Consequence worth knowing: this makes the sigmas MUCH larger for short events, and that is
+    // the correct answer, not a regression. The oversized steps were manufacturing information
+    // in the near-degenerate directions of the Fisher matrix -- for a 5-day event the smallest
+    // normalized eigenvalue was inflated by ~4e7, reporting a 0.2% parallax measurement from a
+    // light curve far too short to measure annual parallax at all. Per-event condition numbers
+    // rise correspondingly and are now genuine. The joint-vs-single-survey RATIOS, which the
+    // thesis rests on, are unchanged in ordering and magnitude (Step C5's paired comparison
+    // cancels the common inflation); see DEVIATIONS.md.
+    constexpr double kFDStepScale = 1.0e-4;
+    for (int q = 0; q < Nx; ++q) co.Delta1[q] *= kFDStepScale * co.deltaScale[q];
     // The model magnitude depends on mbs linearly with unit slope, so the finite difference is
     // exact for any step and this value only has to avoid underflow. fb0 (index 2) and fb1
     // (index 7) reuse the telescope-keyed co.bb[] steps set inside the data loop below, which
@@ -1172,13 +1196,22 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         else if (s.fb[tt] < 0.85) {co.bb[0] =- 0.07; co.bb[1] =+ 0.07;}
         else                      {co.bb[0] =- 0.07; co.bb[1] =- 0.15;}
 
-        // Step C3: scale the fb step, then clamp so it still cannot leave the physical range
-        // [0,1]. The bin edges above guarantee bound-safety only at the unscaled sizes, so a
-        // scaled-up sweep point would otherwise trip CHECK(s.fb[tt] <= 1.0) and abort. Clamping
-        // rather than skipping keeps every sweep point usable; the plot shows where the clamp
-        // starts to bite as a flattening at large scale.
+        // Step C3: apply the same plateau scaling as Delta1[] above, then clamp so the step
+        // still cannot leave the physical range [0,1]. The bin edges above guarantee
+        // bound-safety only at the unscaled sizes, so a scaled-UP sweep point would otherwise
+        // trip CHECK(s.fb[tt] <= 1.0) and abort. Clamping rather than skipping keeps every
+        // sweep point usable; the plot shows where the clamp bites as a flattening at large
+        // scale. At the production scale the clamp is now far from binding.
+        //
+        // Note on the stencil: in the middle bin bb = {-0.07, +0.07} is a central difference,
+        // but the outer bins are {+0.07, +0.15} and {-0.07, -0.15} -- two forward (or two
+        // backward) differences, i.e. the same first-order bias as sig2 (Bulge.h). fb's
+        // accuracy therefore depends on which bin it lands in. kFDStepScale shrinks the steps
+        // enough that the residual bias is negligible (the sweep already showed fb0/fb1 flat to
+        // <0.3% even unscaled), so this is left as-is rather than restructured here; recorded
+        // in OPEN_ITEMS.md.
         {
-            const double fscale = co.deltaScale[(tt == 0) ? 2 : 7];
+            const double fscale = kFDStepScale * co.deltaScale[(tt == 0) ? 2 : 7];
             for (int b = 0; b < 2; ++b) {
                 double step = co.bb[b] * fscale;
                 const double lo = 1.0e-6 - s.fb[tt];        //keeps fb strictly above 0
@@ -1193,7 +1226,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
             for (int h = 0; h < 2; ++h) {
 
                 if (j == 0) {co.diff = double(+co.Delta1[j] * sig[h]) ;      l.u0 += co.diff;}
-                if (j == 1) {co.diff = double(+co.Delta1[j] * sig2[h]);      l.tE += co.diff;}
+                if (j == 1) {co.diff = double(+co.Delta1[j] * sig[h]) ;      l.tE += co.diff;}
                 // fb0 is RUBIN's source-flux fraction. It must perturb s.fb[0] on Rubin epochs
                 // only -- never s.fb[tt]. Perturbing s.fb[tt] here (correct before Step C2b, when
                 // index 2 was a single telescope-selected fb) makes parameters 2 and 7 both move
@@ -1212,7 +1245,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                                  if (tt == 1) s.fb[1]  += co.diff;}
                 if (j == 8) {co.diff = (tt == 1) ? double(+co.Delta1[j] * sig[h]) : 1.0;
                                  if (tt == 1) s.mbs[1] += co.diff;}
-                if (j == 3) {co.diff = double(+co.Delta1[j] * sig2[h]);     l.piE += co.diff;}
+                if (j == 3) {co.diff = double(+co.Delta1[j] * sig[h]) ;     l.piE += co.diff;}
                 if (j == 4) {co.diff = double(+co.Delta1[j] * sig[h]) ;      s.xi += co.diff;}
                 if (j == 5) {co.diff = double(+co.Delta1[j] * sig[h]) ;      l.t0 += co.diff;}
 
@@ -1246,7 +1279,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 for (int h = 0; h < 2;  ++h) {
 
                     if (k == 0) {co.diff = double(+co.Delta1[k] * sig[h]) ;     l.u0 += co.diff;}
-                    if (k == 1) {co.diff = double(+co.Delta1[k] * sig2[h]);     l.tE += co.diff;}
+                    if (k == 1) {co.diff = double(+co.Delta1[k] * sig[h]) ;     l.tE += co.diff;}
                     if (k == 2) {co.diff = (tt == 0) ? double(co.bb[h]) : 1.0;
                                  if (tt == 0) s.fb[0] += co.diff;}
                     // Per-telescope flux parameters (Step C2b). Each affects ONLY its own telescope's
@@ -1260,7 +1293,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                                      if (tt == 1) s.fb[1]  += co.diff;}
                     if (k == 8) {co.diff = (tt == 1) ? double(+co.Delta1[k] * sig[h]) : 1.0;
                                      if (tt == 1) s.mbs[1] += co.diff;}
-                    if (k == 3) {co.diff = double(+co.Delta1[k] * sig2[h]);    l.piE += co.diff;}
+                    if (k == 3) {co.diff = double(+co.Delta1[k] * sig[h]) ;    l.piE += co.diff;}
                     if (k == 4) {co.diff = double(+co.Delta1[k] * sig[h]) ;     s.xi += co.diff;}
                     if (k == 5) {co.diff = double(+co.Delta1[k] * sig[h]) ;     l.t0 += co.diff;}
 

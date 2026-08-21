@@ -80,3 +80,47 @@ The code now uses two separate visit lists and cadences: `FoV` (1.75°) for Rubi
 `BulgeBaseline.dat`, `FoVRoman` (0.28°, currently a placeholder — see the `TODO(Ali)` next to its
 declaration in `Bulge.h`) for Roman via `RomanBaseline.dat`, matched independently by two calls to
 `matchVisibleEpochs()`. Fix in Phase G, Step G3.
+
+## Astrometric finite-difference steps (`Delta2[]`) are unswept, and two use a biased stencil (from Step C3)
+
+Step C3 swept and retuned the **photometric** steps (`Delta1[]`) and fixed the stencil for the
+photometric `tE` and `piE` (see `DEVIATIONS.md` entries 10 and 11). The astrometric matrix was
+left untouched, and has both of the same problems:
+
+- **`Delta2[]` has never been swept.** Its steps came from the same legacy codebase as the
+  photometric ones, which turned out to be ~4 orders of magnitude too large. There is no reason
+  to assume the astrometric ones are better placed, and every reason to expect they are not.
+- **`tetE` and `piE` still use `sig2`**, the first-order biased stencil (`Bulge_LSST.cpp`, the
+  `Delta2[j] * sig2[h]` lines). `mus1`/`mus2` correctly use the central `sig`.
+
+**Why it was not fixed at the same time:** the effect could not be verified. The astrometric
+branch also depends on `errlsstA()` standing in for a real Roman F146 astrometric error model
+(first item in this file), so its sigmas are not yet trustworthy in absolute terms regardless of
+the stencil. Fixing one of two unverifiable inputs in isolation buys nothing checkable.
+
+**What's needed:** extend `runSweep()` in `tests/fisher_fixture.cpp` to sweep `Delta2[]` (the
+harness already carries `deltaScale` and the CSV/plot pipeline; `covarian` would need the
+astrometric equivalent), then retune and switch the two `sig2` uses to `sig`. Expect the same
+qualitative outcome: absolute astrometric sigmas shrink toward their true, larger values, while
+the paired joint/single ratios hold up.
+
+**Where this should land:** before Step G1, which reruns the astrometric matrix to separate
+satellite parallax from temporal-baseline parallax, and before any absolute `tetE` precision
+number goes in the whitepaper.
+
+## `fb` derivative stencil depends on which blend-fraction bin the event lands in (from Step C3)
+
+The blend-fraction step `co.bb[]` (`Bulge_LSST.cpp`, inside `FisherM`'s data loop) is chosen by
+binning on `s.fb[tt]`: the middle bin gives `{-0.07, +0.07}`, a proper central difference, but the
+outer bins give `{+0.07, +0.15}` and `{-0.07, -0.15}` — two forward (or two backward) differences,
+carrying the same first-order bias as `sig2` in `DEVIATIONS.md` entry 11. So `fb`'s derivative
+accuracy depends on where `fb` happens to sit, which is not a property anyone chose deliberately.
+
+**Why it is not urgent:** the C3 sweep showed `fb0`/`fb1` flat to <0.3% even at the *unscaled*
+steps, and `kFDStepScale` now shrinks them by 1e-4, making the residual bias negligible. The bin
+structure and the bound-safety clamp are also now far from binding, since a step of ~7e-6 cannot
+push `fb` out of [0,1].
+
+**What's needed:** replace the binned step with a symmetric `{-h, +h}` pair at a fixed small `h`,
+keeping a clamp only as a guard. This would also let the bin table and the clamp block be deleted,
+simplifying `FisherM`'s data loop. Do it when `FisherM` is next opened for other reasons.

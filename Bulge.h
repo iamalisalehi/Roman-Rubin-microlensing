@@ -160,6 +160,24 @@ constexpr double FoVRoman = 0.28; // PLACEHOLDER — Roman WFI FoV is ~0.28 deg^
 constexpr double tetp   = double(M_PI / 3.0);        //parallax
 constexpr double omegae = double(2.0 * M_PI / year); //radian per day
 constexpr double vearth = omegae;                    //radian per day
+// Finite-difference stencils used by FisherM. For each parameter it evaluates the model at
+// theta + Delta*s[h] for h = 0,1, forms (model - stored)/(Delta*s[h]), and averages the two.
+//
+// sig gives a CENTRAL difference: the h=0 and h=1 terms are
+//     (f(x+D) - f(x))/D   and   (f(x-D) - f(x))/(-D),
+// whose average is (f(x+D) - f(x-D))/(2D). The O(D) error terms cancel, leaving O(D^2).
+//
+// sig2 averages two FORWARD differences, at D/2 and D. Nothing cancels: the result is
+// f'(x) + (3/8) f''(x) D + O(D^2) -- first order, and biased. On a smooth test function it
+// carries ~22x the error of sig at equal step and gains only one decade of accuracy per decade
+// of step reduction, against sig's two (Step C3).
+//
+// sig2 was applied to exactly the strictly-positive parameters -- tE, piE (photometric) and
+// tetE, piE (astrometric) -- which suggests the legacy intent was to avoid ever stepping them
+// through zero. That is not a real constraint here: the steps are a small fraction of the
+// parameter, so theta - Delta stays positive, and after Step C3 they are smaller still.
+// The photometric tE and piE now use sig. The two astrometric uses are unchanged pending a
+// step-size sweep of Delta2 -- see OPEN_ITEMS.md.
 constexpr std::array<double, 2> sig  = {+1.0 ,-1.0};
 constexpr std::array<double, 2> sig2 = {+0.5 ,+1.0};
 

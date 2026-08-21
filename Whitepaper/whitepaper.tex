@@ -498,13 +498,17 @@
 	
 	\subsection{Photometric parameters}
 	
-	The photometric Fisher matrix is built over five parameters: impact parameter $u_0$, Einstein time $t_E$, blend fraction $f_b$, microlens parallax $\pi_E$, and the trajectory angle $\xi$. For each pair of parameters $(j,k)$, the model magnitude is recomputed after perturbing each parameter by a small step, and the resulting finite-difference derivative is accumulated, weighted by the photometric measurement uncertainty at that data point:
+	The photometric Fisher matrix is built over nine parameters: impact parameter $u_0$, Einstein time $t_E$, time of peak magnification $t_0$, microlens parallax $\pi_E$, the trajectory angle $\xi$, and -- separately for each observatory -- a blend fraction $f_b$ and a baseline magnitude $m_b$. For each pair of parameters $(j,k)$, the model magnitude is recomputed after perturbing each parameter by a small step, and the resulting finite-difference derivative is accumulated, weighted by the photometric measurement uncertainty at that data point:
 	\[
-	F_{jk} = \sum_{i=1}^{n_{\mathrm{dw}}} \frac{1}{\sigma_{m,i}^2}\,\frac{\partial m_i}{\partial\theta_j}\,\frac{\partial m_i}{\partial\theta_k}, \qquad \theta \in \{u_0,\, t_E,\, f_b,\, \pi_E,\, \xi\}.
+	F_{jk} = \sum_{i=1}^{n_{\mathrm{dw}}} \frac{1}{\sigma_{m,i}^2}\,\frac{\partial m_i}{\partial\theta_j}\,\frac{\partial m_i}{\partial\theta_k}, \qquad \theta \in \{u_0,\, t_E,\, f_{b,0},\, \pi_E,\, \xi,\, t_0,\, m_{b,0},\, f_{b,1},\, m_{b,1}\},
 	\]
-	Each derivative is estimated from two perturbed evaluations of the model, averaged. For $u_0$ and $\xi$, the two steps are equal and opposite, which is algebraically equivalent to a standard central difference. For $t_E$, $\pi_E$, and $f_b$, both steps are taken on the same (positive) side, at two different magnitudes -- plausibly because these three parameters are physically constrained to stay positive (or, for $f_b$, within $[0,1]$; see the \texttt{CHECK} assertions throughout \texttt{Lensing.cpp}), and a large negative perturbation risks evaluating the model at an unphysical parameter value. \textbf{Worth confirming this reasoning is actually why, rather than assuming it.}
+	where the subscripts $0$ and $1$ denote Rubin and Roman respectively. The two surveys observe in different passbands through different point-spread functions, so neither the fraction of the blended flux belonging to the source nor the baseline magnitude can be assumed common between them; each is therefore free, and each is perturbed only on its own observatory's epochs. An epoch from one observatory contributes identically zero to the other's flux parameters, which is the correct statement that Rubin's photometry carries no information about Roman's blending.
 	
-	The resulting matrix is inverted using GSL's LU decomposition \cite{GalassiGSL2009} (\texttt{invert\_matrix}); a small diagonal regularization term ($10^{-10}$) is added if the matrix is found to be exactly singular. Formally, the Fisher matrix's inverse is exactly the Cram\'er-Rao bound on achievable parameter precision \cite{VakiliHogg2016} referenced in Section~\ref{sec:error_models} -- so this step is the multi-parameter generalization of the same information-theoretic limit that sets the single-parameter centroiding precision discussed there.
+	Each derivative is estimated from two perturbed evaluations of the model, averaged. For every parameter except the two blend fractions the steps are equal and opposite, which is algebraically equivalent to a standard central difference; the blend fractions use a step selected from the value of $f_b$ itself, so that the perturbation cannot carry it outside its physical range $[0,1]$. An earlier version of this code differenced $t_E$ and $\pi_E$ with both evaluations on the same (positive) side of the parameter value, apparently to avoid evaluating the model at an unphysical negative value. That reasoning has since been checked: the constraint is not binding at the step sizes actually used, while the one-sided scheme is first-order and biased where the symmetric form is second-order. Both now use the symmetric form. The choice of step size is not free either, and is established by an explicit convergence test in Appendix~\ref{app:stepsize}.
+	
+	Before inversion the matrix is symmetrically normalised, $\tilde{F} = D F D$ with $D = \mathrm{diag}(1/\sqrt{F_{ii}})$. Its entries otherwise carry units of $1/(\theta_j\theta_k)$ and span many orders of magnitude purely because $t_E$ is measured in days, $u_0$ is dimensionless and $\xi$ is in radians; normalising sets the diagonal to unity, turns each off-diagonal entry into a correlation coefficient, and recovers the inverse exactly as $F^{-1} = D\tilde{F}^{-1}D$. The operation is algebraically an identity but numerically far better behaved, and it separates ill-conditioning that is an artefact of units from ill-conditioning that is a real statement about the data.
+	
+	The normalised matrix is then inverted using GSL's LU decomposition \cite{GalassiGSL2009} (\texttt{invert\_matrix}). An earlier version of this code perturbed the diagonal by $10^{-10}$ when the matrix was found to be exactly singular and inverted it regardless; this is no longer done, because a singular Fisher matrix is not a numerical obstacle to be worked around but the finding that the data cannot constrain some combination of parameters. Each event's condition number $\lambda_{\max}/\lambda_{\min}$ is computed from the normalised matrix and recorded, and a partition whose matrix is singular, is above a threshold condition number, or has fewer epochs than free parameters is reported as \emph{not characterisable} rather than being assigned an uncertainty. Appendix~\ref{app:stepsize_eigen} discusses what these degenerate directions correspond to physically. Formally, the Fisher matrix's inverse is exactly the Cram\'er-Rao bound on achievable parameter precision \cite{VakiliHogg2016} referenced in Section~\ref{sec:error_models} -- so this step is the multi-parameter generalization of the same information-theoretic limit that sets the single-parameter centroiding precision discussed there.
 	
 	\subsection{Astrometric parameters}
 	
@@ -513,6 +517,19 @@
 	F^{\mathrm{astro}}_{jk} = \sum_{i=1}^{n_{\mathrm{dw}}} \frac{1}{2\sigma_{a,i}^2}\left(\frac{\partial x_i}{\partial\theta_j}\frac{\partial x_i}{\partial\theta_k} + \frac{\partial y_i}{\partial\theta_j}\frac{\partial y_i}{\partial\theta_k}\right), \qquad \theta \in \{\theta_E,\, \mu_{s,1},\, \mu_{s,2},\, \pi_E\}.
 	\]
 	Since $\pi_E$ appears in both matrices, the simulation ends up with two independent estimates of its precision -- one photometric, one astrometric -- and \texttt{ErrorCal} (below) keeps whichever is tighter.
+	
+	\subsection{Three matrices per event: isolating what the combination buys}
+	\label{subsec:partition}
+	
+	The quantity this paper is ultimately after is not the precision of a joint fit in isolation but how much the two surveys \emph{add} to one another. That comparison is made per event. In the same pass over the light curve, three matrices are accumulated rather than one: $F^{\mathrm{joint}}$ over all epochs, $F^{\mathrm{Rubin}}$ over epochs with $\texttt{tele}=0$, and $F^{\mathrm{Roman}}$ over epochs with $\texttt{tele}=1$. The derivatives are identical in all three -- it is the same event and the same model -- and only the set of epochs allowed to contribute differs, so
+	\[
+	F^{\mathrm{joint}} = F^{\mathrm{Rubin}} + F^{\mathrm{Roman}}
+	\]
+	holds exactly, element by element. Each is inverted independently.
+	
+	Because all three come from the same simulated event with the same random draws, the comparison between them is \emph{paired}. Everything that dominates the scatter between events -- source magnitude, impact parameter, blending, extinction along the sight line -- is common to all three matrices and cancels in the per-event ratio. This is what makes a gain of a few per cent measurable with thousands of simulated events rather than millions, and it is why every ratio quoted in this paper is formed per event and only then aggregated across events. Averaging the uncertainties first and taking their ratio afterwards would discard exactly the cancellation that makes the measurement possible.
+	
+	A single-survey matrix is frequently rank-deficient by construction: a short event peaking between Roman's observing seasons genuinely has no Roman data, and a matrix built from too few epochs cannot constrain the free parameters. Two consequences follow. First, the parameters a single-survey partition carries no information about -- the other observatory's blend fraction and baseline magnitude -- are excluded from that partition's inversion rather than being inverted as identically zero rows. Second, and more important for the analysis, events whose single-survey matrix is not characterisable must not be silently dropped from the averages: doing so would retain only the cases favourable to the survey in question and bias the inferred gain. They are instead classified explicitly, including the case where neither survey alone can characterise an event that the combination can -- the clearest evidence for the joint fit, and precisely the population a naive ratio would discard.
 	
 	\subsection{From parameter covariances to physical quantities}
 	
@@ -531,7 +548,7 @@
 	
 	Two things worth flagging before treating these forecasts as final:
 	\begin{itemize}
-		\item The Monte Carlo stopping criterion (Section~\ref{sec:montecarlo}) only requires \emph{two} events per field with a well-conditioned Fisher matrix before moving on to the next pointing. Per-field average precision built from only two events will be noisy; whether that matters depends on how the per-field results are ultimately used (e.g., averaged again across many fields, or reported individually per field).
+		\item The Monte Carlo stopping criterion (Section~\ref{sec:montecarlo}) requires, per field, at least $20$ simulated events with a usable light curve, at least $5$ of those detected, and at least one reaching the Fisher stage. Note that the number of events with a \emph{well-conditioned} Fisher matrix does not enter the criterion at all, so a field can be completed with very few characterisable events -- and, since the conditioning test was tightened (Section~\ref{sec:fisher}), fewer events pass it than previously appeared to. Per-field average precision built on so small a sample will be noisy; whether that matters depends on how the per-field results are ultimately used (e.g., averaged again across many fields, or reported individually per field). Raising the criterion to demand a minimum number of characterisable events would address this directly, at proportionate cost in runtime.
 		\item A Fisher matrix is only as good as the error model that weights it (Section~\ref{sec:error_models}) -- in particular, the still-unresolved question of what astrometric precision curve is actually appropriate for Roman's own F146 measurements (rather than reusing Rubin's ground-based curve) directly affects every astrometric parameter uncertainty computed here.
 	\end{itemize}
 	
@@ -731,4 +748,6 @@
 	
 	\bibliographystyle{ieeetr}
 	\bibliography{refs}
+	\input{appendix_c3_stepsize}
+	
 \end{document}

@@ -1,0 +1,247 @@
+% ---------------------------------------------------------------------------------------------
+% DRAFT appendix: finite-difference step-size convergence test (refactor plan Step C3).
+%
+% \input{} at the end of whitepaper.tex.
+%
+% Figure dependency: c3_step_sweep.png, produced by
+%     ./fishertest --sweep > c3_sweep.csv
+%     python tests/c3_step_sweep.py c3_sweep.csv -o c3_step_sweep.png
+% Copy it into Whitepaper/ before compiling.
+% ---------------------------------------------------------------------------------------------
+
+\appendix
+
+\section{Finite-difference step sizes and the convergence of the Fisher forecast}
+\label{app:stepsize}
+
+Every derivative in Section~\ref{sec:fisher} is computed numerically, by perturbing a parameter
+and re-evaluating the model. The forecast therefore inherits whatever error that approximation
+carries, and the size of the perturbation is a free choice that nothing in the physics fixes.
+Because the precision gains this paper reports are in places at the few-per-cent level, a
+differencing error at that same scale would be indistinguishable from the signal. This appendix
+establishes that it is not.
+
+\subsection{Why a step size has a correct value at all}
+\label{app:stepsize_theory}
+
+A central-difference estimate of a derivative,
+\[
+\frac{\partial m}{\partial\theta} \simeq \frac{m(\theta+h) - m(\theta-h)}{2h},
+\]
+carries two errors that pull in opposite directions. Expanding in a Taylor series, the neglected
+terms give a \emph{truncation} error of order $h^2 m'''$, which grows as the step grows: the
+secant through two widely separated points stops matching the tangent. Working against it,
+evaluating $m$ in finite precision gives a \emph{round-off} error of order $\epsilon |m| / h$,
+which grows as the step shrinks: subtracting two nearly equal numbers cancels their leading
+significant digits, and dividing by a small $h$ amplifies what remains. Their sum is U-shaped in
+$h$, with a broad flat minimum -- a plateau -- between the two regimes. A trustworthy step lies in
+the middle of that plateau, and the plateau's existence, not merely the value chosen from it, is
+what has to be demonstrated.
+
+For a Fisher forecast the consequence is sharper than a general loss of accuracy, because the
+error does not distribute itself evenly across the matrix. This is developed in
+Section~\ref{app:stepsize_eigen}.
+
+\subsection{The measurement}
+\label{app:stepsize_measure}
+
+The step for each parameter was swept over twelve decades while all other steps were held at their
+default, and the recovered $\sigma$ recorded. The sweep uses a synthetic-event fixture rather than
+the full Monte Carlo: seven events spanning $t_E$ from $5$ to $900$~d, each in two versions --
+peaking inside a Roman high-cadence season and peaking in a Roman gap -- evaluated separately for
+the joint, Rubin-only and Roman-only partitions of Section~\ref{subsec:partition}. Using a fixture is
+what makes the test affordable (seconds rather than the hours needed to accumulate a comparable
+number of Fisher-scored events from the Monte Carlo), and it isolates the numerical question from
+the population statistics.
+
+Two of the nine photometric parameters serve as controls. The model magnitude depends on the
+baseline magnitudes $m_{b,0}$ and $m_{b,1}$ linearly and with unit slope, so their finite
+difference is exact at any step and their curves must be perfectly flat. Any structure there would
+indicate a fault in the sweep machinery rather than in the physics. Both are flat to machine
+precision across all twelve decades.
+
+Figure~\ref{fig:stepsweep} shows the result. Both walls of the expected U are visible, bracketing a
+plateau roughly seven decades wide, across which $\sigma$ is stable to better than $0.1\%$ for
+every parameter and every event.
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=\linewidth]{c3_step_sweep}
+	\caption{Recovered parameter uncertainty $\sigma$ as a function of the finite-difference step,
+	for each of the nine photometric parameters (panels), seven test events (colours) and three
+	survey partitions (line styles). The step is plotted relative to the adopted value, so the
+	adopted step is the vertical line at $1$ and the shaded band marks the plateau. Curves are
+	normalised to the adopted step, so a converged parameter is a flat line at unity. The collapse
+	at small steps is round-off; the collapse at large steps is truncation. The two baseline-
+	magnitude panels ($m_{b,0}$, $m_{b,1}$) are controls: the model is exactly linear in these, so
+	their flatness across the full range validates the sweep itself. Note that both failure modes
+	drive $\sigma$ \emph{downward} -- they manufacture apparent information rather than destroying
+	it, which is why neither announces itself as an obviously broken result.}
+	\label{fig:stepsweep}
+\end{figure}
+
+\subsection{The steps adopted here}
+\label{app:stepsize_adopted}
+
+The simulation inherited its step sizes from a legacy codebase written for a different
+science case, where they were expressed as fixed fractions of each parameter: $0.151$ for $u_0$
+(against a typical $u_0 \sim 0.3$), $0.255\,t_E$ for both $t_E$ and $t_0$, $0.251\,\pi_E$ for
+$\pi_E$, and $3^\circ$ for the trajectory angle $\xi$. Figure~\ref{fig:stepsweep} places all of
+these far up the truncation branch: they are approximately four orders of magnitude larger than
+the plateau. Every step is therefore scaled by a single factor of $10^{-4}$, which places all nine
+in the middle of the plateau simultaneously. A factor of $10^{-5}$ reproduces every $\sigma$ to
+better than $0.3\%$, so the result is not sensitive to where in the plateau the step is taken.
+
+Table~\ref{tab:stepbias} gives the cost of the original choice. The entries are the factor by
+which the legacy step \emph{understated} the recovered uncertainty, which is the quantity that
+matters: in every case the error is in the optimistic direction.
+
+\begin{table}[htbp]
+	\centering
+	\caption{Factor by which the legacy finite-difference steps understated the forecast
+	uncertainty, $\sigma_{\mathrm{converged}} / \sigma_{\mathrm{legacy}}$, over all test events and
+	survey partitions. A value of $1.00$ means the legacy step was already adequate for that
+	parameter. The two baseline magnitudes are the linear controls.}
+	\label{tab:stepbias}
+	\begin{tabular}{lrr}
+		\toprule
+		Parameter & Median & Worst case \\
+		\midrule
+		$u_0$        & 21.7 & 7643 \\
+		$t_0$        &  6.0 & 10388 \\
+		$t_E$        &  1.45 &  26.1 \\
+		$\pi_E$      &  1.00 & 219.8 \\
+		$\xi$        &  1.00 &  45.6 \\
+		$f_{b,0}$, $f_{b,1}$ & 1.00 & 1.01 \\
+		$m_{b,0}$, $m_{b,1}$ (control) & 1.00 & 1.00 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+The median and worst-case columns differ by orders of magnitude because the damage is
+concentrated on the events whose Fisher matrices are closest to degenerate -- short events, and
+events with sparse coverage. For $\pi_E$ and $\xi$ the median is unity: on a typical
+well-sampled event the legacy step was harmless, and the failure appears only where the matrix is
+already nearly singular. This is precisely the population that the joint-fit science case is about.
+
+\subsection{Where the error goes: the eigenstructure of the Fisher matrix}
+\label{app:stepsize_eigen}
+
+That the errors concentrate on near-degenerate events is not a coincidence, and it explains why
+the effect is larger than the per-parameter percentages suggest.
+
+The Fisher matrix is assembled in physical units, so its entries carry units of
+$1/(\theta_j\theta_k)$ and span many orders of magnitude before any physics enters --
+$t_E$ is measured in days ($\sim 30$), $u_0$ is dimensionless ($\sim 0.3$), $\xi$ is in radians.
+Normalising by $\tilde{F} = D F D$ with $D = \mathrm{diag}(1/\sqrt{F_{ii}})$ removes this: the
+diagonal becomes unity, every off-diagonal entry becomes a correlation coefficient, and the
+inverse is recovered exactly as $F^{-1} = D\tilde{F}^{-1}D$. Whatever ill-conditioning survives in
+$\tilde{F}$ is a statement about the data, not about the choice of units.
+
+Diagonalising $\tilde{F}$ rotates onto parameter \emph{combinations} that are measured
+independently, with eigenvalue $\lambda_k$ the information carried about combination $k$ and
+$\lambda_{\max}/\lambda_{\min}$ the condition number. A large condition number is usually not a
+numerical inconvenience but a physical fact: some combination of parameters genuinely cannot be
+recovered from that light curve, and the eigenvector belonging to $\lambda_{\min}$ names it.
+For a short event observed only sparsely, that direction is the familiar $u_0$--$\pi_E$
+degeneracy; for an event with poorly sampled wings it is the $t_E$--$f_b$ degeneracy between a
+longer, more blended event and a shorter, less blended one.
+
+Comparing the normalised spectrum of a $5$-day event at the legacy and converged steps makes the
+mechanism explicit:
+
+\begin{center}
+\begin{tabular}{lcccc}
+	\toprule
+	& $\lambda_1 \ldots \lambda_6$ & $\lambda_7$ & $\lambda_8$ & $\lambda_9$ \\
+	\midrule
+	Legacy steps    & $3.30, 1.83, 1.30, 1.19, 0.712, 0.532$ & $7.5\times10^{-2}$ & $6.1\times10^{-2}$ & $5.3\times10^{-3}$ \\
+	Converged steps & $3.42, 1.89, 1.30, 1.16, 0.711, 0.513$ & $7.8\times10^{-3}$ & $8.7\times10^{-7}$ & $2.3\times10^{-10}$ \\
+	\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent The six best-constrained directions are essentially unchanged. The entire discrepancy
+sits in the three flattest ones, where the smallest eigenvalue is inflated by a factor of
+$\sim\!4\times10^{7}$ and the condition number consequently reads $6.2\times10^{2}$ instead of its
+true $1.5\times10^{10}$. Since $\tilde{F}$ has unit diagonal its trace is fixed at the dimension,
+so no information was created: it was redistributed out of the well-constrained directions into
+the degenerate ones. Physically, truncation error was papering over real parameter degeneracies --
+the legacy configuration reported a sub-per-cent parallax measurement for an event far too short
+to exhibit annual parallax at all.
+
+This is the reason the convergence test is reported here rather than being treated as an internal
+numerical detail. An unconverged derivative in a Fisher forecast does not present as scatter; it
+presents as a confident, well-conditioned, and entirely spurious measurement of exactly those
+parameter combinations the data cannot constrain.
+
+\subsection{Effect on the results of this paper}
+\label{app:stepsize_impact}
+
+Two consequences, of very different weight.
+
+First, absolute parameter uncertainties are affected, and every $\sigma$ quoted here is computed
+with the converged steps. Forecasts made with the legacy configuration were optimistic, severely so
+for short-$t_E$ events.
+
+Second -- and this is what matters for the paper's claims -- the \emph{relative} results are
+robust. Because the joint, Rubin-only and Roman-only matrices are accumulated from the same
+simulated event with the same random draws, the comparison between them is paired, and a common
+multiplicative error in the derivatives largely cancels in the per-event ratio. Table
+\ref{tab:stepratio} shows the headline quantity, the ratio of the joint-fit uncertainty on $t_E$ to
+the better of the two single-survey fits, computed either side of the correction.
+
+\begin{table}[htbp]
+	\centering
+	\caption{Ratio $\sigma_{t_E}^{\mathrm{joint}} / \min(\sigma_{t_E}^{\mathrm{Rubin}},
+	\sigma_{t_E}^{\mathrm{Roman}})$ for each test event, computed with the legacy and the converged
+	finite-difference steps. Values below unity indicate the joint fit outperforms either survey
+	alone. Events labelled ``gap'' peak between Roman observing seasons.}
+	\label{tab:stepratio}
+	\begin{tabular}{lrr}
+		\toprule
+		Event & Legacy steps & Converged steps \\
+		\midrule
+		$t_E = 5$~d, in season    & 0.9995 & 0.9981 \\
+		$t_E = 5$~d, in gap       & 1.0000 & 1.0000 \\
+		$t_E = 25$~d, in season   & 0.9980 & 0.9902 \\
+		$t_E = 25$~d, in gap      & 1.0000 & 1.0000 \\
+		$t_E = 100$~d, in season  & 0.9935 & 0.9717 \\
+		$t_E = 100$~d, in gap     & 0.9788 & 0.9827 \\
+		$t_E = 900$~d             & 0.7588 & 0.7951 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+The ordering is preserved and the magnitudes shift by at most a few per cent, with the joint-fit
+advantage slightly larger after correction in most cases. The two events where it is smaller are
+instructive: in both, the correction falls more heavily on the survey playing the supporting role
+than on the one that dominates the fit. For the $100$-day gap event, Roman is the weaker partner --
+it barely covers the peak -- and its $\sigma_{t_E}$ inflates by a factor $2.14$ against Rubin's
+$1.28$. For the $900$-day event, Rubin's contribution is specifically the parallax channel, its
+continuous coverage sampling the annual signal across Roman's seasonal gaps, and its
+$\sigma_{\pi_E}$ inflates by $2.18$ against Roman's $1.10$. This mechanism is inferred from seven
+constructed events and should be regarded as a plausible reading rather than an established
+property.
+
+\subsection{A note on the differencing scheme}
+\label{app:stepsize_stencil}
+
+The sweep also settled a question left open in Section~\ref{sec:fisher}: why $t_E$ and $\pi_E$ were
+differenced with both evaluations on the same side of the parameter value, rather than
+symmetrically. The pattern applies to exactly the parameters constrained to remain positive, which
+suggests the intent was to avoid evaluating the model at an unphysical value. That is not a real
+constraint at these step sizes, and the cost is significant: averaging two one-sided differences
+gives $m'(\theta) + \tfrac{3}{8}m''(\theta)h + \mathcal{O}(h^2)$, a first-order and biased estimate,
+against the second-order symmetric form. Verified on a smooth test function, the one-sided scheme
+carries $\approx\!22\times$ the error at equal step and improves by only one decade per decade of
+step reduction, against two. Both parameters now use the symmetric form. At the converged step the
+numerical difference is immaterial, since the bias term scales with $h$; the change removes a
+latent sensitivity rather than altering a result.
+
+The corresponding astrometric derivatives ($\theta_E$ and $\pi_E$ in the astrometric matrix) retain
+the one-sided scheme, and their steps have not been swept. This is deliberate: the astrometric
+forecast also depends on the unresolved question of Roman's F146 astrometric error model noted in
+Section~\ref{sec:fisher_caveats}, so its absolute uncertainties are not yet quantitative regardless
+of the differencing scheme, and correcting one of two unverified inputs in isolation would not be
+checkable. Both should be addressed together.

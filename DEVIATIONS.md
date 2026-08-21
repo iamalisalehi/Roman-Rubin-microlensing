@@ -348,3 +348,87 @@ effect could not be verified.
 joint/single ratio is unchanged to four significant figures. This is expected, since the bias term
 scales with `h` and `h` is now tiny. It is a correctness fix that removes a trap: it means the
 `tE` and `piE` derivatives no longer degrade faster than the others if steps are ever revisited.
+
+---
+
+## 12. Unplanned bug fix: `Fluxb` accumulated blend flux across every star ever drawn
+
+**Not in the plan.** Found while running the Step C3 live verification; present since the initial
+commit (`e40716a`), inherited from the legacy LMC code.
+
+`func_source` (`Lensing.cpp`) builds a source star plus the unresolved neighbours blended into the
+same seeing disc, summing their fluxes into `s.Fluxb[i]` with `+=`. The neighbour count `s.nsbl[i]`
+is recomputed at the top of every call. **`s.Fluxb[i]` was never reset.** It was zero-initialised
+once at construction and thereafter only ever incremented, so every star inherited the blend flux
+of every star drawn before it.
+
+**What that does.** Two derived quantities are built from it:
+
+    s.magb[i]  = -2.5 * log10(s.Fluxb[i]);                 // blended baseline magnitude
+    s.blend[i] = pow(10, -0.4 * s.Map[i]) / s.Fluxb[i];     // source's share of the blend
+
+so `magb` brightened without limit as `magb(N) ~ magb(1) - 2.5*log10(N)`, and the blend fraction
+decayed as `1/N`. Since a microlensing event magnifies only the source, `A_obs = A*fb + (1 - fb)`,
+a collapsing `fb` washes the event out entirely.
+
+**Measured on the 300k-draw run that exposed it** (preserved at
+`runs/test2_c3run_STALLED_20260821.dat`): `fb` fell from 0.130 on the first star to 0.0017 on the
+*second*; mean blended magnitude drifted 17.6 -> 3.5 across the run, brighter than Sirius. Back-
+extrapolating `magb + 2.5*log10(N)` from any block recovers `magb(1) ~ 17.2-17.5` against a measured
+17.635 on row 1 -- constant across a 29x range in N, which is proof of clean unbroken accumulation.
+
+By ~3000 stars `magb` passes the saturation guard `magb[i] > satu[i]` and `blend -> 0` drives the
+acceptance draw `testL <= blend[2]` to zero. **Detection then becomes impossible, permanently.**
+That run produced 9 detectable events in its first 2965 draws and then none at all in the following
+290,000, while still consuming 100% CPU.
+
+**Consequences, which reach further than the stall:**
+
+- Only the **first** star of any run ever had correct blending.
+- **No run could ever satisfy the 20-detection stopping criterion**, so `./roman` never terminated
+  on its own. Every previous "completed" run was a manual kill. The pre-C3 baseline stopping at
+  2297 rows with `icon = 8` is exactly this.
+- Every detection-efficiency figure this project has quoted (1 per 886 / 2600 / 10735 draws) was
+  measuring the bug, not the astronomy.
+- `fb` and `mbs` were wrong on every live Fisher-scored event past the first.
+
+**The fix** is one line -- zero `Fluxb` in the loop that already resets `nsbl`, where its absence
+was easy to miss.
+
+**Verified.** `./fishertest` is bit-identical before and after, confirming the Fisher path is
+untouched (the fixture hand-builds its events and never calls `func_source`, which is also why
+every Step C3 result stands). After the fix `magb` scatters around 18.1 with no trend and `fb`
+varies 0.0005-0.42 with crowding instead of decaying. A short run reached the per-field stopping
+criterion in **24 draws** -- 24 usable light curves, 5 detections -- the first time any field has
+ever completed.
+
+**Not affected:** Step C3, the fixture, and the whitepaper appendix, all of which are fixture-based.
+**Affected and needing re-measurement:** every live yield, efficiency and per-field aggregate.
+
+**Immediately exposed a second, previously unreachable bug** -- see entry 13.
+
+## 13. `nstE` / `ndtE` are never filled, so the efficiency and event-rate outputs are dead
+
+**Not in the plan.** Surfaced the moment entry 12's fix let a field complete for the first time.
+
+`FunctE` (`helper.cpp`) returns the `tE`-histogram bin `gg` for each event, and `gg` is stored in
+`EventRecord`. But **nothing ever increments `l->nstE[gg]` or `l->ndtE[gg]`** -- the counters for
+"simulated in this `tE` bin" and "detected in this `tE` bin". They are zeroed per field
+(`Bulge_LSST.cpp:338`) and then only read, at the per-field aggregation (`849-851`) and at
+
+    EFF += l->ndtE[gg] / (l->tE / year);   // 1/years
+
+So `EFF` sums zeros. Everything downstream of it is identically zero too: the detection efficiency
+`EFF`, the event rate `Gamma = 2/pi * opd * EFF / u0m`, and the expected event count `Neven`. The
+run then aborts on `CHECK(EFF > 0.0)`. The neighbouring histogram calls (`FuncMl`, `FuncPi`,
+`Funcu0`, ...) are commented out at the same site, which suggests a block of histogram-filling code
+was disabled or lost and the consumers were never updated.
+
+**Why it was never seen:** this code lives after the per-field `do/while`, which entry 12's bug made
+unreachable -- no field had ever finished.
+
+**What's needed:** decide what each counter means and fill it. `nstE[gg]` should plausibly increment
+for every simulated event in the bin and `ndtE[gg]` for every detected one -- but "detected" now has
+three meanings (`detL`, `detR`, `detJ`), so this needs a decision rather than a guess, and it is
+really the per-survey efficiency question of Phase F. Until then the per-field efficiency, event
+rate and yield outputs cannot be trusted and `./roman` cannot complete a field.

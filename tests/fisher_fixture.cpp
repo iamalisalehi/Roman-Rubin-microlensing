@@ -492,9 +492,25 @@ int runSweep()
     auto as = std::make_unique<astromet>();
     auto co = std::make_unique<covarian>();
 
-    // ~2 decades, geometric, centred on the production value (scale = 1).
-    static const double kScales[] = {0.1, 0.2, 0.3, 0.5, 0.7, 1.0,
-                                     1.5, 2.0, 3.0, 5.0, 7.0, 10.0};
+    // Twelve decades, geometric, centred so that BOTH failure modes are visible either side of
+    // the production step (scale 1, after Step C3's kFDStepScale retune).
+    //
+    // The grid must span both walls of the U or the plot proves nothing -- a curve that is flat
+    // everywhere you looked only means you did not look far enough. That was the original
+    // mistake: the first sweep ran 0.1-10 around the LEGACY steps, saw no plateau anywhere, and
+    // it took widening the window to discover the legacy steps were ~1e4 times too large and the
+    // whole window sat on the truncation branch.
+    //
+    //   scale << 1  -- round-off. The step drives the model-magnitude difference down toward
+    //                  double precision; subtracting two values agreeing to ~1e-9 leaves few
+    //                  significant digits, amplified by the 1/h division. sigma collapses.
+    //   scale >> 1  -- truncation. The secant stops matching the tangent; the derivative picks
+    //                  up curvature and the Fisher matrix gains information that is not there.
+    //                  scale 1e4 recovers the legacy steps this project used before Step C3.
+    static const double kScales[] = {1.0e-8, 1.0e-7, 1.0e-6, 1.0e-5,
+                                     1.0e-4, 1.0e-3, 1.0e-2, 1.0e-1,
+                                     1.0,
+                                     1.0e+1, 1.0e+2, 1.0e+3, 1.0e+4};
 
     std::cout << "event,tE,survey,param,param_idx,scale,sigma,cond,ok\n";
 
@@ -535,14 +551,110 @@ int runSweep()
     return 0;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Diagnostic: eigen-structure of the NORMALIZED photometric Fisher matrix.
+//
+// The condition number invert_matrix reports is lambda_max/lambda_min of exactly this matrix.
+// This mode prints the whole spectrum plus the eigenvector belonging to lambda_min, i.e. the
+// parameter combination the data constrains least. That vector is the physical content behind
+// a large condition number: it names WHICH degeneracy the event suffers from.
+int runEigen(double scale)
+{
+    auto s  = std::make_unique<source>();
+    auto l  = std::make_unique<lens>();
+    auto as = std::make_unique<astromet>();
+    auto co = std::make_unique<covarian>();
+    for (int q = 0; q < Nx; ++q) co->deltaScale[q] = scale;
+    std::cout << "# all finite-difference steps scaled by " << scale << "\n";
+
+    for (const auto& ev : kEvents) {
+        setupStatic(*s, *l);
+        l->tE = ev.tE; l->t0 = ev.t0; l->u0 = ev.u0; l->piE = ev.piE;
+        int nL = 0, nR = 0;
+        const int ndw = buildLightCurve(*s, *l, *as, nL, nR);
+        l->tE = ev.tE; l->t0 = ev.t0; l->u0 = ev.u0; l->piE = ev.piE;
+        s->xi = kXi; s->fb[0] = kFbRubin; s->fb[1] = kFbRoman;
+        s->mbs[0] = kMbsRubin; s->mbs[1] = kMbsRoman;
+
+        FisherM(*s, *l, *as, *co, ndw);
+
+        const auto act = activePhotParams(SJOINT, co->nepochA[SRUBIN], co->nepochA[SROMAN]);
+        const int dim = int(act.size());
+        gsl_matrix* F = co->inputA[SJOINT].get();
+
+        // D F D with D = diag(1/sqrt(F_ii)): unit diagonal, so every remaining off-diagonal
+        // entry is a correlation coefficient and the units cancel out entirely.
+        std::vector<double> sc(dim);
+        bool bad = false;
+        for (int i = 0; i < dim; ++i) {
+            const double d = gsl_matrix_get(F, act[i], act[i]);
+            if (!(d > 0.0)) { bad = true; break; }
+            sc[i] = 1.0 / std::sqrt(d);
+        }
+        if (bad) { std::cout << "\n" << ev.name << ": a parameter has zero information\n"; continue; }
+
+        gsl_matrix* Ft = gsl_matrix_alloc(dim, dim);
+        for (int i = 0; i < dim; ++i)
+            for (int j = 0; j < dim; ++j)
+                gsl_matrix_set(Ft, i, j, gsl_matrix_get(F, act[i], act[j]) * sc[i] * sc[j]);
+
+        gsl_vector* ew = gsl_vector_alloc(dim);
+        gsl_matrix* evec = gsl_matrix_alloc(dim, dim);
+        gsl_eigen_symmv_workspace* w = gsl_eigen_symmv_alloc(dim);
+        gsl_eigen_symmv(Ft, ew, evec, w);
+        gsl_eigen_symmv_sort(ew, evec, GSL_EIGEN_SORT_VAL_DESC);
+        gsl_eigen_symmv_free(w);
+
+        std::cout << "\n# " << ev.name << "  tE=" << ev.tE << "  joint, dim=" << dim << "\n";
+        std::cout << "  eigenvalues: ";
+        for (int i = 0; i < dim; ++i)
+            std::cout << std::scientific << std::setprecision(2) << gsl_vector_get(ew, i) << " ";
+        std::cout << "\n  cond = lmax/lmin = " << std::scientific << std::setprecision(3)
+                  << gsl_vector_get(ew, 0) / gsl_vector_get(ew, dim - 1) << "\n";
+        std::cout << "  worst-constrained direction (eigenvector of lmin):\n    ";
+        for (int i = 0; i < dim; ++i) {
+            const double c = gsl_matrix_get(evec, i, dim - 1);
+            if (std::fabs(c) > 0.15)
+                std::cout << std::showpos << std::fixed << std::setprecision(2) << c
+                          << std::noshowpos << "*" << kPhotNames[act[i]] << "  ";
+        }
+        std::cout << "\n";
+        gsl_matrix_free(Ft); gsl_matrix_free(evec); gsl_vector_free(ew);
+    }
+    return 0;
+}
+
 int main(int argc, char** argv)
 {
     if (argc > 1 && std::string(argv[1]) == "--sweep") return runSweep();
+    if (argc > 1 && std::string(argv[1]) == "--eigen")
+        return runEigen(argc > 2 ? std::atof(argv[2]) : 1.0);
 
     auto s  = std::make_unique<source>();
     auto l  = std::make_unique<lens>();
     auto as = std::make_unique<astromet>();
     auto co = std::make_unique<covarian>();
+
+    // --scale S: multiply EVERY finite-difference step by S before running the normal fixture.
+    //
+    // The sweep varies one parameter's step at a time, which is right for locating each
+    // parameter's plateau but cannot answer the question that actually matters: does the
+    // headline joint-vs-single-survey comparison survive moving all the steps at once? sigma_p
+    // comes from an inverse, so it depends on every row of the matrix, not just row p. This
+    // mode moves them together so the full table -- including the joint/best-single sigma(tE)
+    // ratio the thesis claim rests on -- can be diffed between step choices:
+    //     ./fishertest > prod.txt && ./fishertest --scale 1e-3 > tuned.txt && diff prod.txt tuned.txt
+    double allScale = 1.0;
+    if (argc > 2 && std::string(argv[1]) == "--scale") {
+        allScale = std::atof(argv[2]);
+        if (!(allScale > 0.0)) {
+            std::cerr << "fixture error: --scale needs a positive number, got '"
+                      << argv[2] << "'\n";
+            return 2;
+        }
+        for (int q = 0; q < Nx; ++q) co->deltaScale[q] = allScale;
+        std::cout << "# ALL finite-difference steps scaled by " << allScale << "\n";
+    }
 
     int failures = 0;
 

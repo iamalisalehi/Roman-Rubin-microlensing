@@ -74,6 +74,7 @@ Writes ./Baseline/RomanBaseline.dat and prints the row count to set as
 """
 
 import os
+import argparse
 import numpy as np
 from astropy.coordinates import SkyCoord
 import astropy.units as u
@@ -89,18 +90,51 @@ YEAR_DAYS          = 365.2425
 MISSION_YEARS      = 5
 SEASONS_PER_YEAR   = 2                                   # bulge visible ~twice/year
 N_SEASONS          = MISSION_YEARS * SEASONS_PER_YEAR    # 10 total bulge seasons
-SEASON_LENGTH_DAYS = 72.0                                 # ROTAC 2025: six 72-day seasons
-SEASON_PERIOD_DAYS = YEAR_DAYS / SEASONS_PER_YEAR         # ~182.6 days between season starts
-                                                            # -> ~111-day gap between seasons
-                                                            #    (see ASSUMPTION 2 above)
+# Real bulge visibility windows, from STScI's published schedule for the first two years
+# of science operations:
+#   https://roman-docs.stsci.edu/roman-community-defined-surveys/
+#           roman-observations-in-the-first-two-years-of-science-operations
+#     high  2027-02-11 -> 2027-04-20   69 d
+#     high  2027-08-15 -> 2027-10-25   72 d   (gap before: 117 d)
+#     high  2028-02-11 -> 2028-04-21   71 d   (gap before: 109 d)
+#     low   2028-08-16 -> 2028-10-24   70 d   (gap before: 117 d)
+#
+# The gaps ALTERNATE -- ~116 d spring->fall, ~108 d fall->spring -- so the exact half-year
+# season spacing previously assumed here is wrong. Roman's sun-angle constraint sets the
+# windows, not arithmetic. The schedule also confirms HIGH_CADENCE_SEASONS below: the first
+# three published windows are high-cadence and the fourth is low.
+#
+# Cross-check against the GBTDS design page (same docs site,
+# .../galactic-bulge-time-domain-survey): it quotes "~70.5 days" allocated per high-cadence
+# season, and this (69, 72) spring/fall pattern averages exactly 70.5 d. Six such seasons
+# total 423 d = 96.6% of the quoted "438 observing days", matching its "~97%" figure.
+#
+# Annual pattern as (offset from that year's spring-window start [d], window length [d]).
+SEASON_PATTERN = [(0.0, 69.0), (185.0, 72.0)]   # spring, fall
 
 # High-cadence = first three and last three of the 10 seasons (ROTAC 2025)
 HIGH_CADENCE_SEASONS = {0, 1, 2, N_SEASONS - 3, N_SEASONS - 2, N_SEASONS - 1}
 
 HIGH_CADENCE_DAYS = 12.1 / (24.0 * 60.0)  # 12.1 minutes -> days (ROTAC 2025)
-LOW_CADENCE_DAYS  = 3.0                    # TODO(Ali): confirm vs. "five-day" cited elsewhere
+# "every five days", per the GBTDS design page (.../galactic-bulge-time-domain-survey),
+# which describes "~1.5 hour observing units that are repeated every five days".
+# NOTE: still in direct conflict with the "3-day F146/F213" figure in the ROTAC 2025
+# overguide (arXiv:2505.10574) cited in the literature review. Recorded in DEVIATIONS.md.
+LOW_CADENCE_DAYS  = 5.0
 
-MISSION_START_DAY = 0.0  # where the 5-yr Roman mission sits inside the sim's Tobs window
+# Where Roman's ~4.7-yr GBTDS sits inside the simulation's 10-yr Tobs window. Day 0 of
+# that clock is the first Rubin bulge visit, MJD 61141.312 = 2026-04-11 (set by
+# readbaselineBulge.py, which subtracts the earliest bulge visit's MJD).
+#
+# 730 d = 2028-04-10: Rubin has already begun its survey and Roman has not, so Roman
+# must start later. This leaves ~2.0 yr of Rubin-only baseline before Roman and ~3.3 yr
+# after -- not wasted coverage, but the control arm for "how much does adding Roman
+# help", and the span over which long-tE events accumulate their parallax baseline.
+#
+# This is a modelling choice, not a physical constant, and it is expected to change:
+# override at run time with --mission-start DAYS.
+MISSION_START_DAY = 730.0
+TOBS_DAYS = 10.0 * YEAR_DAYS  # must match Tobs in Bulge.h -- the C++ read CHECKs against it
 
 # 6 GBTDS fields: 5 contiguous "bulge" fields (b=-1.2 deg) + 1 Galactic Center field.
 # Source: mtpenny/gbtds_optimizer, field_layouts/layout_40395.centers (notional layout —
@@ -125,21 +159,42 @@ def galactic_to_radec(l_deg, b_deg):
     return icrs.ra.deg, icrs.dec.deg
 
 
-def build_season_windows():
+def build_season_windows(mission_start=MISSION_START_DAY):
     """Returns [(season_index, start_day, end_day, cadence_days), ...] for all
-    N_SEASONS seasons, tagging each as high- or low-cadence per ROTAC 2025."""
+    N_SEASONS seasons, tagging each as high- or low-cadence per ROTAC 2025.
+
+    `mission_start` is where season 0 begins on the simulation clock (day 0 = first
+    Rubin bulge visit). The whole mission must land inside [0, Tobs]: the C++ read
+    asserts CHECK(ro->tim[i] <= Tobs) and aborts with no explanation if it does not."""
+    last_year, last_w = divmod(N_SEASONS - 1, len(SEASON_PATTERN))
+    last_off, last_len = SEASON_PATTERN[last_w]
+    last_end = mission_start + last_year * YEAR_DAYS + last_off + last_len
+    if mission_start < 0.0 or last_end > TOBS_DAYS:
+        raise SystemExit(
+            f"MISSION_START_DAY={mission_start:.1f} puts the Roman mission at "
+            f"[{mission_start:.1f}, {last_end:.1f}] d, outside the simulation window "
+            f"[0, {TOBS_DAYS:.1f}] d. Bulge_LSST.cpp's CHECK(ro->tim[i] <= Tobs) would "
+            f"abort. Use a start day <= {TOBS_DAYS - (last_end - mission_start):.1f}.")
     windows = []
     for i in range(N_SEASONS):
-        start = MISSION_START_DAY + i * SEASON_PERIOD_DAYS
-        end = start + SEASON_LENGTH_DAYS
+        yr, w = divmod(i, len(SEASON_PATTERN))
+        offset, length = SEASON_PATTERN[w]
+        start = mission_start + yr * YEAR_DAYS + offset
+        end = start + length
         cadence = HIGH_CADENCE_DAYS if i in HIGH_CADENCE_SEASONS else LOW_CADENCE_DAYS
         windows.append((i, start, end, cadence))
     return windows
 
 
 def main():
+    ap = argparse.ArgumentParser(description="Generate RomanBaseline.dat (F146 GBTDS visits).")
+    ap.add_argument("--mission-start", type=float, default=MISSION_START_DAY, metavar="DAYS",
+                    help="day on the simulation clock (0 = first Rubin bulge visit, "
+                         f"2026-04-11) where Roman season 0 begins. Default {MISSION_START_DAY:g}.")
+    args = ap.parse_args()
+
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
-    windows = build_season_windows()
+    windows = build_season_windows(args.mission_start)
 
     rows = []  # [ID, RA, Dec, l, b, time, sig5]
     for l, b in FIELDS_L_B:
@@ -168,7 +223,8 @@ def main():
 
     print(f"Wrote {len(rows)} Roman F146 visits to {OUTPUT_PATH}")
     print(f"NlRoman = {len(rows)}   <-- set this constant in Bulge.h")
-    print(f"Time span: {rows[:, 5].min():.1f} to {rows[:, 5].max():.1f} days")
+    print(f"Time span: {rows[:, 5].min():.1f} to {rows[:, 5].max():.1f} days "
+          f"(mission start = {args.mission_start:g} d on the Rubin clock)")
     print(f"Fields: {len(FIELDS_L_B)} | Seasons: {N_SEASONS} "
           f"({len(HIGH_CADENCE_SEASONS)} high-cadence, {N_SEASONS - len(HIGH_CADENCE_SEASONS)} low-cadence)")
 

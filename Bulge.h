@@ -137,7 +137,10 @@ constexpr int Na = 96;     //rows in "sigmaA_LSST.txt"
 constexpr int NaRoman = 123;  // rows in sigma_roman.txt
 constexpr int nq = 15;     //resu
 constexpr int N1 = 396593, N2 = 3568010, N3 = 646090, N4 = 3171; //CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo
-constexpr int Nl = 7373; //BulgeBaseline.dat 18/07/2026
+// Data rows in BulgeBaseline.dat, EXCLUDING the header. Regenerated 2026-08-22 from
+// baseline_v5.1.0_10yrs.db; readbaselineBulge.py prints the value to use here. The
+// previous 7373 counted a doubled file (append-mode bug) and read 3687 phantom rows.
+constexpr int Nl = 3686;
 
 // TODO(Ali): set to the actual row count of RomanBaseline.dat once it is generated
 // from the ROTAC 2025 overguide season/cadence design (6 high-cadence + 4 low-cadence
@@ -444,7 +447,7 @@ struct lsst {
     std::vector<double> err;   // Na
     std::vector<int> filter;    // Nl
     
-    std::vector<int> ct;        // 1000
+    std::vector<int> ct;        // Nl -- one slot per Rubin visit; see matchVisibleEpochs
     std::vector<double> RA;     // Nl
     std::vector<double> DEC;    // Nl
     std::vector<double> l;      // Nl
@@ -457,7 +460,7 @@ struct lsst {
     lsst()
         : mag(Na), err(Na),
           filter(Nl),
-          ct(1000),
+          ct(Nl),
           RA(Nl), DEC(Nl), l(Nl), b(Nl), tim(Nl), sig5(Nl), dist(Nl)
     {}
 };
@@ -467,7 +470,11 @@ struct roman {
     std::vector<double> err;   // NaRoman
 
     // --- New: per-visit epoch bookkeeping, mirrors lsst's fields ---
-    std::vector<int> ct;        // 1000 — visible-epoch indices for the current sightline
+    std::vector<int> ct;        // NlRoman -- visible-epoch indices for the current sightline.
+                                // MUST be the full visit count, not a round number: a
+                                // sightline inside a GBTDS field matches ~51,500 visits, and
+                                // truncating keeps only the earliest, silently ending Roman's
+                                // mission 8 days in. (1.24 MB, allocated once.)
     std::vector<double> RA;     // NlRoman
     std::vector<double> DEC;    // NlRoman
     std::vector<double> l;      // NlRoman
@@ -481,7 +488,7 @@ struct roman {
 
     roman()
         : mag(NaRoman), err(NaRoman),
-          ct(1000),
+          ct(NlRoman),
           RA(NlRoman), DEC(NlRoman), l(NlRoman), b(NlRoman), tim(NlRoman), sig5(NlRoman)
     {}
 };

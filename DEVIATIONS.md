@@ -520,3 +520,98 @@ rerunning. The `tE` breakdown matters because the entire science case is that th
 **Acceptance for this section:** a run completes without aborting, `DET_ANOMALY` is zero, and the
 run totals give each class with its Poisson error — including an honest number, possibly zero, for
 `DET_JOINT_ONLY`.
+
+---
+
+## 15. Step D2 found the survey data never reached the simulation
+
+**Step D2's own question is answered and clean.** `t0` is drawn uniformly on `[2, Tobs-2]`
+(`Lensing.cpp:312`), the full ten-year window, with no reference to any visit list. Both baselines
+share its clock (day 0 = first Rubin bulge visit, MJD 61141.312 = 2026-04-11), the light-curve loop
+integrates continuously over `[-100, 3752]` d rather than hopping between observing windows, and
+the pre-selection gate is peak-magnitude-only with no time dependence. No gap-peaking event is
+discarded for *when* it peaks.
+
+The investigation instead surfaced two defects that made that correctness moot.
+
+### 15.1 `ct` was capped at 1000, silently truncating both surveys
+
+`matchVisibleEpochs` records a sightline's matching visit indices into `ct`, allocated flat at
+`1000` for both instruments, with the cap hardcoded twice (`for (i < 1000)` reset, `if (ndd >= 999)
+break`). The break was silent -- no warning, no `CHECK`. The schedule was therefore truncated to
+its first 999 entries *in time order*, i.e. **the survey stopped early**:
+
+| survey | visits on sightline | kept | stream ended | fraction of mission |
+|---|---:|---:|---|---:|
+| Rubin | 2,412 | 999 | day 1,572.9 | 43% |
+| Roman | 51,514 | 999 | day 8.4 | **0.5%** |
+
+Roman's design is six 72-day high-cadence seasons at 12.1-minute sampling separated by ~111-day
+gaps. 999 epochs at 12.1 minutes buys 8.4 days -- not one season, and not one gap. So the
+simulation contained no Roman season structure at all: no in-season vs in-gap distinction, no
+multi-season baseline for the annual parallax that converts `tE` into a lens mass, and no route to
+an event Roman alone detects beyond day 8.
+
+**This invalidates the detection numbers in entry 14 / commit `e47390a`.** `DET_JOINT_ONLY = 0` was
+recorded there as "consistent with Poisson limits." It is not a Poisson statement: joint-only means
+"neither survey alone, but the combination succeeds," and with Roman reduced to 8.4 days that class
+cannot be populated by construction. The zero measured this bug. The C-D *code* is unaffected --
+`fishertest` is bit-identical across this fix -- but every C-D *number* must be re-taken.
+
+`ct` is now sized to each instrument's own visit count (`Nl` / `NlRoman`; 14.7 KB and 1.24 MB, once)
+and the cap derives from `ct.size()`. It is now unreachable by construction, and kept only as a
+guard that aborts loudly, since silent truncation is exactly what is being removed.
+
+**Cost, measured not estimated:** 2,454 -> 40,048 integrator steps per event (16.3x), because
+`dt = min(cade, cadeR)` must step at 12.1 minutes once Roman's real epochs exist. Wall clock rose
+only 6.9x (7.2 -> 50 s/field), because the per-event buffer reset at `Bulge_LSST.cpp:384-387` clears
+all `coun = 312,770` slots across 7 arrays -- 2.2M writes per event regardless of the ~2,000 epochs
+actually used -- and that fixed cost currently dominates. **Deferred, not fixed:** clearing only the
+`ndw` entries actually written is a large and easy speedup, and belongs with the run-scaling work.
+
+### 15.2 `BulgeBaseline.dat` was doubled, and a short read zero-filled silently
+
+`readbaselineBulge.py` opened the output in append mode and had been run twice, so the file was
+`header + 3,686 visits + header + 3,686 visits`. `Nl = 7373` read through the embedded second
+header; `operator>>` failed on `#ID`, set the stream's failbit, and every subsequent extraction
+became a no-op leaving the row at its zero-initialised value -- 3,687 phantom visits at
+`(l,b) = (0,0)`, `tim = 0`, `filter = u`, `sig5 = 0`.
+
+Nothing caught it: zeros pass every `CHECK` in the read loop, since `(0,0)` lies inside the bulge
+region, `tim = 0` inside `[0, Tobs]`, and `filter = 0` is a valid `u` index. The phantoms were
+harmless only by accident -- `(0,0)` is 1.03 deg from the nearest simulated sightline, well inside
+Rubin's 1.75 deg FoV, so they *did* match, and survived only because `matchVisibleEpochs` rejects
+epochs not strictly later than the last kept one, and because the 999-cap fired first. Fixing 15.1
+would have exposed them.
+
+Fixed at the root (append -> truncate), file regenerated, `Nl` corrected to 3,686, and both baseline
+reads now abort with a diagnostic on a failed extraction instead of zero-filling. The regenerated
+file is byte-identical to the old file's first copy apart from one header word, so day 0 did not
+move. Incidental: `readbaselineBulge.py` loaded `layout_7f_3.centers` from the wrong directory
+(aborting the script) and never used the result; path corrected. Plot outputs moved from `./jpg/`
+to `../pics/`, where they were already being kept by hand.
+
+### 15.3 Decisions taken, for the steps that follow
+
+- **`MISSION_START_DAY = 730` d, as a variable, not a constant.** Roman's mission currently sits
+  flush at day 0 of Rubin's window. Rubin has already started and Roman has not, so Roman's 4.7-year
+  baseline moves to days 730-2446, leaving Rubin-only stretches of ~2 yr before and ~3.3 yr after.
+  Those are not wasted draws: they are the control arm for "how much does adding Roman help", and
+  the long-`tE` events that span them are where the parallax baseline pays. The value is expected to
+  change, so it stays a named parameter.
+- **Run scaling: stride in space, never in time.** The ten-year window is kept intact -- shortening
+  it would destroy the gap geometry Phase D exists to measure, and `t0` is a per-event draw so a
+  shorter window buys no proportional speedup anyway. Sightlines are instead strided across the full
+  production region rather than taken as one contiguous corner (which samples a single extinction
+  column and one bulge density regime). The stride must hit Roman's six field centres: at
+  `FoVRoman = 0.28` deg only 13 of the current 36 sightlines see Roman at all, so a careless stride
+  yields a Rubin-only run. The event budget (`icon`/`nlens`/`nerr`) is the honest cost lever.
+- **Rubin and Roman already observe on independent cadences** -- separate `matchVisibleEpochs` calls,
+  FoVs, epoch lists, cursors and measured cadences. The single shared `dt` is the *integrator* step,
+  not a cadence: it must be small enough not to step over either survey's next visit, which is what
+  protects Roman's 12.1-minute sampling from being erased by Rubin's ~3-day one. No change needed.
+
+**Also noted, not acted on:** plan Section 0.3 describes a "multi-year gap in the middle" of Roman's
+mission. `RomanBaseline.dat` has no such gap -- the middle four of ten seasons are low-cadence
+(3-day), per ROTAC 2025. The code matches ROTAC; the plan text describes an earlier design. Logged
+for Phase G.

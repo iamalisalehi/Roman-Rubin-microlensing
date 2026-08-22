@@ -40,7 +40,8 @@ int matchVisibleEpochs(const char* label, double lon, double lat, double fov,
     int nTies = 0;
     minCadence = 100000.0;
 
-    for (int i = 0; i < 1000; ++i) ct[i] = -1; // same reset as before
+    const int ctCap = static_cast<int>(ct.size());
+    for (int i = 0; i < ctCap; ++i) ct[i] = -1;
 
     for (int i = 0; i < nEpochs; ++i) {
         double dl = lon - l_arr[i];
@@ -61,7 +62,17 @@ int matchVisibleEpochs(const char* label, double lon, double lat, double fov,
                 }
 
                 if (minCadence > cade) minCadence = cade;
-                if (ndd >= 999) break;
+                // Unreachable when ct is sized to the instrument's full visit count, which
+                // is the point: ndd <= nEpochs by construction. Kept as a guard, and made
+                // loud -- a SILENT truncation here previously ended Roman's mission on day
+                // 8.4 of 1715 and Rubin's on day 1573 of 3459, with no diagnostic at all.
+                if (ndd >= ctCap - 1) {
+                    std::cerr << "[matchVisibleEpochs:" << label << "] FATAL: ct capacity "
+                              << ctCap << " exhausted at epoch " << i << " of " << nEpochs
+                              << " -- the visit stream would be silently truncated at tim="
+                              << tim_arr[i] << " d. Size ct to the full visit count.\n";
+                    std::exit(1);
+                }
                 CHECK(tim_arr[i] >= 0.0);
                 CHECK(tim_arr[i] <= Tobs);
                 CHECK(minCadence > 0.0);
@@ -144,6 +155,16 @@ int main() {
             >> ls->tim[i] >> ls->filter[i] >> airm >> seeingVal >> skyB
             >> TV >> ls->sig5[i] >> texp >> ls->dist[i];
 //if (i == 0) cout << ID << endl;
+        // A failed extraction is a silent no-op that leaves this row zero-initialised,
+        // and zeros pass every CHECK below: (l,b)=(0,0) is inside the bulge region,
+        // tim=0 is inside [0,Tobs], filter=0 is a valid u-band index. So the stream
+        // state is the only thing that can catch a short or malformed baseline.
+        if (!fil) {
+            std::cerr << "BulgeBaseline.dat: read failed at row " << i << " of " << Nl
+                      << ". File has fewer rows than Nl, or contains a stray header "
+                      << "(append-mode duplicate). Regenerate with readbaselineBulge.py.\n";
+            return 1;
+        }
         CHECK(airm >= 0.0);
         CHECK(ls->filter[i] >= 0);
         CHECK(ls->filter[i] < 6);
@@ -201,6 +222,12 @@ int main() {
     std::getline(fil, header); // skip header line
     for (int i = 0; i < NlRoman; ++i) {
         fil >> ID >> ro->RA[i] >> ro->DEC[i] >> ro->l[i] >> ro->b[i] >> ro->tim[i] >> ro->sig5[i];
+        // Same silent zero-fill failure mode as the Rubin read above.
+        if (!fil) {
+            std::cerr << "RomanBaseline.dat: read failed at row " << i << " of " << NlRoman
+                      << ". Regenerate with generateRomanBaseline.py and update NlRoman.\n";
+            return 1;
+        }
 
         CHECK(ro->tim[i] >= 0.0);
         CHECK(ro->tim[i] <= Tobs);

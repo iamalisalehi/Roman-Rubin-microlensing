@@ -39,7 +39,10 @@ assert len(idx) == len(nam1), "idx and new_names must match"
 assert max(idx) < len(nam0), "idx out of range"
 
 
-num, lon, lat = np.loadtxt('./layout_7f_3.centers', unpack=True) ## Bulge
+# Roman field centres, kept for reference only -- num/lon/lat are not used below;
+# the bulge region is set by the l0..b2 constants. Path corrected: the file lives
+# in Baseline/polygon/, while this script runs from Baseline/.
+num, lon, lat = np.loadtxt('./polygon/layout_7f_3.centers', unpack=True) ## Bulge
 # Numbers below may change based on the Roman Bulge survey details
 l0 = -0.219 - 0.2 - 3.5 / 2
 l1 = 1.4134 + 0.2 + 3.5 / 2
@@ -117,8 +120,12 @@ print("No. year of observations:" , float(np.max(tstA[:nr,5]) - np.min(tstA[:nr,
 
 ###############################################################################
 dist  = np.zeros((nr))
-fil   = open("./BulgeBaseline.dat", "a")
+# "w", NOT "a": append mode silently doubles the file if the script is run twice,
+# which embeds a second header mid-file. The C++ reader's operator>> then fails on
+# that header and zero-fills every remaining record without any CHECK firing.
+fil   = open("./BulgeBaseline.dat", "w")
 fil.write("#ID  RA  Dec  l  b  time  filter  airmass  seeing  skyBrightness visittime sigma5 targetname distance\n")
+print(f"BulgeBaseline.dat: writing {nr} visit rows -- set Nl = {nr} in Bulge.h")
 
 tst   = np.zeros((nr, 14))
 idx   = np.argsort(tstA[:nr, 5])
@@ -163,7 +170,7 @@ ax1.invert_xaxis()
 fig=plt.gcf()
 fig=plt.gcf()
 fig.tight_layout()
-fig.savefig("./lbBulge.jpg" , dpi=200)
+fig.savefig("../pics/lbBulge.jpg" , dpi=200)
 
 ###############################################################################
 for i in range(13):
@@ -187,7 +194,7 @@ for i in range(13):
     plt.grid("True")
     plt.grid(linestyle='dashed')
     fig=plt.gcf()
-    fig.savefig("./jpg/histBulge{0:d}.jpg".format(i),dpi=200)
+    fig.savefig("../pics/histBulge{0:d}.jpg".format(i),dpi=200)
 print ("****  All histos are plotted *****************************" )   
 
 
@@ -214,7 +221,7 @@ plt.legend(prop={"size":12.5})
 plt.grid("True")
 plt.grid(linestyle='dashed')
 fig=plt.gcf()
-fig.savefig("./jpg/DistanceBulge.jpg" , dpi=200)
+fig.savefig("../pics/DistanceBulge.jpg" , dpi=200)
 
 ################################################################################
 

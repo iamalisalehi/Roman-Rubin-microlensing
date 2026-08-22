@@ -615,3 +615,85 @@ to `../pics/`, where they were already being kept by hand.
 mission. `RomanBaseline.dat` has no such gap -- the middle four of ten seasons are low-cadence
 (3-day), per ROTAC 2025. The code matches ROTAC; the plan text describes an earlier design. Logged
 for Phase G.
+
+---
+
+## 16. Roman survey model reconciled against STScI's published GBTDS design
+
+Follows entry 15. `MISSION_START_DAY` became a real parameter, and three defects in the
+Roman survey model were corrected against two STScI sources the user designated as citable
+for the whitepaper:
+
+- **Design page** — https://roman-docs.stsci.edu/roman-community-defined-surveys/galactic-bulge-time-domain-survey
+- **First-two-years schedule** — https://roman-docs.stsci.edu/roman-community-defined-surveys/roman-observations-in-the-first-two-years-of-science-operations
+
+### 16.1 `MISSION_START_DAY = 730`, and it is now a runtime parameter
+
+Roman's mission previously sat flush at day 0 of Rubin's window, asserting that both surveys
+start together. Rubin has started and Roman has not. Roman now occupies days **730 -> 2448**
+(2028-04-10 -> 2032-12-23), leaving ~2.0 yr of Rubin-only baseline before and ~3.3 yr after.
+
+Those Rubin-only stretches are **wanted, not waste**: they are the control arm for "how much
+does adding Roman help", and the span over which long-`tE` events accumulate parallax
+baseline. Since the value is expected to change it is overridable (`--mission-start DAYS`),
+and the generator now refuses a value that would push the mission past `Tobs` rather than
+letting the C++ read abort on `CHECK(ro->tim[i] <= Tobs)` with no explanation.
+
+Day 0 of that clock is the earliest Rubin bulge visit, **MJD 61141.312 = 2026-04-11**, set by
+`readbaselineBulge.py` subtracting it. The **real** GBTDS start (2027-02-11) is sim day
+**306**, available as `--mission-start 306`; 730 is the user's deliberate choice, not an
+approximation of it.
+
+### 16.2 The season gaps are not a half-year split
+
+`SEASON_PERIOD_DAYS = year/2` produced a uniform 110.6-day gap between all ten seasons. It
+was an inferred number, flagged as ASSUMPTION 2 in the generator's own header. STScI's
+published windows show the gaps **alternate**, because Roman's sun-angle constraint sets the
+visibility windows rather than arithmetic:
+
+| window | dates | span | gap before |
+|---|---|---:|---:|
+| high | 2027-02-11 -> 04-20 | 69 d | -- |
+| high | 2027-08-15 -> 10-25 | 72 d | 117 d |
+| high | 2028-02-11 -> 04-21 | 71 d | 109 d |
+| low  | 2028-08-16 -> 10-24 | 70 d | 117 d |
+
+Replaced by `SEASON_PATTERN = [(0.0, 69.0), (185.0, 72.0)]`, a spring/fall pattern repeated
+annually: gaps now alternate 116.0 d and 108.2 d. **This matters for Phase D specifically** --
+`dt_to_season_edge` is the variable the gap-filling result is plotted against, so a wrong gap
+distribution biases the headline figure directly.
+
+Two independent cross-checks from the design page confirm the pattern rather than merely
+permitting it: it quotes "~70.5 days" allocated per high-cadence season, and (69+72)/2 = 70.5
+exactly; and six such seasons total 423 d = 96.6% of its quoted "438 observing days", matching
+its "~97% devoted to high cadence" figure. The schedule page independently confirms
+`HIGH_CADENCE_SEASONS = {0,1,2,7,8,9}` -- its first three published windows are high-cadence
+and the fourth is low.
+
+### 16.3 Low cadence 3 d -> 5 d (conflict recorded, not resolved)
+
+The design page states low-cadence seasons use "~1.5 hour observing units that are repeated
+every five days". `LOW_CADENCE_DAYS = 5.0`.
+
+**The conflict flagged as ASSUMPTION 1 is not resolved by this.** The ROTAC 2025 overguide
+(arXiv:2505.10574) cited in the literature review says 3-day; the schedule page gives no
+cadence at all. This is a choice between sources. The whitepaper must cite the STScI design
+page for the 5-day figure, not ROTAC.
+
+### 16.4 `FoVRoman` confused an area with a radius
+
+`matchVisibleEpochs` tests `sqrt(dl^2 + db^2) <= FoVRoman`, i.e. treats it as a **radius in
+degrees**, while its comment cited "~0.28 deg^2 total" -- an **area**. The design page quotes
+**1.7 deg^2 over six WFI fields** = 0.2833 deg^2 per field, so the equal-area radius is
+`sqrt(0.2833/pi) = 0.3003` deg. The old 0.28 implied `pi*0.28^2 = 0.2463` deg^2, ~13% small.
+
+Small number, large effect: sightlines with any Roman coverage went from **13 of 36 (36%) to
+21 of 36 (58%)**. This parameter decides whether a sightline sees Roman at all, so it gates
+every joint-detection statistic.
+
+### Net effect
+
+`NlRoman` 309,084 -> **302,406** (high-cadence seasons now total 423 d rather than 432 d, and
+low-cadence visits drop with the 5-day step). Per-sightline `ndd (Roman)` 51,514 -> 50,401.
+`fishertest` bit-identical, so the Fisher path is untouched. Entry 15's warning still stands:
+no detection statistic should be quoted until a run is re-taken on this corrected model.

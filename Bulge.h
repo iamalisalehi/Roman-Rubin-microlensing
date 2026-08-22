@@ -142,10 +142,12 @@ constexpr int N1 = 396593, N2 = 3568010, N3 = 646090, N4 = 3171; //CMD_BESANCON:
 // previous 7373 counted a doubled file (append-mode bug) and read 3687 phantom rows.
 constexpr int Nl = 3686;
 
-// TODO(Ali): set to the actual row count of RomanBaseline.dat once it is generated
-// from the ROTAC 2025 overguide season/cadence design (6 high-cadence + 4 low-cadence
-// seasons; F146 ~12 min in high-cadence seasons, 3-day in low-cadence seasons).
-constexpr int NlRoman = 309084;
+// Data rows in RomanBaseline.dat, EXCLUDING the header. generateRomanBaseline.py prints
+// the value to use here; it must be updated whenever the season pattern, cadence or
+// mission start day changes, or the read guard in Bulge_LSST.cpp will fire.
+// Current: 6 high-cadence seasons (F146 every 12.1 min) + 4 low-cadence (every 5 days),
+// on STScI's real alternating spring/fall visibility windows.
+constexpr int NlRoman = 302406;
 
 // `coun` bounds the length of one event's light-curve buffers (lens::timn/magn/errm/
 // soux/souy/erra/tele). `ndw`, the running count of accepted epochs (Rubin + Roman
@@ -157,8 +159,13 @@ constexpr int    coun  = Nl + NlRoman;
 
 // Roman WFI field of view is much smaller than Rubin's and covers a small number of
 // discrete GBTDS fields, not a rolling-cadence footprint. Do not reuse `FoV` for Roman.
-// TODO(Ali): replace with the actual per-field WFI FoV radius (deg) used in RomanBaseline.dat
-constexpr double FoVRoman = 0.28; // PLACEHOLDER — Roman WFI FoV is ~0.28 deg^2 total
+// Matching RADIUS in degrees, NOT an area: matchVisibleEpochs tests
+// sqrt(dl^2 + db^2) <= FoVRoman. STScI's GBTDS design page quotes 1.7 deg^2 monitored over
+// six WFI fields = 0.2833 deg^2 per field, so the equal-area radius is
+// sqrt(0.2833/pi) = 0.3003 deg. The previous 0.28 took a deg^2 figure as if it were already
+// a radius, giving pi*0.28^2 = 0.2463 deg^2 -- about 13% too small. This value decides which
+// sightlines see Roman at all, so it matters more than its size suggests.
+constexpr double FoVRoman = 0.3003;
 
 constexpr double tetp   = double(M_PI / 3.0);        //parallax
 constexpr double omegae = double(2.0 * M_PI / year); //radian per day

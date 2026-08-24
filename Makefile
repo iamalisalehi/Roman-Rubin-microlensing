@@ -9,6 +9,15 @@ CXX = g++
 # let the compiler reassociate the chi-squared and Fisher sums and silently change
 # the forecast. -g is kept so the CHECK() aborts still produce a usable backtrace.
 CXXFLAGS = -O2 -g -Wall -Wextra -std=c++17
+# Stamped into every run's provenance block so a result can be traced back to
+# the exact source it came from. Falls back to "unknown" outside a git checkout.
+# A "-dirty" suffix matters more than the hash: a stamp naming a clean commit that
+# was actually built from edited sources is worse than no stamp at all. Note the
+# value is captured when make runs, so `make clean && make` is what refreshes it
+# after a commit -- an incremental build keeps the stamp its objects were built with.
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)$(shell git diff --quiet HEAD 2>/dev/null || echo -dirty)
+CXXFLAGS += -DGIT_COMMIT='"$(GIT_COMMIT)"'
+
 LDLIBS = -lgsl -lgslcblas -lm
 
 # Target executable

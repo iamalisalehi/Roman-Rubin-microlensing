@@ -1,4 +1,6 @@
 #include "Bulge.h"
+#include <sstream>   // provenance block
+#include <utility>   // std::pair, for the Roman field list
 
 ///============================================================================
 
@@ -120,8 +122,104 @@ double errRomanM(const roman& ro, double mag)
 // test fixture (tests/fisher_fixture.cpp), which supplies its own main(). Everything
 // below main() -- FisherM, ErrorCal, lightcurve, invert_matrix -- is what the fixture
 // links against, so it must stay outside this guard.
-int main() {
-    srand(static_cast<unsigned int>(time(0)));
+// ---------------------------------------------------------------------------
+// Run configuration. Every field here is a COST or COVERAGE lever, which is why
+// they are runtime flags rather than constants: a smoke test and a production
+// run differ only in these numbers, and having to edit and recompile to switch
+// between them is how a run ends up with no record of what produced it.
+// ---------------------------------------------------------------------------
+struct RunConfig {
+    // Sightline grid. The scan steps by `stride * dd` degrees, so stride=1 is the
+    // native 0.02 deg grid (166,397 sightlines -- not runnable) and stride=10 is
+    // 0.20 deg (1,706 sightlines, ~15 h at the production budget).
+    int    stride      = 10;
+
+    // Per-sightline event budget: the do/while over stars stops once ALL three are
+    // met. icon counts detected events, nlens those also Fisher-characterised,
+    // nerr an accumulated Fisher-error weight. These set the Poisson precision of
+    // every per-sightline quantity.
+    int    iconTarget  = 850;
+    int    nlensTarget = 150;
+    double nerrTarget  = 2.0;
+
+    // Restrict the scan to the old hardcoded 0.1x0.1 deg patch instead of the full
+    // region. Kept only so a run can be compared against the pre-Step-4 numbers.
+    bool   stubPatch   = false;
+};
+
+static void printUsage(const char* prog) {
+    std::cout
+        << "usage: " << prog << " [options]\n"
+        << "  --stride N     sightline grid step, in units of dd=" << dd << " deg (default 10)\n"
+        << "                 grid spacing is N*dd deg; must be <= " << FoVRoman * 1.41421356
+        << " deg or Roman fields can be missed\n"
+        << "  --events N     per-sightline detected-event target, icon (default 850)\n"
+        << "  --lenses N     per-sightline characterised-event target, nlens (default 150)\n"
+        << "  --nerr X       per-sightline Fisher-error target (default 2.0)\n"
+        << "  --stub         scan the old 0.1x0.1 deg patch instead of the full region\n"
+        << "  --help         this message\n";
+}
+
+int main(int argc, char** argv) {
+    // NOTE: srand(time(0)) used to be called here. Nothing in this project ever
+    // calls rand() -- the RNG is the seeded mt19937_64 in Bulge.h -- so it did
+    // nothing except make the run look clock-seeded, which is the opposite of
+    // the reproducibility the provenance block below is for.
+
+    RunConfig cfg;
+    bool strideGiven = false;
+    for (int a = 1; a < argc; ++a) {
+        const std::string arg = argv[a];
+        auto need = [&](const char* what) -> const char* {
+            if (a + 1 >= argc) {
+                std::cerr << "ERROR: " << what << " needs a value\n";
+                std::exit(2);
+            }
+            return argv[++a];
+        };
+        if      (arg == "--stride") { cfg.stride = std::atoi(need("--stride")); strideGiven = true; }
+        else if (arg == "--events")  cfg.iconTarget  = std::atoi(need("--events"));
+        else if (arg == "--lenses")  cfg.nlensTarget = std::atoi(need("--lenses"));
+        else if (arg == "--nerr")    cfg.nerrTarget  = std::atof(need("--nerr"));
+        else if (arg == "--stub")    cfg.stubPatch   = true;
+        else if (arg == "--help")  { printUsage(argv[0]); return 0; }
+        else {
+            std::cerr << "ERROR: unknown option '" << arg << "'\n";
+            printUsage(argv[0]);
+            return 2;
+        }
+    }
+    // The stub patch is 0.1x0.1 deg. The default stride of 10 (0.20 deg) would step
+    // clean over it and leave a single sightline, so --stub without an explicit
+    // --stride falls back to the native dd grid -- which is what the pre-Step-4 loop
+    // used, and the only way --stub reproduces those numbers.
+    if (cfg.stubPatch and not strideGiven) cfg.stride = 1;
+
+    if (cfg.stride < 1) {
+        std::cerr << "ERROR: --stride must be >= 1\n";
+        return 2;
+    }
+    if (cfg.iconTarget < 1 or cfg.nlensTarget < 0 or cfg.nerrTarget < 0.0) {
+        std::cerr << "ERROR: --events must be >= 1, --lenses and --nerr >= 0\n";
+        return 2;
+    }
+
+    // A square grid of spacing h is only guaranteed to place a point inside a disk
+    // of radius r when h <= r*sqrt(2). Beyond that the grid can step clean over a
+    // Roman field, and the run then silently becomes Rubin-only while still
+    // reporting joint-detection columns -- the same class of failure as the ct
+    // truncation. The stronger per-field check, against the actual field centres
+    // read from RomanBaseline.dat, runs once the baseline is loaded.
+    const double gridStep = cfg.stride * dd;
+    if (gridStep > FoVRoman * 1.41421356 and not cfg.stubPatch) {
+        std::cerr << "ERROR: --stride " << cfg.stride << " gives a grid step of "
+                  << gridStep << " deg, which exceeds FoVRoman*sqrt(2) = "
+                  << FoVRoman * 1.41421356 << " deg. The grid could miss Roman "
+                  << "fields entirely and the run would look joint but be "
+                  << "Rubin-only. Use --stride <= "
+                  << int(FoVRoman * 1.41421356 / dd) << ".\n";
+        return 2;
+    }
 
     // --------------------- Allocate objects ------------------------
     auto s  = std::make_unique<source>();
@@ -344,16 +442,150 @@ int main() {
 
     save = 0;
 
+    // Scan bounds. The full region is what l1/l2/b1/b2/wid in Bulge.h describe;
+    // the stub patch is the 0.1x0.1 deg corner every pre-Step-4 run used, kept
+    // only for comparison against those numbers.
+    const double lonMin = cfg.stubPatch ?  0.5 : l1 - wid;
+    const double lonMax = cfg.stubPatch ?  0.6 : l2 + wid;
+    const double latMin = cfg.stubPatch ? -1.0 : b1 - wid;
+    const double latMax = cfg.stubPatch ? -0.9 : b2 + wid;
+
+    // ----------------------------------------------------------------------
+    // Roman field-coverage guard.
+    //
+    // RomanBaseline.dat repeats a small set of distinct (l,b) pointings -- the six
+    // GBTDS fields -- once per visit. Collect them, then verify the sightline grid
+    // actually places at least one sightline inside each. A grid that steps over a
+    // field produces a run with zero Roman epochs there, which does not crash and
+    // does not warn: it just quietly reports Rubin-only results in joint-labelled
+    // columns. Roman covers only ~2.6% of the scan region, so this is easy to do
+    // by accident and impossible to spot afterwards.
+    // ----------------------------------------------------------------------
+    std::vector<std::pair<double,double>> romanFields;
+    for (int i = 0; i < NlRoman; ++i) {
+        bool seen = false;
+        for (const auto& f : romanFields)
+            if (std::fabs(f.first - ro->l[i]) < 1e-6 and std::fabs(f.second - ro->b[i]) < 1e-6) {
+                seen = true; break;
+            }
+        if (!seen) romanFields.emplace_back(ro->l[i], ro->b[i]);
+    }
+
+    std::vector<int> fieldHits(romanFields.size(), 0);
+    long nSightlines = 0, nSightlinesRoman = 0;
+    const int nLonGrid = int(std::floor((lonMax - lonMin) / gridStep + 1e-9)) + 1;
+    const int nLatGrid = int(std::floor((latMax - latMin) / gridStep + 1e-9)) + 1;
+    for (int i = 0; i < nLonGrid; ++i) {
+        for (int j = 0; j < nLatGrid; ++j) {
+            const double lon = lonMin + i * gridStep;
+            const double lat = latMin + j * gridStep;
+            if (lon < lx and lat > bx) continue;   // same corner cut as the scan below
+            nSightlines += 1;
+            bool anyField = false;
+            for (size_t f = 0; f < romanFields.size(); ++f) {
+                const double dl = lon - romanFields[f].first;
+                const double db = lat - romanFields[f].second;
+                if (std::sqrt(dl*dl + db*db) <= FoVRoman) { fieldHits[f] += 1; anyField = true; }
+            }
+            if (anyField) nSightlinesRoman += 1;
+        }
+    }
+    const size_t nFieldsCovered = std::count_if(fieldHits.begin(), fieldHits.end(),
+                                                [](int h){ return h > 0; });
+    // Fatal for a full-region scan, advisory for --stub: the stub patch is 0.1x0.1 deg
+    // by design and cannot possibly reach all six fields, so refusing to run it would
+    // remove the only way to reproduce the pre-Step-4 numbers.
+    if (nFieldsCovered < romanFields.size() and not cfg.stubPatch) {
+        std::cerr << "ERROR: the sightline grid (stride " << cfg.stride << ", step "
+                  << gridStep << " deg) misses " << (romanFields.size() - nFieldsCovered)
+                  << " of " << romanFields.size() << " Roman GBTDS fields:\n";
+        for (size_t f = 0; f < romanFields.size(); ++f)
+            if (fieldHits[f] == 0)
+                std::cerr << "    field at (l,b) = (" << romanFields[f].first << ", "
+                          << romanFields[f].second << ") has no sightline within "
+                          << FoVRoman << " deg\n";
+        std::cerr << "Those fields would contribute no Roman epochs, and the run would "
+                     "report joint columns built from Rubin data alone. Use a smaller "
+                     "--stride.\n";
+        return 1;
+    }
+    if (nFieldsCovered < romanFields.size() and cfg.stubPatch) {
+        std::cout << "NOTE: --stub reaches " << nFieldsCovered << " of "
+                  << romanFields.size() << " Roman fields. Expected for a patch this "
+                  << "small; joint statistics from it describe those fields only.\n";
+    }
+
+    // ----------------------------------------------------------------------
+    // Provenance. Written before any science output, so an interrupted run still
+    // records what it was. Reproducibility here is not optional: an earlier run
+    // (commit e47390a) produced detection statistics that turned out to describe a
+    // truncated visit stream rather than the survey, and nothing in its output
+    // said which model had produced it.
+    //
+    // areaPerSightline is the piece that is easy to lose. Neven is a surface
+    // density in deg^-2, and nothing in this program sums sightlines into a
+    // survey-wide yield -- that happens downstream, where each sightline must be
+    // weighted by the sky area it stands for. At stride N that area is
+    // (N*dd)^2, NOT dd^2, so a strided run aggregated as if it were unstrided is
+    // wrong by a factor of N^2 (100x at the default stride of 10).
+    // ----------------------------------------------------------------------
+#ifndef GIT_COMMIT
+#define GIT_COMMIT "unknown"
+#endif
+    const double areaPerSightline = gridStep * gridStep; // deg^2
+
+    {
+        std::ostringstream prov;
+        prov << "# Roman+Rubin microlensing forecast -- run provenance\n"
+             << "# git_commit          " << GIT_COMMIT << "\n"
+             << "# built               " << __DATE__ << " " << __TIME__ << "\n"
+             << "# stride              " << cfg.stride << "\n"
+             << "# grid_step_deg       " << gridStep << "\n"
+             << "# area_per_sightline  " << areaPerSightline << "   # deg^2 -- weight for Neven\n"
+             << "# lon_range_deg       " << lonMin << " " << lonMax << "\n"
+             << "# lat_range_deg       " << latMin << " " << latMax << "\n"
+             << "# corner_cut          lon < " << lx << " and lat > " << bx << "\n"
+             << "# n_sightlines        " << nSightlines << "\n"
+             << "# n_sightlines_roman  " << nSightlinesRoman << "\n"
+             << "# roman_fields        " << nFieldsCovered << " of " << romanFields.size()
+             << " covered\n"
+             << "# events_target       " << cfg.iconTarget << "   # icon\n"
+             << "# lenses_target       " << cfg.nlensTarget << "   # nlens\n"
+             << "# nerr_target         " << cfg.nerrTarget << "\n"
+             << "# region              " << (cfg.stubPatch ? "stub patch" : "full") << "\n"
+             << "# Tobs_days           " << Tobs << "\n"
+             << "# Nl                  " << Nl << "\n"
+             << "# NlRoman             " << NlRoman << "\n"
+             << "# FoV_rubin_deg       " << FoV << "\n"
+             << "# FoV_roman_deg       " << FoVRoman << "\n"
+             << "# rng_seed            " << seed << "\n";
+        std::ofstream fprov("./files/MONTLMC/files/run_provenance.txt");
+        if (!fprov) {
+            std::cerr << "Cannot write run_provenance.txt\n";
+            return 1;
+        }
+        fprov << prov.str();
+        fprov.close();
+        std::cout << prov.str() << std::flush;
+    }
+
 ///HHHHHHHHHHHHHHHHHHHHH Monte Carlo Simulation HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 
-//    for (s->lon = l1 - wid; s->lon <= l2 + wid; s->lon += dd) {
-    for (s->lon = 0.5; s->lon <= 0.6; s->lon += dd) {
-//    for (s->lon = 1.0; s->lon <= 1.1; s->lon += dd) {
+    // Index-driven rather than accumulate-and-compare. The old loop did
+    // `for (lon = 0.5; lon <= 0.6; lon += dd)` and lost its last row AND last column
+    // to floating-point drift -- 0.02 is not representable in binary, so after five
+    // additions the accumulator sits a few ulp above the bound and the comparison
+    // fails. That scan advertised 36 sightlines and ran 25. Computing each position
+    // as lonMin + i*gridStep keeps the count exact and makes it predictable ahead of
+    // the run, which the provenance block and the coverage guard both rely on.
+    const int nLon = int(std::floor((lonMax - lonMin) / gridStep + 1e-9)) + 1;
+    const int nLat = int(std::floor((latMax - latMin) / gridStep + 1e-9)) + 1;
+    for (int iLon = 0; iLon < nLon; ++iLon) {
+        s->lon = lonMin + iLon * gridStep;
         nri +=  1;
         nde  = -1;
-//        for (s->lat = b1 - wid; s->lat <= b2 + wid; s->lat += dd) {
-        for (s->lat = -1.0; s->lat <= -0.9; s->lat += dd) {
-//        for (s->lat = -3.9; s->lat <= -3.8; s->lat += dd) {
+        for (int iLat = 0; iLat < nLat; ++iLat) {
+            s->lat = latMin + iLat * gridStep;
             if (s->lon < lx and s->lat > bx) {
                 continue;
             };
@@ -947,8 +1179,9 @@ int main() {
             }
             //cout << "** End of saving in the file *********" << save << endl;
             //cout << "icon: " << icon << "\tnlens: " << nlens << "\tnerr: " << nerr << endl;
-//            } while (icon < 850 or nlens < 150 or nerr < 2.0); //end of loop icon
-            } while (icon < 20 or nlens < 5 or nerr < 1.0); //end of loop icon
+            // Per-sightline event budget -- see RunConfig. Was hardcoded to a stub
+            // 20/5/1.0 with the production 850/150/2.0 commented out beside it.
+            } while (icon < cfg.iconTarget or nlens < cfg.nlensTarget or nerr < cfg.nerrTarget);
    
             for (int i = 0; i <= GG; ++i) {
                 l->NstE[i] += l->nstE[i];

@@ -560,6 +560,11 @@ struct RomanSchedule {
     double missionEnd         = 0.0;
     double maxInSeasonSpacing = 0.0; //largest spacing kept INSIDE a season
     double minSeasonGap       = 0.0; //smallest spacing treated as a gap
+    double minSeasonLength    = 0.0; //shortest season found, end - start [d]. Zero means some
+                                     //"season" holds a single epoch, which is not a season at
+                                     //all -- see the guard in main(). A schedule sampled more
+                                     //coarsely than SEASON_GAP_MIN_DAYS degenerates that way
+                                     //while leaving the other two margins looking healthy.
 
     // Signed days from t0 to the nearest season boundary.
     //   negative -> t0 is INSIDE a season; |value| is how deep into it the peak sits

@@ -1062,3 +1062,41 @@ from `81a6b04`:
   `mbs1 == magb_F146`, confirming the filter/telescope index mapping is the one intended.
 - **No stray negatives**: no value of `rel_piE` or `rel_Ml` is negative other than the `-1` sentinel.
 - `fishertest` bit-identical. Six pre-existing warnings, none new.
+
+### 19.8 Closing the two verification gaps — and a hole in the guard
+
+Two things 19.7 could confirm only indirectly are now covered by data-free checks in
+`tests/fisher_fixture.cpp`, so they stay covered:
+
+**`checkSentinelDiscipline`** exercises the `ErrorCal` fix of 19.3 directly, on all four
+combinations of photometric/astrometric characterizability, rather than waiting for a live event
+in that state to turn up. The discriminating case is *photometry good, astrometry singular*:
+`resu[3]` must come out **positive**. Under the old unguarded `MIN` it was negative, every time.
+The check also asserts that with both routes available the *smaller* is taken (not merely one of
+them), that a mass is reported only when both of its ingredients exist, and that `relMl[SJOINT]`
+agrees with `resu[9]` exactly — the two are the same physical quantity computed independently.
+
+Writing it exposed a trap worth recording: **`ErrorCal` does not read `Era`/`Erb`, it recomputes
+them** from the diagonals of the inverse covariance matrices. Setting them by hand in a test is
+silently overwritten. The inverses are what a test has to construct.
+
+**`checkSeasonClustering`** builds synthetic schedules — no data files — and checks both halves of
+the runtime guard: a healthy schedule (3 seasons, 70 d each, 5 d cadence, 110 d gaps) must cluster
+correctly and pass, with the `dt_edge` sign convention and all three `t0zone` states verified on
+probe points; a pathological one must be caught.
+
+**That second case found a real hole in the guard.** A schedule whose in-season cadence *exceeds*
+`SEASON_GAP_MIN_DAYS` makes every epoch look like a season boundary, so each "season" ends up
+holding exactly one epoch. Both margins the guard checked looked healthy: `maxInSeasonSpacing`
+stayed **0** — no spacing was ever classified as in-season, so it was never updated — and
+`minSeasonGap` was 25 d, comfortably above the threshold. Nine single-epoch "seasons" sailed
+through, and `dt_edge`/`t0zone` would have been computed off them without complaint.
+
+Fixed by adding `minSeasonLength` (the shortest season's duration) to `RomanSchedule` and
+requiring it to be strictly positive. A season holding one epoch has zero length, which is the
+one signature that case cannot hide. The real schedule's shortest season is 65 d, so the margin
+is wide. Both the guard and the fixture's copy of the predicate were updated together, and the
+value is reported in `run_provenance.txt`.
+
+The pre-existing fixture event table is bit-identical — the new checks are purely additive and
+print above it.

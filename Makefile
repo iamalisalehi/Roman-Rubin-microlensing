@@ -1,6 +1,14 @@
 # Compiler and flags
 CXX = g++
-CXXFLAGS = -g -Wall -Wextra -std=c++17
+# -O2 is not optional: without it the Monte Carlo runs ~5x slower (measured: 257 vs
+# 1280 events per 300 s on the same seeded run). It is safe to turn on because GCC
+# does NOT reorder floating-point arithmetic without -ffast-math, so results are
+# unchanged -- verified bit-identical against an -O0 build across EfLMC2.dat,
+# EfLMC2B.dat, LpLMC2.dat, test2.dat, stdout and the full fishertest table.
+# -O3 was measured too and gives no further gain. Do NOT add -ffast-math: it would
+# let the compiler reassociate the chi-squared and Fisher sums and silently change
+# the forecast. -g is kept so the CHECK() aborts still produce a usable backtrace.
+CXXFLAGS = -O2 -g -Wall -Wextra -std=c++17
 LDLIBS = -lgsl -lgslcblas -lm
 
 # Target executable

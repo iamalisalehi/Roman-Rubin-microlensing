@@ -124,3 +124,43 @@ push `fb` out of [0,1].
 **What's needed:** replace the binned step with a symmetric `{-h, +h}` pair at a fixed small `h`,
 keeping a clamp only as a guard. This would also let the bin table and the clamp block be deleted,
 simplifying `FisherM`'s data loop. Do it when `FisherM` is next opened for other reasons.
+
+---
+
+## Sky coverage is Penny et al.'s, not the current GBTDS footprint — and Rubin's FoV overlap is unmodelled (raised by Ali, 2026-08-24)
+
+**What is wrong:** the region scanned by the Monte Carlo (`l1`/`l2`/`b1`/`b2`/`wid` in `Bulge.h`)
+and the Roman field centres (`FIELDS_L_B` in `Baseline/generateRomanBaseline.py`) both descend
+from the Penny et al. survey design. That design is now superseded — STScI's published GBTDS
+footprint has changed since. The authoritative source is the Roman documentation already recorded
+in `DEVIATIONS.md` entry 16:
+<https://roman-docs.stsci.edu/roman-community-defined-surveys/galactic-bulge-time-domain-survey>
+
+Note this is a *different* correction from entry 16.4. That fixed `FoVRoman`'s units (an area used
+as a radius); the field **centres and the total footprint** were left as they were.
+
+**The subtlety that makes this more than a coordinate update:** Rubin's field of view is very much
+larger than Roman's (`FoV` vs `FoVRoman` in `Bulge.h`). A Rubin pointing whose centre lies well
+outside a GBTDS field can still cover part of that field. The current `matchVisibleEpochs` treats
+both instruments identically — a sightline matches an epoch when the sightline is within the
+instrument's radius of the pointing centre — so this partial overlap is either counted as full
+coverage or missed entirely, depending only on centre separation. Two consequences:
+
+1. **Joint coverage is mis-stated.** Sightlines inside a GBTDS field that Rubin observes only via
+   the edge of a large pointing are exactly the ones the joint-fit science case depends on.
+2. **Blending is wrong there too.** Blend fractions (`s.blend[]`, `s.fb[]`) depend on how much
+   Rubin actually sees at that position, so a coverage error propagates into the photometry and
+   from there into `fb0`/`mbs0` and the Fisher forecast — not just into the event counts.
+
+**Also required:** the Rubin baseline (`Baseline/readbaselineBulge.py` → `BulgeBaseline.dat`, and
+`Nl` in `Bulge.h`) must be regenerated for whatever region the corrected footprint implies. The
+two baselines share the simulation clock and the scan region, so they cannot be updated
+independently.
+
+**Why it is not being done now:** it changes what sky the forecast describes, so every detection
+and precision number would have to be re-taken afterwards. It should be done as its own step, with
+the new footprint read off the STScI documentation rather than inferred, and it interacts with the
+run-scaling grid (Step 4) — the stride guard checks the grid against `FIELDS_L_B`, so the guard
+protects the change but the field list itself is what needs replacing.
+
+**Deliberately deferred at Ali's request, 2026-08-24.** Wanted, not optional.

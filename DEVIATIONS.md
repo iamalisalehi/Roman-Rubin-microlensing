@@ -761,3 +761,115 @@ The fix was kept anyway (commit `aad8d55`): it is provably equivalent, it remove
 minor waste, and the prefix form preserves the clean-slate invariant that would expose a
 future partial-write bug. But it is a hygiene change, not a speedup, and the initial
 estimate should have been measured before it was asserted.
+
+---
+
+## 18. Step 4: the run now scans the survey region instead of one corner
+
+Phase D's run-scaling step, sized against the cost model measured in entry 17.
+
+### 18.1 What the run was
+
+`Bulge_LSST.cpp` hardcoded `lon 0.5 -> 0.6`, `lat -1.0 -> -0.9` -- a 0.1 x 0.1 deg patch --
+with the real production bounds commented out on the lines directly above. Every detection
+number this pipeline has produced describes that one patch. The production region is ~66.4
+deg^2, and stellar density, extinction and Roman coverage all vary strongly across it.
+
+The event budget was likewise hardcoded (`icon < 20 or nlens < 5 or nerr < 1.0`) with the
+production `850/150/2.0` commented out beside it. Both are cost levers, and needing a
+recompile to move them is how a run ends up with no record of what produced it.
+
+### 18.2 The cost model this was sized against
+
+Measured at `-O2` on a timestamped run, per sightline at the stub budget:
+
+| sightline type | n | mean | min | max |
+|---|---:|---:|---:|---:|
+| Roman-covered | 19 | **10.6 s** | 7.1 | 17.1 |
+| Rubin-only | 5 | **0.5 s** | 0.4 | 0.6 |
+
+A Roman-covered sightline costs **22x** a Rubin-only one -- ~50,400 Roman epochs against
+Rubin's ~2,400, and the light-curve integrator scales with that.
+
+The design consequence is the opposite of what was expected. Roman's six fields cover
+`6*pi*0.3003^2 = 1.700 deg^2`, only **2.56%** of the scan region, which looked like an
+argument for stratified sampling -- a coarse grid overall plus a dense one inside the fields.
+It is not: the 97.4% of the region Roman never sees costs ~2% of the run, because being 22x
+cheaper and ~40x more numerous very nearly cancel. Total cost tracks total sightline count, so
+a **uniform stride** is the right design and no stratification is needed.
+
+Full-region cost by stride, at the production budget:
+
+| stride | step | sightlines | Roman-covered | production run |
+|---:|---:|---:|---:|---:|
+| 5 | 0.10 deg | 6,712 | 147 | 2.4 d |
+| 8 | 0.16 deg | 2,660 | 52 | 21.9 h |
+| **10** | **0.20 deg** | **1,706** | **39** | **14.7 h** |
+| 15 | 0.30 deg | 778 | 15 | 6.4 h |
+| 20 | 0.40 deg | 435 | 11 | 3.9 h |
+
+**Stride 10 at the full budget was chosen** (Ali, 2026-08-24): the finest grid that still
+finishes unattended overnight, at ~6-7 Roman-covered sightlines per GBTDS field.
+
+### 18.3 What changed
+
+`main()` takes `argc/argv` and a `RunConfig`: `--stride`, `--events`, `--lenses`, `--nerr`,
+`--stub`, `--help`. Defaults are the production values above. Nothing about a run's size
+requires editing source any more.
+
+Two guards, because a stride that steps over Roman's fields is invisible after the fact:
+
+1. A square grid of spacing `h` only reaches every point of a disk of radius `r` when
+   `h <= r*sqrt(2)`. Strides giving more than `FoVRoman*sqrt(2) = 0.4247` deg are refused.
+2. Stronger, and the one that would survive a change to the field list: the six distinct
+   pointings are read back out of `RomanBaseline.dat` and the grid is checked against each.
+   Missing any is fatal. This fires correctly -- it caught `--stub`, which reaches only 2 of
+   6, so it is advisory rather than fatal in stub mode.
+
+Why this matters: a grid that misses a field produces zero Roman epochs there and reports
+**joint-labelled columns built from Rubin data alone**, with no crash and no warning. Same
+failure mode as the `ct` truncation in entry 15.
+
+### 18.4 A silent off-by-one in the old loop
+
+`for (lon = 0.5; lon <= 0.6; lon += dd)` lost its last row **and** last column. `dd = 0.02` is
+not representable in binary, so after five additions the accumulator sits a few ulp above the
+bound and the comparison fails. The stub grid advertised 36 sightlines and ran **25**. The
+scan is now index-driven (`lonMin + i*gridStep`), which is exact and lets the sightline count
+be computed before the run -- which the provenance block and the coverage guard both need.
+
+This means `--stub` cannot byte-reproduce the old output: it now runs 36 sightlines, and the
+11 extra ones shift the shared RNG stream, so everything after the first longitude column
+differs. That is the correction landing, not a regression, and it was proven rather than
+asserted: rebuilt with the stub bounds trimmed to the 25 points the old loop actually visited,
+the new code is **bit-identical over all 1650 lines** of the pre-Step-4 run.
+
+### 18.5 Provenance
+
+Every run writes `files/MONTLMC/files/run_provenance.txt` (and echoes it to stdout) before any
+science output: git commit with a `-dirty` marker, build time, stride, grid step, lon/lat
+range, corner cut, sightline counts, Roman field coverage, all three budget targets, `Tobs`,
+`Nl`, `NlRoman`, both fields of view, and the RNG seed.
+
+The entry that is easiest to lose is `area_per_sightline`. `Neven` is a **surface density in
+deg^-2** and nothing in the C++ sums sightlines into a survey-wide yield -- that happens
+downstream, where each sightline must be weighted by the area it stands for. At stride N that
+area is `(N*dd)^2`, not `dd^2`, so **a strided run aggregated as if unstrided is wrong by
+N^2** -- a factor of 100 at the default. It is written out explicitly rather than left to be
+inferred.
+
+### 18.6 `srand` removed
+
+`srand(time(0))` was called at the top of `main()`. Nothing in any of the four sources or the
+fixture ever calls `rand()`; the RNG is the seeded `mt19937_64` in `Bulge.h`. Its only effect
+was to make runs look clock-seeded, which is exactly the opposite of what 18.5 is for. Removed
+at Ali's request as part of this step.
+
+### 18.7 Verification
+
+`fishertest` bit-identical (all of this lives inside `main()`, which the fixture excludes).
+Six pre-existing warnings, none new. Default config reports 1,706 sightlines / 39
+Roman-covered / 6 of 6 fields, matching the independent Python cost model exactly.
+
+Entry 15's warning still stands, and now has a run worth taking: no detection statistic should
+be quoted until a full-region run is taken on this model.

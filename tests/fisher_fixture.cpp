@@ -624,6 +624,261 @@ int runEigen(double scale)
     return 0;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Sentinel discipline in ErrorCal (Step D1).
+//
+// Era[]/Erb[] use -1.0 to mean "this partition could not measure this parameter". That is a
+// SENTINEL, not a small error bar, and every consumer has to test for it before doing
+// arithmetic. ErrorCal did not: it took the better of the two independent parallax routes with
+// MIN(photometric, astrometric), which prefers -1 over any real sigma the moment the astrometric
+// matrix is singular. The result was a negative sigma(piE) propagating into the mass and distance
+// -- see DEVIATIONS entries 8 and 19.3.
+//
+// The live stub run that verified Step D1 did not contain a single event in that state, so this
+// exercises it directly instead of waiting for one to turn up. Each case sets the partition flags
+// and sigmas by hand and checks what ErrorCal makes of them.
+//
+// The discriminating assertion is case 2: with photometry good and astrometry singular, resu[3]
+// must come out POSITIVE. Under the old MIN it was negative, every time.
+// ---------------------------------------------------------------------------------------------
+bool checkSentinelDiscipline()
+{
+    int fails = 0;
+
+    // Case: {name, okA, okB, Era[3] (photometric piE), Erb[3] (astrometric piE), Erb[0] (tetE)}
+    struct Case {
+        const char* name;
+        int    okA, okB;
+        double eraPiE, erbPiE, erbTetE;
+        bool   wantPiE;   //resu[3] should be a real measurement
+        bool   wantMass;  //resu[9] / relMl should be a real measurement
+    };
+    const Case cases[] = {
+        {"both routes available",      1, 1,  0.010, 0.020, 0.05, true,  true },
+        {"astrometry singular",        1, 0,  0.010,  -1.0, -1.0, true,  false},
+        {"photometry singular",        0, 1,   -1.0, 0.020, 0.05, true,  true },
+        {"neither available",          0, 0,   -1.0,  -1.0, -1.0, false, false},
+    };
+
+    std::cout << "\n# --- ErrorCal sentinel discipline (Step D1) ---\n";
+    std::cout << "# " << std::left << std::setw(24) << "case"
+              << std::setw(12) << "resu[3]" << std::setw(12) << "resu[9]"
+              << std::setw(12) << "relMl[J]" << "\n";
+
+    for (const auto& c : cases) {
+        auto s  = std::make_unique<source>();
+        auto l  = std::make_unique<lens>();
+        auto co = std::make_unique<covarian>();
+        setupStatic(*s, *l);
+        l->u0 = 0.30; l->tE = 40.0; l->piE = 0.12;
+
+        // ErrorCal does NOT read Era/Erb -- it RECOMPUTES them from the inverse covariance
+        // matrices, as sqrt of the diagonal. So the inverses are what has to be set up; writing
+        // Era/Erb directly here would be silently overwritten. Diagonal matrices also make the
+        // tE-xi correlation term ErrorCal forms from the (1,4) element exactly zero, which keeps
+        // everything asserted below independent of it.
+        for (int q = 0; q < NSURV; ++q) {
+            co->okA[q] = c.okA;
+            co->okB[q] = c.okB;
+            co->nepochA[q] = 100;
+
+            gsl_matrix_set_zero(co->inverA[q].get());
+            for (int k = 0; k < Nx; ++k) gsl_matrix_set(co->inverA[q].get(), k, k, 0.01 * 0.01);
+            if (c.eraPiE > 0.0)
+                gsl_matrix_set(co->inverA[q].get(), 3, 3, c.eraPiE * c.eraPiE);
+
+            gsl_matrix_set_zero(co->inverB[q].get());
+            for (int k = 0; k < Ny; ++k) gsl_matrix_set(co->inverB[q].get(), k, k, 0.01 * 0.01);
+            if (c.erbTetE > 0.0)
+                gsl_matrix_set(co->inverB[q].get(), 0, 0, c.erbTetE * c.erbTetE);
+            if (c.erbPiE > 0.0)
+                gsl_matrix_set(co->inverB[q].get(), 3, 3, c.erbPiE * c.erbPiE);
+        }
+
+        ErrorCal(*co, *l, *s);
+
+        std::cout << "# " << std::left << std::setw(24) << c.name
+                  << std::setw(12) << co->resu[3]
+                  << std::setw(12) << co->resu[9]
+                  << std::setw(12) << co->relMl[SJOINT] << "\n";
+
+        // A sigma is either a positive measurement or exactly the -1 sentinel. Never anything
+        // in between, and never a negative number that is not the sentinel.
+        if (co->resu[3] < 0.0 && co->resu[3] != -1.0) {
+            std::cerr << "FAIL [sentinel/" << c.name << "] resu[3] = " << co->resu[3]
+                      << " -- a negative sigma that is not the -1 sentinel. This is the"
+                      << " unguarded MIN(photometric, astrometric) bug.\n";
+            ++fails;
+        }
+        if (c.wantPiE && !(co->resu[3] > 0.0)) {
+            std::cerr << "FAIL [sentinel/" << c.name << "] resu[3] = " << co->resu[3]
+                      << " but at least one parallax route was available\n";
+            ++fails;
+        }
+        if (!c.wantPiE && co->resu[3] != -1.0) {
+            std::cerr << "FAIL [sentinel/" << c.name << "] resu[3] = " << co->resu[3]
+                      << " but neither parallax route was available\n";
+            ++fails;
+        }
+        // Case 1: MIN must pick the SMALLER of the two available routes, not merely one of them.
+        if (c.okA && c.okB && std::fabs(co->resu[3] - c.eraPiE / std::fabs(l->piE)) > 1e-12) {
+            std::cerr << "FAIL [sentinel/" << c.name << "] resu[3] = " << co->resu[3]
+                      << " did not take the better of the two parallax routes\n";
+            ++fails;
+        }
+        // The mass needs BOTH ingredients. Missing either means -1, never a number built
+        // from a sentinel.
+        const bool massOK = (co->resu[9] > 0.0);
+        if (massOK != c.wantMass) {
+            std::cerr << "FAIL [sentinel/" << c.name << "] resu[9] = " << co->resu[9]
+                      << ", expected " << (c.wantMass ? "a measurement" : "the -1 sentinel")
+                      << "\n";
+            ++fails;
+        }
+        // relMl is the same physical quantity as resu[9] computed independently; they must agree.
+        if (c.wantMass && std::fabs(co->relMl[SJOINT] - co->resu[9]) > 1e-12) {
+            std::cerr << "FAIL [sentinel/" << c.name << "] relMl[SJOINT] = "
+                      << co->relMl[SJOINT] << " disagrees with resu[9] = " << co->resu[9] << "\n";
+            ++fails;
+        }
+        if (!c.wantMass && co->relMl[SJOINT] != -1.0) {
+            std::cerr << "FAIL [sentinel/" << c.name << "] relMl[SJOINT] = "
+                      << co->relMl[SJOINT] << ", expected the -1 sentinel\n";
+            ++fails;
+        }
+    }
+    return fails == 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Roman season clustering (Step D1).
+//
+// buildRomanSchedule recovers the observing seasons from the epoch times themselves rather than
+// restating the generator's constants, so it depends on one assumption: that within-season epoch
+// spacing and between-season gaps are cleanly separated by SEASON_GAP_MIN_DAYS. main() guards
+// that assumption and refuses to run when it fails, because dt_edge and t0zone would still look
+// entirely reasonable while meaning nothing.
+//
+// Both halves are exercised here on SYNTHETIC schedules, so this needs no data files: a healthy
+// one that must cluster correctly, and a pathological one whose in-season cadence exceeds the
+// threshold and which the guard must catch.
+// ---------------------------------------------------------------------------------------------
+namespace {
+// Fill ro.tim with nSeasons seasons of length seasonLen sampled every cadence days, starting at
+// day 730 and separated by gap days. The vector is longer than the synthetic schedule needs, so
+// the epochs repeat cyclically -- buildRomanSchedule de-duplicates, exactly as it does for the
+// real file where every field repeats every epoch.
+void fillSynthetic(roman& ro, int nSeasons, double seasonLen, double cadence, double gap)
+{
+    std::vector<double> t;
+    double start = 730.0;
+    for (int i = 0; i < nSeasons; ++i) {
+        for (double u = 0.0; u <= seasonLen + 1e-9; u += cadence) t.push_back(start + u);
+        start += seasonLen + gap;
+    }
+    for (size_t i = 0; i < ro.tim.size(); ++i) ro.tim[i] = t[i % t.size()];
+}
+} //namespace
+
+bool checkSeasonClustering()
+{
+    int fails = 0;
+    std::cout << "\n# --- Roman season clustering (Step D1) ---\n";
+
+    // Guard predicate, kept identical in form to the one in Bulge_LSST.cpp main().
+    auto guardTrips = [](const RomanSchedule& sc) {
+        return sc.seasons.size() < 2
+            or sc.maxInSeasonSpacing >= SEASON_GAP_MIN_DAYS
+            or sc.minSeasonGap       <= SEASON_GAP_MIN_DAYS
+            or sc.minSeasonLength    <= 0.0;
+    };
+
+    {   // Healthy: 3 seasons of 70 d sampled every 5 d, separated by 110 d gaps.
+        auto ro = std::make_unique<roman>();
+        fillSynthetic(*ro, 3, 70.0, 5.0, 110.0);
+        const RomanSchedule sc = buildRomanSchedule(*ro);
+        std::cout << "# healthy   : " << sc.seasons.size() << " seasons, max in-season "
+                  << sc.maxInSeasonSpacing << " d, min gap " << sc.minSeasonGap
+                  << " d, shortest season " << sc.minSeasonLength
+                  << " d, guard " << (guardTrips(sc) ? "TRIPS" : "passes") << "\n";
+
+        if (sc.seasons.size() != 3) {
+            std::cerr << "FAIL [seasons/healthy] recovered " << sc.seasons.size()
+                      << " seasons, expected 3\n";
+            ++fails;
+        }
+        if (guardTrips(sc)) {
+            std::cerr << "FAIL [seasons/healthy] the guard rejected a well-separated schedule\n";
+            ++fails;
+        }
+        if (!sc.seasons.empty()) {
+            // Season 0 spans 730 -> 800; season 1 starts 70+110 = 180 d after season 0's start.
+            if (std::fabs(sc.seasons[0].first - 730.0) > 1e-9
+                or std::fabs(sc.seasons[0].second - 800.0) > 1e-9
+                or std::fabs(sc.seasons[1].first - 910.0) > 1e-9) {
+                std::cerr << "FAIL [seasons/healthy] wrong boundaries: season 0 ["
+                          << sc.seasons[0].first << ", " << sc.seasons[0].second
+                          << "], season 1 starts " << sc.seasons[1].first << "\n";
+                ++fails;
+            }
+            // dt_edge sign convention: negative inside a season, positive outside, and
+            // off-mission must be distinguishable from a mid-mission gap.
+            struct P { double t0; int zone; bool negative; };
+            const P probes[] = {
+                {700.0,  T0_OFF_MISSION, false},  //before the first epoch
+                {735.0,  T0_IN_SEASON,   true },  //5 d into season 0
+                {855.0,  T0_IN_GAP,      false},  //mid-gap between seasons 0 and 1
+                {9000.0, T0_OFF_MISSION, false},  //after the last epoch
+            };
+            for (const auto& p : probes) {
+                const int    z  = sc.zone(p.t0);
+                const double dt = sc.dtToSeasonEdge(p.t0);
+                if (z != p.zone) {
+                    std::cerr << "FAIL [seasons/healthy] t0=" << p.t0 << " zone=" << z
+                              << ", expected " << p.zone << "\n";
+                    ++fails;
+                }
+                if ((dt < 0.0) != p.negative) {
+                    std::cerr << "FAIL [seasons/healthy] t0=" << p.t0 << " dt_edge=" << dt
+                              << " has the wrong sign; negative means in-season\n";
+                    ++fails;
+                }
+            }
+            // Mid-gap is equidistant from both edges: 855 is 55 d from 800 and 55 d from 910.
+            if (std::fabs(sc.dtToSeasonEdge(855.0) - 55.0) > 1e-9) {
+                std::cerr << "FAIL [seasons/healthy] mid-gap dt_edge = "
+                          << sc.dtToSeasonEdge(855.0) << ", expected 55\n";
+                ++fails;
+            }
+        }
+    }
+
+    {   // Pathological: in-season cadence of 25 d exceeds SEASON_GAP_MIN_DAYS, so every epoch
+        // looks like a season boundary and each "season" ends up holding exactly one epoch.
+        //
+        // This case is why minSeasonLength exists. The first two margins both look HEALTHY here:
+        // maxInSeasonSpacing stays 0 (no spacing was ever classified as in-season, so it is never
+        // updated) and minSeasonGap is 25 d, comfortably above the threshold. Only the zero-length
+        // seasons give it away. Writing this test is what found that hole in the guard.
+        auto ro = std::make_unique<roman>();
+        fillSynthetic(*ro, 3, 70.0, 25.0, 110.0);
+        const RomanSchedule sc = buildRomanSchedule(*ro);
+        std::cout << "# degenerate: " << sc.seasons.size() << " seasons, max in-season "
+                  << sc.maxInSeasonSpacing << " d, min gap " << sc.minSeasonGap
+                  << " d, shortest season " << sc.minSeasonLength
+                  << " d, guard " << (guardTrips(sc) ? "TRIPS" : "passes") << "\n";
+
+        if (!guardTrips(sc)) {
+            std::cerr << "FAIL [seasons/degenerate] a schedule whose in-season cadence exceeds "
+                      << SEASON_GAP_MIN_DAYS << " d was accepted. dt_edge and t0zone would be "
+                      << "fiction and nothing would say so.\n";
+            ++fails;
+        }
+    }
+
+    return fails == 0;
+}
+
 int main(int argc, char** argv)
 {
     if (argc > 1 && std::string(argv[1]) == "--sweep") return runSweep();
@@ -657,6 +912,11 @@ int main(int argc, char** argv)
     }
 
     int failures = 0;
+
+    // Data-free unit checks of the Step D1 logic. Run first so a failure here is seen before
+    // the event table, which is long.
+    if (!checkSentinelDiscipline()) ++failures;
+    if (!checkSeasonClustering())   ++failures;
 
     std::cout << "# Fisher-matrix fixture -- synthetic events, no data files required\n"
               << "# Nx=" << Nx << " (photometric)  Ny=" << Ny << " (astrometric)\n"

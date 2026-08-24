@@ -573,6 +573,14 @@ RomanSchedule buildRomanSchedule(const roman& ro)
     sch.seasons.emplace_back(start, t.back());
     if (sch.seasons.size() == 1) sch.minSeasonGap = 0.0; //nothing was ever classed as a gap
 
+    // Shortest season. A season holding a single epoch has zero length, which is the signature
+    // of a schedule sampled more coarsely than the threshold: every epoch becomes its own
+    // "season", maxInSeasonSpacing never gets updated at all (so it stays a healthy-looking 0)
+    // and minSeasonGap stays above the threshold. Both other margins pass; only this catches it.
+    sch.minSeasonLength = std::numeric_limits<double>::infinity();
+    for (const auto& sea : sch.seasons)
+        sch.minSeasonLength = std::min(sch.minSeasonLength, sea.second - sea.first);
+
     return sch;
 }
 

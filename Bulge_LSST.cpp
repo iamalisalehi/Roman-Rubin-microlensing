@@ -379,12 +379,14 @@ int main(int argc, char** argv) {
     // Refuse to run rather than emit gap geometry that is quietly fiction.
     if (sched.seasons.size() < 2
         or sched.maxInSeasonSpacing >= SEASON_GAP_MIN_DAYS
-        or sched.minSeasonGap       <= SEASON_GAP_MIN_DAYS) {
+        or sched.minSeasonGap       <= SEASON_GAP_MIN_DAYS
+        or sched.minSeasonLength    <= 0.0) {
         std::cerr << "FATAL: cannot separate Roman observing seasons from inter-season gaps.\n"
                   << "       SEASON_GAP_MIN_DAYS = " << SEASON_GAP_MIN_DAYS << " d, but this "
                   << "schedule has\n"
                   << "       max in-season spacing " << sched.maxInSeasonSpacing << " d and "
-                  << "min inter-season gap " << sched.minSeasonGap << " d\n"
+                  << "min inter-season gap " << sched.minSeasonGap << " d,\n"
+                  << "       shortest season " << sched.minSeasonLength << " d\n"
                   << "       (" << sched.seasons.size() << " season(s) found over days "
                   << sched.missionStart << " - " << sched.missionEnd << ").\n"
                   << "       Retune SEASON_GAP_MIN_DAYS in Bulge.h against the cadence in\n"
@@ -641,7 +643,8 @@ int main(int argc, char** argv) {
              << "# roman_mission_days  " << sched.missionStart << " " << sched.missionEnd << "\n"
              << "# season_gap_thresh   " << SEASON_GAP_MIN_DAYS
              << "   # d; max in-season spacing " << sched.maxInSeasonSpacing
-             << ", min inter-season gap " << sched.minSeasonGap << "\n"
+             << ", min inter-season gap " << sched.minSeasonGap
+             << ", shortest season " << sched.minSeasonLength << "\n"
              << "# Nl                  " << Nl << "\n"
              << "# NlRoman             " << NlRoman << "\n"
              << "# FoV_rubin_deg       " << FoV << "\n"

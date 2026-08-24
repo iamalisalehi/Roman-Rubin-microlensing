@@ -697,3 +697,67 @@ every joint-detection statistic.
 low-cadence visits drop with the 5-day step). Per-sightline `ndd (Roman)` 51,514 -> 50,401.
 `fishertest` bit-identical, so the Fisher path is untouched. Entry 15's warning still stands:
 no detection statistic should be quoted until a run is re-taken on this corrected model.
+
+---
+
+## 17. The simulator had never been compiled with optimization
+
+Not a deviation from the plan so much as a correction to every runtime number recorded in
+it. Raised while starting the run-scaling work (the step that decides how much of the sky a
+run can afford), because that step is entirely a question of cost per sightline.
+
+### 17.1 What was found
+
+`Makefile:3` read `CXXFLAGS = -g -Wall -Wextra -std=c++17`. There is no `-O` flag, and GCC's
+default is `-O0`. The Monte Carlo, the light-curve integrator and `FisherM` have therefore
+all been running unoptimized for the entire life of this project, including in CI.
+
+Measured on the same seeded run, counting events completed in a fixed 300 s wall-clock window:
+
+| build | events / 300 s | sightlines |
+|---|---:|---:|
+| `-O0` | 257 | 7 |
+| `-O2` | **1280** | **25** |
+| `-O3` | 1280 | 25 |
+
+**5.0x.** `-O3` gives nothing further, so `-O2` is what was adopted.
+
+### 17.2 Why this is safe, and why `-ffast-math` is not
+
+GCC does not reassociate floating-point arithmetic unless explicitly told to, because FP
+addition is not associative -- `(a+b)+c` and `a+(b+c)` can differ in the last bits. So `-O2`
+is required to leave results unchanged, and the measurement agrees: `-O2` output is
+bit-identical to `-O0` across `EfLMC2.dat` (562 lines), `EfLMC2B.dat` (568), `LpLMC2.dat`,
+`test2.dat`, stdout, and the whole `fishertest` table.
+
+`-ffast-math` would break exactly this guarantee. The chi-squared accumulators and the Fisher
+matrix element sums are long reductions over thousands of epochs; permitting reassociation
+there would change the forecast sigmas silently and unreproducibly. It must not be added.
+
+`-g` is kept so `CHECK()` aborts remain debuggable, and `-O2` introduced no new compiler
+warnings (the same six pre-existing `set but not used` lines).
+
+### 17.3 Consequence for numbers already recorded
+
+Every wall-clock figure in this document is an `-O0` figure and is now ~5x pessimistic. In
+particular entry 15's cost measurements -- "7.2 s/field -> 50 s/field", "36-field stub run
+~4.3 min -> ~30 min" -- should be read as roughly 10 s/field and ~6 min at `-O2`. The
+*relative* 6.9x slowdown from the `ct` fix stands; only the absolute times move.
+
+This materially changes what the run-scaling step is choosing between: a 5x larger sky
+sample, or a 5x larger event budget, is available for the same wall clock that was assumed
+when that step was scoped.
+
+### 17.4 A wrong hypothesis, recorded
+
+The per-event buffer clear (`Bulge_LSST.cpp:411`) was flagged in entry 15 as "currently
+dominating runtime" and was fixed first on that basis. That claim was wrong. The arithmetic
+looked convincing -- 306,092 slots x 7 arrays = 2.1M writes per draw to reset the ~2,000
+actually used -- but ~17 MB of sequential memory traffic is a few ms against an event that
+costs ~1.2 s, i.e. about 0.1%. Measured back-to-back the fix gave 253 vs 257 events per
+300 s, inside run-to-run scatter.
+
+The fix was kept anyway (commit `aad8d55`): it is provably equivalent, it removes real if
+minor waste, and the prefix form preserves the clean-slate invariant that would expose a
+future partial-write bug. But it is a hygiene change, not a speedup, and the initial
+estimate should have been measured before it was asserted.

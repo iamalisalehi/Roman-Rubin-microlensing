@@ -873,3 +873,192 @@ Roman-covered / 6 of 6 fields, matching the independent Python cost model exactl
 
 Entry 15's warning still stands, and now has a run worth taking: no detection statistic should
 be quoted until a full-region run is taken on this model.
+
+---
+
+## 19. Step D1: the per-event row becomes the analysis table
+
+Every figure in the paper is a cut on one flat table. Step D1 is where that table stops being a
+debug dump and becomes the thing the analysis reads. Steps C4 and C5 had already delivered most
+of it — per-survey epoch counts, three detection booleans, three sigmas each for `tE`/`piE`/`tetE`,
+the `DetClass` and `SynergyClass` labels, three photometric condition numbers. Four things were
+missing, one of which the headline result cannot be produced without.
+
+### 19.1 Gap geometry: the independent variable of the gap-filling result
+
+Roman can only observe the bulge when the Sun angle permits, so its visit list is a comb of
+~70-day observing seasons separated by ~110-day gaps. The joint-fit science claim is a statement
+about what happens to events peaking **in those gaps**, so where `t0` falls relative to the
+seasons is the x-axis of the headline plot — and it has to be computed at simulation time,
+because nothing downstream can reconstruct it from the row.
+
+Two columns now carry it:
+
+- **`dt_edge`** — signed days from `t0` to the nearest season boundary, **negative inside a
+  season**, positive outside. Signed that way so the plot reads left to right: `x < 0` is "Roman
+  was watching", `x > 0` is "Roman was not", and the joint-over-Roman gain should grow with `x`.
+- **`t0zone`** — 0 in-season, 1 mid-mission gap, 2 outside the mission.
+
+**Why `t0zone` is three-valued and not a boolean.** An event peaking at day 300 and one peaking at
+day 1050 both have "no Roman data at `t0`", and they are not the same object at all. Day 1050 sits
+between seasons 1 and 2: Roman brackets it with dense photometry 63 days before and 45 days after,
+so a long-`tE` event's wings are measured even though its peak was missed. That is the case the
+joint fit is meant to rescue. Day 300 is before Roman launches — Rubin-only by construction, with
+nothing to rescue. Pooling them would dilute the measured gain with events that were never
+candidates, which is the easiest available way to wash the effect out. On the current schedule the
+split of simulated peaks is roughly **19% in-season, 28% mid-mission gap, 53% off-mission**, so
+this is not a small correction to a rare category.
+
+**The windows are derived, not restated.** `buildRomanSchedule` (`helper.cpp`) clusters the epoch
+times in `RomanBaseline.dat`: a spacing larger than `SEASON_GAP_MIN_DAYS = 20` d starts a new
+season. The schedule already lives in `Baseline/generateRomanBaseline.py`; a second copy in the
+C++ would drift silently, and the schedule is expected to change (see the deferred GBTDS-footprint
+item in `OPEN_ITEMS.md`). Deriving means the C++ can never disagree with the visit list it is
+actually integrating.
+
+The 20-day threshold has a wide margin — the largest spacing *inside* a season is 5.0 d (the
+low-cadence seasons' five-day sampling) and the smallest gap *between* seasons is 108.2 d — but
+the margin is **checked at runtime, not assumed**. If a future schedule ever samples a season more
+sparsely than the threshold, or packs seasons closer together than it, the clustering fails while
+`dt_edge` and `t0zone` still look perfectly reasonable. `main()` refuses to run in that case
+rather than emit gap geometry that is quietly fiction, and the recovered season count and both
+measured margins go into `run_provenance.txt`.
+
+### 19.2 sigma(lens mass), per survey
+
+`Ml` is never fitted. It follows from the two Einstein-radius observables,
+
+    Ml = tetE / (kappa * piE),   kappa = 8.144 mas/Msun
+
+and because that is a pure ratio the fractional errors add in quadrature. It is now computed for
+all three Fisher partitions (`relMl_J/L/R`) rather than the joint only.
+
+The reason it belongs in the table three times over is that its two ingredients come from
+different instruments' different strengths. `tetE` comes from the **astrometric** matrix — the
+sub-milliarcsecond centroid wobble, which is Roman's regime. `piE` comes from the **photometric**
+matrix over a long time baseline — the annual parallax distortion of the light curve, which is
+Rubin's. A mass measurement can therefore exist in the joint fit that exists in neither survey
+alone. That is the black-hole result, and it is invisible unless the mass precision is stored per
+survey.
+
+### 19.3 A silent bug: sigma(piE) could come out negative
+
+`ErrorCal` took the better of the two independent parallax routes with
+`resu[3] = MIN(resu[3], resu[8])` — photometric (`Era[3]`) against astrometric (`Erb[3]`). But
+`Erb[3]` is `-1.0` when the astrometric matrix is singular, and that `-1.0` is an explicit
+"not characterizable" **sentinel**, not a measurement. `MIN` picked it in preference to a real
+sigma every time.
+
+This is the source of the `resu[3] = -697` event already recorded in entry 8, which at the time
+was worked around by *excluding* such events from the field average rather than fixed. It
+propagated into `resu[9]` (mass) and `resu[10]` (distance), so both were wrong on those events
+too. Now fixed with the same sentinel-aware rule used for `relMl[]`: take the minimum only among
+routes that actually produced a measurement, and report `-1` if neither did.
+
+Fixed here rather than left open because D1 adds `relMl_J`, which is the same physical quantity as
+`resu[9]`. Leaving the old one unguarded would have put two columns in the same row that claim to
+be the fractional mass error and disagree with each other on exactly the events where the
+astrometric fit failed.
+
+### 19.4 A silent bug: the first event of every run was dropped from the table
+
+`filg_in` was constructed **already open** (`std::ofstream filg_in(testf)`), and the per-event
+write then called `.open()` on it. Calling `open()` on an already-open `ofstream` sets `failbit`
+and does nothing, so that write was silently discarded. The matching `close()` cleared the way, so
+every *subsequent* event wrote fine — one row lost per run, always the first.
+
+Verified by reproduction rather than inferred:
+
+    iter 0 fail=1     file contains:  row1
+    iter 1 fail=0                     row2
+    iter 2 fail=0
+
+The in-memory `records` vector was never affected, so no aggregate statistic was ever wrong; only
+the flat table lost a row. `filg_in` is now left closed and the file is truncated (and the header
+written) in a scope of its own.
+
+The open/append/close **per event** is deliberate and stays: it flushes each row to disk as it is
+produced, so a 15-hour run that is interrupted keeps everything it had computed. At ~1.2 s of
+physics per event the syscalls are not measurable.
+
+### 19.5 The row, and a deviation from the plan's wording
+
+The row goes from 57 to **88 columns**, all appended — never interleaved, since the positional
+aggregate initialiser at the `push_back` site and every column index downstream depend on the
+order. New: `t0`, `xi`, `lon`, `lat`, Roman's `mbs1`/`fb1`, the per-filter `magb_*`/`blend_*`
+arrays, `relMl_{J,L,R}`, `okB_{J,L,R}`, `condB_{J,L,R}`, `dt_edge`, `t0zone`.
+
+`okB` is not redundant with `okA`: a row can have `okRubin = 1` (photometry fine) while
+`sigtetE_L = -1` (astrometry singular), and before this nothing in the row explained why. An
+analysis script would read that `-1` as a measurement.
+
+`mbs1`/`fb1` today duplicate `magb[6]`/`blend[6]`, and `mbs0`/`fb0` duplicate `magb[2]`/`blend[2]`,
+because `RUBIN_BANDS` is `{r}`. They are kept separate because they are the quantities the Fisher
+matrix actually fits (photometric parameters 6–8), and the duplication ends the moment a band is
+added.
+
+The file now carries a `#` header line naming every column, from `eventTableHeader()` in
+`Bulge_LSST.cpp`. An unlabelled 88-column matrix is unusable six months later, and mis-numbering a
+column by one produces a plausible plot of the wrong quantity.
+
+**Deviation:** the plan (Step D1) says "write out as a single well-headed file per field." After
+Step 4 that would mean **1,706 files**. Instead there is one run-level file with `lon`/`lat`
+columns, so "per field" is a one-line filter in pandas.
+
+**Not done:** the file is still `./test2.dat` in the repo root. The name is meaningless and the
+location is wrong, but `tests/c3_live_compare.py` reads it and is being actively edited. Recorded
+in `OPEN_ITEMS.md` instead of renamed mid-flight.
+
+### 19.6 A stale-value bug the verification caught — in the new code
+
+The first D1 run produced `relMl_J` values on rows where `okA_J = 0`, `okB_J = 0` and
+`sigpiE_J = sigtetE_J = -1`. A mass precision on an event that has no parallax and no angular
+Einstein radius is impossible, and the repeats made the cause obvious: rows 6 and 7 both carried
+`0.023221`, rows 9–11 all carried `0.104189`. It was the previous *characterized* event's value
+leaking forward.
+
+`ErrorCal` is only reached for events that pass detection and produce an invertible matrix.
+Everything else in `covarian` that survives across events is therefore explicitly reset to its
+sentinel at the top of each draw — `okA`, `okB`, `nepochA`, `condA`, `condB`, `Era`, `Erb`. The new
+`relMl` array was not added to that list, so it alone kept the last value written.
+
+687 of 905 rows were affected. Fixed by adding `relMl` to the per-event reset. Worth recording
+because the failure mode is silent and plausible-looking — every leaked value was a perfectly
+reasonable mass precision, just belonging to a different event — and because the same discipline
+must be applied to anything added to `covarian` in future: **if it is written inside `FisherM` or
+`ErrorCal`, it must be reset in the per-event loop, or it becomes the previous event's answer.**
+
+Two related things noticed and deliberately *not* changed here:
+
+- `co->flagi` is not in that reset list either, so it reads `1` on uncharacterized rows. It is
+  harmless today because the only consumer pairs it with `okA[SJOINT]`, which *is* reset — but the
+  `flagi` column in the table is stale for those rows and must not be used as a characterizability
+  flag. Use `okA_J`. Recorded in `OPEN_ITEMS.md`.
+- `relMl_J` and `rel_Ml` (`resu[9]`) now agree on every row where the joint fit is characterizable,
+  which is the check that confirms the sentinel fix in 19.3 and the new per-survey computation are
+  the same calculation.
+
+### 19.7 Verification
+
+Paired stub run (`--stub --events 20 --lenses 5 --nerr 1`, 36 sightlines) against a binary rebuilt
+from `81a6b04`:
+
+- **Columns 1–57 bit-identical across all 909 paired rows.** Nothing that existed before D1 moved,
+  including `rel_piE` and `rel_Ml` — the sentinel fix in 19.3 changes those columns only on events
+  where the astrometric matrix is singular *and* the photometric parallax is measurable, which did
+  not occur in this stub. The fix is therefore verified as no-regression here, not as exercised;
+  the negative-`resu[3]` case is rare and known from a previous full run.
+- **The post-D1 file has exactly one more row than the pre-D1 file**, and the pre-D1 file's first
+  row is `icon = 2`. That is 19.4 directly: the dropped first event is back.
+- **Header 88 names, data 88 columns.**
+- **Gap geometry**: 21.8% in-season / 26.3% mid-mission gap / 52.0% off-mission, against the
+  19/28/53 predicted from the season windows and a uniform `t0`. `dt_edge < 0` on exactly the
+  `t0zone == 0` rows and nowhere else. In-season range [−35.7, −0.1] d, elsewhere [+0.04, +1200.6] d.
+- **Season derivation** checked independently of the run, by a standalone harness linking
+  `buildRomanSchedule` against `RomanBaseline.dat`: 10 seasons over days 730.000–2447.965, matching
+  the Python analysis of the same file window-for-window, with `maxInSeasonSpacing = 5.0` and
+  `minSeasonGap = 108.247` against the 20 d threshold.
+- **Photometry columns**: all `blend_*` in (0, 1]; `fb1 == blend_F146`, `fb0 == blend_r`,
+  `mbs1 == magb_F146`, confirming the filter/telescope index mapping is the one intended.
+- **No stray negatives**: no value of `rel_piE` or `rel_Ml` is negative other than the `-1` sentinel.
+- `fishertest` bit-identical. Six pre-existing warnings, none new.

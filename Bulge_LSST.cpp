@@ -128,6 +128,37 @@ double errRomanM(const roman& ro, double mag)
 // run differ only in these numbers, and having to edit and recompile to switch
 // between them is how a run ends up with no record of what produced it.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Column names of the per-event table, in exactly the order the `filg_in <<` block in
+// main() writes them (Step D1).
+//
+// Written once at the top of the file so a table is self-describing: an unlabelled
+// 88-column matrix is unusable six months later, and mis-numbering a column by one is
+// the kind of error that produces a plausible plot of the wrong quantity. Anything
+// added to the row MUST be appended both here and there, in the same place -- the
+// verification step is `head -1 | wc -w` against a data line's `wc -w`.
+//
+// Note the two indexing systems, which look alike and are not (see CLAUDE.md):
+// magb_*/blend_* are per FILTER (ugrizy, F146); mbs0/fb0 and mbs1/fb1 are per TELESCOPE
+// (0 = Rubin, 1 = Roman).
+// ---------------------------------------------------------------------------
+const char* eventTableHeader()
+{
+    return
+        "# icon FFG0 tE RE_AU piE tetE Vt u0 Ml opt_1e6 Dl Ds vl vs mbs0 fb0 gg struc "
+        "FWHM_yr vsave_mus DeltaT_errA murel_yr "
+        "rel_u0 rel_tE rel_fb0 rel_piE rel_tetE rel_Ml rel_Dl rel_mul rel_mus "
+        "Map_r nsbl_r flagi Ai_r "
+        "ndw_L ndw_R detL detR detJ okA_J okA_L okA_R "
+        "sigtE_J sigtE_L sigtE_R sigpiE_J sigpiE_L sigpiE_R sigtetE_J sigtetE_L sigtetE_R "
+        "detCls synClass condA_J condA_L condA_R "
+        "t0 xi lon lat mbs1 fb1 "
+        "magb_u magb_g magb_r magb_i magb_z magb_y magb_F146 "
+        "blend_u blend_g blend_r blend_i blend_z blend_y blend_F146 "
+        "relMl_J relMl_L relMl_R okB_J okB_L okB_R condB_J condB_L condB_R "
+        "dt_edge t0zone";
+}
+
 struct RunConfig {
     // Sightline grid. The scan steps by `stride * dd` degrees, so stride=1 is the
     // native 0.02 deg grid (166,397 sightlines -- not runnable) and stride=10 is
@@ -334,6 +365,35 @@ int main(int argc, char** argv) {
     fil.close();
     std::cout << "**** File RomanBaseline.dat was read ****\n";
 
+    // --------------------- Roman season geometry (Step D1) ---------------
+    // Recovered from the epoch times just read, not restated from the generator.
+    // Needed per event to place t0 relative to Roman's observing windows -- the
+    // independent variable of the gap-filling result.
+    const RomanSchedule sched = buildRomanSchedule(*ro);
+
+    // The clustering is only meaningful if the two spacing populations it separates
+    // are genuinely separated: every within-season spacing below the threshold, every
+    // between-season gap above it. If a future schedule ever samples a season more
+    // sparsely than SEASON_GAP_MIN_DAYS, or packs seasons closer together than it, the
+    // seasons come out wrong while dt_edge and t0zone still look perfectly reasonable.
+    // Refuse to run rather than emit gap geometry that is quietly fiction.
+    if (sched.seasons.size() < 2
+        or sched.maxInSeasonSpacing >= SEASON_GAP_MIN_DAYS
+        or sched.minSeasonGap       <= SEASON_GAP_MIN_DAYS) {
+        std::cerr << "FATAL: cannot separate Roman observing seasons from inter-season gaps.\n"
+                  << "       SEASON_GAP_MIN_DAYS = " << SEASON_GAP_MIN_DAYS << " d, but this "
+                  << "schedule has\n"
+                  << "       max in-season spacing " << sched.maxInSeasonSpacing << " d and "
+                  << "min inter-season gap " << sched.minSeasonGap << " d\n"
+                  << "       (" << sched.seasons.size() << " season(s) found over days "
+                  << sched.missionStart << " - " << sched.missionEnd << ").\n"
+                  << "       Retune SEASON_GAP_MIN_DAYS in Bulge.h against the cadence in\n"
+                  << "       Baseline/generateRomanBaseline.py before trusting dt_edge/t0zone.\n";
+        return 2;
+    }
+    std::cout << "**** Roman schedule: " << sched.seasons.size() << " seasons over days "
+              << sched.missionStart << " - " << sched.missionEnd << " ****\n";
+
     // --------------------- Read extinction ------------------------
     readBayestar(*ex,"./files/ext/");
     std::cout << "**** File extinctionf.txt was read ****\n";
@@ -432,10 +492,33 @@ int main(int argc, char** argv) {
     std::ofstream fil4(filnam1);
     std::ofstream fil5(filnam2);
     std::ofstream fil3(fnGam, std::ios::app);
-    std::ofstream filg_in(testf);
+
+    // The per-event table (Step D1). Truncate and write the column header once, in a
+    // scope of its own, and leave `filg_in` itself CLOSED.
+    //
+    // That is not stylistic. The per-event write below calls filg_in.open(); calling
+    // open() on an ALREADY-OPEN ofstream sets failbit and does nothing, so the write is
+    // silently discarded. Constructing filg_in open (as this used to) therefore threw
+    // away the first event of every run -- and only the first, because the matching
+    // close() cleared the way for the second open() to succeed. Verified against a
+    // three-iteration reproduction, not inferred. The in-memory `records` vector was
+    // never affected, so no aggregate statistic was wrong; the flat table just lost a row.
+    //
+    // The open/append/close per event is deliberate and stays: it flushes each row to
+    // disk as it is produced, so a 15-hour run that is interrupted keeps everything it
+    // had computed. At ~1.2 s of physics per event the syscalls are not measurable.
+    {
+        std::ofstream head(testf);
+        if (!head) {
+            std::cerr << "Cannot open " << testf << std::endl;
+            return 1;
+        }
+        head << eventTableHeader() << "\n";
+    }
+    std::ofstream filg_in; //opened in append mode per event -- see above
 
     // Check all
-    if (!fil0 || !fil2 || !fil2b || !fil3 || !fil4 || !fil5 || !filg_in) {
+    if (!fil0 || !fil2 || !fil2b || !fil3 || !fil4 || !fil5) {
         std::cerr << "Cannot open one or more files!" << std::endl;
         return 1;
     }
@@ -554,6 +637,11 @@ int main(int argc, char** argv) {
              << "# nerr_target         " << cfg.nerrTarget << "\n"
              << "# region              " << (cfg.stubPatch ? "stub patch" : "full") << "\n"
              << "# Tobs_days           " << Tobs << "\n"
+             << "# roman_seasons       " << sched.seasons.size() << "\n"
+             << "# roman_mission_days  " << sched.missionStart << " " << sched.missionEnd << "\n"
+             << "# season_gap_thresh   " << SEASON_GAP_MIN_DAYS
+             << "   # d; max in-season spacing " << sched.maxInSeasonSpacing
+             << ", min inter-season gap " << sched.minSeasonGap << "\n"
              << "# Nl                  " << Nl << "\n"
              << "# NlRoman             " << NlRoman << "\n"
              << "# FoV_rubin_deg       " << FoV << "\n"
@@ -969,6 +1057,7 @@ int main(int argc, char** argv) {
                 for (int q = 0; q < NSURV; ++q) {
                     co->okA[q] = 0; co->okB[q] = 0; co->nepochA[q] = 0;
                     co->condA[q] = -1.0; co->condB[q] = -1.0;
+                    co->relMl[q] = -1.0;
                     for (int k = 0; k < Nx; ++k) co->Era[q][k] = -1.0;
                     for (int k = 0; k < Ny; ++k) co->Erb[q][k] = -1.0;
                 }
@@ -1112,7 +1201,16 @@ int main(int argc, char** argv) {
                 co->Erb[SJOINT][0], co->Erb[SRUBIN][0], co->Erb[SROMAN][0],   //sigma(tetE)
                 dclsEvent,
                 synergyClass(*co),
-                co->condA[SJOINT], co->condA[SRUBIN], co->condA[SROMAN]
+                co->condA[SJOINT], co->condA[SRUBIN], co->condA[SROMAN],
+                // ---- the rest of the row (Step D1) ----
+                l->t0, s->xi, s->lon, s->lat,
+                s->mbs[1], s->fb[1],
+                {s->magb[0], s->magb[1], s->magb[2], s->magb[3], s->magb[4], s->magb[5], s->magb[6]},
+                {s->blend[0], s->blend[1], s->blend[2], s->blend[3], s->blend[4], s->blend[5], s->blend[6]},
+                co->relMl[SJOINT], co->relMl[SRUBIN], co->relMl[SROMAN],
+                co->okB[SJOINT], co->okB[SRUBIN], co->okB[SROMAN],
+                co->condB[SJOINT], co->condB[SRUBIN], co->condB[SROMAN],
+                sched.dtToSeasonEdge(l->t0), sched.zone(l->t0)
             });
    
             filg_in.open(testf, std::ios::app);
@@ -1135,7 +1233,19 @@ int main(int argc, char** argv) {
                     << co->Era[SJOINT][3] << " " << co->Era[SRUBIN][3] << " " << co->Era[SROMAN][3] << " "
                     << co->Erb[SJOINT][0] << " " << co->Erb[SRUBIN][0] << " " << co->Erb[SROMAN][0] << " "
                     << dclsEvent << " " << synergyClass(*co) << " "
-                    << co->condA[SJOINT] << " " << co->condA[SRUBIN] << " " << co->condA[SROMAN] << "\n";
+                    << co->condA[SJOINT] << " " << co->condA[SRUBIN] << " " << co->condA[SROMAN] << " "
+                    // the rest of the row (Step D1) -- appended, so columns 1-57 keep their indices
+                    << l->t0 << " " << s->xi << " " << s->lon << " " << s->lat << " "
+                    << s->mbs[1] << " " << s->fb[1] << " ";
+            for (int i = 0; i < M; ++i) filg_in << s->magb[i]  << " ";
+            for (int i = 0; i < M; ++i) filg_in << s->blend[i] << " ";
+            filg_in << co->relMl[SJOINT] << " " << co->relMl[SRUBIN] << " " << co->relMl[SROMAN] << " "
+                    << co->okB[SJOINT]   << " " << co->okB[SRUBIN]   << " " << co->okB[SROMAN]   << " "
+                    << co->condB[SJOINT] << " " << co->condB[SRUBIN] << " " << co->condB[SROMAN] << " "
+                    // Gap geometry. dt_edge is NEGATIVE when t0 fell inside a Roman season;
+                    // t0zone distinguishes a mid-mission gap (1) from before-launch/after-end
+                    // (2), which must never be pooled -- only the former is gap-filling.
+                    << sched.dtToSeasonEdge(l->t0) << " " << sched.zone(l->t0) << "\n";
             filg_in.close();
 //          
 
@@ -2008,6 +2118,27 @@ void ErrorCal(covarian & co, lens & l , source & s){
       }
   }
 
+  // Fractional 1-sigma on the lens mass, per survey (Step D1).
+  //
+  // Ml is never fitted. It follows from the two Einstein-radius observables,
+  //     Ml = tetE / (kappa * piE),   kappa = 8.144 mas/Msun,
+  // and because that is a pure ratio the fractional errors add in quadrature. Computed
+  // per survey because its two ingredients come from different instruments' strengths:
+  // tetE from the astrometric matrix (sub-mas centroid motion -- Roman) and piE from the
+  // photometric one over a long time baseline (annual parallax distortion -- Rubin). A
+  // mass the joint fit measures and neither survey measures alone is the whole point.
+  for (int q = 0; q < NSURV; ++q) {
+      // Sentinel-aware throughout: -1.0 means "not measured", never "measured to be -1".
+      // piE has two independent routes -- the photometric matrix (Era[3]) and the
+      // astrometric one (Erb[3]) -- so take the better of whichever is actually
+      // available, and refuse to report a mass at all if either ingredient is missing.
+      const double rp1 = (co.Era[q][3] >= 0.0) ? co.Era[q][3] / (std::fabs(l.piE)  + eps) : -1.0;
+      const double rp2 = (co.Erb[q][3] >= 0.0) ? co.Erb[q][3] / (std::fabs(l.piE)  + eps) : -1.0;
+      const double rp  = (rp1 >= 0.0 and rp2 >= 0.0) ? MIN(rp1, rp2) : std::max(rp1, rp2);
+      const double rt  = (co.Erb[q][0] >= 0.0) ? co.Erb[q][0] / (std::fabs(l.tetE) + eps) : -1.0;
+      co.relMl[q] = (rp >= 0.0 and rt >= 0.0) ? std::sqrt(rp * rp + rt * rt) : -1.0;
+  }
+
   // Everything below is the JOINT event summary, unchanged in meaning: resu[] keeps its existing
   // semantics and index layout so the output columns and per-field aggregation still work.
   // The per-survey numbers live in Era[]/Erb[] and are reported separately.
@@ -2026,9 +2157,23 @@ void ErrorCal(covarian & co, lens & l , source & s){
   co.resu[7]  = double(Erb[2] / (std::fabs(s.mus2)  + eps));
   co.resu[8]  = double(Erb[3] / (std::fabs(l.piE)   + eps));
 
-  co.resu[3]  = MIN(co.resu[3], co.resu[8]);
+  // piE is measured twice over: photometrically (resu[3], from Era[3]) and astrometrically
+  // (resu[8], from Erb[3]). Take the better -- but ONLY among the routes that actually
+  // produced a measurement. ErrorCal writes -1.0 as an explicit "not characterizable"
+  // sentinel, and an unguarded MIN picks that -1 in preference to a real sigma whenever
+  // the astrometric matrix is singular. That is not hypothetical: it is the source of the
+  // resu[3] = -697 event recorded in DEVIATIONS entry 8, which was worked around by
+  // dropping such events from the field average rather than fixed. It propagates into
+  // resu[9] (mass) and resu[10] (distance), so both were wrong on those events too.
+  // Same rule as relMl[] above; the two must agree, since they are the same quantity.
+  if      (co.resu[3] < 0.0 and co.resu[8] < 0.0) co.resu[3] = -1.0;
+  else if (co.resu[3] < 0.0)                      co.resu[3] = co.resu[8];
+  else if (co.resu[8] >= 0.0)                     co.resu[3] = MIN(co.resu[3], co.resu[8]);
 
-  co.resu[9]  = std::sqrt(co.resu[3] * co.resu[3] + co.resu[5] * co.resu[5]); //Lens Mass
+  //Lens Mass: Ml = tetE/(kappa*piE), a pure ratio, so the fractional errors add in
+  //quadrature. -1 if either ingredient is missing -- see relMl[] above.
+  co.resu[9]  = (co.resu[3] >= 0.0 and co.resu[5] >= 0.0)
+              ? std::sqrt(co.resu[3] * co.resu[3] + co.resu[5] * co.resu[5]) : -1.0;
   co.resu[10] = std::fabs(co.resu[9] * (s.Ds - l.Dl) / s.Ds); //Dl
 
   co.f1 = co.resu[5] * co.resu[5] + co.resu[1] * co.resu[1] + (Era[4] * std::tan(s.xi)) * (Era[4] * std::tan(s.xi))

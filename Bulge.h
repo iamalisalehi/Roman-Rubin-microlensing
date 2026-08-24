@@ -19,6 +19,7 @@
 #include <iomanip>
 #include <limits>
 #include <algorithm>
+#include <utility>
 
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_matrix_double.h>
@@ -515,6 +516,72 @@ struct roman {
 // single-survey matrix: adding information can only sharpen a forecast.
 enum SurveyIdx { SJOINT = 0, SRUBIN = 1, SROMAN = 2, NSURV = 3 };
 
+// ---------------------------------------------------------------------------
+// Roman observing-season geometry (Step D1).
+//
+// Roman can only look at the bulge when the Sun angle permits, so its ten-year visit
+// list is a comb of ~70-day observing seasons separated by ~110-day gaps. Where an
+// event's peak falls relative to those seasons is the independent variable of the
+// gap-filling result, so it has to be computed at simulation time and stored.
+//
+// The windows are DERIVED from the epoch times actually present in RomanBaseline.dat,
+// never restated as constants here. The schedule already lives in
+// Baseline/generateRomanBaseline.py; a second copy would drift silently, and it is
+// expected to change (OPEN_ITEMS.md: the GBTDS footprint and cadence are still being
+// reconciled against STScI's current pages). Deriving means the C++ can never disagree
+// with the visit list it is actually integrating.
+//
+// Clustering rule: consecutive distinct epoch times more than SEASON_GAP_MIN_DAYS apart
+// begin a new season. This is safe by a wide margin on the current schedule -- the
+// largest spacing INSIDE a season is 5.0 d (the low-cadence seasons' five-day sampling)
+// and the smallest gap BETWEEN seasons is 108.2 d -- but the margin is checked at
+// runtime rather than assumed; see the guard in main().
+constexpr double SEASON_GAP_MIN_DAYS = 20.0;
+
+// Where t0 sits relative to Roman's mission. Three states, not two.
+//
+// An event peaking before Roman launches, or after it ends, is Rubin-only BY
+// CONSTRUCTION: there is no Roman data anywhere near it and nothing for a joint fit to
+// rescue. An event peaking in a MID-MISSION gap is a completely different object --
+// Roman brackets it, with dense photometry on both sides, so a long-tE event's wings
+// are still measured even though its peak was missed. That second case is the one the
+// joint-fit science claim is about. Collapsing the two into a single "Roman had no data
+// at t0" boolean would dilute the headline result with events that were never
+// candidates, which is the easiest available way to wash the effect out.
+enum T0Zone {
+    T0_IN_SEASON   = 0, //Roman was observing at t0
+    T0_IN_GAP      = 1, //between two Roman seasons -- the gap-filling regime
+    T0_OFF_MISSION = 2, //before Roman's first epoch or after its last
+};
+
+struct RomanSchedule {
+    std::vector<std::pair<double,double>> seasons; //[start, end] in simulation days
+    double missionStart       = 0.0;
+    double missionEnd         = 0.0;
+    double maxInSeasonSpacing = 0.0; //largest spacing kept INSIDE a season
+    double minSeasonGap       = 0.0; //smallest spacing treated as a gap
+
+    // Signed days from t0 to the nearest season boundary.
+    //   negative -> t0 is INSIDE a season; |value| is how deep into it the peak sits
+    //   positive -> t0 is outside every season; value is the distance to the nearest edge
+    // Signed this way so the gap-filling plot reads left to right: x < 0 is "Roman was
+    // watching", x > 0 is "Roman was not", and the joint-over-Roman precision gain is
+    // expected to grow with x. Use zone() to tell a mid-mission gap from off-mission;
+    // both give a positive dtToSeasonEdge and they must not be pooled.
+    double dtToSeasonEdge(double t0) const;
+    int    zone(double t0) const;
+};
+
+// Cluster ro.tim into seasons. One pass over a sorted, de-duplicated copy of the epoch
+// times; called once per run, not per event.
+RomanSchedule buildRomanSchedule(const roman& ro);
+
+// Column names of the per-event table, in write order. Kept next to the writer's data so
+// the two cannot drift: a header that disagrees with its columns is worse than none.
+const char* eventTableHeader();
+// ---------------------------------------------------------------------------
+
+
 // Maps a per-epoch telescope tag (lens::tele[i]: 0 = Rubin, 1 = Roman) to its survey index.
 inline int surveyOfTele(int tele) { return (tele == 0) ? SRUBIN : SROMAN; }
 
@@ -598,6 +665,16 @@ struct covarian {
     std::array<double, NSURV> condA;
     std::array<double, NSURV> condB;
 
+    // Fractional 1-sigma on the lens mass, per survey (Step D1). Ml is not a fitted
+    // parameter: it follows from Ml = tetE / (kappa * piE), a pure ratio, so the two
+    // fractional errors add in quadrature. Stored per survey because its two ingredients
+    // come from different instruments' different strengths -- tetE from the ASTROMETRIC
+    // matrix (sub-mas centroid motion: Roman) and piE from the PHOTOMETRIC one over a
+    // long time baseline (annual parallax distortion: Rubin). A mass the joint fit
+    // measures and neither survey measures alone is the black-hole result.
+    // -1.0 means "not measurable in this partition", never a measured value.
+    std::array<double, NSURV> relMl;
+
     // Multiplicative override on each photometric parameter's finite-difference step (Step C3).
     // Default 1.0 is an exact no-op, so production behaviour is byte-identical; the step-size
     // convergence sweep drives these at runtime. A runtime knob rather than a compile flag
@@ -629,6 +706,7 @@ struct covarian {
             okB[q] = 0;
             condA[q] = -1.0;
             condB[q] = -1.0;
+            relMl[q] = -1.0;
         }
         for (int k = 0; k < Nx; ++k) {
             deltaScale[k] = 1.0;
@@ -775,6 +853,34 @@ struct EventRecord {
     double condA_J, condA_L, condA_R;   //photometric condition numbers (normalized matrix);
                                 //-1 where that partition was not characterizable. Stored so the
                                 //ill-conditioning cut can be chosen in analysis, not baked in.
+
+    // ---- the rest of the per-event row (Step D1) ----
+    // Appended, never interleaved: the positional aggregate initialiser at the push_back
+    // site depends on this order, and so does every column index downstream.
+    double t0;                  //time of closest approach [d] on the simulation clock
+                                //(day 0 = 2026-04-11, the first Rubin bulge visit)
+    double xi;                  //source-trajectory angle [rad]; sets how the annual
+                                //parallax ellipse projects onto the source track
+    double lon, lat;            //Galactic sightline [deg]. Present so "per field" is a cut
+                                //on this table rather than 1706 separate files.
+    double mbs1, fb1;           //Roman F146 baseline magnitude [mag] and source-flux
+                                //fraction []. mbs0/fb0 above are Rubin's. Today these
+                                //duplicate magb[6]/blend[6] and magb[2]/blend[2]
+                                //respectively, because RUBIN_BANDS is {r} -- they are the
+                                //quantities the Fisher matrix actually fits (params 6-8),
+                                //and they stop duplicating the moment a band is added.
+    std::array<double, M> magb; //blended baseline magnitude per FILTER [mag]
+                                //(0-5 = LSST ugrizy, 6 = Roman F146) -- all stars in the
+                                //seeing disc, not just the source
+    std::array<double, M> blend;//fraction of aperture flux from the SOURCE, per filter []
+    double relMl_J, relMl_L, relMl_R;  //fractional sigma(Ml); -1 = not measurable
+    int    okB_J, okB_L, okB_R; //astrometric matrix inverted? NOT implied by okA: a row can
+                                //have okRubin=1 while sigtetE_L is -1, and without this
+                                //nothing in the row explains why.
+    double condB_J, condB_L, condB_R;  //normalized astrometric condition numbers; -1 as above
+    double dtEdge;              //signed days from t0 to the nearest Roman season edge;
+                                //NEGATIVE means t0 fell inside a season. See RomanSchedule.
+    int    t0zone;              //T0Zone: 0 in-season, 1 mid-mission gap, 2 off-mission
 };
 ///===================== FUNCTION ===========================================//
 int    Funcu0(lens & l);

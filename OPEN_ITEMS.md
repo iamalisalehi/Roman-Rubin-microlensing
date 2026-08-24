@@ -164,3 +164,49 @@ run-scaling grid (Step 4) — the stride guard checks the grid against `FIELDS_L
 protects the change but the field list itself is what needs replacing.
 
 **Deliberately deferred at Ali's request, 2026-08-24.** Wanted, not optional.
+
+---
+
+## The per-event table is still called `test2.dat` and still lives in the repo root
+
+**What.** The 88-column analysis table that Step D1 built is written to `./test2.dat`, a name left
+over from when it was a debug dump. It sits in the repo root next to the binary, is truncated by
+every run, and is `.gitignore`d, so a result can be overwritten by the next smoke test with
+nothing to say it happened.
+
+**Where it should go.** `files/MONTLMC/files/`, alongside the other outputs and `run_provenance.txt`
+— ideally named for the run, so a production run and a stub run cannot clobber each other.
+
+**Why not now.** `tests/c3_live_compare.py` reads it by path and by position, and is being actively
+edited. Renaming mid-flight would break a comparison in progress for no scientific gain. It is a
+five-minute change whenever that script settles.
+
+**Note for whoever does it:** that script's `read_csv(..., header=None)` will need
+`comment="#"` added, because D1 gave the file a header line. Its column-count assertion fails
+loudly first, which is the intended behaviour.
+
+---
+
+## `TODO(Ali)` at `Bulge_LSST.cpp` (RomanBaseline.dat read) is stale
+
+It asks for a generator sourced from Roman's own season structure rather than an LSST OpSim.
+Commit `74e5e18` delivered exactly that (`Baseline/generateRomanBaseline.py`, against the ROTAC
+2025 / STScI GBTDS design). The comment should be deleted; left in place only because removing it
+is cosmetic and belongs with whatever step next touches that read.
+
+---
+
+## `co->flagi` is stale on uncharacterized events
+
+`flagi` is set inside `FisherM`, which only runs for detected events, and it is **not** in the
+per-event reset block that clears `okA`/`okB`/`condA`/`condB`/`Era`/`Erb`/`relMl`. So the `flagi`
+column of the per-event table reads `1` on rows where nothing was characterized — it is the
+previous characterized event's value.
+
+**Harmless today**, because the only consumer (the per-field precision average) pairs it with
+`co->okA[SJOINT]`, which *is* reset. But it is a trap for anything reading the table: **use
+`okA_J`, not `flagi`, as the characterizability flag.**
+
+Not fixed in Step D1 because `flagi` is also read inside `FisherM` itself and adding it to the
+reset changes behaviour rather than only bookkeeping — it needs its own look at what `flagi` is
+actually supposed to mean.

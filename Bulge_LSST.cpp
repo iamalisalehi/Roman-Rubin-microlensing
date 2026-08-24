@@ -257,7 +257,10 @@ int main() {
     std::array<long, NDETCLASS> NDetClassTot{};
     std::vector<std::array<long, NDETCLASS>> NDetClassTE(GG + 1);
     long nSimTot = 0;
-    int    gi,       ndw, sq, ndd;
+    // ndw MUST start at 0: it doubles as the bound of the per-event buffer clear
+    // below, which runs before ndw is reset and therefore reads the PREVIOUS
+    // event's value. On the very first event there is no previous value.
+    int    gi,       ndw = 0, sq, ndd;
     int    giR,      sqR, nddR; // Roman-side cursor/count, parallel to gi/sq/ndd
     int    flag_det; // nml = 0;
     int    ndw_L, ndw_R;           // per-instrument epoch counts (ndw stays the joint/shared total)
@@ -408,7 +411,26 @@ int main() {
                 // `test <= s->blend[2]` is gone — testL/testR are now drawn fresh right
                 // before the per-survey pre-selection check, below.)
 
-                for (int i = 0; i < coun; ++i) {
+                // Clear only the prefix the PREVIOUS event dirtied -- `ndw` is not reset
+                // until a few lines below, so it still holds that count here. Clearing all
+                // `coun` slots (Nl + NlRoman = 306,092, times seven arrays = 2.1M writes)
+                // to reset the ~2,000 an event actually uses was ~150x of pure waste per
+                // draw, and got 16x more expensive when NlRoman became the real visit count.
+                //
+                // Safe because every slot in [0, ndw) is fully written before it is read --
+                // both fill branches write all seven arrays at index ndw before incrementing
+                // it -- and FisherM reads only [0, ndw). Slots past the previous ndw are
+                // therefore untouched since construction, i.e. already zero.
+                //
+                // Kept as a prefix clear rather than deleted outright so the clean-slate
+                // invariant survives: if a future edit ever advances ndw without filling
+                // every array, that shows up as a zero instead of as the previous event's
+                // photometry silently entering this event's Fisher matrix.
+                //
+                // NOTE: the untouched tail of tele[] is 0 (its constructed value), not the
+                // -1 the old full clear wrote. Unobservable today -- tele is only read at
+                // [0, ndw) -- but relevant if anything ever scans the whole array.
+                for (int i = 0; i < ndw; ++i) {
                     l->timn[i] = 0.0;  l->magn[i] = 0.0; l->soux[i] = 0.0;  l->souy[i] = 0.0;
                     l->errm[i] = 0.0;  l->erra[i] = 0.0; l->tele[i] = -1;
                 }

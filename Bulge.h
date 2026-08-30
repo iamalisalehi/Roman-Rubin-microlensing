@@ -60,7 +60,15 @@ using std::cin;
     } while (0)
 
 
-constexpr int    IMnum = 2;
+// Which lens mass function func_lens draws from. ALSO the output-file suffix
+// (test<IMnum>.dat, LpLMC<IMnum>.dat, ...), so switching it keeps two populations'
+// results side by side instead of overwriting one with the other.
+//   1  uniform in [Ml_min, Ml_max]
+//   2  M^-0.5     )
+//   3  M^-1       ) legacy MACHO-search options inherited from the LMC simulation:
+//   4  M^-2       ) a 3-5000 Msun range, appropriate to a dark-matter lens search
+//   5  Kroupa IMF + stellar remnants -- the Galactic bulge population
+constexpr int    IMnum = 5;
 constexpr double u0m   = 3.0;
 
 
@@ -196,8 +204,44 @@ constexpr std::array<double, 2> sig2 = {+0.5 ,+1.0};
 constexpr int GG = 100;
 constexpr double tE_min  = 0.0;///days
 constexpr double tE_max  = 50.0*year;//days
-constexpr double Ml_min  = 3.0;
-constexpr double Ml_max  = 5000.0;
+// Lens mass range, in solar masses. Two very different populations live here, so the
+// bounds follow IMnum rather than being one compromise that fits neither:
+//
+//   IMnum 1-4  3 - 5000 Msun. A MACHO search range, inherited from the LMC simulation
+//              this code was adapted from. Toward the bulge it is unphysical: it gives a
+//              median lens of ~390 Msun and, since tE scales as sqrt(Ml), a median tE of
+//              ~950 days against the ~20-30 days OGLE and MOA actually measure.
+//   IMnum 5    0.01 - 30 Msun, the PRESENT-DAY mass range of a bulge population: brown
+//              dwarfs and M dwarfs at the bottom, white dwarfs and neutron stars in the
+//              middle, stellar-mass black holes at the top. Initial masses run higher
+//              (see KROUPA_MI_MAX); what is bounded here is what still exists today.
+//
+// These bounds also set the Mls grid the detection efficiency is binned on, so they must
+// bracket the masses actually drawn or the efficiency-vs-mass output collapses into one bin.
+constexpr double Ml_min  = (IMnum == 5) ?  0.01 :    3.0;
+constexpr double Ml_max  = (IMnum == 5) ? 30.00 : 5000.0;
+
+// ---- Kroupa (2001) initial mass function, dN/dM ~ M^-alpha, with the standard breaks ----
+// Coefficients enforcing continuity at the breaks are derived in drawKroupaInitialMass();
+// only the breaks and slopes are named here.
+constexpr double KROUPA_MI_MIN = 0.01;   //below the hydrogen-burning limit: brown dwarfs
+constexpr double KROUPA_MI_MAX = 120.0;  //initial mass; nothing this heavy survives to today
+constexpr double KROUPA_BREAK1 = 0.08;   //hydrogen-burning limit
+constexpr double KROUPA_BREAK2 = 0.50;
+constexpr double KROUPA_ALPHA1 = 0.3;    //0.01 - 0.08
+constexpr double KROUPA_ALPHA2 = 1.3;    //0.08 - 0.50
+constexpr double KROUPA_ALPHA3 = 2.3;    //0.50 - 120   (Salpeter-like)
+
+// ---- Initial-to-final mass, for the remnants ----
+// A bulge population is ~10 Gyr old, so everything born above the turnoff is already dead.
+// Which remnant it left is set by its INITIAL mass, and that is what makes the long-tE tail
+// this project cares about: a black hole lens is heavy, so tE ~ sqrt(Ml) is long, and a long
+// event is exactly the one that spans Roman's season gaps.
+constexpr double MS_TURNOFF   = 1.0;   //Msun; below this the star is still on the main sequence
+constexpr double WD_MI_MAX    = 8.0;   //Mi 1-8   -> white dwarf
+constexpr double NS_MI_MAX    = 20.0;  //Mi 8-20  -> neutron star; above -> black hole
+constexpr double NS_MASS      = 1.4;   //Msun, the canonical value
+constexpr double BH_MI_SLOPE  = 0.24;  //Ml = 0.24*Mi, giving ~4.8-28.8 Msun over Mi 20-120
 constexpr double pi_min  = -0.45;
 constexpr double pi_max  = 0.85;
 constexpr double u0_min  = 0.0;
@@ -948,5 +992,7 @@ void   print_mat_contents(gsl_matrix *matrix, int);
 
 double RandN(double , double);
 double RandR(double , double);
+double drawKroupaInitialMass();
+double remnantMass(double initialMass);
 
 #endif // LMC_H

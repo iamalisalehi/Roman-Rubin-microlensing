@@ -608,3 +608,103 @@ int RomanSchedule::zone(double t0) const
         if (t0 >= s.first and t0 <= s.second) return T0_IN_SEASON;
     return T0_IN_GAP;
 }
+
+///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
+//                                                                    //
+//            Kroupa initial mass function + stellar remnants         //
+//                                                                    //
+///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
+
+// Draw an INITIAL stellar mass from the Kroupa (2001) broken power law,
+//
+//     dN/dM  =  k_i * M^-alpha_i
+//
+// with alpha = 0.3, 1.3, 2.3 on [0.01, 0.08], [0.08, 0.5], [0.5, 120] Msun.
+//
+// Sampled by inverse CDF, not rejection. Rejection sampling is what the legacy IMnum 2-4
+// branches use, and each of them carries hardcoded acceptance bounds (CHECK(f >= 1.4) and
+// friends) that are only correct for the 3-5000 Msun range they were written against --
+// change the range and the CHECKs fire. Inverse CDF has no such constants: the segment
+// weights and the inverse are both computed from the breaks themselves, so the sampler
+// stays correct if the breaks are ever retuned.
+//
+// The k_i are fixed by requiring the IMF be CONTINUOUS at each break, not chosen freely:
+//     k1 * 0.08^-0.3 = k2 * 0.08^-1.3  =>  k2 = k1 * 0.08^(1.3-0.3)
+//     k2 * 0.50^-1.3 = k3 * 0.50^-2.3  =>  k3 = k2 * 0.50^(2.3-1.3)
+// A discontinuous IMF would put a step in the mass distribution at 0.08 and 0.5 Msun, and
+// therefore a step in the tE distribution, which is the observable being compared to data.
+double drawKroupaInitialMass()
+{
+    const double lo[3] = {KROUPA_MI_MIN, KROUPA_BREAK1, KROUPA_BREAK2};
+    const double hi[3] = {KROUPA_BREAK1, KROUPA_BREAK2, KROUPA_MI_MAX};
+    const double al[3] = {KROUPA_ALPHA1, KROUPA_ALPHA2, KROUPA_ALPHA3};
+
+    // Continuity coefficients, k1 fixed to 1 (overall normalisation is irrelevant here --
+    // we only ever sample from this, never evaluate an absolute number density).
+    double k[3];
+    k[0] = 1.0;
+    k[1] = k[0] * std::pow(KROUPA_BREAK1, KROUPA_ALPHA2 - KROUPA_ALPHA1);
+    k[2] = k[1] * std::pow(KROUPA_BREAK2, KROUPA_ALPHA3 - KROUPA_ALPHA2);
+
+    // Number of stars per segment: k_i * integral of M^-alpha over the segment.
+    // None of the Kroupa slopes equals 1, so the (1-alpha) form never divides by zero;
+    // the CHECK keeps that assumption honest if the slopes are ever changed.
+    double w[3], total = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        CHECK(std::fabs(1.0 - al[i]) > 1e-9);
+        const double p = 1.0 - al[i];
+        w[i] = k[i] * (std::pow(hi[i], p) - std::pow(lo[i], p)) / p;
+        CHECK(w[i] > 0.0);
+        total += w[i];
+    }
+
+    // Pick a segment in proportion to its star count, then invert that segment's CDF.
+    double u = RandR(0.0, total);
+    int seg = 2;
+    for (int i = 0; i < 3; ++i) {
+        if (u <= w[i]) { seg = i; break; }
+        u -= w[i];
+    }
+
+    const double p = 1.0 - al[seg];
+    const double v = RandR(0.0, 1.0);
+    const double lop = std::pow(lo[seg], p);
+    const double Mi = std::pow(lop + v * (std::pow(hi[seg], p) - lop), 1.0 / p);
+
+    CHECK(Mi >= KROUPA_MI_MIN * 0.999);
+    CHECK(Mi <= KROUPA_MI_MAX * 1.001);
+    return Mi;
+}
+
+
+// Map an initial mass to what is still there to act as a lens ~10 Gyr later.
+//
+// This is where the long-tE tail comes from, and it is not a detail. A star born at 25 Msun
+// is long gone, but it left a ~6 Msun black hole -- and since the Einstein radius and the
+// event timescale both scale as sqrt(Ml), that black hole lenses for roughly five times as
+// long as the 0.3 Msun dwarf next to it. Long events are the ones that span Roman's season
+// gaps, so the remnant prescription is what populates the regime this whole project is
+// about. Dropping remnants would leave the short-tE yield science intact and quietly
+// remove the long-tE precision science.
+double remnantMass(double initialMass)
+{
+    const double Mi = initialMass;
+
+    // Still burning hydrogen: a ~10 Gyr population has a turnoff near 1 Msun, so anything
+    // lighter is unevolved and lenses at its birth mass.
+    if (Mi < MS_TURNOFF) return Mi;
+
+    // White dwarf. Kalirai et al. (2008) semi-empirical initial-final mass relation,
+    // Mf = 0.109*Mi + 0.394, calibrated on open-cluster white dwarfs.
+    if (Mi < WD_MI_MAX) return 0.109 * Mi + 0.394;
+
+    // Neutron star. The observed mass distribution is narrow, so a single canonical value
+    // is a better model than a spread invented to look sophisticated.
+    if (Mi < NS_MI_MAX) return NS_MASS;
+
+    // Black hole. Rough proportional fallback: Ml = 0.24*Mi gives ~4.8 Msun at Mi = 20 and
+    // ~28.8 at Mi = 120, spanning the observed stellar-mass black hole range. This is the
+    // crudest step in the chain -- black hole remnant masses depend on metallicity and
+    // mass loss in ways no single slope captures -- and is flagged in OPEN_ITEMS.md.
+    return BH_MI_SLOPE * Mi;
+}

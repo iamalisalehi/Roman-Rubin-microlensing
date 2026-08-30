@@ -308,3 +308,28 @@ fraction of drawn stars that are observable, it should be `icon / nsim`. If the 
 meant to describe the observable population, the sums need the visibility gate. Both change
 published numbers, so neither belongs in a bookkeeping fix — it needs a decision about what each
 quantity is for, and a re-take of anything already quoted from them.
+
+---
+
+## Black-hole remnant masses use a single proportional slope
+
+`remnantMass()` maps an initial mass above 20 Msun to a black hole by `Ml = 0.24 * Mi`,
+giving ~4.8 Msun at Mi = 20 and ~28.8 at Mi = 120. That spans the observed stellar-mass
+black hole range and is monotone, but it is the crudest link in the mass chain.
+
+Real remnant masses depend on metallicity and on mass loss during the progenitor's life in
+ways no single slope reproduces: at low metallicity weaker winds leave heavier black holes,
+and the relation is not monotone across the pair-instability region. There is also no
+attempt at a natal-kick velocity distribution, so black hole lenses share the kinematics of
+their progenitors.
+
+**Why it matters here.** Black holes are the long-tE tail, and the long-tE regime is exactly
+where the joint fit earns its keep -- Roman's thetaE and Rubin's piE combining into a lens
+mass. The *shape* of the black hole mass distribution therefore feeds directly into the
+headline precision numbers, not just into a tail nobody looks at.
+
+**Why not now.** Choosing an initial-final mass relation for black holes is a literature
+decision with real spread between prescriptions, and it should be made deliberately rather
+than folded into a bug fix. The white dwarf branch is on firmer ground (Kalirai et al. 2008,
+calibrated on open clusters) and the neutron star branch uses the canonical 1.4 Msun, so
+this is the one segment carrying an arbitrary choice.

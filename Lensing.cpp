@@ -284,6 +284,20 @@ void func_lens(lens & l, source & s){
         } while(test > f);
     }
 
+    if (IMnum == 5) {
+        // Kroupa IMF + remnants: draw what the star was BORN as, then ask what is left of
+        // it. Doing it in that order is the point -- the mass function is a statement about
+        // formation, while the lens is whatever survives, and collapsing the two loses the
+        // black holes that make the long-tE regime exist at all.
+        const double Mi = drawKroupaInitialMass();
+        l.Ml = remnantMass(Mi);
+
+        // Ml_min/Ml_max bracket the PRESENT-DAY masses and also set the Mls efficiency
+        // grid, so a draw outside them would silently land outside every efficiency bin.
+        CHECK(l.Ml >= Ml_min);
+        CHECK(l.Ml <= Ml_max);
+    }
+
     if (IMnum == 4) {
        l.Ml = -1.0;
        do {

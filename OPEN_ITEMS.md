@@ -333,3 +333,86 @@ decision with real spread between prescriptions, and it should be made deliberat
 than folded into a bug fix. The white dwarf branch is on firmer ground (Kalirai et al. 2008,
 calibrated on open clusters) and the neutron star branch uses the canonical 1.4 Msun, so
 this is the one segment carrying an arbitrary choice.
+
+---
+
+## Five events have sigma_joint > sigma_Rubin, on matrices with condition number > 1e9
+
+Adding data cannot worsen a Fisher forecast: the joint information matrix is the sum of the
+per-survey ones, so `sigma_joint <= sigma_single` is an identity, not an approximation.
+`romanlib.check_monotonicity` asserts it, and on the 2026-08-30 Kroupa run it reports five
+violations out of 74,812 joint-detected events, in both `tE` and `piE`, with a maximum
+excess of **1.0011** -- one part in a thousand.
+
+All five have the same signature:
+
+| tE (d) | piE | ndw_L | ndw_R | condA_J | condA_L | sigtE_J | sigtE_L |
+|---|---|---|---|---|---|---|---|
+| 10.16 | 0.111 | 2361 | 49972 | 8.55e10 | 8.53e10 | 284.05 | 283.75 |
+| 10.39 | 0.180 | 1075 | 49634 | 1.64e11 | 1.64e11 | 54.32 | 54.32 |
+| 12.21 | 0.172 | 893 | 46908 | 5.33e10 | 5.33e10 | 147.28 | 147.27 |
+| 5.95 | 0.180 | 2360 | 49972 | 7.01e10 | 7.01e10 | 59.12 | 59.10 |
+| 9.30 | 0.055 | 2371 | 49984 | 1.28e09 | 1.28e09 | 71.58 | 71.58 |
+
+**This is round-off, not a partitioning bug.** A double carries about 16 significant digits;
+inverting a matrix with condition number 1e11 loses about 11 of them, leaving ~5 -- so a
+relative discrepancy of 1e-3 between two nearly identical inversions is the expected size,
+not a surprise. Note also that every one of these forecasts is meaningless on its own terms:
+`sigma_tE = 284 d` on a `tE = 10 d` event is not a measurement, and none of them pass the
+characterization criterion.
+
+**What is still worth doing.** The pipeline currently reports a sigma for any matrix GSL
+manages to invert, with no conditioning floor. A cut -- refuse to report when
+`condA > 1e8`, say, and set the sentinel instead -- would remove this class of artifact
+outright and would also stop absurd sigmas propagating into medians. Choosing the threshold
+needs a look at the condition-number distribution across the run, which is why it is
+recorded here rather than applied.
+
+Until then, `check_monotonicity` will keep printing this warning on every figure script. It
+should stay noisy: the day it fires on a *well*-conditioned event, that IS a bug.
+
+---
+
+## The binary's git stamp goes stale whenever `make` has nothing to do
+
+`Makefile:18` captures `GIT_COMMIT` at compile time and bakes it into the binary, which
+writes it to `run_provenance.txt`. But the stamp only refreshes when something actually
+recompiles. Editing a source file, building, and then committing leaves the binary carrying
+the *pre-commit* label -- and a later `make` reports "Nothing to be done" and keeps it.
+
+That is exactly what happened to the 2026-08-30 production run. `run_provenance.txt` and
+every figure derived from it read `git_commit=d6dd293-dirty`, while the sources that were
+actually compiled are the content of `5c74fbd` ("Lens the bulge with bulge stars, not
+MACHOs"). **The science is unaffected -- the right code ran -- but the label on 2.5 GB of
+output names the wrong commit.**
+
+**Fix options, none yet chosen:** make the stamp a `.PHONY` prerequisite so every build
+refreshes it; or have the binary refuse to run when `git diff --quiet HEAD` fails; or emit
+the stamp at *run* time by shelling out, which costs a subprocess but cannot go stale.
+
+**Interim rule for anyone running a production job:** `make clean && make` *after* the last
+commit, never before, and check the `git_commit` line in `run_provenance.txt` against
+`git rev-parse --short HEAD` before starting.
+
+---
+
+## F3's Roman-alone comparison rests on 1,950 events
+
+The (`tE`, `piE`) characterization map's panel (a) -- "what Rubin adds to Roman" -- can only
+use events inside Roman's footprint, because outside it Roman characterizes nothing for a
+reason that is geometric, not physical. On the 2026-08-30 run that is **1,950 of 74,812**
+joint-detected events, because only ~39 of 1,706 scanned sightlines fall inside the GBTDS
+footprint at the current stride.
+
+At 0.5 dex cells that leaves 16 coloured cells out of 56, most of the plane grey. The signal
+in those cells is real (ratios up to 2.0) but the error bars are not small, and no cell
+carries enough events to quote a trend within it.
+
+**What would fix it:** sampling that concentrates draws inside the Roman footprint rather
+than spreading them uniformly over the scan region -- which is Step E1's stratification
+question wearing a different hat. A footprint-weighted run would buy roughly a factor of 20
+more Roman-observed events for the same wall-clock, at the cost of needing explicit weights
+to recover survey-wide totals.
+
+Do not quote panel (a)'s cell values as precise until this is addressed. Panel (b), on all
+74,812 events, does not have this problem.

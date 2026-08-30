@@ -1100,3 +1100,223 @@ value is reported in `run_provenance.txt`.
 
 The pre-existing fixture event table is bit-identical — the new checks are purely additive and
 print above it.
+
+---
+
+## 20. Unplanned: the scan stalled forever on sky neither telescope observes
+
+**Commit:** `682c978`
+
+**Not in the plan.** Entry 18 widened the scan from one corner to the whole survey region.
+That exposed a latent property of the per-sightline stopping rule: it loops
+
+```
+while (icon < iconTarget or nlens < nlensTarget or nerr < nerrTarget)
+```
+
+which continues while *any* of the three floors is unmet — 850 detected stars, 150 detected
+lensing events, 2 events with a well-conditioned Fisher matrix. `nerr` only advances when
+`FisherM` succeeds, which needs epochs. **652 of the 1,706 sightlines in the widened region
+have no Rubin coverage at all**, and sightline 0 — where the scan starts — is one of them.
+With no epochs the third floor can never be met, so the loop ran without bound. The run
+appeared to hang at startup.
+
+**The fix, in two parts:**
+
+1. **Skip a sightline with no epochs from either telescope**, straight after the two
+   `matchVisibleEpochs` calls. `ndd == 0 and nddR == 0` means neither observatory ever
+   pointed here; there is nothing to simulate, and the correct answer is zero events, not an
+   infinite search for them.
+2. **Cap the draw count** at `maxDraws` (default 5e4, `--maxdraws` on the command line), and
+   record whether the budget was met. A sightline that hits the cap is counted in `nCapped`
+   and still aggregated if it produced anything; one that produced nothing usable is counted
+   in `nSkipBarren` and dropped.
+
+**Accounting added** so the outcome of every sightline is visible in `run_provenance.txt`:
+`nAggregated + nSkipNoCoverage + nSkipBarren` partitions the grid exactly (`nCapped`
+overlaps `nAggregated`, since a capped sightline can still yield events). On the production
+run this reads 1489 + 140 + 77 = 1706, with 77 capped.
+
+**A second, pre-existing assertion loosened.** `CHECK(icon == numd[0])` aborted the run
+outright. `icon` counts *observable* stars while `records.push_back` sits outside the
+visibility gate, so `numd[0]` counts every star drawn. The two were never equal once any
+star was drawn but not observable. Loosened to `CHECK(icon <= numd[0])`; no computed value
+changed. That `numd[0]` is the wrong denominator for the detection efficiency `EffiD` — it
+makes the efficiency 100% by construction — is recorded in `OPEN_ITEMS.md` rather than
+fixed here.
+
+---
+
+## 21. Unplanned bug fix: a `-1` sentinel was dragging a per-field mean precision negative
+
+**Commit:** `d6dd293`
+
+**Not in the plan.** The restarted run aborted after 84 minutes on `CHECK(Erfb > 0.0)`.
+
+`Erfb` is the per-field mean of the fractional error on the Rubin blend fraction, summed
+over characterized events. The guilty event was one of 102 in that field: Roman detected it,
+**it had no Rubin epochs at all**, and so the Rubin blend fraction `fb0` was never a free
+parameter in its joint fit. The code stored the not-measured sentinel `-1.0`, and
+`resu[2] = -1 / |fb0|` came out at −8499, which dragged the running mean to −83.
+
+**The mistaken assumption:** `okA[SJOINT] == 1` was being read as "every photometric
+parameter was measured". It means only that the matrix inverted. Which parameters were
+actually free is decided per event by `activePhotParams(surv, nRubinEpochs, nRomanEpochs)`
+— the Rubin flux pair `{2, 6}` is only active if Rubin has epochs, the Roman pair `{7, 8}`
+only if Roman does. An event with data from one telescope legitimately has sentinels in the
+other's flux parameters.
+
+**The fix (chosen by the user from three options):** require all nine contributing values to
+be non-negative before an event enters the mean, rather than gating on `okA` alone —
+
+```cpp
+const bool allMeasured = (co->flagi > 0 and co->okA[SJOINT]
+                          and co->resu[0] >= 0.0 and ... and co->resu[14] >= 0.0);
+if (allMeasured) { Eru0 += ...; nErAvg += 1.0; }
+```
+
+**Measured cost of the stricter gate:** one event excluded out of 48,959. The alternative —
+averaging each parameter over its own set of events — was rejected because it would make the
+different entries of the mean-precision vector refer to different samples.
+
+---
+
+## 22. The lens mass function was the LMC simulation's MACHO range, not a bulge population
+
+**Commit:** `5c74fbd`. **The largest single correction in this refactor.**
+
+**Not in the plan at all.** Found while reading the first full production run's output.
+
+**What was wrong.** The first complete run produced a median lens mass of **386.9 solar
+masses**, a median Einstein crossing time of **953 days**, a median angular Einstein radius
+of **13.75 mas**, and a median microlensing parallax of **0.005**. Those are not bulge
+numbers by any margin; the bulge's median lens is a few tenths of a solar mass and a typical
+event lasts tens of days.
+
+The cause was two constants in `Bulge.h`, inherited unchanged from the advisor's LMC
+simulation:
+
+```cpp
+constexpr double Ml_min =    3.0;
+constexpr double Ml_max = 5000.0;
+```
+
+That is a MACHO search range — the dark-matter compact-object hypothesis for the LMC
+microlensing excess. It is a perfectly sensible range *for that paper*. For the Galactic
+bulge it means every lens is a hundreds-of-solar-mass object.
+
+**A single error explained every distribution**, through the standard scalings:
+`tE ∝ sqrt(Ml)`, `thetaE ∝ sqrt(Ml)`, `piE ∝ 1/sqrt(Ml)`. Masses ~1000× too large give
+timescales ~30× too long and parallaxes ~30× too small — which is exactly what the run
+showed.
+
+**Why this invalidated the headline result rather than merely biasing it.** Only **2.05%**
+of detected events had `tE < 110 days`, the width of a Roman season gap. An event longer
+than the gap cannot be *lost* in the gap — it is still going on when the next season starts.
+So the gap-filling figure was flat at ~1 not because Rubin adds nothing, but because the
+simulated population contained almost no events capable of falling into a gap. **The flat F2
+curve was a property of the lens masses, not a measurement of survey synergy.**
+
+**What replaced it (chosen by the user):** a Kroupa (2001) initial mass function plus
+stellar-remnant mapping, so the lens population is the bulge's actual stellar population.
+
+- `drawKroupaInitialMass()` in `helper.cpp`: three-segment broken power law over
+  0.01–120 solar masses, slopes 0.3 / 1.3 / 2.3 breaking at 0.08 and 0.50, sampled by
+  inverse CDF with continuity coefficients carried across the breaks.
+- `remnantMass()`: main sequence below 1 solar mass (nothing heavier has had time to
+  evolve at bulge ages); white dwarf via Kalirai et al. (2008), `0.109*Mi + 0.394`, up to
+  Mi = 8; neutron star at the canonical 1.4 up to Mi = 20; black hole above that by
+  `0.24*Mi` — the one arbitrary link, recorded in `OPEN_ITEMS.md`.
+- `IMnum = 5` selects the new branch. Note `IMnum` doubles as the output-file suffix, which
+  is why the new run writes `test5.dat` and `MapLMC5.dat`.
+- `Ml_min` / `Ml_max` become 0.01 / 30.0 under `IMnum == 5`, and the branch asserts the drawn
+  mass falls inside them.
+
+**Verification.**
+- Sampled segment fractions over 2×10⁶ draws: 0.3712 / 0.4785 / 0.1503, against the analytic
+  0.3715 / 0.4781 / 0.1504.
+- Remnant mix: 93.89% main sequence, 5.71% white dwarf, 0.28% neutron star, 0.11% black hole.
+- Detected population afterwards: median `thetaE` 0.33 mas, median `piE` 0.24, median `tE`
+  45 days, and **74% of detected events below 110 days** — up from 2.05%.
+- `fishertest` bit-identical, as it must be: the fixture builds its own events and never
+  draws a mass.
+
+**Consequence for anything already recorded.** Every number produced before this commit
+describes a MACHO population. The earlier run is kept at `runs/macho_final_20260830/` for
+comparison, and should be cited as such and never as a bulge forecast.
+
+---
+
+## 23. Phase F built as a Python analysis layer, and F2 came out ordered the opposite way
+
+**Commits:** `df6f39b` (loader + F1 + F2), `2526bd0` (F3).
+
+**Plan said:** three analysis products — a results table (F1), the gap-filling figure (F2),
+and the (`tE`, `piE`) characterization map (F3) — without saying how they should be
+organized.
+
+**Done:** an `analysis/` package with one shared loader, `analysis/romanlib.py`, that every
+script goes through. This is deliberate. The C++ side reports "not measured" as an explicit
+`-1.0` rather than NaN, and *three separate bugs* during development came from a `-1` being
+summed as though it were a measurement (entries 21 and 19.3, plus the `Erfb` abort). Encoding
+the sentinel rules once, in one place, is what stops that class of error reappearing on the
+Python side. `romanlib` also gates on `okA`/`okB` and never on `flagi` (which is stale on
+uncharacterized events — see `OPEN_ITEMS.md`), reads column names from the file's own header
+rather than a hardcoded list, and exposes `check_monotonicity()` so every figure script
+asserts `sigma_joint <= sigma_single` before plotting.
+
+### 23.1 A scope restriction F2 cannot do without
+
+The first F2 run showed a flat ~20% rescue floor with no structure. The cause was that
+**22,457 of the 23,823 in-mission joint-detected events have zero Roman epochs** — only ~39
+of 1,706 sightlines fall inside the GBTDS footprint. Counting those as "Roman alone could
+not characterize it" is true and vacuous: Roman missed them because it never pointed there,
+not because of a season gap. The figure was measuring footprint coverage.
+
+F2 is therefore restricted to `ndw_R > 0` as well as to `t0zone` in {in-season, in-gap}.
+The gap-filling question is only meaningful where Roman has data and the *timing* is what
+limits it.
+
+### 23.2 The plan predicted the drop deepens with `tE`. It deepens with *short* `tE`.
+
+The plan's Step F2 says: "flat at ~1 for events peaking mid-season; dropping as `t0` moves
+into a gap; **the drop deepening with `tE`**."
+
+The measured curves (`f2_kroupa.png`, 1,363 events in scope) drop in the opposite order:
+
+| tE bin | median sigma_joint/sigma_Roman, mid-season | deep in gap |
+|---|---|---|
+| 10–30 d | 0.99 | **0.014** |
+| 30–100 d | 0.97 | 0.49 |
+| 100–300 d | 0.92 | 0.90 |
+| 300+ d | ~1.0 | ~1.0 |
+
+**The plan's expectation was not wrong so much as attached to the wrong parameter.** What
+F2 plots is the ratio for `sigma_tE`, and for `sigma_tE` the short-`tE` ordering is the
+physically correct one: a 20-day event peaking in a 110-day gap is *entirely* missed by
+Roman — no rise, no peak, no fall — so Roman's own `tE` constraint is nearly worthless and
+anything Rubin contributes is a large fractional improvement. A 500-day event peaking in the
+same gap is still visibly magnified when the next season opens, so Roman constrains it
+regardless and Rubin's addition is marginal.
+
+The plan's long-`tE` argument is about a *different* parameter: `sigma_piE`. Annual parallax
+needs the light curve sampled across a substantial fraction of Earth's orbit, which only
+long events provide, and there Rubin's continuous coverage is what makes the sampling
+possible. **A `sigma_piE`-versus-`dt_edge` version of F2 is the figure that would test the
+plan's stated claim, and it has not been made yet.**
+
+Recorded here rather than silently corrected in the plan text, per the convention of this
+file: the plan records what was believed, this file records what was found.
+
+### 23.3 F3 deviates from the plan's single-panel description
+
+The plan describes one map coloured by "the ratio of joint-characterized to
+Roman-alone-characterized fractions". F3 has **two** panels, because the Roman-alone
+denominator is only meaningful inside the footprint (1,950 events) while the Rubin-alone
+comparison is available on all 74,812 joint-detected events. Reporting only the first would
+throw away the whole-survey statistic; reporting only the second would answer a different
+question than the plan asked. Both are shown, on one shared colour scale.
+
+Cells where the single survey characterizes nothing but the joint fit does are **hatched**
+rather than coloured: that ratio is infinite, not large, and painting infinity at the top of
+a colour ramp would understate it.

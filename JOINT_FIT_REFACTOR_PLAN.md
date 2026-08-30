@@ -78,6 +78,38 @@ Create a branch: `git checkout -b joint-fisher-refactor`. Every step commits to 
 
 Establish a build baseline: run the syntax check on all `.cpp` files and record the result, so we know whether any later failure is ours.
 
+
+### 0.6 Keeping the record — added 2026-08-31, and binding from here on
+
+*This subsection was added after Phase F. Everything above it is the plan as originally
+written and is left untouched by design.*
+
+Sessions end — they run out of context, the laptop hibernates, the power goes out. All three
+have happened during this work. **Knowledge that lives only in a session transcript is lost
+when that session dies.** So writing it down is part of doing a step, not cleanup afterwards,
+and it does not wait to be asked for.
+
+Three documents, maintained by every session:
+
+1. **`DEVIATIONS.md`** — one numbered entry per departure from this plan, per pre-existing
+   bug found, and per result that contradicts what this plan expected. Give what the plan
+   said, what was done instead, why, the commit, and the verification numbers.
+2. **`OPEN_ITEMS.md`** — one entry per problem noticed and deliberately not fixed. Give what
+   is wrong, why it matters scientifically, why it is deferred, and what the fix would
+   involve. This is the mechanism that makes rule 1 of §0.1 — never silently fix something
+   noticed in a later step — actually work.
+3. **`PROGRESS.md`** — the entry point for a new session: head commit, what is done, where
+   the current data live, the headline numbers, what is next, and the traps. Update it at the
+   end of any session that changed the state of the work.
+
+**This plan's own text is never edited** (this subsection and any future rules being the
+exception). It records what was believed when it was written, which is worth preserving —
+including where it turned out to be wrong. Corrections go in `DEVIATIONS.md`.
+
+Write as the work happens, not in a batch at the end: an interrupted session must still
+leave a usable record. Before starting a long-running job, record what it is, where its
+output will land, and how to tell whether it finished.
+
 ---
 
 ## PHASE A — Orientation

@@ -173,6 +173,29 @@ struct RunConfig {
     int    nlensTarget = 150;
     double nerrTarget  = 2.0;
 
+    // Hard cap on stars drawn at ONE sightline, regardless of the budgets above.
+    //
+    // The three targets are combined with AND: the loop runs until icon, nlens AND nerr
+    // are all met. nerr only advances when FisherM succeeds, so a sightline where no
+    // event is ever characterisable cannot satisfy it and the loop never exits. That is
+    // not hypothetical -- the 2026-08-29 production attempt drew 331,931 events at
+    // sightline 0 with ndw_L = ndw_R = 0 on every one of them and had to be killed.
+    //
+    // Sightlines with NO coverage at all are skipped outright before the loop starts, so
+    // this cap is for the partial case: a few epochs exist, events are occasionally
+    // detected, but Fisher almost never succeeds. Such a sightline would still run far
+    // past any useful precision. The cap bounds it and the run reports how many sightlines
+    // hit it, so a cap set too low announces itself rather than silently truncating.
+    //
+    // Default sized from measurement, not taste: a well-covered bulge sightline (l=0.5,
+    // b=-1.0, 2412 Rubin and 50401 Roman epochs) meets the full 850/150/2.0 budget in
+    // exactly 850 draws -- every draw there is observable. 5e4 is ~59x that, so the cap
+    // cannot bite a sightline that is merely unlucky. Draw cost scales with the epoch
+    // count, so the sightlines that could approach the cap are the sparse ones, where a
+    // draw is ~1 ms (measured: 331,931 draws in 5.5 min at a zero-epoch sightline) and
+    // 5e4 draws costs under a minute.
+    double maxDraws    = 5.0e4;
+
     // Restrict the scan to the old hardcoded 0.1x0.1 deg patch instead of the full
     // region. Kept only so a run can be compared against the pre-Step-4 numbers.
     bool   stubPatch   = false;
@@ -187,6 +210,7 @@ static void printUsage(const char* prog) {
         << "  --events N     per-sightline detected-event target, icon (default 850)\n"
         << "  --lenses N     per-sightline characterised-event target, nlens (default 150)\n"
         << "  --nerr X       per-sightline Fisher-error target (default 2.0)\n"
+        << "  --maxdraws X   per-sightline cap on drawn stars (default 5e4)\n"
         << "  --stub         scan the old 0.1x0.1 deg patch instead of the full region\n"
         << "  --help         this message\n";
 }
@@ -212,6 +236,7 @@ int main(int argc, char** argv) {
         else if (arg == "--events")  cfg.iconTarget  = std::atoi(need("--events"));
         else if (arg == "--lenses")  cfg.nlensTarget = std::atoi(need("--lenses"));
         else if (arg == "--nerr")    cfg.nerrTarget  = std::atof(need("--nerr"));
+        else if (arg == "--maxdraws") cfg.maxDraws    = std::atof(need("--maxdraws"));
         else if (arg == "--stub")    cfg.stubPatch   = true;
         else if (arg == "--help")  { printUsage(argv[0]); return 0; }
         else {
@@ -232,6 +257,13 @@ int main(int argc, char** argv) {
     }
     if (cfg.iconTarget < 1 or cfg.nlensTarget < 0 or cfg.nerrTarget < 0.0) {
         std::cerr << "ERROR: --events must be >= 1, --lenses and --nerr >= 0\n";
+        return 2;
+    }
+    // A cap below the event budget would stop every sightline early, which is not a cap
+    // but a silent redefinition of the budget.
+    if (cfg.maxDraws < double(cfg.iconTarget)) {
+        std::cerr << "ERROR: --maxdraws (" << cfg.maxDraws << ") is below --events ("
+                  << cfg.iconTarget << "); no sightline could reach its budget\n";
         return 2;
     }
 
@@ -637,6 +669,7 @@ int main(int argc, char** argv) {
              << "# events_target       " << cfg.iconTarget << "   # icon\n"
              << "# lenses_target       " << cfg.nlensTarget << "   # nlens\n"
              << "# nerr_target         " << cfg.nerrTarget << "\n"
+             << "# maxdraws            " << cfg.maxDraws << "   # per-sightline draw cap\n"
              << "# region              " << (cfg.stubPatch ? "stub patch" : "full") << "\n"
              << "# Tobs_days           " << Tobs << "\n"
              << "# roman_seasons       " << sched.seasons.size() << "\n"
@@ -671,6 +704,17 @@ int main(int argc, char** argv) {
     // the run, which the provenance block and the coverage guard both rely on.
     const int nLon = int(std::floor((lonMax - lonMin) / gridStep + 1e-9)) + 1;
     const int nLat = int(std::floor((latMax - latMin) / gridStep + 1e-9)) + 1;
+
+    // Sightline bookkeeping. The scan region is the Roman field box padded by one Rubin
+    // FoV radius (wid in Bulge.h), so it deliberately extends past where either survey
+    // actually points -- a Rubin pointing centred up to 1.75 deg away can still catch a
+    // Roman field corner. The consequence is that a large part of the grid is empty sky.
+    // These counters are what make that visible: a density in deg^-2 computed downstream
+    // must know how much of the scanned area yielded nothing, and why.
+    int nSkipNoCoverage = 0; //no Rubin AND no Roman epochs -- never entered the star loop
+    int nSkipBarren     = 0; //had epochs, but produced no characterised event to aggregate
+    int nCapped         = 0; //stopped by --maxdraws with its budget unmet
+    int nAggregated     = 0; //reached the per-sightline aggregation block
     for (int iLon = 0; iLon < nLon; ++iLon) {
         s->lon = lonMin + iLon * gridStep;
         nri +=  1;
@@ -691,6 +735,24 @@ int main(int argc, char** argv) {
 
             cout << "ndd (LSST): "  << ndd  << "\t minc (LSST): "  << minc  << endl;
             cout << "ndd (Roman): " << nddR << "\t minc (Roman): " << mincR << endl;
+
+            // Empty sky. Neither survey visits this sightline, so no light curve can ever
+            // have a datum, no event can be detected, and nerr can never advance -- the
+            // do/while below would spin forever. Skipping is not an approximation: a
+            // sightline with no epochs contributes exactly zero events to the yield.
+            //
+            // It has to be a `continue` rather than a run that finds nothing, because the
+            // aggregation block at the end of this loop asserts CHECK(numd[1] != 0.0) and
+            // CHECK(nerr != 0.0) -- reaching it with an empty field aborts the whole run.
+            //
+            // The skipped area is NOT written to the map file, so anything converting the
+            // per-sightline Neven density into a total count must use the aggregated
+            // sightline count reported at the end of the run, not the grid size.
+            if (ndd == 0 and nddR == 0) {
+                nSkipNoCoverage += 1;
+                cout << "  SKIP: no Rubin and no Roman epochs at this sightline" << endl;
+                continue;
+            }
  
             icon  = 0;
             nlens = 0;
@@ -1294,7 +1356,33 @@ int main(int argc, char** argv) {
             //cout << "icon: " << icon << "\tnlens: " << nlens << "\tnerr: " << nerr << endl;
             // Per-sightline event budget -- see RunConfig. Was hardcoded to a stub
             // 20/5/1.0 with the production 850/150/2.0 commented out beside it.
-            } while (icon < cfg.iconTarget or nlens < cfg.nlensTarget or nerr < cfg.nerrTarget);
+            } while ((icon < cfg.iconTarget or nlens < cfg.nlensTarget or nerr < cfg.nerrTarget)
+                     and nsim < cfg.maxDraws);
+
+            // Did the sightline actually meet its budget, or did the cap stop it? The
+            // distinction matters: a capped sightline's Poisson precision is whatever it
+            // reached, not what was asked for, and averaging it in as though it were a
+            // full sample would understate the error bars.
+            const bool budgetMet = (icon  >= cfg.iconTarget and
+                                    nlens >= cfg.nlensTarget and
+                                    nerr  >= cfg.nerrTarget);
+            if (!budgetMet) {
+                nCapped += 1;
+                cout << "  CAP: stopped at nsim = " << nsim << " with icon = " << icon
+                     << "/" << cfg.iconTarget << ", nlens = " << nlens << "/" << cfg.nlensTarget
+                     << ", nerr = " << nerr << "/" << cfg.nerrTarget << endl;
+            }
+
+            // Some epochs existed but nothing survived to be aggregated. Same reasoning as
+            // the no-coverage skip above: the CHECK block below requires at least one
+            // detected AND one characterised event, so this must not fall through.
+            if (nlens < 1 or nerr <= 0.0) {
+                nSkipBarren += 1;
+                cout << "  BARREN: " << nlens << " detected, " << nerr
+                     << " characterised -- nothing to aggregate at this sightline" << endl;
+                continue;
+            }
+            nAggregated += 1;
    
             for (int i = 0; i <= GG; ++i) {
                 l->NstE[i] += l->nstE[i];
@@ -1558,7 +1646,18 @@ int main(int argc, char** argv) {
     CHECK(numd[1] != 0.0);
     CHECK(nsim != 0.0);
     
-    CHECK(icon == numd[0]);
+    // NOT an equality. `icon` counts stars that were OBSERVABLE (flagf > 0 and ndw > 2);
+    // `numd[0]` counts every record pushed, and the push site sits OUTSIDE that gate, so a
+    // star that was drawn but never observable still gets a record. The two are equal only
+    // where every draw is observable, which is true in the dense stub patch that every run
+    // before commit 81a6b04 used and false as soon as the scan reaches sparse sky -- at
+    // l=-3.499, b=-1.98 it is 5 observable out of 15 drawn.
+    //
+    // Loosening this assertion changes no computed value. It does expose a real question
+    // about what the per-sightline denominators mean -- EffiD = numd[0]/nsim is 100% by
+    // construction, and the [0] means average over drawn rather than observed stars. That
+    // is a science decision, recorded in OPEN_ITEMS.md, not something to change here.
+    CHECK(icon <= numd[0]);
     CHECK(numd[1] == nlens);
      
     cout << "==============================================================" << endl;  
@@ -1574,6 +1673,34 @@ int main(int argc, char** argv) {
     // comparable between runs of different length.
     // ---------------------------------------------------------------------------------------
     cout << "\n================ RUN TOTALS ================" << endl;
+    // Sightline accounting. The first THREE partition the grid and must sum to its size;
+    // if they do not, a sightline left the loop by a path nobody wrote down. `nCapped` is
+    // not part of that partition -- it overlaps both aggregated and barren, since hitting
+    // the draw cap says how a sightline stopped, not what it yielded.
+    cout << "Sightlines: " << nAggregated << " aggregated, "
+         << nSkipNoCoverage << " skipped (no coverage), "
+         << nSkipBarren << " skipped (barren), "
+         << nCapped << " hit --maxdraws" << endl;
+    cout << "  scanned area " << (nAggregated + nSkipNoCoverage + nSkipBarren) * gridStep * gridStep
+         << " deg^2, of which " << nAggregated * gridStep * gridStep
+         << " deg^2 produced events" << endl;
+    if (nCapped > 0)
+        cout << "  WARNING: " << nCapped << " sightline(s) stopped on the draw cap with their "
+             << "budget unmet. Their Poisson precision is lower than requested -- raise "
+             << "--maxdraws or accept the larger error bars." << endl;
+    {
+        // Appended, not written with the startup block: these counts are only known now,
+        // and the area weighting downstream depends on them.
+        std::ofstream fprov("./files/MONTLMC/files/run_provenance.txt", std::ios::app);
+        if (fprov) {
+            fprov << "# ---- sightline outcome (written at end of run) ----\n"
+                  << "# sightlines_aggregated   " << nAggregated << "\n"
+                  << "# sightlines_no_coverage  " << nSkipNoCoverage << "\n"
+                  << "# sightlines_barren       " << nSkipBarren << "\n"
+                  << "# sightlines_capped       " << nCapped << "\n"
+                  << "# area_with_events_deg2   " << nAggregated * gridStep * gridStep << "\n";
+        }
+    }
     // Draws that never produced a light curve never reach the detection test, so they are not
     // in NDetClassTot at all. Deriving DET_NONE by subtraction rather than counting it there
     // keeps the classes summing to the number of simulated events, which is what makes the

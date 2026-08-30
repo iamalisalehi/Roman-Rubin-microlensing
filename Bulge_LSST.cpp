@@ -1493,7 +1493,29 @@ int main(int argc, char** argv) {
             // forming a mean precision, and an event with no measurement has no precision to
             // average -- including it would be averaging a sentinel. The count of events the
             // mean is actually over is tracked separately so the denominator is honest.
-            if (co->flagi > 0 and co->okA[SJOINT]) {
+            //
+            // okA[SJOINT] is NOT sufficient on its own. It says the joint photometric
+            // matrix inverted -- not that every parameter was in the fit. Since the joint
+            // refactor gave each survey partition its own active parameter subset
+            // (activePhotParams in Bulge.h), fb0 and mbs0 enter the joint fit only when the
+            // event has Rubin epochs, and fb1/mbs1 only when it has Roman ones. An event
+            // detected by Roman with no Rubin data therefore has a perfectly valid joint
+            // fit in which Era[2] is still the -1.0 sentinel, and ErrorCal divides that by
+            // fb0 regardless: one such event contributed resu[2] = -8499 at l=0.881,
+            // b=-0.94 and dragged a 102-event mean to -83, tripping CHECK(Erfb > 0.0).
+            //
+            // So test the values themselves. An event is averaged only if all nine are real
+            // measurements, which keeps every mean over the same event set and keeps
+            // nErAvg meaningful as a single denominator. The cost is small and measured:
+            // across 48,959 characterised events in the 2026-08-29 run exactly ONE was
+            // excluded by this, and no column other than resu[2] was ever negative.
+            const bool allMeasured = (co->flagi > 0 and co->okA[SJOINT]
+                                      and co->resu[0]  >= 0.0 and co->resu[1]  >= 0.0
+                                      and co->resu[2]  >= 0.0 and co->resu[3]  >= 0.0
+                                      and co->resu[5]  >= 0.0 and co->resu[9]  >= 0.0
+                                      and co->resu[10] >= 0.0 and co->resu[13] >= 0.0
+                                      and co->resu[14] >= 0.0);
+            if (allMeasured) {
                 Eru0  += co->resu[0];  ErtE   += co->resu[1];  Erfb  += co->resu[2];
                 ErpiE += co->resu[3];  ErtetE += co->resu[5];  Erml  += co->resu[9];
                 Erdl  += co->resu[10]; Ermul  += co->resu[13]; Ermus += co->resu[14];

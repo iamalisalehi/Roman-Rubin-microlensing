@@ -210,3 +210,101 @@ previous characterized event's value.
 Not fixed in Step D1 because `flagi` is also read inside `FisherM` itself and adding it to the
 reset changes behaviour rather than only bookkeeping — it needs its own look at what `flagi` is
 actually supposed to mean.
+
+---
+
+## Two output files open in append mode, so a re-run silently doubles them
+
+**What.** `LpLMC2.dat` and `MapLMC2.dat` are opened with `std::ios::app`, not truncated:
+
+```
+Bulge_LSST.cpp:496    std::ofstream fil3(fnGam, std::ios::app);      // MapLMC2.dat
+Bulge_LSST.cpp:1149   std::ofstream fil0_append(fnLDt, std::ios::app); // LpLMC2.dat
+```
+
+Every other output (`EfLMC2.dat`, `EfLMC2B.dat`, `magC0.dat`, `datC0.dat`, `test2.dat`) is
+truncated at startup. These two are not, and nothing in the run says so: a second run appends its
+rows to the first run's and the file ends up holding two runs' worth of events with no marker
+between them. A stub run followed by a production run produces a `MapLMC2.dat` that is 36
+sightlines of diagnostics glued to the front of the real dataset.
+
+**How it was found.** Launching the Step D1 production run, 2026-08-29. The files had to be
+cleared by hand first, and there is nothing in the code, the provenance block or the output that
+would have caught it if they hadn't been.
+
+**What it should be.** Either truncate them like every other output, or — if the append is
+deliberate, e.g. accumulating across `IMnum` values the way `BHLSSTMONTS.dat` is cleared only when
+`IMnum == 1` — say so in a comment and record the pre-existing row count in `run_provenance.txt`
+so a downstream reader can tell where this run's rows begin.
+
+**Why not now.** It needs a decision about whether the append was ever intentional, which means
+looking at what `IMnum` is for. Changing it blind risks breaking a workflow that relies on the
+accumulation.
+
+---
+
+## The startup file check makes an unread file's existence a precondition, and names no file when it fails
+
+**What.** `LpLMC2.dat` is opened twice. Line 490 opens it for *reading*; nothing ever reads from
+that stream. Its only purpose is to be tested at line 523:
+
+```
+Bulge_LSST.cpp:490    std::ifstream fil0(fnLDt);
+Bulge_LSST.cpp:523    if (!fil0 || !fil2 || !fil2b || !fil3 || !fil4 || !fil5) {
+                          std::cerr << "Cannot open one or more files!" << std::endl;
+```
+
+The actual writing is done by a separate append stream at line 1149. So the file must **exist** for
+the run to start, even though its contents are never used — and if it does not, the run dies after
+reading the baselines, the extinction maps and the whole CMD set, several minutes in, with a
+message that names none of the six files it tested.
+
+**How it was found.** The first attempt at the Step D1 production run, 2026-08-29, died here after
+~4 minutes because `LpLMC2.dat` had been deleted to clear the append (see the item above). The log
+showed the schedule guard and `read_cmd` succeeding, then `Cannot open one or more files!` with no
+indication of which.
+
+**What it should be.** Drop `fil0` if the existence of that file is genuinely not a precondition,
+and check each stream separately with the filename in the message — the same discipline the Roman
+schedule guard already follows, which prints the margins that failed rather than a bare verdict.
+
+**Why not now.** Cosmetic on its own, and it belongs with whatever step next touches that block —
+most naturally the `test2.dat` renaming item above, which moves output paths anyway.
+
+---
+
+## `numd[0]` counts drawn stars, not observable ones, so `EffiD` is 100% by construction
+
+**What.** `icon` is incremented only inside the visibility gate:
+
+```
+Bulge_LSST.cpp:1149   if (flagf > 0 and ndw > 2) { //if star is visible
+Bulge_LSST.cpp:1151       icon +=1;
+```
+
+but `records.push_back(...)` sits **outside** that block, so every drawn star gets a record, and
+`numd[0]` — which counts records — is the number of stars *drawn*, not the number observable. The
+two are equal only where every draw is observable.
+
+**Consequences.**
+
+- `EffiD = numd[0] * 100 / nsim` is described as "probability of detecting stars" but is 100% by
+  construction, since a record is pushed on every draw.
+- The per-sightline `[0]` means (`tE[0]`, `u0[0]`, `Ml[0]`, `fb[0]`, `mbs[0]`, `Map[0]`, `Ext[0]`,
+  …) are averages over **drawn** stars, not observed ones.
+- `EffiL = numd[1] * 100 / numd[0]` is detected-per-drawn, not detected-per-observable.
+
+**How it was found.** `CHECK(icon == numd[0])` aborted the 2026-08-29 full-region run at
+l = -3.499, b = -1.98, where 5 of 15 drawn stars were observable. It had never fired before because
+every run prior to `81a6b04` used the dense 0.1x0.1 deg stub patch, where every draw *is*
+observable and the equality holds by accident of the field.
+
+**What was done.** The assertion was loosened to `CHECK(icon <= numd[0])`, which is the invariant
+that actually holds. **No computed value changed** — only the assertion. The denominators are
+untouched.
+
+**What is still open.** Which denominator each quantity *should* use. If `EffiD` is meant to be the
+fraction of drawn stars that are observable, it should be `icon / nsim`. If the `[0]` means are
+meant to describe the observable population, the sums need the visibility gate. Both change
+published numbers, so neither belongs in a bookkeeping fix — it needs a decision about what each
+quantity is for, and a re-take of anything already quoted from them.

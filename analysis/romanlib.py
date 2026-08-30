@@ -178,8 +178,12 @@ def ratio_joint_over(df, param, survey):
     """Per-event sigma_joint / sigma_<survey>, NaN unless BOTH were measured.
 
     Always per event, then aggregate -- never a ratio of two separately-averaged sigmas.
-    Adding data cannot worsen a Fisher forecast, so this is bounded above by 1 up to
-    floating point; values above 1 are a bug, not a result.
+    Adding data cannot worsen a Fisher forecast, so this is bounded above by 1 in exact
+    arithmetic. In practice a handful of events exceed 1 by ~1e-3; every one of them has a
+    photometric condition number above 1e9, where double precision has already lost most of
+    its digits (see OPEN_ITEMS.md). A violation on a WELL-conditioned event would be a
+    partitioning bug; on an ill-conditioned one it is round-off on a forecast that was
+    meaningless anyway.
     """
     return sigma(df, param, "joint") / sigma(df, param, survey)
 
@@ -205,9 +209,35 @@ def check_monotonicity(df, params=("tE", "piE", "tetE", "Ml"), tol=1e-9):
     return bad
 
 
+# Where the simulator writes run_provenance.txt, and where a copy is sometimes kept
+# beside an archived run. Searched in order. Hardcoding only the repo-root name meant every
+# figure silently carried NO provenance stamp, because the file the simulator actually
+# writes lives under files/MONTLMC/files/.
+PROVENANCE_SEARCH = ("run_provenance.txt",
+                     "files/MONTLMC/files/run_provenance.txt")
+
+
+def find_provenance(explicit=None, near=None):
+    """Locate run_provenance.txt: an explicit path, then beside the events file, then the
+    standard locations. Returns None if there is none -- callers must say so on the figure
+    rather than print an unlabelled plot."""
+    cands = []
+    if explicit:
+        cands.append(explicit)
+    if near:
+        cands.append(os.path.join(os.path.dirname(os.path.abspath(near)),
+                                  "run_provenance.txt"))
+    cands.extend(PROVENANCE_SEARCH)
+    for c in cands:
+        if c and os.path.exists(c):
+            return c
+    return None
+
+
 def describe(path_events, path_prov=None):
     """One-line provenance summary to print at the top of every figure-producing script."""
     parts = [f"events={os.path.basename(path_events)}"]
+    path_prov = find_provenance(path_prov, near=path_events)
     if path_prov and os.path.exists(path_prov):
         prov = load_provenance(path_prov)
         for k in ("git_commit", "stride", "events_target", "sightlines_aggregated"):
@@ -215,4 +245,6 @@ def describe(path_events, path_prov=None):
                 parts.append(f"{k}={prov[k]}")
         if "sightlines_aggregated" not in prov:
             parts.append("INCOMPLETE-RUN")
+    else:
+        parts.append("provenance=NOT FOUND")
     return "  ".join(parts)

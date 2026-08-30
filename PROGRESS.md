@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-08-31, after Step F3.
 **Branch:** `joint-fisher-refactor` (never commit to `main`).
-**Head at last update:** `2526bd0` — "Map where in the (tE, piE) plane the joint fit wins".
+**Head at last update:** `7a1b591` — "Write down what a dying session would otherwise take with it".
 
 ---
 
@@ -141,6 +141,10 @@ with 77 capped. 68.24 deg² scanned, 59.56 deg² produced events. Zero assertion
 the later `make` said "Nothing to be done" and kept the stale stamp. Every figure carries
 the wrong commit in its footer. **`OPEN_ITEMS.md` has the fix options and the interim rule:
 `make clean && make` after the last commit, never before.**
+
+The binary has since been rebuilt clean at `7a1b591` and stamps correctly, and `./fishertest`
+passes with all assertions held. The **next** run will be labelled properly; `test5.dat` and the
+figures already made from it keep the wrong label and should be cited with that caveat.
 
 ---
 

@@ -1,6 +1,6 @@
 # PROGRESS.md — where this project stands
 
-**Last updated:** 2026-08-31, after Step F3.
+**Last updated:** 2026-08-31, after the `sigma_piE` version of F2.
 **Branch:** `joint-fisher-refactor` (never commit to `main`).
 **Head at last update:** `7a1b591` — "Write down what a dying session would otherwise take with it".
 
@@ -40,7 +40,10 @@ finished on 2026-08-30 against a corrected bulge lens population: 5,571,168 simu
 events, 74,812 joint detections, over 1,489 aggregated sightlines. All three Phase F
 analysis products (F1 table, F2 gap-filling figure, F3 characterization map) have been built
 and run against it, and **the gap-filling signal — the thesis's second novelty claim — is
-visible in the data for the first time.** What remains is Phase E's sampling work (which
+visible in the data for the first time.** A fourth product, F2 repeated for `sigma_piE`, has
+since settled the plan's long-`tE` annual-parallax prediction: it is not supported, because
+Roman alone already measures the parallax of long events (Deviation 24). What remains is
+Phase E's sampling work (which
 would sharpen the Roman-footprint statistics), Phase G (physics separation, validation
 against published Rubin-only numbers, and reconciling the whitepaper), and the deferred
 GBTDS-footprint item.
@@ -112,6 +115,10 @@ Commits are on `joint-fisher-refactor`. Where a step deviated from the plan, the
 - `df6f39b` — `analysis/romanlib.py` (the shared sentinel-aware loader), `analysis/f1_results_table.py`,
   `analysis/f2_gap_filling.py`. **Deviation 23.**
 - `2526bd0` — `analysis/f3_characterization_map.py`.
+- **this commit** — `f2_gap_filling.py` gained `--param {tE,piE}`, and the `sigma_piE`
+  version of F2 was made. It answers the question Deviation 23.2 left open, and the answer
+  is negative: the plan's long-`tE` annual-parallax prediction fails on `piE` too.
+  **Deviation 24.**
 
 ---
 
@@ -123,7 +130,8 @@ Commits are on `joint-fisher-refactor`. Where a step deviated from the plan, the
 | Per-sightline aggregates | `files/MONTLMC/files/MapLMC5.dat` |
 | Run provenance | `files/MONTLMC/files/run_provenance.txt` |
 | F1 results table | `f1_kroupa.csv` |
-| F2 gap-filling figure and its data | `f2_kroupa.png`, `f2_kroupa.csv` |
+| F2 gap-filling figure and its data, `sigma_tE` | `f2_kroupa.png`, `f2_kroupa.csv` |
+| F2 gap-filling figure and its data, `sigma_piE` | `f2_piE_kroupa.png`, `f2_piE_kroupa.csv` |
 | F3 characterization map and its data | `f3_kroupa.png`, `f3_kroupa.csv` |
 | Previous (MACHO-population) run, kept for comparison only | `runs/macho_final_20260830/` |
 
@@ -168,10 +176,30 @@ Median `sigma_joint / sigma_Roman` for `tE`, against days from the nearest seaso
 The yield panel shows the rescue fraction rising through the gap, reaching ~0.30 for the
 30–100 d bin.
 
-**The ordering is the reverse of what the plan predicted, and the plan's prediction belongs
-to a different parameter.** See Deviation 23.2. A `sigma_piE`-versus-`dt_edge` version of
-this figure is the one that would test the plan's stated long-`tE` claim, and it does not
-exist yet.
+**The ordering is the reverse of what the plan predicted.** See Deviation 23.2.
+
+### F2 in `sigma_piE` — the plan's long-`tE` claim, tested and not supported
+
+`f2_piE_kroupa.png`, same 1,363 events, same binning, ratio in `piE` instead of `tE`:
+
+| tE bin | mid-season | in gap (+22.5 d) | deep in gap (+52.5 d) | n |
+|---|---|---|---|---|
+| 10–30 d | 0.99 | 0.29 | **0.056** | 329 |
+| 30–100 d | 0.97 | 0.82 | 0.55 | 476 |
+| 100–300 d | 0.94 | 0.93 | 0.90 | 267 |
+| 300+ d | 0.98 | 0.97 | **0.99** | 124 |
+
+The ordering is the same as for `sigma_tE` — the drop deepens with **short** `tE`, and the
+long-`tE` bin is flat at ~1 straight through the gap. The plan expected the opposite, on the
+grounds that Roman's gaps would prevent the annual parallax from being sampled for long
+events. They do not: a 300+ day event spans several Roman seasons, and **94% of long
+in-scope events have `piE` measured to better than 2 sigma by Roman alone** (median
+`sigma_piE` = 0.0098 on a median `piE` of 0.21). There is nothing left for Rubin to add.
+
+**The governing variable is whether Roman saw the event at all, not which parameter is being
+forecast.** Full argument, diagnostics and the second-order result (`piE` gains ~2.4× less
+from gap-filling than `tE` does) in **Deviation 24**. The long-`tE` null rests on 124 events
+— see `OPEN_ITEMS.md` before quoting it.
 
 ### F1 — the per-field results table
 
@@ -202,22 +230,22 @@ footprint. Do not quote its cell values as precise — `OPEN_ITEMS.md`.
 
 In roughly the order that makes sense:
 
-1. **A `sigma_piE` version of F2.** Cheap — the scripts already load everything needed — and
-   it is the figure that tests the plan's actual stated claim about long `tE` and annual
-   parallax. See Deviation 23.2.
-2. **Step E1 — stratify sampling in `tE`, and weight the Roman footprint.** This is what
-   turns panel (a) of F3 and the whole short-`tE` corner from suggestive into quotable. A
-   footprint-weighted run buys roughly 20× more Roman-observed events for the same
-   wall-clock, at the cost of explicit weights to recover survey-wide totals.
-3. **Step E2 — revisit the per-sightline stopping criteria.** The current third floor (2
+1. **Step E1 — stratify sampling in `tE`, and weight the Roman footprint.** This is what
+   turns panel (a) of F3, the whole short-`tE` corner, **and the long-`tE` null of the new
+   `sigma_piE` figure** (124 events) from suggestive into quotable. A footprint-weighted run
+   buys roughly 20× more Roman-observed events for the same wall-clock, at the cost of
+   explicit weights to recover survey-wide totals. This is now the single highest-value next
+   step: three separate results are sample-size-limited and all three are limited by the
+   same thing.
+2. **Step E2 — revisit the per-sightline stopping criteria.** The current third floor (2
    well-conditioned events) was written when there was one Fisher matrix; with three
    matrices and stratified bins it needs replacing.
-4. **Phase G.** G1: separate satellite parallax from temporal-baseline parallax by rerunning
+3. **Phase G.** G1: separate satellite parallax from temporal-baseline parallax by rerunning
    with Rubin's observer position forced to Roman's. G2: validate the Rubin-alone branch
    against Abrams et al. 2025 at l = 0.33°, b = 2.82°, **reweighting to their sampling
    first** or the comparison will look like a bug. G3: fold `OPEN_ITEMS.md` into the
    whitepaper's open-items discussion.
-5. **The GBTDS footprint item** — deferred by the user, but wanted. The sky coverage is
+4. **The GBTDS footprint item** — deferred by the user, but wanted. The sky coverage is
    Penny et al.'s and the footprint has since changed; Rubin's large field of view can see
    corners of the GBTDS region whose centre it is not pointed at, which matters for blending
    too, and `BulgeBaseline.dat` must change with it. **`OPEN_ITEMS.md` has the full text.**

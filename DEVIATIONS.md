@@ -1320,3 +1320,92 @@ question than the plan asked. Both are shown, on one shared colour scale.
 Cells where the single survey characterizes nothing but the joint fit does are **hatched**
 rather than coloured: that ratio is infinite, not large, and painting infinity at the top of
 a colour ramp would understate it.
+
+---
+
+## 24. The `sigma_piE` version of F2: the plan's long-`tE` parallax argument is not supported either
+
+**Commit:** this step. **Figure:** `f2_piE_kroupa.png`, data `f2_piE_kroupa.csv`.
+
+**Plan said:** Step F2 predicts the gap-filling ratio is "flat at ~1 for events peaking
+mid-season; dropping as `t0` moves into a gap; **the drop deepening with `tE`**", and §0.3
+gives the physical reason: long events (black holes, neutron stars) "span multiple Roman
+seasons. Rubin's coverage of the gaps is what lets the *annual parallax* signal be sampled,
+which is what turns a `tE` measurement into a lens *mass* measurement."
+
+Entry 23.2 found the measured `sigma_tE` ordering to be the reverse, and argued the plan's
+expectation was attached to the wrong parameter -- that a `sigma_piE` version was the figure
+which would test the claim as stated. **That figure now exists, and it does not support the
+claim either.**
+
+**Done:** `analysis/f2_gap_filling.py` gained a `--param {tE,piE}` switch rather than being
+copied into a second script. The scope, the `tE` binning, the `dt_edge` axis and the yield
+panel are untouched; only which forecast sigma the precision panel takes the ratio of
+changes. The yield panel is deliberately *not* a function of `--param`: characterization is
+Abrams et al.'s two-parameter criterion (`tE > 2 sigma_tE` **and** `piE > 2 sigma_piE`), so
+the same curve is the right context for either precision panel.
+
+Median `sigma_joint(piE) / sigma_Roman(piE)`, same 1,363 events in scope, ratio defined on
+1,341:
+
+| tE bin | mid-season (dt = -37.5 d) | in gap (dt = +22.5 d) | deep in gap (dt = +52.5 d) | n (bin) |
+|---|---|---|---|---|
+| 10-30 d | 0.99 | 0.29 | **0.056** | 329 |
+| 30-100 d | 0.97 | 0.82 | 0.55 | 476 |
+| 100-300 d | 0.94 | 0.93 | 0.90 | 267 |
+| > 300 d | 0.98 (dt = -22.5) | 0.97 | **0.99** | 124 |
+
+**The ordering is the same as for `sigma_tE`: the drop deepens with SHORT `tE`, and the
+long-`tE` bin is flat at ~1 all the way through the gap.** The plan's prediction fails on
+the parameter it was actually about.
+
+### 24.1 Why -- Roman alone already measures the parallax of long events
+
+The diagnostic that explains it, over the same in-scope events:
+
+| tE bin | median `sigma_piE` Roman alone | fraction with `piE > 2 sigma_piE`, Roman alone | median `piE` |
+|---|---|---|---|
+| 10-30 d | 1.06 | 0.12 | 0.19 |
+| 30-100 d | 0.112 | 0.55 | 0.25 |
+| 100-300 d | 0.0225 | 0.88 | 0.26 |
+| > 300 d | 0.0098 | **0.94** | 0.21 |
+
+The plan assumed Roman's ~110-day gaps would prevent the annual parallax signal from being
+sampled for long events, leaving Rubin to supply the missing phase coverage. **They do not.**
+A `> 300` day event spans several Roman seasons, and the GBTDS seasons are themselves spread
+around the year, so Roman on its own already samples the parallax distortion at several
+orbital phases -- 94% of long in-scope events have `piE` measured at better than 2 sigma by
+Roman alone, at a median `sigma_piE` of 0.0098 on a median `piE` of 0.21, i.e. ~5% precision.
+There is essentially nothing left for Rubin to add, so the ratio sits at ~1.
+
+At short `tE` the situation inverts, and for a reason that has nothing to do with parallax
+phase: Roman's median `sigma_piE` is 1.06 against a median `piE` of 0.19, so Roman alone does
+not measure the parallax of a short event at all. When such an event peaks in a gap Roman has
+no data on it whatsoever, and every constraint in the joint fit comes from Rubin.
+
+**The governing variable is whether Roman saw the event, not which parameter is being
+forecast.** That is the honest summary of both F2 figures. It is a stronger and simpler
+statement than the plan's, and it is the same statement the yield panel makes.
+
+### 24.2 The second-order result: `piE` benefits less from gap-filling than `tE` does
+
+Comparing the two figures at the same events, in-gap medians:
+
+| tE bin | `sigma_joint/sigma_Roman` for `piE` | ... for `tE` |
+|---|---|---|
+| 10-30 d | 0.31 | 0.13 |
+| 30-100 d | 0.80 | 0.78 |
+| 100-300 d | 0.95 | 0.96 |
+| > 300 d | 0.984 | 0.985 |
+
+Where gap-filling acts at all, it buys **less** on the parallax than on the timescale (0.31
+against 0.13 in the short bin, a factor of ~2.4). That ordering is physically sensible:
+Rubin's ~3-day cadence resolves the rise and fall that sets `tE`, but `piE` is a subtle
+distortion of the light-curve shape, and recovering it from sparse ground-based photometry
+is the harder measurement.
+
+**Verification:** `romanlib.check_monotonicity()` over the in-scope events returns **zero**
+violations for both `tE` and `piE` -- no event has `sigma_joint > sigma_Roman`. The
+sentinel-and-`okA` gate leaves the same 1,341 events with a defined ratio as the `tE`
+figure, as it must: `piE` (index 3) and `tE` (index 1) are both in the always-active
+photometric parameter set, so they are measured or not measured together.

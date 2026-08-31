@@ -416,3 +416,34 @@ to recover survey-wide totals.
 
 Do not quote panel (a)'s cell values as precise until this is addressed. Panel (b), on all
 74,812 events, does not have this problem.
+
+---
+
+## F2's long-`tE` bins rest on 124 events, and that is where the null result lives
+
+The `sigma_piE` version of F2 (`DEVIATIONS.md` 24) reports that the joint fit adds nothing to
+Roman's parallax precision for events longer than 300 days -- the ratio is flat at ~0.98
+across the whole season gap. That is the negative answer to the plan's headline long-`tE`
+prediction, so it deserves more support than it currently has.
+
+It rests on **124 events**, spread over six `dt_edge` bins of 16-26 events each. The
+supporting diagnostic (94% of those events have `piE` measured at better than 2 sigma by
+Roman alone, median `sigma_piE` = 0.0098) is a strong and internally consistent explanation,
+but the medians themselves are drawn from small samples, and the `> 300 d` bin is the one the
+Kroupa mass function populates most sparsely -- long events need heavy lenses, which are
+rare, and the remnant tail is exactly where the mass function is least certain.
+
+**Why it matters scientifically:** "Rubin does not improve Roman's parallax measurement of
+long events" is a claim about black-hole and neutron-star lens characterization, which is the
+science case the long-`tE` regime exists for in this forecast. A null result at n = 124 is
+suggestive; it is not yet quotable in a paper.
+
+**Why it is deferred:** the fix is not a change to the analysis, it is more events in that
+corner of parameter space, which is Step E1's stratified sampling -- the same fix the F3
+footprint item needs. Doing it now would mean a second production run before the sampling
+question is settled.
+
+**What the fix involves:** stratify the draws in `tE` (Step E1) so the long-`tE` bins are
+populated to comparable depth as the 30-100 d bin, and carry explicit weights to recover
+survey-wide totals. Re-run F2 with `--param piE` on the stratified table and check whether
+the flat ~0.98 line survives.

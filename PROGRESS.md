@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-08-31, after the `sigma_piE` version of F2.
 **Branch:** `joint-fisher-refactor` (never commit to `main`).
-**Head at last update:** `7a1b591` — "Write down what a dying session would otherwise take with it".
+**Head at last update:** `4f3bb0d` — "Test the plan's parallax claim on the parallax itself".
 
 ---
 
@@ -43,10 +43,9 @@ and run against it, and **the gap-filling signal — the thesis's second novelty
 visible in the data for the first time.** A fourth product, F2 repeated for `sigma_piE`, has
 since settled the plan's long-`tE` annual-parallax prediction: it is not supported, because
 Roman alone already measures the parallax of long events (Deviation 24). What remains is
-Phase E's sampling work (which
-would sharpen the Roman-footprint statistics), Phase G (physics separation, validation
-against published Rubin-only numbers, and reconciling the whitepaper), and the deferred
-GBTDS-footprint item.
+Phase E's sampling work (which would sharpen the Roman-footprint statistics and the
+sample-limited long-`tE` bins), Phase G (physics separation, validation against published
+Rubin-only numbers, and reconciling the whitepaper), and the deferred GBTDS-footprint item.
 
 ---
 
@@ -115,7 +114,7 @@ Commits are on `joint-fisher-refactor`. Where a step deviated from the plan, the
 - `df6f39b` — `analysis/romanlib.py` (the shared sentinel-aware loader), `analysis/f1_results_table.py`,
   `analysis/f2_gap_filling.py`. **Deviation 23.**
 - `2526bd0` — `analysis/f3_characterization_map.py`.
-- **this commit** — `f2_gap_filling.py` gained `--param {tE,piE}`, and the `sigma_piE`
+- `4f3bb0d` — `f2_gap_filling.py` gained `--param {tE,piE}`, and the `sigma_piE`
   version of F2 was made. It answers the question Deviation 23.2 left open, and the answer
   is negative: the plan's long-`tE` annual-parallax prediction fails on `piE` too.
   **Deviation 24.**

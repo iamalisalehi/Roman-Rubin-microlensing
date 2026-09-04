@@ -1,8 +1,9 @@
 # PROGRESS.md — where this project stands
 
-**Last updated:** 2026-08-31, after the `sigma_piE` version of F2.
+**Last updated:** 2026-09-04, after Step F4 (the Fisher-matrix precision figure).
 **Branch:** `joint-fisher-refactor` (never commit to `main`).
-**Head at last update:** `4f3bb0d` — "Test the plan's parallax claim on the parallax itself".
+**Head at last update:** `bdb166c` — "Point the progress note at the commit that carries the parallax result".
+**F4 is committed on top of that**; see §2, Phase F.
 
 ---
 
@@ -42,7 +43,10 @@ analysis products (F1 table, F2 gap-filling figure, F3 characterization map) hav
 and run against it, and **the gap-filling signal — the thesis's second novelty claim — is
 visible in the data for the first time.** A fourth product, F2 repeated for `sigma_piE`, has
 since settled the plan's long-`tE` annual-parallax prediction: it is not supported, because
-Roman alone already measures the parallax of long events (Deviation 24). What remains is
+Roman alone already measures the parallax of long events (Deviation 24). A fifth, F4, reports
+the absolute forecast precision per survey rather than a ratio, and reaches Deviation 24's
+conclusion independently: inside Roman's footprint the joint fit improves a typical lens mass
+by 4% over Roman alone and by a factor of five over Rubin alone (Deviation 25). What remains is
 Phase E's sampling work (which would sharpen the Roman-footprint statistics and the
 sample-limited long-`tE` bins), Phase G (physics separation, validation against published
 Rubin-only numbers, and reconciling the whitepaper), and the deferred GBTDS-footprint item.
@@ -118,6 +122,12 @@ Commits are on `joint-fisher-refactor`. Where a step deviated from the plan, the
   version of F2 was made. It answers the question Deviation 23.2 left open, and the answer
   is negative: the plan's long-`tE` annual-parallax prediction fails on `piE` too.
   **Deviation 24.**
+- Step F4 — `analysis/f4_fisher_precision.py`, a fourth Phase F product the plan does not
+  contain: the absolute forecast precision per survey partition, read straight off the three
+  Fisher matrices instead of as a ratio. `romanlib.load_events()` gained chunked filtered
+  reading in the same step, because the unfiltered read is OOM-killed on this machine and the
+  kill is silent (exit 0, no output). **Deviation 25**, and an `OPEN_ITEMS.md` entry for
+  F1/F2/F3, which still read unfiltered.
 
 ---
 
@@ -132,6 +142,8 @@ Commits are on `joint-fisher-refactor`. Where a step deviated from the plan, the
 | F2 gap-filling figure and its data, `sigma_tE` | `f2_kroupa.png`, `f2_kroupa.csv` |
 | F2 gap-filling figure and its data, `sigma_piE` | `f2_piE_kroupa.png`, `f2_piE_kroupa.csv` |
 | F3 characterization map and its data | `f3_kroupa.png`, `f3_kroupa.csv` |
+| F4 Fisher precision figure, Roman footprint | `f4_fisher_kroupa.png`, `f4_fisher_kroupa.csv` |
+| F4 Fisher precision figure, all joint detections | `f4_fisher_all_kroupa.png`, `f4_fisher_all_kroupa.csv` |
 | Previous (MACHO-population) run, kept for comparison only | `runs/macho_final_20260830/` |
 
 Run configuration: stride 10, `maxdraws` 5e4, `IMnum = 5` (Kroupa + remnants), seed 42.
@@ -211,6 +223,44 @@ The fraction of gap-peaking events seen by Rubin rises with `tE` from ~0.04 (10�
 0.21–0.56 (300+ d), which is the yield statistic behaving as expected.
 
 Rubin-alone Fisher singularity is essentially zero (≤1.4% in two cells, 0 elsewhere).
+
+### F4 — what the Fisher matrices forecast, before any ratio is taken
+
+`f4_fisher_kroupa.png`. F1–F3 all report how much the joint fit *adds*; this one reports
+what each survey partition actually *measures*, which is the scale those ratios are ratios
+of. Six panels: cumulative distributions of the fractional 1σ forecast on `tE`, `piE`
+(photometric matrix) and `tetE` (astrometric matrix), the derived lens mass
+`Ml = tetE / (kappa * piE)`, the per-event joint-against-single scatter that exhibits the
+`sigma_joint <= sigma_single` invariant, and the condition-number distribution.
+
+Fraction of the 1,950 in-footprint joint-detected events measured to better than 10%:
+
+| Parameter | joint | Roman alone | Rubin alone |
+|---|---|---|---|
+| `tE` | **34.8%** | 24.3% | 11.8% |
+| `piE` | **26.9%** | 20.4% | 9.3% |
+| `tetE` | **90.1%** | 88.5% | 55.6% |
+| `Ml` (derived) | **32.2%** | 27.2% | 7.5% |
+
+Median per-event `sigma_joint / sigma_single` on the lens mass: **0.96 against Roman alone,
+0.19 against Rubin alone.** Zero points above the 1:1 line.
+
+**This is Deviation 24's conclusion reached a second way, from precision alone and with no
+reference to season geometry.** Inside Roman's footprint, adding Rubin to Roman buys ~4% on
+a typical mass; adding Roman to Rubin buys a factor of five. Rubin's contribution is
+concentrated in events Roman never saw, not spread over the ones it did — gap-filling is a
+*yield* effect, not a precision effect.
+
+`f4_fisher_all_kroupa.png` is the same figure over all 74,812 joint detections and is a
+**check, not a science figure**: the joint and Rubin curves lie exactly on top of each other
+and the mass ratio is exactly 1.000, because Roman observed only 2.6% of the sample and on
+the other 97.4% the joint matrix *is* Rubin's matrix. Any departure from 1.000 there would
+be a partitioning bug.
+
+**Caveat, inherited not introduced:** the `tetE` and `Ml` panels rest on the astrometric
+matrix, and Roman's per-epoch astrometric error is still `errlsstA()` as a placeholder
+(`OPEN_ITEMS.md`). The ordering of the curves is robust; the absolute fractions in those two
+panels are only as good as that placeholder.
 
 ### F3 — the (`tE`, `piE`) characterization map
 

@@ -74,11 +74,26 @@ MAP_COLS = ([f"{n}_{i}" for n in _MAP_PAIRS for i in (0, 1)]
                "log10_Rostart", "log10_Nstart", "log10_nstart"])
 
 
-def load_events(path):
-    """Read the per-event table (test2.dat) written by the `filg_in <<` block.
+def load_events(path, keep=None, chunksize=None):
+    """Read the per-event table (test5.dat) written by the `filg_in <<` block.
 
     Column names come from the file's own `#` header, not from a list hardcoded here, so a
     schema change surfaces as a loud mismatch rather than a silent misalignment.
+
+    keep, chunksize -- read in chunks and keep only the rows `keep(chunk)` selects.
+        The production table is 5.57M rows x 90 float64 columns, which is ~4 GB resident
+        before pandas' parse buffers are counted. On a machine with less than about 12 GB
+        that is an OOM kill, not a slow read -- and the kill is silent, exit status 0 with
+        an empty stdout, which looks exactly like a script that did nothing (OPEN_ITEMS.md).
+        Filtering per chunk holds the peak at one chunk plus the surviving rows.
+
+        `keep` is called with each chunk and must return a boolean mask over it. Every
+        analysis here begins by discarding undetected events -- 98.7% of the table -- so:
+
+            df = R.load_events(path, keep=lambda c: c["detJ"] == 1, chunksize=500_000)
+
+        The default (keep=None) reads the whole file in one pass, unchanged, so existing
+        callers behave exactly as before.
     """
     with open(path) as fh:
         header = fh.readline()
@@ -89,7 +104,17 @@ def load_events(path):
         )
     cols = header.lstrip("#").split()
 
-    df = pd.read_csv(path, sep=r"\s+", comment="#", header=None, names=cols)
+    reader_kw = dict(sep=r"\s+", comment="#", header=None, names=cols)
+    if keep is None and chunksize is None:
+        df = pd.read_csv(path, **reader_kw)
+    else:
+        parts = []
+        with pd.read_csv(path, chunksize=chunksize or 500_000, **reader_kw) as it:
+            for chunk in it:
+                parts.append(chunk if keep is None else chunk[keep(chunk)])
+        df = (pd.concat(parts, ignore_index=True) if parts
+              else pd.DataFrame(columns=cols))
+
     if df.shape[1] != len(cols):
         raise ValueError(f"{path}: header names {len(cols)} columns, data has {df.shape[1]}")
 

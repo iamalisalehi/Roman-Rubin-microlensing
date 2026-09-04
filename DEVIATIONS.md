@@ -1409,3 +1409,97 @@ violations for both `tE` and `piE` -- no event has `sigma_joint > sigma_Roman`. 
 sentinel-and-`okA` gate leaves the same 1,341 events with a defined ratio as the `tE`
 figure, as it must: `piE` (index 3) and `tE` (index 1) are both in the always-active
 photometric parameter set, so they are measured or not measured together.
+
+---
+
+## 25. Step F4: a fourth Phase F product, reading the Fisher matrices directly
+
+**Commit:** this step. **Script:** `analysis/f4_fisher_precision.py`.
+**Figures:** `f4_fisher_kroupa.png` (Roman footprint) and `f4_fisher_all_kroupa.png`
+(all joint-detected), data in the matching `.csv` files.
+
+**Plan said:** Phase F has exactly three products — F1 (the per-field results table), F2
+(the gap-filling figure) and F3 (the (`tE`, `piE`) characterization map). All three are
+*differential*: each reports how much the joint fit **adds** over one survey alone.
+
+**Done:** a fourth product was added, asking the prior question the plan never asks — *how
+well is each parameter measured at all, by each survey partition?* It is the direct read-out
+of the three Fisher matrices per event rather than a ratio built from them, and it is the
+figure that says what the forecast precision actually **is** rather than how much it
+improved. Six panels: cumulative distributions of the fractional 1σ forecast on `tE`, `piE`
+(photometric matrix, gated on `okA`) and `tetE` (astrometric matrix, gated on `okB`); the
+derived lens mass `Ml = tetE / (kappa * piE)`; the per-event joint-against-single scatter
+that exhibits the `sigma_joint <= sigma_single` invariant; and the condition-number
+distribution that says which of those inverses to believe.
+
+**Why it was added rather than deferred:** F1–F3 can all be read as "the joint fit is
+`x` times better", which is unfalsifiable without knowing whether either number is a
+*measurement*. A factor of two on a 300% error is not a result. This figure supplies the
+absolute scale the other three are ratios of.
+
+### 25.1 The CDFs are normalized to the full sample, not to the measured subset
+
+This is a deliberate departure from the obvious implementation and it matters. An event
+whose matrix did not invert, or whose parameter was never free for that survey partition,
+carries the `-1.0` sentinel. Dropping those rows and renormalizing to what survived would
+**flatter exactly the survey that fails most often**: Roman's curve would look excellent
+because every gap-peaking event it cannot see would quietly leave the denominator. So the
+`y` axis is
+
+```
+(events in the sample with sigma/theta < x) / (events in the sample)
+```
+
+and a curve that saturates below 1.0 is reporting, correctly, that the survey never
+constrained the remainder at all. The saturation level is printed in each legend.
+
+### 25.2 What the figure shows — Roman footprint, 1,950 joint-detected events
+
+Fraction of the sample with the parameter measured to better than 10%:
+
+| Parameter | joint | Roman alone | Rubin alone |
+|---|---|---|---|
+| `tE` | **34.8%** | 24.3% | 11.8% |
+| `piE` | **26.9%** | 20.4% | 9.3% |
+| `tetE` | **90.1%** | 88.5% | 55.6% |
+| `Ml` (derived) | **32.2%** | 27.2% | 7.5% |
+
+Median per-event `sigma_joint / sigma_single` on the lens mass: **0.96 against Roman alone,
+0.19 against Rubin alone.** Zero events above the 1:1 line in this sample.
+
+**The asymmetry is the result.** Inside Roman's footprint, adding Rubin to Roman buys about
+4% on a typical mass; adding Roman to Rubin buys a factor of five. That is the same
+conclusion Deviation 24 reached from the gap-filling figures, arrived at independently and
+without any reference to season geometry: **Roman carries the characterization, and Rubin's
+contribution is concentrated in the events Roman never saw** rather than spread across the
+ones it did. Consistent with 24: gap-filling is a *yield* effect, not a precision effect.
+
+### 25.3 The whole-sky panel, and why the joint/Rubin mass ratio is exactly 1.000
+
+Over all 74,812 joint-detected events, the median `sigma_Ml` ratio joint / Rubin-alone is
+**1.000**, and only 2.6% of the sample has any Roman epoch at all. This is not a null result
+to explain away — it is the footprint arithmetic made visible. Roman observed 1,950 of the
+74,812 joint detections; on the other 97.4% the joint matrix *is* Rubin's matrix, so the
+ratio must be exactly 1. Any deviation from 1.000 on those rows would be a partitioning bug.
+It is a useful check that the per-survey split is doing what it claims.
+
+### 25.4 Conditioning, and the five known round-off violations reappear
+
+`check_monotonicity()` reports the same five events with `sigma_joint / sigma_Rubin` =
+1.00107 on `tE` and `piE` that `OPEN_ITEMS.md` already records — condition numbers above
+1e9, where double precision has lost the answer. The script prints them rather than
+suppressing them, and panel (e) annotates the count on the figure.
+
+Well-conditioned fraction (photometric matrix, condition number < 1e9), footprint sample:
+joint 91.9%, Rubin 91.9%, **Roman 81.8%**. Roman's matrices are the worse-conditioned ones,
+which is expected: a survey that samples an event within a single 72-day season has a
+shorter lever arm on `t0`/`tE`/`piE` and a correspondingly more degenerate matrix.
+
+### 25.5 Caveat inherited, not introduced
+
+Panels (c) and (d) — `tetE` and therefore the lens mass — rest on the astrometric matrix,
+and **Roman's per-epoch astrometric error is still `errlsstA()` as an explicit placeholder**
+(`OPEN_ITEMS.md`, first entry). The *relative* ordering of the three curves is driven by
+epoch count and cadence and is robust; the *absolute* fractions in those two panels are only
+as good as that placeholder. Do not quote panel (d)'s "32% of events yield a 10% lens mass"
+outside this repository until `errRomanA()` exists.

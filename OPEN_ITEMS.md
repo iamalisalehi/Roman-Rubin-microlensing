@@ -447,3 +447,36 @@ question is settled.
 populated to comparable depth as the 30-100 d bin, and carry explicit weights to recover
 survey-wide totals. Re-run F2 with `--param piE` on the stratified table and check whether
 the flat ~0.98 line survives.
+
+## F1/F2/F3 still load the whole 5.57M-row table and will be OOM-killed on a small machine (found during Step F4)
+
+`analysis/romanlib.load_events()` read the entire per-event table into one DataFrame. For
+`test5.dat` that is 5,571,168 rows x 90 float64 columns -- about 4 GB resident before
+pandas' parse buffers are counted. On a machine with ~7 GB of RAM the kernel kills the
+process.
+
+**The failure mode is what makes this dangerous, not the failure itself.** The kill is
+silent: the shell reports **exit status 0** with an empty stdout. It looks exactly like a
+script that ran and chose to print nothing, and it produces no figure, no CSV and no error.
+It was mistaken for a no-op for several minutes during Step F4 before the memory arithmetic
+was checked.
+
+**What was done:** `load_events()` gained optional `keep=` and `chunksize=` arguments that
+filter per chunk while reading, holding the peak at one chunk plus the surviving rows. The
+default path is byte-for-byte unchanged, so no existing caller's behaviour moved.
+`analysis/f4_fisher_precision.py` uses it (`keep=lambda c: c["detJ"] == 1`), and the
+production figure was verified identical to the reference computed the old way.
+
+**What is deliberately NOT done:** `f1_results_table.py`, `f2_gap_filling.py` and
+`f3_characterization_map.py` still call `load_events(path)` with no filter. They were run
+successfully on 2026-08-30/31 when more memory happened to be free, so their outputs stand
+-- but **they may not be reproducible on this machine as they are.** They are not being
+changed here because each one selects a different subset (F2 gates on mission scope and the
+Roman footprint, F3 on joint detection, F1 aggregates per field), so each needs its own
+`keep` predicate written and its output re-verified against the existing CSV. That is a
+step of its own, not a side-effect of F4.
+
+**The fix, when it is taken:** give each of the three a `keep=` predicate that discards
+undetected events during the read -- they are 98.66% of the table and every one of these
+scripts throws them away immediately anyway -- then diff the regenerated CSV against the
+committed one to prove nothing moved.

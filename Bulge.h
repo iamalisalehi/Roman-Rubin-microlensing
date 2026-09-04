@@ -177,6 +177,58 @@ constexpr int    coun  = Nl + NlRoman;
 constexpr double FoVRoman = 0.3003;
 
 constexpr double tetp   = double(M_PI / 3.0);        //parallax
+
+// Sun-Earth L2, where Roman flies, as a fraction of an AU (Step H1).
+//
+// L2 is on the Sun-Earth line, ~1.5e6 km beyond the Earth, so to leading order Roman's
+// heliocentric position is Earth's scaled by (1 + L2_OFFSET_AU). This is what makes the two
+// observatories different places and gives the joint fit a *spatial* baseline to go with its
+// temporal one: the difference in impact parameter the two see is
+//     delta_u ~ L2_OFFSET_AU * piE  ~  1e-3  for a typical bulge event.
+// Small, and concentrated in high-magnification, short-tE events -- PHASE_H_PLAN.md 0.3.
+//
+// Roman's halo orbit about L2 (amplitude ~1e5-1e6 km) is NOT modelled; this is the mean
+// offset only. OPEN_ITEMS.md.
+constexpr double L2_KM        = 1.5e6;
+constexpr double AU_KM        = 1.496e8;
+constexpr double L2_OFFSET_AU = L2_KM / AU_KM;   // ~0.01003
+
+// ---------------------------------------------------------------------------------------
+// Roman WFI per-exposure astrometric precision, F146 (a.k.a. W149), in milliarcseconds.
+// Step H4; used by errRomanA() in helper.cpp.
+//
+// Sources:
+//   [1] Sanderson et al. 2019, "Astrometry with the Wide-Field Infrared Survey Telescope",
+//       arXiv:1712.05420 sec 1.1: "single-exposure precision for well-exposed point sources
+//       is 0.01 pixel, or about 1.1 mas", improving by ~10x when ~100 exposures are stacked.
+//   [2] "Black hole astrometric binaries in the Roman Galactic Bulge Time Domain Survey",
+//       arXiv:2608.24998, Fig. 5 and surrounding text: 1% centroiding => "a floor of 1.1 mas
+//       for Roman"; the floor "impacts bright sources F146_Vega < 20.62 mag"; sources become
+//       background dominated near "F146_Vega < 23.5 mag, which corresponds to sigma_ast ~ 10
+//       mas"; pixels are "0.11 arcsec"; each GBTDS exposure is "66 seconds" at a "12.1
+//       minute" cadence. Their curve derives from Pandeia and the Roman astrometry
+//       simulation tool of Bellini et al. 2024.
+//
+// PER EXPOSURE, and this is a factor of ten waiting to be got wrong. The 0.1 mas figure that
+// appears in both sources is the DAILY-BINNED precision -- ~100 exposures stacked. Our
+// l.erra[] is a per-epoch error and one row of RomanBaseline.dat is one 12.1-minute exposure
+// (measured: median inter-epoch gap 0.008403 d = 12.1 min, 50,401 epochs per field x 6
+// fields = 302,406 = NlRoman). So 1.1 mas is the right floor here. Using 0.1 would overstate
+// Roman's astrometry tenfold and flatter every tetE and lens-mass forecast in the project.
+// ---------------------------------------------------------------------------------------
+constexpr double ROMAN_PIX_MAS   = 110.0;  //0.11 arcsec pixels [2]
+constexpr double ROMAN_AST_FLOOR = 0.01 * ROMAN_PIX_MAS;  //1.1 mas: 1% centroiding [1][2]
+constexpr double ROMAN_AST_MFLR  = 20.62;  //mag below which the floor dominates [2]
+constexpr double ROMAN_AST_MBKG  = 23.5;   //mag where the background starts to dominate [2]
+constexpr double ROMAN_AST_SBKG  = 10.0;   //mas, sigma_ast at ROMAN_AST_MBKG [2]
+// Slope between the two anchors above. NOT a physical constant and NOT a free choice:
+// log10(10.0/1.1)/(23.5-20.62) = 0.3329 per mag. Source-dominated photon noise
+// (SNR ~ sqrt(counts)) would give 0.2/mag and pure background domination (SNR ~ counts)
+// gives 0.4/mag; 0.333 sits between them because the transition is already under way across
+// this range. A later step could replace this interpolation with a Pandeia-derived table,
+// exactly as errlsstA reads files/sigmaA_LSST.txt.
+constexpr double ROMAN_AST_SLOPE_SRC = 0.33285;
+constexpr double ROMAN_AST_SLOPE_BKG = 0.4;
 constexpr double omegae = double(2.0 * M_PI / year); //radian per day
 constexpr double vearth = omegae;                    //radian per day
 // Finite-difference stencils used by FisherM. For each parameter it evaluates the model at
@@ -416,6 +468,13 @@ struct lens {
 struct astromet{
    double Ve_n1, Ve_n2;
    double ue_n1, ue_n2;
+
+   // Step H1/H3. Multiplies L2_OFFSET_AU in lightcurve(), so 1 = Roman at L2 (the physical
+   // configuration) and 0 = Roman at the centre of the Earth (what the code did before H1).
+   // It exists so the satellite-parallax experiment of PHASE_H_PLAN.md Step H3 -- two runs
+   // identical but for the spatial baseline -- is a command-line flag rather than a rebuild,
+   // and so the H1 regression can prove the term is a clean no-op when switched off.
+   double satScale = 1.0;
 };
 
 struct CMD {
@@ -949,12 +1008,13 @@ void   func_lens( lens & l, source & s);
 void   vrel(source & s, lens & l);
 void   Disk_model(source & s, int);
 void   ErrorCal(covarian & co, lens &l, source &s);
-void   lightcurve(source & s, lens & l, astromet & as, double);
+void   lightcurve(source & s, lens & l, astromet & as, double, int tele);
 void   FisherM(source & s, lens & l, astromet & as,  covarian & co, int);
 //double ylsst(yfilter & yf, double , double , double);
 double interpExtinctionAlongSightline(const extin& ex, int k, double dist);
 double errlsstM(double,int,double);
 double errlsstA(lsst & ls,  double);
+double errRomanA(double magF146);   //Roman WFI per-exposure astrometric error [mas] (Step H4)
 //double errELT(lsst & ls,double,int);
 // TODO(Ali): wire this to whatever sigma_roman.txt actually represents (a fixed
 // mag-vs-error lookup, or a per-visit-depth-dependent formula like errlsstM). Signature

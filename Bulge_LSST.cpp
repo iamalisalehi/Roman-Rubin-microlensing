@@ -212,6 +212,13 @@ struct RunConfig {
     // region. Kept only so a run can be compared against the pre-Step-4 numbers.
     bool   stubPatch   = false;
 
+    // Put Roman back at the centre of the Earth, killing the Earth-L2 spatial baseline while
+    // leaving the timing untouched (Step H1). This is the "off" half of Step H3's
+    // satellite-parallax experiment, and it is also how the H1 regression proves the new term
+    // is a clean no-op when disabled: with this flag the run must reproduce the pre-H1 output
+    // byte for byte.
+    bool   noSatPar    = false;
+
     // Build the sightline grid, write the provenance block, report the strata, and stop
     // before drawing a single star. The point of stratifying (Step E1) is to decide how to
     // spend wall clock, and that decision needs the sightline counts BEFORE committing to a
@@ -238,6 +245,9 @@ static void printUsage(const char* prog) {
         << "  --stub         scan the old 0.1x0.1 deg patch instead of the full region\n"
         << "  --dry-run      build the sightline grid, report the strata and the sky-area\n"
         << "                 weights, then exit without drawing any stars\n"
+        << "  --no-satellite-parallax   put Roman at the centre of the Earth, removing the\n"
+        << "                 Earth-L2 spatial baseline while leaving the timing alone. The\n"
+        << "                 'off' run of the satellite-parallax experiment (PHASE_H_PLAN H3)\n"
         << "  --help         this message\n";
 }
 
@@ -266,6 +276,7 @@ int main(int argc, char** argv) {
         else if (arg == "--maxdraws") cfg.maxDraws    = std::atof(need("--maxdraws"));
         else if (arg == "--stub")    cfg.stubPatch   = true;
         else if (arg == "--dry-run") cfg.dryRun      = true;
+        else if (arg == "--no-satellite-parallax") cfg.noSatPar = true;
         else if (arg == "--help")  { printUsage(argv[0]); return 0; }
         else {
             std::cerr << "ERROR: unknown option '" << arg << "'\n";
@@ -350,6 +361,11 @@ int main(int argc, char** argv) {
     auto ls = std::make_unique<lsst>();
     auto ro = std::make_unique<roman>();
     auto co = std::make_unique<covarian>();
+
+    // Step H1: Roman's observer position. satScale multiplies L2_OFFSET_AU inside
+    // lightcurve(), so 0 puts Roman back at the centre of the Earth -- the pre-H1 behaviour,
+    // and the "off" run of Step H3's experiment.
+    as->satScale = cfg.noSatPar ? 0.0 : 1.0;
     
     std::vector<EventRecord> records;
     records.reserve(1000); // rough upper bound on icon per field
@@ -863,7 +879,13 @@ int main(int argc, char** argv) {
              << "# NlRoman             " << NlRoman << "\n"
              << "# FoV_rubin_deg       " << FoV << "\n"
              << "# FoV_roman_deg       " << FoVRoman << "\n"
-             << "# rng_seed            " << seed << "\n";
+             << "# rng_seed            " << seed << "\n"
+             // Step H1. 1 = Roman at Sun-Earth L2 (physical); 0 = Roman at the centre of the
+             // Earth, which is what every run before H1 did. Any piE forecast from a run with
+             // 0 here contains only the annual Earth-orbit parallax.
+             << "# satellite_parallax  " << (cfg.noSatPar ? 0 : 1)
+             << "   # 0 = Roman forced to Earth's position\n"
+             << "# L2_offset_AU        " << (cfg.noSatPar ? 0.0 : L2_OFFSET_AU) << "\n";
         std::ofstream fprov("./files/MONTLMC/files/run_provenance.txt");
         if (!fprov) {
             std::cerr << "Cannot write run_provenance.txt\n";
@@ -1091,7 +1113,11 @@ int main(int argc, char** argv) {
                     gi = 0;
                     gi = 0; giR = 0;
                     for (double tim = float(0.0 * year - 100.0 - initial);  tim < float(10.0 * year + 100.0 + initial); tim = tim + dt) {
-                        lightcurve(*s, *l, *as, tim);
+                        // Rubin's geometry (observer on Earth). The quantities derived below and
+                        // shared across both branches -- Astar0/As0/As1, vs1/vs2, def1p/def2p,
+                        // trajm/trajp, magni[] -- are all in this frame; the Roman branch
+                        // recomputes the ones it needs in its own frame (Step H1).
+                        lightcurve(*s, *l, *as, tim, 0);
                         Astar0   = double(s->ut0 * s->ut0 + 2.0) / std::sqrt(s->ut0 * s->ut0 * (s->ut0 * s->ut0 + 4.0)); //MAgnification equation
                         s->Astar = double(s->ut  * s->ut  + 2.0) / std::sqrt(s->ut  * s->ut  * (s->ut  * s->ut  + 4.0)); //MAgnification equation
                         As0      = double(Astar0   * s->blend[2] + 1.0 - s->blend[2]);
@@ -1222,6 +1248,30 @@ int main(int argc, char** argv) {
 
                             constexpr int fiR = 6; // F146 — the only Roman band modeled so far
 
+                            // ---- Step H1: switch to Roman's observer position ----
+                            // Everything above was computed with the observer on Earth, which is
+                            // right for Rubin and wrong for Roman by the L2 offset. Roman sees a
+                            // slightly different trajectory, so the magnification, the F146
+                            // magnitude and the astrometric positions all have to be rebuilt here
+                            // before any of them is recorded. `magni`/`magni0`/`trajm`/`trajp` are
+                            // per-timestep scratch that the Rubin branch above has already
+                            // consumed and that the next timestep overwrites, so they are
+                            // rewritten in place rather than shadowed.
+                            //
+                            // No RNG is consumed by this call, so the random stream is untouched
+                            // and L2_OFFSET_AU = 0 reproduces the pre-H1 run exactly.
+                            lightcurve(*s, *l, *as, tim, 1);
+                            {
+                                const double Astar0R = double(s->ut0 * s->ut0 + 2.0)
+                                                     / std::sqrt(s->ut0 * s->ut0 * (s->ut0 * s->ut0 + 4.0));
+                                s->Astar = double(s->ut * s->ut + 2.0)
+                                         / std::sqrt(s->ut * s->ut * (s->ut * s->ut + 4.0));
+                                magni0[fiR] = s->magb[fiR] - 2.5 * std::log10(Astar0R  * s->blend[fiR] + 1.0 - s->blend[fiR]);
+                                magni[fiR]  = s->magb[fiR] - 2.5 * std::log10(s->Astar * s->blend[fiR] + 1.0 - s->blend[fiR]);
+                                trajm = std::sqrt(s->pos1b * s->pos1b + s->pos2b * s->pos2b);
+                                trajp = std::sqrt(s->pos1c * s->pos1c + s->pos2c * s->pos2c);
+                            }
+
                             if (magni[fiR] >= satu[fiR] and magni[fiR] <= thre[fiR]) {
                                 // TODO(Ali): confirm this matches how sigma_roman.txt / ro->mag,ro->err
                                 // are meant to be interpolated (see errRomanM stub near matchVisibleEpochs).
@@ -1235,19 +1285,11 @@ int main(int argc, char** argv) {
                                 chi2_R += std::fabs((magnioR -  magni0[fiR]) * (magnioR -  magni0[fiR]) / (errgR * errgR));
                                 chi3_R += std::fabs((magnioR - s->magb[fiR]) * (magnioR - s->magb[fiR]) / (errgR * errgR));
 
-                                // TODO(Ali): PLACEHOLDER astrometric error — no Roman/F146 astrometric
-                                // error model exists yet. Stands in with LSST's astrometric-error curve
-                                // (errlsstA) evaluated at Roman's own magnitude/epoch, so it's at least
-                                // deterministic and epoch-correct (not a stale `errs` left over from
-                                // whichever epoch last set it). Per JOINT_FIT_REFACTOR_PLAN.md's
-                                // Deferred section ("Roman astrometric error model decision" — the
-                                // ~100 mas FWHM and gamma value for the F146~22 transition), replace
-                                // this call with a real errRomanA()-style function reading a real F146
-                                // astrometric-error dataset (mirroring errlsstA/sigmaA_LSST.txt) before
-                                // relying on chi1a_R/chi2a_R/chi3a_R, dchiA_R, or the astrometric Fisher
-                                // matrix (inputB/inverB, Ny params tetE/mus1/mus2/piE — Phase C, Step C4)
-                                // for any real conclusion. Logged in OPEN_ITEMS.md.
-                                errsR = errlsstA(*ls, magni[fiR]); //[mas]
+                                // Step H4: Roman's own per-exposure astrometric error, replacing the
+                                // errlsstA() placeholder (Rubin's curve at Roman's magnitude, which had
+                                // no reason to be right). Constants and sources in Bulge.h; the model
+                                // is per EXPOSURE, which is what one row of RomanBaseline.dat is.
+                                errsR = errRomanA(magni[fiR]); //[mas]
                                 silR  = RandN(errsR * std::sqrt(2.0), 3.0);
                                 sil2R = RandN(errsR, 3.0);
                                 chi1a += std::fabs((trajp + silR - trajp) * (trajp + silR - trajp) / (errsR * errsR * 2.0));
@@ -1272,11 +1314,14 @@ int main(int argc, char** argv) {
                                 l->errm[ndw] = errgR;
                                 l->soux[ndw] = s->pos1c;
                                 l->souy[ndw] = s->pos2c;
-                                // TODO(Ali): Roman has its own astrometric precision (it's the whole
-                                // point of the astrometric-microlensing science case). Reusing LSST's
-                                // `errs` here is a placeholder so the array has *something* consistent
-                                // in it; replace with a Roman astrometric error model when ready.
-                                l->erra[ndw] = errs;
+                                // Step H4. This used to store `errs` -- the RUBIN astrometric error,
+                                // left over from whichever Rubin epoch last set it, and in general from
+                                // a different timestep entirely. So the astrometric Fisher matrix was
+                                // being weighted by a stale value from the other telescope, not even by
+                                // the errlsstA(magni[fiR]) the comment above it described: errsR was
+                                // computed for the chi-squared terms and then thrown away. Now Roman's
+                                // own per-exposure error is both used and stored.
+                                l->erra[ndw] = errsR;
                                 l->tele[ndw] = 1; // 1 = Roman/F146
 
                                 CHECK(sqR >= 0);
@@ -2148,7 +2193,10 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 if (j == 4) {co.diff = double(+co.Delta1[j] * sig[h]) ;      s.xi += co.diff;}
                 if (j == 5) {co.diff = double(+co.Delta1[j] * sig[h]) ;      l.t0 += co.diff;}
 
-                lightcurve(s, l, as, l.timn[i]);
+                // Step H1: the observer that produced THIS datum. A derivative evaluated
+                // with a different observer than its datum makes the Fisher matrix
+                // inconsistent, and the error it produces is not a forecast of anything.
+                lightcurve(s, l, as, l.timn[i], int(l.tele[i]));
                 s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
                 co.magw = s.mbs[tt] - 2.5 * std::log10(s.Astar * s.fb[tt] + 1.0 - s.fb[tt]);
                 co.derm1[h] = double(co.magw - l.magn[i]) / co.diff;
@@ -2196,7 +2244,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                     if (k == 4) {co.diff = double(+co.Delta1[k] * sig[h]) ;     s.xi += co.diff;}
                     if (k == 5) {co.diff = double(+co.Delta1[k] * sig[h]) ;     l.t0 += co.diff;}
 
-                    lightcurve(s, l, as, l.timn[i]);
+                    lightcurve(s, l, as, l.timn[i], int(l.tele[i])); //Step H1: same observer as the datum
                     s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
                     co.magw = s.mbs[tt] - 2.5 * std::log10(s.Astar * s.fb[tt] + 1.0 - s.fb[tt]);
                     co.derm2[h] = double(co.magw - l.magn[i]) / co.diff;
@@ -2354,7 +2402,10 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 if (j == 3) { co.diff = double(co.Delta2[j] * sig2[h]); l.piE  += co.diff; }
 
 
-                lightcurve(s, l, as, l.timn[i]);
+                // Step H1: the observer that produced THIS datum. A derivative evaluated
+                // with a different observer than its datum makes the Fisher matrix
+                // inconsistent, and the error it produces is not a forecast of anything.
+                lightcurve(s, l, as, l.timn[i], int(l.tele[i]));
                 co.dera1[h] = double(s.pos1c - l.soux[i]) / co.diff;
                 co.derb1[h] = double(s.pos2c - l.souy[i]) / co.diff;
 
@@ -2395,7 +2446,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                     if (k==2) {co.diff = double(co.Delta2[k] * sig[h] );  s.mus2 += co.diff;}
                     if (k==3) {co.diff = double(co.Delta2[k] * sig2[h]);  l.piE  += co.diff;}
 
-                    lightcurve(s, l, as, l.timn[i]);
+                    lightcurve(s, l, as, l.timn[i], int(l.tele[i])); //Step H1: same observer as the datum
                     co.dera2[h] = double(s.pos1c - l.soux[i]) / co.diff;
                     co.derb2[h] = double(s.pos2c - l.souy[i]) / co.diff;
 
@@ -2577,9 +2628,16 @@ void ErrorCal(covarian & co, lens & l , source & s){
 //                         Light curves and Astrometry                //
 //                                                                    //
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
-void lightcurve(source & s, lens & l, astromet & as, double timh)
+// tele: which observatory is asking -- 0 = Rubin (on Earth), 1 = Roman (at Sun-Earth L2).
+//
+// Step H1. Before this, the function had no telescope argument and every epoch, from either
+// observatory, was given Earth's position. Roman was simulated at the centre of the Earth and
+// the ~0.01 AU Earth-L2 baseline contributed nothing to any light curve or any Fisher matrix
+// (DEVIATIONS.md 27). `tele` is what makes the two observatories different places.
+void lightcurve(source & s, lens & l, astromet & as, double timh, int tele)
 {
     double dvex, dvey, Ve_x, tt;
+    double abs1 = 0.0, abs2 = 0.0; //undifferenced projection at t = timh -- see below
     double pis = double(1.0/s.Ds); //[mas] source parallax
     double pil = double(1.0/l.Dl); //[mas] lens parallax
     double int1 = 0.0, int2 = 0.0;
@@ -2595,11 +2653,49 @@ void lightcurve(source & s, lens & l, astromet & as, double timh)
         Ve_x     = -std::cos(tetp) * dvex * std::cos(l.deltao) - dvey * std::sin(l.deltao);
         as.Ve_n2 = -std::sin(s.FI) * Ve_x + std::cos(s.FI) * std::sin(tetp) * dvex;
 
-        if(ig == 0) { int1  = as.Ve_n1; int2  = as.Ve_n2; }
+        if(ig == 0) { int1  = as.Ve_n1; int2  = as.Ve_n2;
+                      abs1  = as.Ve_n1; abs2  = as.Ve_n2; } //kept UNdifferenced -- see below
         if(ig == 1) { int1 -= as.Ve_n1; int2 -= as.Ve_n2; }
     }
-    as.ue_n1 = int1; //[radian] without dimention
-    as.ue_n2 = int2; //[radian] without dimention
+
+    // ------------------------------------------------------------------------------------
+    // Step H1: the satellite-parallax term, and the gauge trap it has to survive.
+    //
+    // The loop above computes ue(t) = P(X_E(t)) - P(X_E(0)): the observer's projected
+    // displacement measured FROM EARTH'S POSITION AT t = 0. That subtraction is a gauge
+    // choice, and it is what fixes the meaning of u0 and t0 -- an epoch at t == 0 has zero
+    // parallax offset by construction.
+    //
+    // Roman sits on the Sun-Earth line beyond Earth, so to leading order
+    // X_R(t) = (1 + f) * X_E(t) with f = L2_OFFSET_AU ~ 0.01. The projection P is LINEAR in
+    // (dvex, dvey) -- every term of Ve_n1/Ve_x/Ve_n2 is a constant times one component --
+    // so, keeping the SAME single origin for both observers:
+    //
+    //     ue_Roman(t) = P((1+f) X_E(t)) - P(X_E(0))
+    //                 = [P(X_E(t)) - P(X_E(0))] + f * P(X_E(t))
+    //                 =  ue_Rubin(t)            + f * P(X_E(t))
+    //
+    // i.e. the existing differenced term, PLUS f times the UNdifferenced projection at t.
+    // That is why abs1/abs2 are captured above and never passed through the ig == 1
+    // subtraction.
+    //
+    // THE TRAP. The natural-looking alternative -- let each observer subtract its own t = 0
+    // position -- computes P(X_R(t)) - P(X_R(0)) = (1+f) * [P(X_E(t)) - P(X_E(0))], which is
+    // a 0.01 rescaling of Earth's annual parallax ellipse with the constant inter-observer
+    // offset gone. That constant offset IS the satellite parallax. The code would compile,
+    // run, and measure nothing.
+    //
+    // The distinguishing check: at t = 0 the two observers must NOT agree.
+    //     ue_Roman(0) - ue_Rubin(0) = f * P(X_E(0)) != 0
+    // and |delta u| ~ f * piE ~ 1e-3 for a typical bulge event. If it comes out zero, the
+    // gauge has eaten the signal.
+    //
+    // Rubin takes fSat = 0 and therefore reproduces the pre-H1 expression exactly.
+    // ------------------------------------------------------------------------------------
+    const double fSat = (tele == 1) ? L2_OFFSET_AU * as.satScale : 0.0;
+
+    as.ue_n1 = int1 + fSat * abs1; //[radian] without dimention
+    as.ue_n2 = int2 + fSat * abs2; //[radian] without dimention
 
     s.ux=-l.u0*std::sin(s.xi) + (timh-l.t0)*std::cos(s.xi)/l.tE + l.piE*as.ue_n1;//[] +parallax
     s.uy= l.u0*std::cos(s.xi) + (timh-l.t0)*std::sin(s.xi)/l.tE + l.piE*as.ue_n2;//[] +parallax

@@ -6,29 +6,6 @@ into the whitepaper's open-items discussion at Phase G, Step G3.
 
 ---
 
-## Roman/F146 astrometric error model (from Step B1)
-
-Step B1 needed a per-epoch Roman astrometric error to build `chi1a_R/chi2a_R/chi3a_R`
-(Roman-only astrometric χ² bookkeeping) and `dchiA_R`. No real Roman astrometric error
-function or dataset exists yet, so `Bulge_LSST.cpp`'s Roman branch currently calls
-`errlsstA(*ls, magni[fiR])` — LSST's astrometric-error curve, evaluated at Roman's own
-F146 magnitude/epoch — as an explicit placeholder (search `errsR` for the `TODO(Ali)`
-comment at the call site). This is the same placeholder value the pre-B1 code was
-already implicitly using for `l->erra[]` on Roman epochs (just made deterministic and
-epoch-correct instead of a stale leftover from LSST's last-executed epoch).
-
-**What's needed:** a real `errRomanA()`-style function (mirroring `errlsstA()`) reading
-a real F146 astrometric-error-vs-magnitude dataset (mirroring `sigmaA_LSST.txt` /
-`lsst::mag,err`), using the noise constants named in this plan's Deferred section (the
-~100 mas FWHM replacing the current 20 mas, and the γ value for the F146≈22 transition).
-
-**Where this should land:** before Phase C's astrometric Fisher-matrix work (`inputB`/
-`inverB`, params `tetE, mus1, mus2, piE`) and Step G1 (which explicitly reruns the
-astrometric matrix to isolate satellite-parallax from temporal-baseline parallax) —
-both currently consume `l->erra[]` values for Roman epochs that trace back to this same
-placeholder. Detection itself (Step B1's `FFG[0]` gate) is unaffected, since it's driven
-by `dchiL` (photometric), not `dchiA`.
-
 ## Astrometric Fisher CHECK aborts when a perturbation is unresolvable (from the fixture)
 
 `FisherM`'s astrometric branch asserts
@@ -559,37 +536,6 @@ every absolute yield needs both.
 
 ---
 
-## No satellite parallax: both telescopes observe from Earth (found 2026-09-04, planning Phase H)
-
-**What is wrong:** `lightcurve()` builds the observer's projected displacement from Earth's
-orbit only and takes no telescope argument, so Roman — which is at the Sun–Earth L2 point,
-~1.5 × 10⁶ km ≈ 0.01 AU away — is simulated as if it were at the centre of the Earth. The
-~0.01 AU baseline between the two observatories contributes nothing to any light curve or to
-any Fisher matrix. Full detail in `DEVIATIONS.md` entry 27.
-
-**Why it matters scientifically:** every `piE` (microlensing parallax) forecast the project has
-produced contains only the annual Earth-orbit parallax. They are a **lower bound** on what the
-real Roman + Rubin pair can do, not an estimate of it. Quote them that way. In particular, do
-not describe the joint fit as including Roman–Rubin satellite parallax — it does not.
-
-**How much is missing:** `Δu ≈ (D_perp/AU) · piE ≈ 0.01 · piE`, so ~10⁻³ for a typical bulge
-event. Small, and concentrated where the light curve is steep in `u` — high magnification,
-short `tE`. The gap-filling results (Deviations 23–25) are about *temporal* coverage and are
-not affected in kind.
-
-**Why it is deferred:** it is not deferred — it is Step H1, the first step of
-`PHASE_H_PLAN.md`, and the user has asked for it. This entry exists so that any result quoted
-before H1 lands is quoted with the right caveat.
-
-**What the fix involves:** `PHASE_H_PLAN.md` Step H1. The one-line summary is: give
-`lightcurve()` a `tele` argument, add the L2 offset for `tele == 1`, and thread it through all
-four call sites — including the three inside `FisherM`, because a derivative evaluated with a
-different observer than its datum makes the matrix inconsistent. The trap is the `t = 0` gauge
-subtraction, which will silently cancel the entire effect if each observer is referenced to its
-own origin.
-
----
-
 ## Roman's halo orbit around L2 is not modelled (raised 2026-09-04, planning Phase H)
 
 **What is wrong:** Step H1 will place Roman at the mean L2 point. Roman actually flies a halo
@@ -626,11 +572,10 @@ different question from whether `θE` is *forecastable*, and the lens mass needs
 together. The maximum shift is `θE/√8` at `u = √2` — i.e. it peaks *outside* the photometric
 peak, which interacts with Roman's seasonal gaps in a way nothing has yet looked at.
 
-**Why it is deferred:** it is Step H5 of `PHASE_H_PLAN.md`, and it is blocked on Step H4 —
-Roman's per-epoch astrometric error is still `errlsstA()`, Rubin's model evaluated at Roman's
-magnitude (see the first entry in this file). An astrometric-shift figure built on that is a
-figure about Rubin's error model wearing Roman's name.
+**Why it is deferred:** it is Step H5 of `PHASE_H_PLAN.md`. Its blocker, Step H4, is now
+done — `errRomanA()` exists and Roman no longer borrows Rubin's astrometric error — so H5 is
+unblocked and is simply not written yet.
 
-**What the fix involves:** H4 (write `errRomanA()` from the literature constants the user has),
-then H5 (`analysis/h5_astrometric_shift.py`), then re-run F4 and record how far the `tetE` and
-`Ml` panels moved when the placeholder was replaced.
+**What the fix involves:** `analysis/h5_astrometric_shift.py` per `PHASE_H_PLAN.md` H5, then
+re-run F4 on a post-H4 table and record how far the `tetE` and `Ml` panels moved. That
+number is itself a result: it says how much the `errlsstA` placeholder was distorting them.

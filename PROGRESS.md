@@ -1,6 +1,7 @@
 # PROGRESS.md — where this project stands
 
-**Last updated:** 2026-09-04, after Step E1a (footprint-stratified sampling).
+**Last updated:** 2026-09-04, after Steps E1a (footprint-stratified sampling), H1
+(satellite parallax) and H4 (Roman's astrometric error model).
 **Branch:** `joint-fisher-refactor` (never commit to `main`).
 **Head at last update:** `738b54d` — "Report what each survey measures, not just how much the
 joint fit adds" (Step F4).
@@ -10,11 +11,17 @@ joint fit adds" (Step F4).
 sky; with its new flag absent, the simulator behaves exactly as it did. `test5.dat` and every
 figure made from it still stand.
 
-**One caveat on every `piE` number in this file, found while planning Phase H:** the simulation
-has no satellite parallax. `lightcurve()` puts both telescopes at the centre of the Earth, so
-every microlensing-parallax forecast here contains only the annual Earth-orbit signal and is a
-**lower bound** on the real Roman + Rubin pair. It is Step H1 and it is next.
-**Deviation 27**, `OPEN_ITEMS.md`, `PHASE_H_PLAN.md`.
+**Two caveats on the numbers in §4, both now fixed in code but not yet in any run.**
+1. *Satellite parallax.* Every `piE` number in this file comes from a run in which
+   `lightcurve()` put both telescopes at the centre of the Earth, so it contains only the
+   annual Earth-orbit signal and is a **lower bound** on the real pair. Step H1 fixes it
+   (Deviations 27, 28).
+2. *Roman's astrometric error.* Every `tetE` and lens-mass number comes from a run in which
+   Roman's epochs were weighted by a **stale Rubin astrometric error from a different
+   timestep** — worse than the documented `errlsstA` placeholder. Step H4 fixes it
+   (Deviation 29.2).
+
+Both land in the next production run. Until then, quote §4 with these caveats.
 
 ---
 
@@ -171,6 +178,30 @@ Commits are on `joint-fisher-refactor`. Where a step deviated from the plan, the
   wall clock grows faster than the sightline count. **This choice is not made; it is the next
   decision.**
 
+### Phase H — satellite parallax and the astrometric shift
+- Step H1 — **Roman is at L2.** `lightcurve()` takes a `tele` argument and returns the
+  trajectory that observatory actually sees; Roman's heliocentric position is Earth's scaled
+  by `(1 + L2_OFFSET_AU)`, `L2_OFFSET_AU = 0.01003`. Threaded through all four call sites,
+  including the three inside `FisherM` — a derivative evaluated with a different observer than
+  its datum makes the matrix inconsistent. `--no-satellite-parallax` puts Roman back on Earth,
+  which is the "off" run of Step H3's experiment and the step's own regression.
+  **Deviation 28.** The `t = 0` gauge trap that would have deleted the whole signal is
+  described there and in `PHASE_H_PLAN.md` H1.
+
+  Verified: `|Δu| = piE · D_perp` to machine precision; the observers differ by 8.708e-03 in
+  projected position at `t = 0` (non-zero is the whole point); exact coincidence when switched
+  off. **`D_perp` is the PROJECTED separation and ran 0.87–0.99 of the full L2 offset across a
+  year** — `L2_OFFSET_AU · piE` is the ceiling on the effect, not its value (Deviation 28.2).
+
+- Step H4 — **Roman has its own astrometric error.** `errRomanA()` in `helper.cpp`: a 1.1 mas
+  centroiding floor (1% of the 110 mas pixel) for `F146 <= 20.62`, rising to 10 mas at 23.5 and
+  at 0.4/mag beyond, from Sanderson et al. 2019 (arXiv:1712.05420) and arXiv:2608.24998.
+  **Per exposure** — one row of `RomanBaseline.dat` is one 12.1-minute exposure (measured), so
+  the 0.1 mas daily-binned figure would have overstated Roman's astrometry tenfold.
+  **Deviation 29.** It also fixed a pre-existing bug: the Roman branch computed `errsR` and
+  then stored `errs`, Rubin's error from a different timestep, into `l->erra[]`
+  (**Deviation 29.2**).
+
 ## 3. The current data, and what is wrong with its label
 
 | Item | Path |
@@ -322,17 +353,12 @@ shift, then the whitepaper brought up to date for potential collaborators. `PHAS
 the roadmap for all three** — read it before starting any of them; it also explains why the
 original plan's Step G1 cannot be run as written.
 
-0. **Step H1 — give the observer a position.** `lightcurve()` takes no telescope argument, so
-   Roman is simulated at the centre of the Earth and there is no Earth–L2 baseline in any light
-   curve or any Fisher matrix. This is first because H2, H3 and the astrometric half of H5 all
-   depend on it, and because of the scheduling point below. **Deviation 27.**
-
-   **Scheduling, and it needs a decision.** Step E1a's stratified production run and Step H1
-   both want a full run, and a run costs 15 h and up. H1 changes the physics of every light
-   curve with a Roman epoch, so a stratified run launched before H1 would have to be repeated.
-   *Recommendation: land H1 first, then do one run that has both.* Running E1a now and again
-   later is defensible if the sampling-limited results are needed sooner, but it costs a second
-   full run. `PHASE_H_PLAN.md` §0.4.
+0. **The production run — this is the bottleneck now.** E1a (stratified sampling), H1
+   (satellite parallax) and H4 (Roman astrometric errors) are all in the code and all change
+   what a run produces. Nothing downstream can move until one run exists with all three.
+   Two decisions, both the user's: `--stride-roman` (see item 1) and whether to also do the
+   `--no-satellite-parallax` twin run that Step H3 needs. **Every result in §4 predates all
+   three changes.**
 
 Then, in roughly the order that makes sense:
 
@@ -350,11 +376,12 @@ Then, in roughly the order that makes sense:
 2. **Step E2 — revisit the per-sightline stopping criteria.** The current third floor (2
    well-conditioned events) was written when there was one Fisher matrix; with three
    matrices and stratified bins it needs replacing.
-3. **The rest of Phase H (H2–H6).** H2 record the observable,
-   H3 the satellite-parallax experiment and figures, H4 a real `errRomanA()` (blocked on a
-   literature source from the user, and blocking H5), H5 the astrometric-shift product, H6 the
-   whitepaper for collaborators. Full text and the dependency graph in `PHASE_H_PLAN.md`.
-   **H3 replaces the original plan's Step G1**, which cannot be run as written (Deviation 27).
+3. **The rest of Phase H.** H1 and H4 are done. Remaining: **H2** (record `du_sat` and
+   contemporaneous-coverage per event), **H3** (the satellite-parallax experiment and its three
+   figures — needs the twin runs), **H5** (the astrometric-shift analysis product, now
+   unblocked by H4), **H6** (the whitepaper for collaborators). Full text and the dependency
+   graph in `PHASE_H_PLAN.md`. **H3 replaces the original plan's Step G1**, which cannot be run
+   as written (Deviation 27).
 
 4. **The rest of Phase G.** G2: validate the Rubin-alone branch against Abrams et al. 2025 at
    l = 0.33°, b = 2.82°, **reweighting to their sampling first** or the comparison will look

@@ -1688,3 +1688,164 @@ displacement at `t = 0`, a gauge choice that makes `u0` and `t0` mean what they 
 observer is allowed to subtract its *own* `t = 0` position, the constant offset between the two
 observers is cancelled — and that constant offset is the entire satellite-parallax signal. The
 code would compile, run, and measure nothing.
+
+---
+
+## 28. Step H1: Roman put at L2, and the gauge that would have silently eaten it
+
+**Commit:** this step. **Files:** `Bulge_LSST.cpp` (`lightcurve` and its four call sites),
+`Bulge.h` (`L2_OFFSET_AU`, `astromet::satScale`). **New flag:** `--no-satellite-parallax`.
+
+**What changed:** `lightcurve()` now takes a `tele` argument and returns the trajectory that
+observatory actually sees. Roman's heliocentric position is Earth's scaled by
+`(1 + L2_OFFSET_AU)`, `L2_OFFSET_AU = 1.5e6 km / 1.496e8 km = 0.01003`. All four call sites —
+the light-curve fill loop and the three derivative/reference loops inside `FisherM` — now pass
+the observer that produced the datum, via `int(l.tele[i])` inside `FisherM`. Before this,
+Roman was simulated at the centre of the Earth (Deviation 27).
+
+### 28.1 How the gauge trap was avoided
+
+`lightcurve()` computes `ue(t) = P(X_E(t)) - P(X_E(0))`, a displacement measured from Earth's
+position at `t = 0`. That subtraction is a gauge choice and it is what fixes the meaning of
+`u0` and `t0`. Letting each observer subtract its **own** `t = 0` position would give
+`P(X_R(t)) - P(X_R(0)) = (1+f)·[P(X_E(t)) - P(X_E(0))]` — a 0.01 rescaling of Earth's parallax
+ellipse with the constant inter-observer offset gone, i.e. the entire satellite signal deleted,
+silently, in code that compiles and runs.
+
+The projection `P` is **linear** in the two orbital position components, so with one common
+origin (Earth at `t = 0`, which leaves Rubin untouched):
+
+```
+ue_Roman(t) = P((1+f)·X_E(t)) - P(X_E(0)) = ue_Rubin(t) + f · P(X_E(t))
+```
+
+The existing differenced term is kept exactly as it was, and `f` times the **undifferenced**
+projection at `t` is added afterwards — never passed through the `t = 0` subtraction. In the
+code that is the `abs1`/`abs2` pair captured in the `ig == 0` branch.
+
+### 28.2 The effective baseline is the PROJECTED one, and it is not constant
+
+Verified numerically rather than assumed. The identity
+
+```
+|delta u| = piE * D_perp / AU,    D_perp/AU = |P(X_Roman) - P(X_Rubin)|
+```
+
+holds to machine precision (`< 1e-15`) at every epoch tested. But `D_perp/AU` is **not**
+`L2_OFFSET_AU`: it is the separation projected perpendicular to the line of sight, and for a
+bulge sight line it ran **0.87 to 0.99** of the full offset across a year in the check — the
+Earth–L2 line is never exactly perpendicular to the line of sight, and the angle changes as
+Earth goes round. So `L2_OFFSET_AU · piE` is the **ceiling** on the effect, not its value.
+This matters for Step H3: the satellite signal is modulated annually by the projection factor,
+on top of everything else, and quoting `0.01 · piE` as *the* separation would overstate it.
+
+### 28.3 Verification
+
+- **The distinguishing check the plan demanded:** at `t = 0` the two observers differ by
+  `8.708e-03` in projected position, i.e. **non-zero**. Zero would have meant the gauge ate
+  the signal.
+- **The identity** `|delta u| = piE · D_perp` holds at machine precision at t = 0, 100, 500 and
+  1200 d, with `D_perp/AU <= L2_OFFSET_AU` at every one.
+- **Switched off** (`as.satScale = 0`), Roman's `ue_n1`/`ue_n2` are *exactly* Rubin's —
+  bitwise equality, not approximate.
+- **No RNG is consumed** by the added `lightcurve()` call in the Roman fill branch, so the
+  random stream is untouched.
+- **Stub regression against the previous commit** (`--stub --stride 2 --events 2 --lenses 1
+  --nerr 0 --maxdraws 500`, 48 event rows). The changes must reach Roman-touched events and
+  nothing else, and they do, in both configurations:
+
+  | | rows with no Roman epochs | characterized rows with Roman epochs |
+  |---|---|---|
+  | satellite parallax ON | 5, **0 differ** | 7, **7 differ** |
+  | satellite parallax OFF (H4 only) | 5, **0 differ** | 7, **7 differ** |
+
+  With the satellite term on, the first column to move is `rel_u0` — the trajectory itself
+  changed. With it off, so only H4 is active, the first columns to move are `rel_tetE` and
+  `rel_piE` — the astrometric error changed and nothing else did, which is exactly the reach
+  `errRomanA` should have. The remaining 36 rows are uncharacterized (all sentinels) and
+  cannot move.
+- `./fishertest` passes with all assertions held.
+
+### 28.4 `--no-satellite-parallax`, and why it is a runtime flag
+
+Step H3's experiment is two runs identical but for the spatial baseline. Making that a flag
+(`astromet::satScale`, 1 or 0) rather than a rebuild means the "off" run is reproducible from
+the same binary and the provenance file records which it was (`satellite_parallax` and
+`L2_offset_AU`). It also gives H1 its cleanest regression: with the flag, the new term is
+provably a no-op.
+
+### 28.5 What did NOT change
+
+The detection thresholds. `detL`, `detR` and `detJ` threshold on `dchiL` (the *lensing*
+effect); `dchiP` — the parallax contribution, whose meaning now widens to include the
+satellite offset — is recorded in the output table and gates nothing. Checked by reading the
+detection block, not assumed.
+
+---
+
+## 29. Step H4: a real Roman astrometric error, and the stale Rubin error it replaced
+
+**Commit:** this step. **Files:** `helper.cpp` (`errRomanA`), `Bulge.h` (constants),
+`Bulge_LSST.cpp` (the Roman fill branch).
+
+**Plan said** (`JOINT_FIT_REFACTOR_PLAN.md`, Deferred): the Roman astrometric error model is
+deferred, and its constants — "the ~100 mas FWHM replacing the current 20 mas, and the γ value
+for the F146 ≈ 22 transition" — are known from the literature but not transcribed.
+
+**Done instead:** the numbers were researched directly and a different, better-sourced
+functional form was used. Sources:
+
+- **Sanderson et al. 2019**, arXiv:1712.05420 §1.1: single-exposure precision for well-exposed
+  point sources is 0.01 pixel, "about 1.1 mas", improving ~10× when ~100 exposures are stacked.
+- **Black hole astrometric binaries in the Roman GBTDS**, arXiv:2608.24998, Fig. 5: 1%
+  centroiding gives "a floor of 1.1 mas for Roman"; the floor "impacts bright sources
+  F146_Vega < 20.62"; background domination sets in near "F146_Vega < 23.5 mag, which
+  corresponds to σ_ast ≈ 10 mas"; pixels are 0.11″; GBTDS exposures are 66 s at 12.1 min
+  cadence. Their curve derives from Pandeia and Bellini et al. 2024.
+
+```
+                | 1.1                                m <= 20.62     centroiding floor
+sigma_ast(m) =  | 1.1 * 10^(0.33285 * (m - 20.62))   20.62 - 23.5
+                | 10.0 * 10^(0.4 * (m - 23.5))       m > 23.5        background dominated
+```
+
+The middle slope is not a physical constant and not a free choice: it is
+`log10(10/1.1)/(23.5-20.62)`, the slope joining the two published anchors. Source-dominated
+photon noise would give 0.2/mag and pure background domination 0.4/mag; 0.333 sits between
+because the transition is already under way. A later step can replace it with a Pandeia table,
+exactly as `errlsstA` reads `sigmaA_LSST.txt`. Verified: 1.100 mas at m ≤ 20.62 and 10.000 mas
+at 23.5, both anchors reproduced exactly.
+
+### 29.1 PER EXPOSURE — a factor of ten that was there to be got wrong
+
+Both sources also quote **0.1 mas**, and it is tempting. It is the *daily-binned* figure,
+~100 exposures stacked. `l.erra[]` is a per-epoch error and **one row of `RomanBaseline.dat`
+is one 12.1-minute exposure** — measured directly rather than assumed: for field
+(l, b) = (0.4, −1.2) the median inter-epoch gap is 0.008403 d = 12.1 min, with 50,401 epochs
+per field × 6 fields = 302,406 = `NlRoman`. So 1.1 mas is correct here. Using 0.1 would have
+overstated Roman's astrometry tenfold and flattered every `tetE` and lens-mass forecast in the
+project.
+
+### 29.2 Pre-existing bug: the Roman branch stored RUBIN's astrometric error
+
+Found while wiring this in. The Roman fill branch computed `errsR` for its χ² terms and then
+stored a different variable:
+
+```cpp
+errsR = errlsstA(*ls, magni[fiR]);   // computed, used for chi1a_R/chi2a_R/chi3a_R
+...
+l->erra[ndw] = errs;                 // STORED: Rubin's error, from whichever Rubin epoch
+                                     // last set it -- in general a different timestep
+```
+
+So the astrometric Fisher matrix was weighting Roman's epochs by a **stale Rubin value from
+another point in the light curve** — not even by the `errlsstA(magni[fiR])` placeholder the
+comment beside it described. The comment claimed the placeholder was "deterministic and
+epoch-correct (not a stale `errs` left over from whichever epoch last set it)"; the code did
+exactly the thing the comment said it did not. Now `l->erra[ndw] = errsR` with
+`errsR = errRomanA(magni[fiR])`.
+
+This affects every astrometric result predating this commit — `sigtetE_R`, `sigtetE_J`,
+`relMl_*`, and F4's panels (c) and (d). Their ordering is unlikely to change, since Roman's
+epochs still vastly outnumber Rubin's, but the absolute values move and should be recomputed
+before being quoted.

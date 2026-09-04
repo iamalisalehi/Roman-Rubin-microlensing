@@ -579,3 +579,119 @@ unblocked and is simply not written yet.
 **What the fix involves:** `analysis/h5_astrometric_shift.py` per `PHASE_H_PLAN.md` H5, then
 re-run F4 on a post-H4 table and record how far the `tetE` and `Ml` panels moved. That
 number is itself a result: it says how much the `errlsstA` placeholder was distorting them.
+
+---
+
+## Rubin's astrometric error model is unsourced, and is now BETTER than Roman's (found in Step H5)
+
+**What is wrong:** `files/sigmaA_LSST.txt`, which `errlsstA()` interpolates, runs from
+**0.374 mas at F = 16 to 4.92 mas at F = 24.4** per visit. Step H4 gave Roman a
+literature-sourced per-exposure model running **1.1 mas (the 1%-of-a-pixel centroiding floor)
+to 10 mas at F146 = 23.5**. So the simulation now says a ground-based 6.5 m telescope
+centroids a star roughly **three times better per visit than a diffraction-limited space
+telescope**. That is very likely wrong, and it was invisible before H4 because Roman's epochs
+were simply handed Rubin's curve.
+
+`sigmaA_LSST.txt` carries no provenance in this repository. Published expectations for LSST
+single-visit relative astrometry are of order several mas for bright stars, not a third of a
+milliarcsecond, so the file looks optimistic by an order of magnitude — but that is an
+impression, not a citation, and the file must be traced before anyone acts on it.
+
+**Why it matters scientifically:** the astrometric Fisher matrix (`inputB`, parameters
+`tetE, mus1, mus2, piE`) weights each epoch by `1/erra^2`. If Rubin's per-epoch error is ~10x
+too small, Rubin's astrometric contribution — and therefore its share of every `theta_E` and
+lens-mass constraint — is overstated by ~100x in information. Every joint-vs-Roman-alone
+astrometric ratio would be affected, in the direction that flatters the joint fit.
+
+Note this is **not** simply "Rubin cannot beat Roman": Rubin's ten-year baseline genuinely
+constrains the source proper motion `mus1`/`mus2` better than Roman's five-year window, and
+`mus` correlates with `tetE` in the same matrix, so a real Rubin contribution to `theta_E` is
+expected. The question is its size, and right now the size is set by an unsourced file.
+
+**Why it is deferred:** fixing it means finding the real LSST astrometric-error curve and
+regenerating `sigmaA_LSST.txt`, which changes every astrometric number in the project — a
+step of its own, and one that should be taken deliberately rather than folded into H5.
+
+**What the fix involves:** trace `sigmaA_LSST.txt` to its source (it predates this refactor;
+`Baseline/` and the LSST overview paper are the places to look), compare against the published
+single-visit astrometric expectation, regenerate if it is wrong, then re-run F4 and H5 and
+record how far the `tetE`, `Ml` and joint-gain numbers moved.
+
+---
+
+## The astrometric shift is not diluted by blending (found in Step H5)
+
+**What is wrong:** the simulator's modelled centroid, `s.pos1c`/`s.pos2c` in `lightcurve()`,
+adds the lensing deflection `s.def1c`/`s.def2c` undiluted — it is the SOURCE's centroid. A real
+measurement sees the centroid of every star in the aperture, so an unlensed blend of fraction
+`(1 - fb)` drags the measured shift down by roughly `fb`. The per-epoch astrometric *error* is
+evaluated at the blended magnitude, so the photon-noise half of blending is modelled; the
+centroid-dilution half is not.
+
+**Why it matters scientifically:** it makes every astrometric signal optimistic by a factor of
+about the source-flux fraction, and the bulge is a crowded field where `fb` is often well below
+1. `theta_E`, and hence every lens mass that uses it, inherits the optimism. **For Rubin this is
+large** — the median `blend_r` is 0.15, so a real Rubin centroid would move ~7x less than the
+simulator's. For Roman it is currently moot, but only because `blend_F146` is pinned at exactly
+1.0 by the entry below; fix that first and this one grows teeth.
+
+**Why it is deferred:** it is a change to the forward model, not to an analysis script, and it
+would move every astrometric number in the project at the same time as Step H4 already has.
+Doing both in one step would make it impossible to attribute the change to either.
+
+**What the fix involves:** multiply the deflection term by the per-telescope source-flux
+fraction where `pos1c`/`pos2c` are formed, and confirm against the fixture that `sigma_tetE`
+degrades by roughly `1/fb`. Meanwhile `analysis/h5_astrometric_shift.py` panel (a) plots the
+undiluted shift and the `x fb` version side by side, so the size of the simplification is
+visible on the figure rather than hidden.
+
+---
+
+## Roman is completely unblended, by construction, in every event (found in Step H5)
+
+**What is wrong:** `blend_F146` is **exactly 1.0 for all 1,950 in-footprint events** in the
+production table — not a narrow distribution, a constant. It is an artefact of how the blend
+is built, not a result. In `Lensing.cpp`:
+
+```cpp
+s.nsbl[i]  = |Nstart * pi * (FWHM[i]/2)^2 / 3600^2|;   // stars in the seeing disc
+s.nsbl[i] += RandN(sqrt(s.nsbl[i]), 2.0);
+if (s.nsbl[i] <= 1.0) s.nsbl[i] = 1.0;                 // <-- clamp
+```
+
+`FWHM[6]` (F146) is 0.105 arcsec against ~0.99 arcsec for Rubin's r band, and `nsbl` scales as
+FWHM^2. At a typical bulge density (`Nstart ~ 4e7` per deg^2) that is **~0.03 stars** in
+Roman's disc against ~2.4 in Rubin's, so Roman's count is clamped to 1 — the source alone —
+on every draw, and `blend[6] = 1` follows exactly. The Poisson term cannot rescue it: 0.03 +/-
+0.16 is still clamped. **The model cannot produce a blended Roman event at all.**
+
+**Why it matters scientifically, and it reaches further than astrometry:**
+
+1. **Roman's detection efficiency.** The per-survey pre-selection (Step B2) is
+   `acceptRoman = romanDetectable and (testR <= s.blend[6])`. With `blend[6] == 1` Roman
+   accepts **every** detectable event, while Rubin accepts `testL <= blend[2]`, median 0.15 —
+   about 15%. Any Roman-against-Rubin yield comparison inherits that asymmetry, including the
+   gap-filling numbers that are the thesis's second novelty claim.
+2. **The Fisher matrix.** `s.fb[1] = s.blend[6]`, so photometric parameter 7 (`fb1`, Roman's
+   source-flux fraction) is pinned at the boundary 1.0 for every event. Perturbing a parameter
+   sitting exactly on a physical boundary is what caused Deviation 1; the guard added there
+   holds, but the derivative is one-sided in a way nothing has re-examined since.
+3. **Astrometry.** It is why the two curves in `h5_astrometric_shift.py` panel (a) coincide.
+
+**Is it even wrong?** Not obviously — Roman's PSF really is ~10x narrower than Rubin's and
+blending really is far weaker. But "far weaker" and "exactly zero, always" are different
+claims, and the published Roman GBTDS literature does not treat its sources as unblended. The
+suspicion is that `Nstart` counts only stars above some completeness limit, so the faint
+unresolved population that actually blends a Roman pixel is missing from the density rather
+than from the geometry.
+
+**Why it is deferred:** it is a change to the forward model with a wide blast radius — it moves
+Roman's detection efficiency, its yields, its blend parameter and its astrometry at once — and
+it should not be folded into a step about parallax or the astrometric shift, where its effect
+could not be attributed. It also needs a decision about what `Nstart` includes, which is a
+question about the input population, not about this code.
+
+**What the fix involves:** establish what magnitude limit `Nstart` is complete to; if it
+excludes the faint end, either extend it or replace the `nsbl <= 1 -> 1` clamp with a
+sub-Poisson treatment that lets a fractional expected count produce a fractional blend. Then
+re-run and report how far Roman's detection count, `fb1` distribution and `sigma_tetE` moved.

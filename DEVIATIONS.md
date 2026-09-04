@@ -1876,3 +1876,73 @@ and the whole point of Step H1 was that this projection is easy to get subtly wr
 different code path. `nepL_pk`/`nepR_pk` separate events with genuine contemporaneous coverage
 (e.g. 258 Rubin and 11,724 Roman epochs near peak) from events with Roman epochs that are all
 far from `t0` — the distinction Step H3 needs and that `ndw_L`/`ndw_R` cannot make.
+
+---
+
+## 31. Step H5: the astrometric shift as a product, and what it says
+
+**Commit:** this step. **Script:** `analysis/h5_astrometric_shift.py`.
+**Figure:** `h5_astrometric_shift.png` + `.csv`.
+
+**Plan said** (`PHASE_H_PLAN.md` H5): make the astrometric signal a first-class product —
+distribution of the maximum centroid shift, the fraction above Roman's per-epoch precision,
+per-survey `sigma_tetE`, and the (`piE`, `theta_E`) mass plane.
+
+**Done as specified**, six panels, on the 1,950 in-footprint joint-detected events of the
+existing production table. One panel was redesigned during the step: the first version plotted
+`delta_theta_max/theta_E` against `u0`, which is a deterministic function of `u0` and therefore
+drew the analytic curve twice. It was replaced with `delta_theta_max` against `tE`, coloured by
+`theta_E`, carrying the single-exposure and stacked precision as reference lines — see 31.2,
+which is the panel that makes the whole figure hang together.
+
+### 31.1 The signal is small
+
+Median maximum centroid shift **0.121 mas**, against a median Roman per-exposure astrometric
+precision of **5.28 mas** at these (faint) source magnitudes. **Only 0.1% of events have a
+centroid shift exceeding Roman's own single-exposure precision.** Astrometric microlensing is
+not a per-epoch detection in the GBTDS.
+
+81.7% of events pass through `u = sqrt(2)` and so reach the full `theta_E/sqrt(8)`; the rest
+have `u0 > sqrt(2)` and peak at closest approach instead.
+
+### 31.2 ...and yet `theta_E` is well forecast, because the survey stacks
+
+Median stacked precision, `sigma_exposure / sqrt(N_Roman epochs)`, is **0.0236 mas** — and the
+median shift is **5.1x** that. So the wobble is an order of magnitude *below* what one exposure
+can see and five times *above* what fifty thousand of them can, which is exactly why panel (d)
+can report 88.5% of Roman-alone events with `sigma_tetE/tetE < 10%` while panel (a) reports
+0.1% single-exposure detectability. **"Detectable" and "forecastable" are different questions
+and the answers are opposite.** That distinction is the reason this step exists; F4's
+`sigma_tetE` panel alone would have implied the signal is visible event by event.
+
+### 31.3 Half the events have their astrometric peak on the far side of a season edge
+
+The centroid shift peaks at `u = sqrt(2)`, i.e. at `|t - t0| = tE sqrt(2 - u0^2)`, up to
+~1.41 `tE` either side of the photometric peak. Comparing that offset against `dt_edge`:
+**49.0% of events have their astrometric peak beyond the nearest Roman season boundary**, and
+**59.9% of events whose `t0` falls inside a season**. So for roughly half the sample the
+astrometric maximum is observed under different conditions from the photometric one. This is a
+new angle on the gap-filling claim — the two signals of a single event can fall on opposite
+sides of a gap — and it is a lower bound, because the test knows only the nearest edge.
+
+### 31.4 Per-survey, on the pre-H4 table
+
+Median `sigma_tetE` ratio: joint/Roman-alone **0.973**, joint/Rubin-alone **0.207**. Zero
+points above the 1:1 line, so the `sigma_joint <= sigma_single` invariant holds throughout.
+Median derived lens mass 0.188 Msun, consistent with the Kroupa population (Deviation 22).
+
+**These four numbers rest on a pre-H4 table** and will move: Roman's per-epoch astrometric
+error in that run was a stale Rubin value (29.2). The script detects this from the provenance
+block, prints a warning and stamps it on the figure.
+
+### 31.5 Two things the figure exposed, both recorded rather than fixed
+
+- **`blend_F146` is exactly 1.0 for all 1,950 events.** Roman is completely unblended by
+  construction: `nsbl` scales as FWHM^2, Roman's 0.105" PSF gives ~0.03 stars in the disc, and
+  the `nsbl <= 1 -> 1` clamp turns that into "source only" every time. This reaches past
+  astrometry into Roman's detection efficiency (the pre-selection is `testR <= blend[6]`, so
+  Roman accepts *everything* while Rubin accepts ~15%) and into `fb1`, which is pinned at a
+  parameter boundary. `OPEN_ITEMS.md`.
+- **Rubin's astrometric error model is unsourced and now better than Roman's** — 0.374 mas at
+  F = 16 against Roman's sourced 1.1 mas floor, i.e. the simulation says a ground-based
+  telescope centroids three times better per visit than a space telescope. `OPEN_ITEMS.md`.

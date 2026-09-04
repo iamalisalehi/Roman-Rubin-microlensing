@@ -198,6 +198,14 @@ Commits are on `joint-fisher-refactor`. Where a step deviated from the plan, the
   within ±2 `tE` of `t0`, i.e. while the event is magnified — satellite parallax needs
   *contemporaneous* coverage, which `ndw_L`/`ndw_R` cannot express). **Deviation 30.**
 
+- Step H5 — **the astrometric shift is a product.** `analysis/h5_astrometric_shift.py`, six
+  panels. The headline is a reconciliation: the median centroid shift is 0.121 mas and **only
+  0.1% of events exceed Roman's single-exposure astrometric precision**, yet `theta_E` is well
+  forecast because the median shift is **5.1x the stacked precision** (0.0236 mas over ~50,000
+  epochs). Detectable and forecastable are different questions with opposite answers. Also:
+  **49% of events have their astrometric peak beyond a Roman season edge** from `t0`, because
+  astrometry peaks at `u = sqrt(2)`, not at closest approach. **Deviation 31.**
+
 - Step H4 — **Roman has its own astrometric error.** `errRomanA()` in `helper.cpp`: a 1.1 mas
   centroiding floor (1% of the 110 mas pixel) for `F146 <= 20.62`, rising to 10 mas at 23.5 and
   at 0.4/mag beyond, from Sanderson et al. 2019 (arXiv:1712.05420) and arXiv:2608.24998.
@@ -381,9 +389,8 @@ Then, in roughly the order that makes sense:
 2. **Step E2 — revisit the per-sightline stopping criteria.** The current third floor (2
    well-conditioned events) was written when there was one Fisher matrix; with three
    matrices and stratified bins it needs replacing.
-3. **The rest of Phase H.** H1, H2 and H4 are done. Remaining: **H3** (the satellite-parallax experiment and its three
-   figures — needs the twin runs), **H5** (the astrometric-shift analysis product, now
-   unblocked by H4), **H6** (the whitepaper for collaborators). Full text and the dependency
+3. **The rest of Phase H.** H1, H2, H4 and H5 are done. Remaining: **H3** (the satellite-parallax experiment and its three
+   figures — needs the twin runs), **H6** (the whitepaper for collaborators). Full text and the dependency
    graph in `PHASE_H_PLAN.md`. **H3 replaces the original plan's Step G1**, which cannot be run
    as written (Deviation 27).
 

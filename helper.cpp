@@ -212,6 +212,45 @@ double errlsstA(lsst & ls, double ghadr){ //LSST Astrometric Error  //Change it!
 }
 
 
+///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
+// Roman WFI astrometric error for one F146 exposure, in milliarcseconds (Step H4).
+//
+// Replaces the errlsstA() placeholder that stood in for Roman -- Rubin's astrometric error
+// curve evaluated at Roman's magnitude, which had no reason to be right and was flagged in
+// OPEN_ITEMS.md. Constants, their sources and the per-exposure caveat are in Bulge.h.
+//
+// Three regimes:
+//   m <= 20.62   1.1 mas       centroiding floor, 1% of the 110 mas pixel. A systematic,
+//                              not photon noise, so it does NOT improve for brighter stars.
+//   20.62 - 23.5 rises at 0.333/mag   interpolation between the two published anchors.
+//   m >  23.5    rises at 0.4/mag     background dominated, SNR ~ counts.
+//
+// Unlike errlsstA this reads no data file and needs no instrument struct, so it takes the
+// magnitude alone. Its photometric sibling errRomanM() lives in Bulge_LSST.cpp instead,
+// because that one needs the roman struct.
+double errRomanA(double magF146){
+
+    double error = ROMAN_AST_FLOOR;
+
+    if (magF146 > ROMAN_AST_MBKG) {
+        error = ROMAN_AST_SBKG * std::pow(10.0, ROMAN_AST_SLOPE_BKG * (magF146 - ROMAN_AST_MBKG));
+    }
+    else if (magF146 > ROMAN_AST_MFLR) {
+        error = ROMAN_AST_FLOOR * std::pow(10.0, ROMAN_AST_SLOPE_SRC * (magF146 - ROMAN_AST_MFLR));
+    }
+
+    // The floor is a floor: the source-dominated branch is continuous with it at
+    // ROMAN_AST_MFLR by construction, but clamp anyway so no future edit to the constants can
+    // silently return a precision better than Roman can centroid.
+    if (error < ROMAN_AST_FLOOR) error = ROMAN_AST_FLOOR;
+
+    CHECK(error >= ROMAN_AST_FLOOR);
+    CHECK(std::isfinite(error));
+
+    return(error);
+}
+
+
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
 //                                                                    //
 //                         Read CMD                                   //

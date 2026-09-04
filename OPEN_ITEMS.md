@@ -556,3 +556,81 @@ it is nearly free, since the expensive per-draw work is the loop over ~50,000 ep
 per-bin efficiency stays unbiased (acceptance depends on the bin alone, so nothing *within* a
 bin is distorted). The trap is the same one as above and worse: two weights now multiply, and
 every absolute yield needs both.
+
+---
+
+## No satellite parallax: both telescopes observe from Earth (found 2026-09-04, planning Phase H)
+
+**What is wrong:** `lightcurve()` builds the observer's projected displacement from Earth's
+orbit only and takes no telescope argument, so Roman — which is at the Sun–Earth L2 point,
+~1.5 × 10⁶ km ≈ 0.01 AU away — is simulated as if it were at the centre of the Earth. The
+~0.01 AU baseline between the two observatories contributes nothing to any light curve or to
+any Fisher matrix. Full detail in `DEVIATIONS.md` entry 27.
+
+**Why it matters scientifically:** every `piE` (microlensing parallax) forecast the project has
+produced contains only the annual Earth-orbit parallax. They are a **lower bound** on what the
+real Roman + Rubin pair can do, not an estimate of it. Quote them that way. In particular, do
+not describe the joint fit as including Roman–Rubin satellite parallax — it does not.
+
+**How much is missing:** `Δu ≈ (D_perp/AU) · piE ≈ 0.01 · piE`, so ~10⁻³ for a typical bulge
+event. Small, and concentrated where the light curve is steep in `u` — high magnification,
+short `tE`. The gap-filling results (Deviations 23–25) are about *temporal* coverage and are
+not affected in kind.
+
+**Why it is deferred:** it is not deferred — it is Step H1, the first step of
+`PHASE_H_PLAN.md`, and the user has asked for it. This entry exists so that any result quoted
+before H1 lands is quoted with the right caveat.
+
+**What the fix involves:** `PHASE_H_PLAN.md` Step H1. The one-line summary is: give
+`lightcurve()` a `tele` argument, add the L2 offset for `tele == 1`, and thread it through all
+four call sites — including the three inside `FisherM`, because a derivative evaluated with a
+different observer than its datum makes the matrix inconsistent. The trap is the `t = 0` gauge
+subtraction, which will silently cancel the entire effect if each observer is referenced to its
+own origin.
+
+---
+
+## Roman's halo orbit around L2 is not modelled (raised 2026-09-04, planning Phase H)
+
+**What is wrong:** Step H1 will place Roman at the mean L2 point. Roman actually flies a halo
+orbit about L2 with an amplitude of order 10⁵–10⁶ km, so its true offset from Earth varies
+through the mission.
+
+**Why it matters scientifically:** it modulates an effect that is itself only ~10⁻³ in `u`, so
+it is a fractional correction to a small term. It could matter for the narrow
+high-magnification niche where satellite parallax does anything at all, because there the
+sensitivity to `Δu` is highest.
+
+**Why it is deferred:** the leading term has to exist before its correction is worth having,
+and Step H3's experiment will say whether the effect is large enough for the correction to
+change any conclusion. Modelling the halo orbit also needs an actual ephemeris or orbit
+specification, which is not in the repository.
+
+**What the fix involves:** replace the constant `L2_OFFSET_AU` displacement with a
+time-dependent one, sourced from a published Roman orbit specification, and re-run H3's
+comparison to see whether anything moves.
+
+---
+
+## No astrometric-shift analysis product exists (raised 2026-09-04, planning Phase H)
+
+**What is wrong:** the astrometric microlensing signal — the centroid deflection
+`δθ = θE · u / (u² + 2)` — is computed per epoch in `lightcurve()` (`s.def1c`/`s.def2c`, stored
+in `l.soux`/`l.souy`) and feeds the astrometric Fisher matrix, but **no analysis script reads
+it**. F4 plots `sigma_tetE`, which is the forecast *precision* on the angular Einstein radius,
+not the shift itself, so nothing in the project says how large the astrometric signal is or how
+often it exceeds the per-epoch astrometric precision.
+
+**Why it matters scientifically:** whether the astrometric signal is *detectable* is a
+different question from whether `θE` is *forecastable*, and the lens mass needs `θE` and `piE`
+together. The maximum shift is `θE/√8` at `u = √2` — i.e. it peaks *outside* the photometric
+peak, which interacts with Roman's seasonal gaps in a way nothing has yet looked at.
+
+**Why it is deferred:** it is Step H5 of `PHASE_H_PLAN.md`, and it is blocked on Step H4 —
+Roman's per-epoch astrometric error is still `errlsstA()`, Rubin's model evaluated at Roman's
+magnitude (see the first entry in this file). An astrometric-shift figure built on that is a
+figure about Rubin's error model wearing Roman's name.
+
+**What the fix involves:** H4 (write `errRomanA()` from the literature constants the user has),
+then H5 (`analysis/h5_astrometric_shift.py`), then re-run F4 and record how far the `tetE` and
+`Ml` panels moved when the placeholder was replaced.

@@ -10,6 +10,12 @@ joint fit adds" (Step F4).
 sky; with its new flag absent, the simulator behaves exactly as it did. `test5.dat` and every
 figure made from it still stand.
 
+**One caveat on every `piE` number in this file, found while planning Phase H:** the simulation
+has no satellite parallax. `lightcurve()` puts both telescopes at the centre of the Earth, so
+every microlensing-parallax forecast here contains only the annual Earth-orbit signal and is a
+**lower bound** on the real Roman + Rubin pair. It is Step H1 and it is next.
+**Deviation 27**, `OPEN_ITEMS.md`, `PHASE_H_PLAN.md`.
+
 ---
 
 ## 0. Read this first if you are a new session
@@ -24,6 +30,7 @@ whichever of the four documents below your task touches.
 | `JOINT_FIT_REFACTOR_PLAN.md` | The original roadmap and the binding working style (§0) | Before any code step. §0 is not optional |
 | `DEVIATIONS.md` | Every place the implementation departed from the plan, and why | Before touching anything the plan describes — the plan is often out of date, this file is not |
 | `OPEN_ITEMS.md` | Known problems deliberately **not** fixed | Before "fixing" anything you notice. It may already be a recorded decision |
+| `PHASE_H_PLAN.md` | The roadmap for satellite parallax, the astrometric shift, and the collaborator draft of the whitepaper | Before starting any of those three. It supersedes the original plan's Step G1 |
 | `ORIENTATION.md` | Struct-by-struct tour of the C++ (Step A1's output) | When you need to know what a legacy variable means |
 
 **The plan's original text is deliberately never edited.** It records what was believed when
@@ -310,7 +317,24 @@ footprint. Do not quote its cell values as precise — `OPEN_ITEMS.md`.
 
 ## 5. What is next
 
-In roughly the order that makes sense:
+**The user has asked for three things, in this order: satellite parallax, the astrometric
+shift, then the whitepaper brought up to date for potential collaborators. `PHASE_H_PLAN.md` is
+the roadmap for all three** — read it before starting any of them; it also explains why the
+original plan's Step G1 cannot be run as written.
+
+0. **Step H1 — give the observer a position.** `lightcurve()` takes no telescope argument, so
+   Roman is simulated at the centre of the Earth and there is no Earth–L2 baseline in any light
+   curve or any Fisher matrix. This is first because H2, H3 and the astrometric half of H5 all
+   depend on it, and because of the scheduling point below. **Deviation 27.**
+
+   **Scheduling, and it needs a decision.** Step E1a's stratified production run and Step H1
+   both want a full run, and a run costs 15 h and up. H1 changes the physics of every light
+   curve with a Roman epoch, so a stratified run launched before H1 would have to be repeated.
+   *Recommendation: land H1 first, then do one run that has both.* Running E1a now and again
+   later is defensible if the sampling-limited results are needed sooner, but it costs a second
+   full run. `PHASE_H_PLAN.md` §0.4.
+
+Then, in roughly the order that makes sense:
 
 1. **Run the stratified scan.** Step E1a is built, verified and committed; what it needs is
    a `--stride-roman` and a machine. Use `./roman --dry-run --stride-roman N` to see the
@@ -326,17 +350,57 @@ In roughly the order that makes sense:
 2. **Step E2 — revisit the per-sightline stopping criteria.** The current third floor (2
    well-conditioned events) was written when there was one Fisher matrix; with three
    matrices and stratified bins it needs replacing.
-3. **Phase G.** G1: separate satellite parallax from temporal-baseline parallax by rerunning
-   with Rubin's observer position forced to Roman's. G2: validate the Rubin-alone branch
-   against Abrams et al. 2025 at l = 0.33°, b = 2.82°, **reweighting to their sampling
-   first** or the comparison will look like a bug. G3: fold `OPEN_ITEMS.md` into the
-   whitepaper's open-items discussion.
-4. **The GBTDS footprint item** — deferred by the user, but wanted. The sky coverage is
+3. **The rest of Phase H (H2–H6).** H2 record the observable,
+   H3 the satellite-parallax experiment and figures, H4 a real `errRomanA()` (blocked on a
+   literature source from the user, and blocking H5), H5 the astrometric-shift product, H6 the
+   whitepaper for collaborators. Full text and the dependency graph in `PHASE_H_PLAN.md`.
+   **H3 replaces the original plan's Step G1**, which cannot be run as written (Deviation 27).
+
+4. **The rest of Phase G.** G2: validate the Rubin-alone branch against Abrams et al. 2025 at
+   l = 0.33°, b = 2.82°, **reweighting to their sampling first** or the comparison will look
+   like a bug. G3 is absorbed into H6.
+5. **The GBTDS footprint item** — deferred by the user, but wanted. The sky coverage is
    Penny et al.'s and the footprint has since changed; Rubin's large field of view can see
    corners of the GBTDS region whose centre it is not pointed at, which matters for blending
    too, and `BulgeBaseline.dat` must change with it. **`OPEN_ITEMS.md` has the full text.**
 
 ---
+
+## 5b. Where the code currently lives, and how to re-verify it
+
+**Step E1a is committed on a branch that has NOT been merged.** It is
+`worktree-e1-stratified-sampling` (commit `5e805d1`, on top of `738b54d`), pushed to `origin`.
+It was developed in a git worktree so that the user's checkout was never touched. To review:
+
+```bash
+git diff joint-fisher-refactor..worktree-e1-stratified-sampling
+```
+
+**The regression recipe, which every step that touches the simulator should repeat.** Step E1a
+established it and Step H1's acceptance criteria reuse it: build a binary from the previous
+commit, run both on the same tiny configuration, and diff every output file.
+
+```bash
+# baseline binary from the previous commit, built somewhere outside the tree
+git show <prev-commit>:Bulge_LSST.cpp > /tmp/base/Bulge_LSST.cpp   # and Bulge.h
+g++ -O2 -std=c++17 -DGIT_COMMIT='"base"' -I/tmp/base -o /tmp/base/roman_base \
+    /tmp/base/Bulge_LSST.cpp Lensing.cpp helper.cpp -lgsl -lgslcblas -lm
+
+# same tiny run for each; ~5 min per binary, 9 sightlines, ~48 event rows
+./roman --stub --stride 2 --events 2 --lenses 1 --nerr 0 --maxdraws 500
+```
+
+Clear `test5.dat` and the append-mode files in `files/MONTLMC/files/` between runs or the two
+runs concatenate (`OPEN_ITEMS.md`). Compare `test5.dat` on the shared column prefix, and
+`MapLMC5.dat` / `LpLMC5.dat` / `EfLMC5*.dat` byte for byte.
+
+**Working in a worktree:** the data files are gitignored and therefore absent, so symlink the
+inputs in and keep the outputs private — never symlink `files/MONTLMC/files/`, because those
+are opened in append mode and a test run would concatenate itself onto the production outputs.
+`Baseline/BulgeBaseline.dat`, `Baseline/RomanBaseline.dat`, `CMD/components/*.dat`,
+`files/density/*`, `files/ext/*`, `files/sigmaA_LSST.txt`, `files/sigma_roman.txt` are the
+inputs; `files/MONTLMC/files/{LpLMC,EfLMC,EfLMC*B,MapLMC}<IMnum>.dat` must exist (they can be
+empty) or the run exits with "Cannot open one or more files!".
 
 ## 6. Traps a new session will otherwise fall into
 
@@ -356,3 +420,10 @@ In roughly the order that makes sense:
   the repo root; every data path is hardcoded and relative.
 - **Two output files open in append mode**, so a re-run without clearing them silently
   concatenates two runs — `OPEN_ITEMS.md`.
+- **`lightcurve()` has no telescope argument**, so both observatories sit at the centre of the
+  Earth and there is no satellite parallax. Do not describe any current `piE` forecast as
+  including it. Deviation 27; Step H1 fixes it.
+- **The `t = 0` parallax gauge.** `lightcurve()` subtracts the observer displacement at
+  `t = 0`, which is what makes `u0` and `t0` mean what they mean. When two observers exist they
+  must share one origin — referencing each to its own `t = 0` cancels exactly the offset that
+  *is* the satellite parallax, silently. `PHASE_H_PLAN.md` Step H1.

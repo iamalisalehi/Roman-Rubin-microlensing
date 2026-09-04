@@ -1634,3 +1634,57 @@ through every pooled statistic in Phase F. That is a second, independent weighti
 top of the sky one, and §26.1 argues it may not be needed: the bins the plan wanted filled are
 footprint bins, and the sky axis fills them without any acceptance sampling at all. The right
 order is to run the stratified scan first and see which bins are still thin.
+
+---
+
+## 27. Step G1 cannot be run as written: there is no satellite parallax to switch off
+
+**Commit:** this step (planning only; no code changed). **New document:** `PHASE_H_PLAN.md`.
+
+**Plan said** (Step G1): *"run the joint fit twice — once with real geometry, and once with
+Rubin's observer position forced to Roman's (which kills the spatial baseline while preserving
+the timing). The difference isolates the satellite-parallax contribution from the
+temporal-baseline contribution."*
+
+**Found instead:** the two observatories are already at the same place. `lightcurve()` in
+`Bulge_LSST.cpp` builds the observer's projected displacement `as.ue_n1` / `as.ue_n2` from
+Earth's orbit alone (`vearth`, `omegae`, `tetp`, and the sky-position rotation through
+`l.deltao` / `s.FI`), and **the function takes no telescope argument at all**:
+
+```cpp
+void lightcurve(source & s, lens & l, astromet & as, double timh)
+```
+
+All four call sites — the light-curve fill loop and the three derivative/reference loops inside
+`FisherM` — pass the same geometry whether the epoch came from Rubin or from Roman, even though
+`l.tele[i]` is in scope at three of them. **Roman is simulated as if it sat at the centre of
+the Earth.**
+
+So G1's experiment, run today, would compare a configuration against itself and return exactly
+zero — and a zero from that experiment is indistinguishable from the physical statement "the
+satellite baseline contributes nothing", which is precisely the claim G1 was designed to test.
+It would have been a convincing wrong answer.
+
+**What this means for existing results:** every `piE` forecast this project has produced,
+F4's included, contains only the **annual** (Earth-orbit) parallax as sampled by the two
+surveys' cadences. None of them contains any contribution from the ~0.01 AU Earth–L2 baseline.
+They are a **lower bound** on the real pair of observatories, not an estimate of it. Recorded
+in `OPEN_ITEMS.md`. It does not invalidate anything already reported: the gap-filling results
+(Deviations 23–25) are about *temporal* coverage and are unaffected in kind, and the effect is
+expected to be small (§0.3 of `PHASE_H_PLAN.md`) — but the framing "our `piE` forecasts already
+include Roman–Rubin satellite parallax" would have been false, and it is the sort of thing a
+referee checks.
+
+**Done instead:** `PHASE_H_PLAN.md`, which puts the geometry in first (H1) and then runs G1's
+experiment with today's code as the "off" configuration (H3). The plan's *physics* framing in
+G1 survives intact and is quoted forward: L2 is ~0.01 AU out, `Δu ≈ 0.01 · piE ≈ 10⁻³` for a
+typical bulge event, so simultaneous Roman–Rubin satellite parallax is a narrow niche
+(high-magnification, short-`tE`) and not a headline, and the dominant joint gain remains
+temporal. Only the *experimental design* had to change.
+
+**The trap H1 has to survive, recorded here because it is the kind of thing that gets
+rediscovered the hard way.** `lightcurve()` runs its `ig` loop twice and subtracts the observer
+displacement at `t = 0`, a gauge choice that makes `u0` and `t0` mean what they mean. If each
+observer is allowed to subtract its *own* `t = 0` position, the constant offset between the two
+observers is cancelled — and that constant offset is the entire satellite-parallax signal. The
+code would compile, run, and measure nothing.

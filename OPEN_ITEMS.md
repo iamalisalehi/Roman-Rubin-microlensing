@@ -480,3 +480,79 @@ step of its own, not a side-effect of F4.
 undetected events during the read -- they are 98.66% of the table and every one of these
 scripts throws them away immediately anyway -- then diff the regenerated CSV against the
 committed one to prove nothing moved.
+
+---
+
+## Two Phase F panels pool events across sightlines and do not yet apply the area weight (raised during Step E1)
+
+**What is wrong:** Step E1 makes the scan stratified — sightlines inside Roman's footprint can
+be visited on a finer grid than those outside — so the sightlines no longer stand for equal
+pieces of sky. Every event row now carries `w_area`, the deg² its sightline represents, and
+`romanlib.area_weight()` returns it. **Two existing panels pool events across sightlines and
+still count them one-for-one:**
+
+- `analysis/f3_characterization_map.py` **panel (b)** — joint over Rubin-alone over all
+  joint-detected events.
+- `analysis/f4_fisher_precision.py` in its all-detections mode (`f4_fisher_all_kroupa.png`).
+
+Everything else in Phase F is safe by construction and was checked one at a time: F1 tabulates
+per Roman field (all in-footprint, all at the same fine step), F2 is restricted to the
+footprint by construction (Deviation 23.1), F3 panel (a) and the F4 footprint panels are
+in-footprint selections. Per-event ratios and per-sightline efficiencies are unaffected by
+construction — which sightlines were visited is not an input to either.
+
+**Why it matters scientifically:** unweighted, those two panels would describe a sky in which
+Roman covers whatever fraction of the *sample* the stratification bought, instead of the ~2.6%
+of the *sky* it actually covers. On the existing unstratified table the weight is a constant
+and the panels are correct as they stand; the error appears only once a stratified run exists,
+and it will not look like an error — F4's all-detections mass ratio would simply drift off
+1.000, which is exactly the number Deviation 25.3 uses as a *bug detector* for the survey
+partitioning. A weighting mistake would be read as a partitioning mistake.
+
+**Why it is deferred:** applying the weight changes what those two panels plot — a weighted
+CDF and a weighted 2D histogram rather than counts — and therefore changes committed figures
+that currently stand as results. That is a science decision about how the all-sky panels should
+be normalized, not a mechanical fix, and there is no stratified run to validate against yet.
+Doing it now would mean editing figures to match a table that does not exist.
+
+**The interim guard, already in place:** `romanlib.is_stratified()` reads the `stratified` flag
+that the simulator now writes into `run_provenance.txt`, and `describe()` — which every figure
+script already prints into its footer and its stdout — appends
+`STRATIFIED(stride_roman=N; weight by w_area)` when it is set. A stratified run therefore
+cannot be plotted by these scripts without saying so on the figure itself.
+
+**What the fix involves:** pass `weights=R.area_weight(df, prov)` into the histogram and CDF
+calls in those two code paths, re-run both against the unstratified table first (the weights
+are constant there, so every number must come out unchanged — that is the regression), then
+re-run against the stratified table.
+
+---
+
+## Step E1's `tE` stratification is not implemented; only the sky half of E1 is (raised during Step E1)
+
+**What is wrong:** `JOINT_FIT_REFACTOR_PLAN.md` Step E1 asks for a fixed number of events **per
+`tE` bin**, reweighted afterwards by the `tE` distribution to recover absolute yields, with bin
+edges 1–5, 5–10, 10–20, 20–30, 30–60, 60–90, 100–200, 200–500, 500–1000 days. What was built is
+the sky-position half: stratify the *scan* toward Roman's footprint, weight by `w_area`. The
+`tE` axis is untouched, and `FunctE`'s 100 linear bins from 0 to 50 years remain what they were.
+
+**Why it matters scientifically:** the plan wants the `tE > 200` d tail populated because that is
+where the black-hole lens result lives, and a population-weighted draw produces few of them.
+
+**Why it is deferred:** Deviation 26.1 argues the plan misdiagnoses which axis is starving those
+bins. `tE` is not a drawn quantity — it falls out of the lens mass, the two distances and the
+relative proper motion — so stratifying in it means acceptance sampling on a derived value,
+carrying a second independent weight through every pooled statistic in Phase F, on top of the
+sky weight just introduced. And the bins the plan wants filled are *footprint* bins: the
+long-`tE` null rests on 124 events because it is a subset of the 1,950 in-footprint events, not
+because long events are rare in the draw. The sky stratification multiplies that count by ~23
+at `--stride-roman 2` with no acceptance sampling and no new weight to reason about.
+
+**What the fix involves, if it is still wanted after a stratified run:** an acceptance test on
+`l->tE` placed immediately after `func_lens()` and before the light-curve loop — which is where
+it is nearly free, since the expensive per-draw work is the loop over ~50,000 epochs and
+`FisherM`, all of it downstream of the point where `tE` is known. Accept with probability
+`p[bin]`, carry weight `1/p[bin]`, and keep `nstE`/`ndtE` counting only accepted draws so the
+per-bin efficiency stays unbiased (acceptance depends on the bin alone, so nothing *within* a
+bin is distorted). The trap is the same one as above and worse: two weights now multiply, and
+every absolute yield needs both.

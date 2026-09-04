@@ -71,7 +71,16 @@ MAP_COLS = ([f"{n}_{i}" for n in _MAP_PAIRS for i in (0, 1)]
             + ["EffiD", "EffiL", "log10_EFF", "log10_Gamma", "log10_Neven",
                "Eru0", "ErtE", "Erfb", "ErpiE", "ErtetE", "Erml", "Erdl", "Ermul", "Ermus",
                "nsim", "numd0", "numd1", "nerr", "nri", "nde",
-               "log10_Rostart", "log10_Nstart", "log10_nstart"])
+               "log10_Rostart", "log10_Nstart", "log10_nstart",
+               # Step E1, appended in this order. w_area is the deg^2 of sky this
+               # sightline stands for -- constant across an unstratified run, NOT constant
+               # once --stride-roman is used. lon/lat are the sightline's position, which
+               # this file did not previously record at all: without them a map row could
+               # not be tied to the events it produced, and `nsim` -- the draw count any
+               # pooled yield needs as its denominator -- was unreachable from the event
+               # table. Files written before Step E1 have none of the three;
+               # load_sightlines() detects that by width.
+               "w_area", "lon", "lat"])
 
 
 def load_events(path, keep=None, chunksize=None):
@@ -131,6 +140,15 @@ def load_sightlines(path):
     it first silently concatenates two runs (OPEN_ITEMS.md). `nri`/`nde` restarting from
     zero part-way down the file is the signature.
     """
+    ncol = len(pd.read_csv(path, sep=r"\s+", header=None, nrows=1).columns)
+    if ncol == len(MAP_COLS) - 3:
+        # Written before Step E1 added the per-sightline area weight. Positional file with
+        # no header, so the only way to tell is the width -- and guessing wrong shifts every
+        # column by one, which produces a plausible plot of the wrong quantity.
+        df = pd.read_csv(path, sep=r"\s+", header=None, names=MAP_COLS[:-3])
+        for c in ("w_area", "lon", "lat"):
+            df[c] = np.nan
+        return df
     df = pd.read_csv(path, sep=r"\s+", header=None, names=MAP_COLS)
     return df
 
@@ -218,6 +236,44 @@ def detected(df, survey):
     return df[{"joint": "detJ", "rubin": "detL", "roman": "detR"}[survey]] == 1
 
 
+def area_weight(df, prov=None):
+    """Per-event sky-area weight in deg^2 -- the area of sky each row stands for (Step E1).
+
+    WHEN YOU NEED THIS. Roman's GBTDS footprint is ~2.6% of the scanned region, so a uniform
+    scan spends 97% of its draws where the joint Fisher matrix is simply Rubin's. Step E1
+    stratifies the scan: sightlines inside the footprint are visited on a finer grid than
+    those outside, and the sample is then deliberately NOT proportional to sky area.
+
+    That changes nothing computed at a single sightline, and nothing conditional on a
+    selection you make yourself. A statistic over in-footprint events only (F3 panel (a), the
+    F4 footprint panels), or a per-field table (F1), or a per-event ratio -- none of them
+    move, because the sightline you drew from is not an input to any of them.
+
+    What DOES move is anything pooled across the whole scan: a survey-wide yield, a
+    histogram over all joint detections, the "all detections" check panel of F4. Weight those
+    by this, or they will describe a sky in which Roman covers whatever fraction of the
+    SAMPLE the stratification bought rather than the 2.6% of the SKY it actually covers.
+
+    Returns a float Series aligned to df. Falls back to the run's constant
+    `area_per_sightline` for tables written before Step E1, and to 1.0 (with everything
+    equally weighted, i.e. plain counts) if there is no provenance to fall back to.
+    """
+    if "w_area" in df.columns:
+        return df["w_area"].astype(float)
+    if prov and "area_per_sightline" in prov:
+        return pd.Series(float(prov["area_per_sightline"]), index=df.index)
+    return pd.Series(1.0, index=df.index)
+
+
+def is_stratified(prov):
+    """True if the run used --stride-roman, i.e. the sightlines stand for unequal sky areas.
+
+    A run where this is True and a downstream script ignores area_weight() is a run whose
+    absolute yields are wrong -- so scripts that quote one should check it and say so.
+    """
+    return bool(prov) and str(prov.get("stratified", "0")).strip() == "1"
+
+
 def check_monotonicity(df, params=("tE", "piE", "tetE", "Ml"), tol=1e-9):
     """Assert sigma_joint <= sigma_single wherever both exist. Returns a list of violations.
 
@@ -268,6 +324,11 @@ def describe(path_events, path_prov=None):
         for k in ("git_commit", "stride", "events_target", "sightlines_aggregated"):
             if k in prov:
                 parts.append(f"{k}={prov[k]}")
+        if is_stratified(prov):
+            # Loud, because a stratified run whose absolute yields are quoted unweighted is
+            # wrong by the oversampling factor and looks entirely normal.
+            parts.append(f"STRATIFIED(stride_roman={prov.get('stride_roman', '?')};"
+                         f" weight by w_area)")
         if "sightlines_aggregated" not in prov:
             parts.append("INCOMPLETE-RUN")
     else:

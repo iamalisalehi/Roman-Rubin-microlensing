@@ -156,7 +156,7 @@ const char* eventTableHeader()
         "magb_u magb_g magb_r magb_i magb_z magb_y magb_F146 "
         "blend_u blend_g blend_r blend_i blend_z blend_y blend_F146 "
         "relMl_J relMl_L relMl_R okB_J okB_L okB_R condB_J condB_L condB_R "
-        "dt_edge t0zone";
+        "dt_edge t0zone w_area";
 }
 
 struct RunConfig {
@@ -164,6 +164,18 @@ struct RunConfig {
     // native 0.02 deg grid (166,397 sightlines -- not runnable) and stride=10 is
     // 0.20 deg (1,706 sightlines, ~15 h at the production budget).
     int    stride      = 10;
+
+    // Sightline grid INSIDE Roman's footprint, in the same units (Step E1). Roman covers
+    // ~2.6% of the scan region, so a uniform grid spends 97% of its wall clock on sky where
+    // the joint fit is Rubin's matrix and nothing can be learned about the combination. This
+    // is the second stride: sightlines within FoVRoman of a GBTDS field centre are visited on
+    // a `strideRoman * dd` grid, everything else stays on the coarse `stride * dd` grid, and
+    // every sightline carries the sky area it stands for so survey-wide totals are recoverable.
+    //
+    // 0 means "same as --stride", which reproduces the unstratified scan exactly -- same
+    // sightline positions, same order, same RNG stream, same areas. Nothing changes unless
+    // asked for.
+    int    strideRoman = 0;
 
     // Per-sightline event budget: the do/while over stars stops once ALL three are
     // met. icon counts detected events, nlens those also Fisher-characterised,
@@ -199,6 +211,14 @@ struct RunConfig {
     // Restrict the scan to the old hardcoded 0.1x0.1 deg patch instead of the full
     // region. Kept only so a run can be compared against the pre-Step-4 numbers.
     bool   stubPatch   = false;
+
+    // Build the sightline grid, write the provenance block, report the strata, and stop
+    // before drawing a single star. The point of stratifying (Step E1) is to decide how to
+    // spend wall clock, and that decision needs the sightline counts BEFORE committing to a
+    // multi-hour run: the footprint stratum is the expensive one (a GBTDS sightline carries
+    // ~50,000 Roman epochs against ~2,400 Rubin ones), so refining it by k multiplies its
+    // sightlines by k^2 and the run time by rather more than that.
+    bool   dryRun      = false;
 };
 
 static void printUsage(const char* prog) {
@@ -207,11 +227,17 @@ static void printUsage(const char* prog) {
         << "  --stride N     sightline grid step, in units of dd=" << dd << " deg (default 10)\n"
         << "                 grid spacing is N*dd deg; must be <= " << FoVRoman * 1.41421356
         << " deg or Roman fields can be missed\n"
+        << "  --stride-roman N  sightline grid step inside Roman's footprint, same units\n"
+        << "                 (default: same as --stride, i.e. an unstratified scan). Must\n"
+        << "                 divide --stride. Sightlines outside the footprint keep the\n"
+        << "                 coarse step and carry the sky area they stand for.\n"
         << "  --events N     per-sightline detected-event target, icon (default 850)\n"
         << "  --lenses N     per-sightline characterised-event target, nlens (default 150)\n"
         << "  --nerr X       per-sightline Fisher-error target (default 2.0)\n"
         << "  --maxdraws X   per-sightline cap on drawn stars (default 5e4)\n"
         << "  --stub         scan the old 0.1x0.1 deg patch instead of the full region\n"
+        << "  --dry-run      build the sightline grid, report the strata and the sky-area\n"
+        << "                 weights, then exit without drawing any stars\n"
         << "  --help         this message\n";
 }
 
@@ -233,11 +259,13 @@ int main(int argc, char** argv) {
             return argv[++a];
         };
         if      (arg == "--stride") { cfg.stride = std::atoi(need("--stride")); strideGiven = true; }
+        else if (arg == "--stride-roman") cfg.strideRoman = std::atoi(need("--stride-roman"));
         else if (arg == "--events")  cfg.iconTarget  = std::atoi(need("--events"));
         else if (arg == "--lenses")  cfg.nlensTarget = std::atoi(need("--lenses"));
         else if (arg == "--nerr")    cfg.nerrTarget  = std::atof(need("--nerr"));
         else if (arg == "--maxdraws") cfg.maxDraws    = std::atof(need("--maxdraws"));
         else if (arg == "--stub")    cfg.stubPatch   = true;
+        else if (arg == "--dry-run") cfg.dryRun      = true;
         else if (arg == "--help")  { printUsage(argv[0]); return 0; }
         else {
             std::cerr << "ERROR: unknown option '" << arg << "'\n";
@@ -274,12 +302,40 @@ int main(int argc, char** argv) {
     // truncation. The stronger per-field check, against the actual field centres
     // read from RomanBaseline.dat, runs once the baseline is loaded.
     const double gridStep = cfg.stride * dd;
-    if (gridStep > FoVRoman * 1.41421356 and not cfg.stubPatch) {
-        std::cerr << "ERROR: --stride " << cfg.stride << " gives a grid step of "
-                  << gridStep << " deg, which exceeds FoVRoman*sqrt(2) = "
+
+    // Step E1. strideRoman = 0 means "unstratified": the footprint grid IS the coarse grid,
+    // kSub = 1, and every expression below collapses to what it was before this step.
+    if (cfg.strideRoman == 0) cfg.strideRoman = cfg.stride;
+    if (cfg.strideRoman < 1 or cfg.strideRoman > cfg.stride) {
+        std::cerr << "ERROR: --stride-roman (" << cfg.strideRoman << ") must be between 1 and "
+                  << "--stride (" << cfg.stride << "). It refines the grid inside Roman's "
+                  << "footprint; it cannot coarsen it.\n";
+        return 2;
+    }
+    // Must divide exactly, or the fine cells do not tile the coarse ones and the sky-area
+    // weights stop summing to the scanned area -- which is the one thing this whole
+    // stratification has to preserve.
+    if (cfg.stride % cfg.strideRoman != 0) {
+        std::cerr << "ERROR: --stride-roman (" << cfg.strideRoman << ") must divide --stride ("
+                  << cfg.stride << ") exactly, so that each coarse cell is a whole number of "
+                  << "fine cells and the area weights sum to the scanned area.\n";
+        return 2;
+    }
+    const int    kSub     = cfg.stride / cfg.strideRoman; // fine cells per coarse cell, per axis
+    const double fineStep = cfg.strideRoman * dd;
+
+    // The field-coverage bar applies to the grid that actually samples the footprint, which
+    // under stratification is the FINE one. This is what lets the outside stratum be coarsened
+    // past FoVRoman*sqrt(2) without the run silently becoming Rubin-only: the footprint is
+    // still sampled at fineStep, and the per-field guard below re-checks it against the real
+    // field centres.
+    if (fineStep > FoVRoman * 1.41421356 and not cfg.stubPatch) {
+        std::cerr << "ERROR: --stride" << (kSub > 1 ? "-roman " : " ")
+                  << cfg.strideRoman << " gives a footprint grid step of "
+                  << fineStep << " deg, which exceeds FoVRoman*sqrt(2) = "
                   << FoVRoman * 1.41421356 << " deg. The grid could miss Roman "
                   << "fields entirely and the run would look joint but be "
-                  << "Rubin-only. Use --stride <= "
+                  << "Rubin-only. Use a step <= "
                   << int(FoVRoman * 1.41421356 / dd) << ".\n";
         return 2;
     }
@@ -588,25 +644,134 @@ int main(int argc, char** argv) {
         if (!seen) romanFields.emplace_back(ro->l[i], ro->b[i]);
     }
 
-    std::vector<int> fieldHits(romanFields.size(), 0);
-    long nSightlines = 0, nSightlinesRoman = 0;
+    // ----------------------------------------------------------------------
+    // The sightline list, with the sky area each sightline stands for (Step E1).
+    //
+    // WHY THIS IS NOT JUST A NESTED LOOP ANY MORE. The scan region is 68 deg^2; Roman's six
+    // GBTDS fields cover ~1.7 deg^2 of it, about 2.6%. A uniform grid therefore spends 97% of
+    // its wall clock on sightlines Roman never visits, where the joint Fisher matrix IS
+    // Rubin's matrix and nothing whatever can be learned about the combination of the two
+    // surveys. The 2026-08-30 production run bought 74,812 joint detections and only 1,950 of
+    // them -- 2.6%, exactly the area fraction -- inside the footprint. Every result that is
+    // currently sample-limited (F3 panel (a), the F4 precision fractions, the long-tE piE
+    // null) is limited by that same 1,950.
+    //
+    // So the grid is stratified. Two strata:
+    //   R  sightlines within FoVRoman of a GBTDS field centre, on the FINE grid (fineStep)
+    //   O  everything else, on the COARSE grid (gridStep), one sightline per coarse cell
+    // and each carries `area`, the deg^2 of sky it represents. An R sightline carries one
+    // fine cell; an O sightline carries however many fine cells of its coarse block fall
+    // outside the footprint -- NOT the whole coarse cell, or a block straddling the footprint
+    // edge would count its overlapping part twice, once in each stratum.
+    //
+    // THE ONE INVARIANT: sum(area) over the list equals the scanned area. It is asserted
+    // below rather than trusted, because every absolute yield in deg^-2 downstream is that
+    // sum in disguise, and an area bookkeeping error does not look like an error -- it looks
+    // like a survey that found more events than it did.
+    //
+    // WHAT STRATIFICATION DOES AND DOES NOT BIAS. Nothing computed *at* a sightline changes:
+    // detection efficiency, per-event precision, and every ratio conditional on the sample
+    // are untouched, because which sightlines were visited is not an input to any of them.
+    // What changes is any quantity POOLED ACROSS sightlines -- a survey-wide yield, a
+    // histogram over all events, the "all joint detections" panel of F4. Those must weight
+    // each event by its sightline's `w_area` or they will describe a sky that is 2.6% Roman
+    // by area and (say) 40% Roman by sample. The weight is written into every row of the
+    // per-event table for exactly this reason.
+    //
+    // With --stride-roman absent, kSub == 1: the fine grid IS the coarse grid, every block is
+    // a single cell that is its own representative, every area is gridStep^2, and the list is
+    // the same points in the same order as the old nested loop -- so the RNG stream, and
+    // therefore the run, is bit-identical to before this step.
+    // ----------------------------------------------------------------------
+    auto insideFootprint = [&](double lon, double lat) {
+        for (const auto& f : romanFields) {
+            const double dl = lon - f.first, db = lat - f.second;
+            if (std::sqrt(dl*dl + db*db) <= FoVRoman) return true;
+        }
+        return false;
+    };
+
     const int nLonGrid = int(std::floor((lonMax - lonMin) / gridStep + 1e-9)) + 1;
     const int nLatGrid = int(std::floor((latMax - latMin) / gridStep + 1e-9)) + 1;
-    for (int i = 0; i < nLonGrid; ++i) {
-        for (int j = 0; j < nLatGrid; ++j) {
-            const double lon = lonMin + i * gridStep;
-            const double lat = latMin + j * gridStep;
+    // Each coarse cell is subdivided into exactly kSub x kSub fine cells, so the fine grid has
+    // nLonGrid*kSub columns -- not (nLonGrid-1)*kSub+1. The difference is the edge convention:
+    // a grid POINT stands for the cell extending from it, which is what makes the areas tile
+    // exactly and the sum below come out on the nose.
+    const int    nLonFine = nLonGrid * kSub;
+    const int    nLatFine = nLatGrid * kSub;
+    const double cellArea = (gridStep * gridStep) / double(kSub * kSub); // deg^2, one fine cell
+
+    struct Sightline { double lon, lat, area; bool inFootprint; int col; };
+
+    // Pass 1: for each coarse block, how many of its fine cells survive the corner cut and lie
+    // OUTSIDE the footprint, and which of them represents that area.
+    const size_t nBlocks = size_t(nLonGrid) * size_t(nLatGrid);
+    std::vector<int>  blockOutCount(nBlocks, 0);
+    std::vector<long> blockRep(nBlocks, -1);      // fine cell index (iF*nLatFine + jF)
+    long nFineKept = 0;
+    for (int iF = 0; iF < nLonFine; ++iF) {
+        const double lon = lonMin + iF * fineStep;
+        for (int jF = 0; jF < nLatFine; ++jF) {
+            const double lat = latMin + jF * fineStep;
             if (lon < lx and lat > bx) continue;   // same corner cut as the scan below
-            nSightlines += 1;
+            nFineKept += 1;
+            if (insideFootprint(lon, lat)) continue;
+            const size_t b = size_t(iF / kSub) * size_t(nLatGrid) + size_t(jF / kSub);
+            if (blockRep[b] < 0) blockRep[b] = long(iF) * nLatFine + jF;
+            blockOutCount[b] += 1;
+        }
+    }
+
+    // Pass 2: the list itself, in the same iLon-major order the old loop walked.
+    std::vector<Sightline> scan;
+    scan.reserve(size_t(nFineKept));
+    std::vector<int> fieldHits(romanFields.size(), 0);
+    long nSightlines = 0, nSightlinesRoman = 0;
+    double areaFootprint = 0.0, areaOutside = 0.0;
+    for (int iF = 0; iF < nLonFine; ++iF) {
+        const double lon = lonMin + iF * fineStep;
+        for (int jF = 0; jF < nLatFine; ++jF) {
+            const double lat = latMin + jF * fineStep;
+            if (lon < lx and lat > bx) continue;
             bool anyField = false;
             for (size_t f = 0; f < romanFields.size(); ++f) {
                 const double dl = lon - romanFields[f].first;
                 const double db = lat - romanFields[f].second;
                 if (std::sqrt(dl*dl + db*db) <= FoVRoman) { fieldHits[f] += 1; anyField = true; }
             }
-            if (anyField) nSightlinesRoman += 1;
+            if (anyField) {
+                scan.push_back({lon, lat, cellArea, true, iF});
+                areaFootprint    += cellArea;
+                nSightlinesRoman += 1;
+            } else {
+                const size_t b = size_t(iF / kSub) * size_t(nLatGrid) + size_t(jF / kSub);
+                if (blockRep[b] != long(iF) * nLatFine + jF) continue;  // not this block's rep
+                const double a = blockOutCount[b] * cellArea;
+                scan.push_back({lon, lat, a, false, iF});
+                areaOutside += a;
+            }
+            nSightlines += 1;
         }
     }
+
+    // The invariant. Every fine cell that survived the corner cut is represented exactly once,
+    // either by itself (footprint) or by its block's representative (outside).
+    const double areaScanned = areaFootprint + areaOutside;
+    {
+        const double areaExpect = nFineKept * cellArea;
+        if (std::fabs(areaScanned - areaExpect) > 1e-9 * std::max(1.0, areaExpect)) {
+            std::cerr << "ERROR: sightline area weights sum to " << areaScanned
+                      << " deg^2 but the scanned grid is " << areaExpect << " deg^2. "
+                      << "Every absolute yield downstream is this sum; refusing to run.\n";
+            return 1;
+        }
+        std::cout << "Sightline grid: " << scan.size() << " sightlines ("
+                  << nSightlinesRoman << " inside Roman's footprint at " << fineStep
+                  << " deg, " << (scan.size() - size_t(nSightlinesRoman)) << " outside at "
+                  << gridStep << " deg), covering " << areaScanned << " deg^2 ("
+                  << areaFootprint << " footprint + " << areaOutside << " outside)." << std::endl;
+    }
+
     const size_t nFieldsCovered = std::count_if(fieldHits.begin(), fieldHits.end(),
                                                 [](int h){ return h > 0; });
     // Fatal for a full-region scan, advisory for --stub: the stub patch is 0.1x0.1 deg
@@ -639,17 +804,24 @@ int main(int argc, char** argv) {
     // truncated visit stream rather than the survey, and nothing in its output
     // said which model had produced it.
     //
-    // areaPerSightline is the piece that is easy to lose. Neven is a surface
+    // The sky-area weight is the piece that is easy to lose. Neven is a surface
     // density in deg^-2, and nothing in this program sums sightlines into a
     // survey-wide yield -- that happens downstream, where each sightline must be
     // weighted by the sky area it stands for. At stride N that area is
     // (N*dd)^2, NOT dd^2, so a strided run aggregated as if it were unstrided is
     // wrong by a factor of N^2 (100x at the default stride of 10).
+    //
+    // Under Step E1's stratification that weight is no longer one number for the
+    // whole run: footprint sightlines stand for a fine cell and outside ones for
+    // (up to) a coarse cell. area_per_sightline below is therefore only meaningful
+    // when stratified=0, and the authoritative weight is the per-row `w_area`
+    // column of the event table (and the last column of the map file). The header
+    // says so, so that a downstream script cannot quietly use the wrong one.
     // ----------------------------------------------------------------------
 #ifndef GIT_COMMIT
 #define GIT_COMMIT "unknown"
 #endif
-    const double areaPerSightline = gridStep * gridStep; // deg^2
+    const double areaPerSightline = gridStep * gridStep; // deg^2; unstratified runs only
 
     {
         std::ostringstream prov;
@@ -658,7 +830,16 @@ int main(int argc, char** argv) {
              << "# built               " << __DATE__ << " " << __TIME__ << "\n"
              << "# stride              " << cfg.stride << "\n"
              << "# grid_step_deg       " << gridStep << "\n"
-             << "# area_per_sightline  " << areaPerSightline << "   # deg^2 -- weight for Neven\n"
+             << "# stratified          " << (kSub > 1 ? 1 : 0)
+             << "   # 1 = per-sightline areas differ; use the w_area column, not the scalar below\n"
+             << "# area_per_sightline  " << areaPerSightline
+             << "   # deg^2 -- weight for Neven; VALID ONLY IF stratified = 0\n"
+             << "# stride_roman        " << cfg.strideRoman << "\n"
+             << "# fine_step_deg       " << fineStep << "\n"
+             << "# k_subdivision       " << kSub << "   # fine cells per coarse cell, per axis\n"
+             << "# area_scanned_deg2   " << areaScanned << "\n"
+             << "# area_footprint_deg2 " << areaFootprint << "\n"
+             << "# area_outside_deg2   " << areaOutside << "\n"
              << "# lon_range_deg       " << lonMin << " " << lonMax << "\n"
              << "# lat_range_deg       " << latMin << " " << latMax << "\n"
              << "# corner_cut          lon < " << lx << " and lat > " << bx << "\n"
@@ -693,6 +874,26 @@ int main(int argc, char** argv) {
         std::cout << prov.str() << std::flush;
     }
 
+    if (cfg.dryRun) {
+        // Per-stratum sightline counts, and what they cost. The footprint sightlines are the
+        // ones worth buying and the ones that are expensive; printing both together is what
+        // makes --stride-roman a decision rather than a guess.
+        const long nOutside = long(scan.size()) - nSightlinesRoman;
+        std::cout << "\n---- dry run: sightline strata ----\n"
+                  << "  footprint  " << nSightlinesRoman << " sightlines at " << fineStep
+                  << " deg, " << areaFootprint << " deg^2 ("
+                  << (areaFootprint > 0.0 ? cellArea : 0.0) << " deg^2 each)\n"
+                  << "  outside    " << nOutside << " sightlines at " << gridStep
+                  << " deg, " << areaOutside << " deg^2\n"
+                  << "  total      " << scan.size() << " sightlines, " << areaScanned
+                  << " deg^2\n"
+                  << "  footprint share: " << (100.0 * double(nSightlinesRoman) / double(scan.size()))
+                  << "% of sightlines, " << (100.0 * areaFootprint / areaScanned)
+                  << "% of area\n"
+                  << "No stars drawn. Remove --dry-run to run the simulation.\n";
+        return 0;
+    }
+
 ///HHHHHHHHHHHHHHHHHHHHH Monte Carlo Simulation HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 
     // Index-driven rather than accumulate-and-compare. The old loop did
@@ -702,8 +903,6 @@ int main(int argc, char** argv) {
     // fails. That scan advertised 36 sightlines and ran 25. Computing each position
     // as lonMin + i*gridStep keeps the count exact and makes it predictable ahead of
     // the run, which the provenance block and the coverage guard both rely on.
-    const int nLon = int(std::floor((lonMax - lonMin) / gridStep + 1e-9)) + 1;
-    const int nLat = int(std::floor((latMax - latMin) / gridStep + 1e-9)) + 1;
 
     // Sightline bookkeeping. The scan region is the Roman field box padded by one Rubin
     // FoV radius (wid in Bulge.h), so it deliberately extends past where either survey
@@ -715,15 +914,26 @@ int main(int argc, char** argv) {
     int nSkipBarren     = 0; //had epochs, but produced no characterised event to aggregate
     int nCapped         = 0; //stopped by --maxdraws with its budget unmet
     int nAggregated     = 0; //reached the per-sightline aggregation block
-    for (int iLon = 0; iLon < nLon; ++iLon) {
-        s->lon = lonMin + iLon * gridStep;
-        nri +=  1;
-        nde  = -1;
-        for (int iLat = 0; iLat < nLat; ++iLat) {
-            s->lat = latMin + iLat * gridStep;
-            if (s->lon < lx and s->lat > bx) {
-                continue;
-            };
+    // Areas rather than counts, because under stratification the sightlines no longer
+    // stand for equal pieces of sky and a count is not an area (Step E1).
+    double areaAggregated = 0.0, areaNoCoverage = 0.0, areaBarren = 0.0;
+    int lastCol = -1;
+    for (const auto& sightline : scan) {
+        s->lon = sightline.lon;
+        s->lat = sightline.lat;
+        // The sky area THIS sightline stands for. Written into every event row it produces;
+        // any statistic pooled across sightlines has to weight by it (see the list build).
+        const double wArea = sightline.area;
+        // nri/nde keep their old meaning -- longitude column index, and index within that
+        // column -- which is what the map file and the event table record. Assigned rather
+        // than incremented: the old loop bumped nri once per iLon whether or not any
+        // sightline in that column survived the corner cut, so an incrementing counter here
+        // would silently renumber the columns the moment a fully-cut column existed. Under
+        // stratification the column index is a fine-grid one, so it steps by kSub between
+        // coarse columns.
+        nri = sightline.col;
+        if (sightline.col != lastCol) { nde = -1; lastCol = sightline.col; }
+        {
             nde += 1;
             cout << ">>>>>>>>>>> NEW STEP " << nde << " <<<<<<<<\t nri:  " << nri << endl;
             cout << "longtitude: " << s->lon << "\t latitude: " << s->lat << endl;
@@ -750,6 +960,7 @@ int main(int argc, char** argv) {
             // sightline count reported at the end of the run, not the grid size.
             if (ndd == 0 and nddR == 0) {
                 nSkipNoCoverage += 1;
+                areaNoCoverage  += wArea;
                 cout << "  SKIP: no Rubin and no Roman epochs at this sightline" << endl;
                 continue;
             }
@@ -1310,7 +1521,11 @@ int main(int argc, char** argv) {
                     // Gap geometry. dt_edge is NEGATIVE when t0 fell inside a Roman season;
                     // t0zone distinguishes a mid-mission gap (1) from before-launch/after-end
                     // (2), which must never be pooled -- only the former is gap-filling.
-                    << sched.dtToSeasonEdge(l->t0) << " " << sched.zone(l->t0) << "\n";
+                    << sched.dtToSeasonEdge(l->t0) << " " << sched.zone(l->t0) << " "
+                    // Sky area this event's sightline stands for, deg^2 (Step E1). Constant
+                    // across an unstratified run; NOT constant once --stride-roman is used,
+                    // and then any statistic pooled over sightlines must weight by it.
+                    << wArea << "\n";
             filg_in.close();
 //          
 
@@ -1378,11 +1593,13 @@ int main(int argc, char** argv) {
             // detected AND one characterised event, so this must not fall through.
             if (nlens < 1 or nerr <= 0.0) {
                 nSkipBarren += 1;
+                areaBarren  += wArea;
                 cout << "  BARREN: " << nlens << " detected, " << nerr
                      << " characterised -- nothing to aggregate at this sightline" << endl;
                 continue;
             }
-            nAggregated += 1;
+            nAggregated    += 1;
+            areaAggregated += wArea;
    
             for (int i = 0; i <= GG; ++i) {
                 l->NstE[i] += l->nstE[i];
@@ -1600,6 +1817,15 @@ int main(int argc, char** argv) {
          << nsim              << " " << numd[0]          << " " << numd[1] << " "
          << nerr              << " " << nri              << " " << nde     << " "
          << std::log10(s->Rostart) << " " << std::log10(s->Nstart) << " " << std::log10(s->nstart)
+         // Step E1. Three columns appended, in this order:
+         //   w_area  deg^2 of sky this sightline stands for -- no longer a run-wide constant
+         //   lon,lat where it is. The map file had NO position column at all, so a row in it
+         //           could not be tied to the events it produced, and the draw count `nsim`
+         //           it records -- the denominator any pooled yield needs -- was unreachable
+         //           from the event table. With these, an event joins its sightline on
+         //           (lon, lat) and the correct pooled weight, w_area/nsim, is computable.
+         << " " << std::setprecision(8) << wArea
+         << " " << std::setprecision(6) << s->lon << " " << s->lat
          << "\n";
    
     cout << "nsim:  "  << nsim    << "\t Ndetected:  " << icon    << "\t Nlensing:  " << nlens << "\t NError:  " << nerr << endl;
@@ -1684,7 +1910,7 @@ int main(int argc, char** argv) {
      
     cout << "==============================================================" << endl;  
   
-   }}//right_accention and declinaton
+   }}//end of the sightline loop (was: right_accention and declinaton)
 
     // ---------------------------------------------------------------------------------------
     // Run-wide detection statistics.
@@ -1703,8 +1929,10 @@ int main(int argc, char** argv) {
          << nSkipNoCoverage << " skipped (no coverage), "
          << nSkipBarren << " skipped (barren), "
          << nCapped << " hit --maxdraws" << endl;
-    cout << "  scanned area " << (nAggregated + nSkipNoCoverage + nSkipBarren) * gridStep * gridStep
-         << " deg^2, of which " << nAggregated * gridStep * gridStep
+    // Summed weights, not count x cell area: under stratification the sightlines stand for
+    // different pieces of sky and the two stopped being the same number (Step E1).
+    cout << "  scanned area " << (areaAggregated + areaNoCoverage + areaBarren)
+         << " deg^2, of which " << areaAggregated
          << " deg^2 produced events" << endl;
     if (nCapped > 0)
         cout << "  WARNING: " << nCapped << " sightline(s) stopped on the draw cap with their "
@@ -1720,7 +1948,9 @@ int main(int argc, char** argv) {
                   << "# sightlines_no_coverage  " << nSkipNoCoverage << "\n"
                   << "# sightlines_barren       " << nSkipBarren << "\n"
                   << "# sightlines_capped       " << nCapped << "\n"
-                  << "# area_with_events_deg2   " << nAggregated * gridStep * gridStep << "\n";
+                  << "# area_with_events_deg2   " << areaAggregated << "\n"
+                  << "# area_no_coverage_deg2   " << areaNoCoverage << "\n"
+                  << "# area_barren_deg2        " << areaBarren << "\n";
         }
     }
     // Draws that never produced a light curve never reach the detection test, so they are not

@@ -1503,3 +1503,134 @@ and **Roman's per-epoch astrometric error is still `errlsstA()` as an explicit p
 epoch count and cadence and is robust; the *absolute* fractions in those two panels are only
 as good as that placeholder. Do not quote panel (d)'s "32% of events yield a 10% lens mass"
 outside this repository until `errRomanA()` exists.
+
+---
+
+## 26. Step E1 done as footprint stratification first, not `tE` stratification
+
+**Commit:** this step. **Files:** `Bulge_LSST.cpp` (the sightline grid), `analysis/romanlib.py`.
+**New flags:** `--stride-roman N`, `--dry-run`. **New columns:** `w_area` in the per-event
+table; `w_area`, `lon`, `lat` in the map file.
+
+**Plan said** (Step E1): *"run a fixed number of events per `tE` bin, then reweight by the
+Besançon-derived `tE` distribution to recover absolute yields per square degree"*, with bin
+edges 1–5, 5–10, 10–20, 20–30, 30–60, 60–90, 100–200, 200–500, 500–1000 days. The stated
+problem is that long-`tE` events are intrinsically rare and the `tE > 200` d tail is where the
+black-hole result lives.
+
+**Done instead:** the scan was stratified **in sky position**, not in `tE`. Sightlines inside
+Roman's GBTDS footprint are visited on a fine grid (`--stride-roman`), sightlines outside stay
+on the coarse `--stride` grid, and every sightline carries `w_area`, the deg² of sky it stands
+for, written into every event row it produces.
+
+### 26.1 Why the sky axis and not the `tE` axis
+
+The plan's diagnosis of *why* the interesting bins are empty is incomplete. Every
+sample-limited result in `PROGRESS.md` §4 is limited by the same number, and it is not a `tE`
+number — it is **1,950**, the count of joint-detected events that fall inside Roman's
+footprint:
+
+| Result | Sample | What limits it |
+|---|---|---|
+| F3 panel (a) | 1,950 | in-footprint events |
+| F4 precision fractions | 1,950 | in-footprint events |
+| F2 gap-filling, all `tE` bins | 1,363 | in-footprint events peaking in the mission |
+| F2 `piE`, the long-`tE` null | 124 | the `300+` d bin **of those 1,363** |
+
+The production run drew 5,571,168 events and found 74,812 joint detections, of which 1,950 —
+**2.6%** — had any Roman epoch at all. That 2.6% is not a statement about microlensing. It is
+the sky-area fraction: the scan covers 68.24 deg² and Roman's six GBTDS fields cover about
+1.46 deg² of it. A uniform grid spends 97% of its wall clock on sightlines where the joint
+Fisher matrix **is** Rubin's matrix, and where nothing whatever can be learned about combining
+the two surveys.
+
+So the long-`tE` null does not rest on 124 events because long events are rare. It rests on 124
+because it is a *footprint* statistic that inherited the 2.6%. Multiplying footprint sightlines
+multiplies all four rows of that table at once, including the last one — which is why this half
+of E1 was done first, and why it may make the `tE` half unnecessary. `--stride-roman 2` takes
+the footprint from 39 sightlines to 907; the long-`tE` bin goes from 124 events to of order
+2,900 with no reweighting and no new bias to reason about.
+
+### 26.2 What stratification does and does not bias
+
+Nothing computed **at** a sightline changes. Detection efficiency, per-event forecast
+precision, and every per-event ratio are untouched, because which sightlines the scan visited
+is not an input to any of them. The same is true of any statistic conditional on a selection
+made downstream: F1 (per Roman field, all in-footprint), F2 (in-footprint by construction),
+F3 panel (a) and the F4 footprint panels all keep their meaning unchanged.
+
+What does change is anything **pooled across** sightlines — a survey-wide yield in deg⁻², a
+histogram over all joint detections, F3 panel (b), F4's all-detections panel. Those must weight
+each event by `w_area` or they will describe a sky in which Roman covers whatever fraction of
+the *sample* the stratification bought instead of the 2.6% of the *sky* it actually covers.
+`romanlib.area_weight()` supplies the weight, `romanlib.is_stratified()` detects the run type,
+and `describe()` — which every figure script already prints into its footer — now says
+`STRATIFIED(... weight by w_area)` in that case. The two panels that need the weight and do not
+yet apply it are recorded in `OPEN_ITEMS.md`.
+
+### 26.3 The area bookkeeping, and the one invariant
+
+Two strata cannot simply carry "coarse cell" and "fine cell" areas, because a coarse cell that
+straddles the footprint edge would then have the overlapping part counted twice, once in each
+stratum. So the grid is defined on the fine cells throughout: each coarse cell is exactly
+`kSub × kSub` fine cells (`--stride-roman` must divide `--stride`, and the run refuses
+otherwise), a footprint sightline carries one fine cell, and an outside sightline carries
+however many fine cells of its coarse block fall outside the footprint — not the whole block.
+
+**The invariant, asserted at startup rather than trusted:** the area weights sum to the scanned
+area. Every absolute yield in deg⁻² downstream is that sum in disguise, and an area bookkeeping
+error does not look like an error — it looks like a survey that found more events than it did.
+
+### 26.4 Verification
+
+`--stride-roman` absent means `kSub = 1`: the fine grid **is** the coarse grid, every block is a
+single cell that represents itself, every weight is `gridStep²`, and the sightline list is the
+same points in the same order as the old nested loop — so the RNG stream, and therefore the
+whole run, is unchanged. This was checked, not assumed:
+
+- **Unstratified full-region grid reproduces the production run exactly:** 1,706 sightlines,
+  39 inside the footprint, 68.24 deg² — the three numbers `run_provenance.txt` recorded for the
+  2026-08-30 run.
+- **Unstratified `--stub` run against a binary built from the previous commit** (`--stub
+  --stride 2 --events 2 --lenses 1 --nerr 0 --maxdraws 500`, 9 sightlines, 48 event rows):
+  `LpLMC5.dat`, `EfLMC5.dat` and `EfLMC5B.dat` byte-identical; `test5.dat` identical on all 90
+  pre-existing columns of all 48 rows, with `w_area` = 0.0016 deg² on every row (= (2 × 0.02)²,
+  the correct cell area at `--stride 2`); `MapLMC5.dat` identical on all 67 pre-existing columns
+  of all 9 rows, differing only in the three appended ones, whose `lon`/`lat` match the stub
+  grid. **No pre-existing output moved.**
+- **`./fishertest`:** all assertions held (`FisherM` is untouched, but the harness is the
+  standing regression gate).
+- **The area invariant across `--stride-roman`** (`--dry-run`, full region, `--stride 10`):
+
+| `--stride-roman` | footprint step | footprint sightlines | total sightlines | footprint deg² | scanned deg² |
+|---|---|---|---|---|---|
+| 10 (= unstratified) | 0.20 | 39 | 1,706 | 1.560 | 68.24 |
+| 5 | 0.10 | 147 | 1,829 | 1.470 | 67.94 |
+| 2 | 0.04 | 907 | 2,591 | 1.451 | 67.88 |
+| 1 (native grid) | 0.02 | 3,656 | 5,357 | 1.462 | 67.87 |
+
+The footprint area **converges** as the grid refines (1.560 → 1.451 deg², against 1.70 deg² for
+six non-overlapping disks of radius `FoVRoman` = 0.3003°) — the coarse grid was over-counting
+the footprint by 7%, which is the discretization error being resolved rather than a
+disagreement. The scanned total drifts by 0.5% for the same reason: the corner cut
+(`lon < lx and lat > bx`) is resolved at fine resolution too.
+
+### 26.5 What this costs, and what is deliberately left to the user
+
+Footprint sightlines are the expensive ones — a GBTDS sightline matches ~50,000 Roman epochs
+against ~2,400 Rubin ones, so a draw there costs roughly 20× one outside. Refining by `kSub`
+multiplies footprint sightlines by `kSub²` and the run time by rather more than the sightline
+count suggests. `--dry-run` exists so that trade can be read off before committing to a
+multi-hour run rather than discovered during one. **The choice of `--stride-roman` for the next
+production run is a wall-clock decision and is left to the user**; nothing changes without it.
+
+### 26.6 What was NOT done
+
+**The `tE` stratification the plan asks for is not implemented.** Recorded in
+`OPEN_ITEMS.md`. In short: `tE` is not a drawn quantity — it falls out of the lens mass,
+the distances and the relative proper motion — so stratifying in it means acceptance sampling
+on a derived value with per-bin weights, and those weights then have to be carried correctly
+through every pooled statistic in Phase F. That is a second, independent weighting scheme on
+top of the sky one, and §26.1 argues it may not be needed: the bins the plan wanted filled are
+footprint bins, and the sky axis fills them without any acceptance sampling at all. The right
+order is to run the stratified scan first and see which bins are still thin.

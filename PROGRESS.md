@@ -1,9 +1,14 @@
 # PROGRESS.md — where this project stands
 
-**Last updated:** 2026-09-04, after Step F4 (the Fisher-matrix precision figure).
+**Last updated:** 2026-09-04, after Step E1a (footprint-stratified sampling).
 **Branch:** `joint-fisher-refactor` (never commit to `main`).
-**Head at last update:** `bdb166c` — "Point the progress note at the commit that carries the parallax result".
-**F4 is committed on top of that**; see §2, Phase F.
+**Head at last update:** `738b54d` — "Report what each survey measures, not just how much the
+joint fit adds" (Step F4).
+**Step E1a is committed on top of that**; see §2, Phase E.
+
+**Nothing about the existing results has moved.** E1a changes how the *next* run samples the
+sky; with its new flag absent, the simulator behaves exactly as it did. `test5.dat` and every
+figure made from it still stand.
 
 ---
 
@@ -46,10 +51,15 @@ since settled the plan's long-`tE` annual-parallax prediction: it is not support
 Roman alone already measures the parallax of long events (Deviation 24). A fifth, F4, reports
 the absolute forecast precision per survey rather than a ratio, and reaches Deviation 24's
 conclusion independently: inside Roman's footprint the joint fit improves a typical lens mass
-by 4% over Roman alone and by a factor of five over Rubin alone (Deviation 25). What remains is
-Phase E's sampling work (which would sharpen the Roman-footprint statistics and the
-sample-limited long-`tE` bins), Phase G (physics separation, validation against published
-Rubin-only numbers, and reconciling the whitepaper), and the deferred GBTDS-footprint item.
+by 4% over Roman alone and by a factor of five over Rubin alone (Deviation 25). Phase E's sampling work is now half done: **Step E1a** stratifies the scan
+toward Roman's footprint and gives every event the sky area its sightline stands for, which is
+what turns all four sample-limited results into quotable ones — they are limited by the same
+1,950 in-footprint events, not by four different things (Deviation 26). It is implemented and
+verified but **not yet run**: choosing `--stride-roman` is a wall-clock decision and is the
+next thing that needs a human. What remains after that is Step E1b (the `tE` stratification the
+plan asks for, which may prove unnecessary — `OPEN_ITEMS.md`), Step E2, Phase G (physics
+separation, validation against published Rubin-only numbers, and reconciling the whitepaper),
+and the deferred GBTDS-footprint item.
 
 ---
 
@@ -130,6 +140,29 @@ Commits are on `joint-fisher-refactor`. Where a step deviated from the plan, the
   F1/F2/F3, which still read unfiltered.
 
 ---
+
+### Phase E — sampling strategy
+- Step E1a — the scan is stratified in **sky position**. `--stride-roman N` visits sightlines
+  inside Roman's GBTDS footprint on a finer grid than the rest; every sightline carries the
+  deg² of sky it stands for, written as `w_area` into every event row and into the map file
+  (which also, for the first time, records `lon`/`lat`, so an event can be tied back to the
+  sightline that produced it). `--dry-run` builds the grid and reports the strata without
+  drawing a star, so the cost of a choice can be read before a multi-hour run rather than
+  during one. **Deviation 26.** The `tE` half of the plan's Step E1 is deliberately not done
+  and is argued against in 26.1 and `OPEN_ITEMS.md`.
+
+  **What it buys, at `--stride 10` (`--dry-run`, full region):**
+
+  | `--stride-roman` | footprint step | footprint sightlines | total sightlines | footprint sample vs now |
+  |---|---|---|---|---|
+  | absent | 0.20° | 39 | 1,706 | 1× (this is the current run) |
+  | 5 | 0.10° | 147 | 1,829 | ~3.8× |
+  | 2 | 0.04° | 907 | 2,591 | ~23× |
+  | 1 | 0.02° | 3,656 | 5,357 | ~94× |
+
+  Footprint sightlines are the expensive ones (~50,000 Roman epochs against ~2,400 Rubin), so
+  wall clock grows faster than the sightline count. **This choice is not made; it is the next
+  decision.**
 
 ## 3. The current data, and what is wrong with its label
 
@@ -279,13 +312,17 @@ footprint. Do not quote its cell values as precise — `OPEN_ITEMS.md`.
 
 In roughly the order that makes sense:
 
-1. **Step E1 — stratify sampling in `tE`, and weight the Roman footprint.** This is what
-   turns panel (a) of F3, the whole short-`tE` corner, **and the long-`tE` null of the new
-   `sigma_piE` figure** (124 events) from suggestive into quotable. A footprint-weighted run
-   buys roughly 20× more Roman-observed events for the same wall-clock, at the cost of
-   explicit weights to recover survey-wide totals. This is now the single highest-value next
-   step: three separate results are sample-size-limited and all three are limited by the
-   same thing.
+1. **Run the stratified scan.** Step E1a is built, verified and committed; what it needs is
+   a `--stride-roman` and a machine. Use `./roman --dry-run --stride-roman N` to see the
+   sightline counts first (§2, Phase E). `--stride-roman 2` is the one that makes all four
+   sample-limited results quotable (~23× the in-footprint sample), and it is also the
+   expensive one; `5` is the cheap version at ~3.8×. Re-run F1–F4 against the new table
+   afterwards, and read the two `OPEN_ITEMS.md` entries about area weighting **before**
+   quoting anything pooled across the whole sky from it.
+
+1b. **Step E1b — stratify in `tE`.** The other half of the plan's Step E1, deliberately not
+   built. Deviation 26.1 argues it may be unnecessary once E1a has run, because the thin bins
+   are footprint bins rather than rare-`tE` bins. Decide after seeing the stratified table.
 2. **Step E2 — revisit the per-sightline stopping criteria.** The current third floor (2
    well-conditioned events) was written when there was one Fisher matrix; with three
    matrices and stratified bins it needs replacing.

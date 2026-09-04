@@ -695,3 +695,58 @@ question about the input population, not about this code.
 excludes the faint end, either extend it or replace the `nsbl <= 1 -> 1` clamp with a
 sub-Poisson treatment that lets a fractional expected count produce a fractional blend. Then
 re-run and report how far Roman's detection count, `fb1` distribution and `sigma_tetE` moved.
+
+---
+
+## The provenance stamp goes stale silently, and discipline has now failed twice
+
+**Status:** open. Found on 2026-09-05, while checking the freshly launched production run.
+
+**What happens.** `Makefile` captures the git description into `GIT_COMMIT` at the moment
+`make` runs, and compiles it into the binary so every run's provenance block can name the
+source that produced it. But `make`'s dependency graph is over *files*, and a commit changes no
+file. So after `git commit`, a subsequent `make` says "Nothing to be done for 'all'" and the
+binary silently keeps the stamp it was built with — which names the previous commit, with a
+`-dirty` suffix, because the tree was dirty when it was built.
+
+The Makefile already knows this and says so in a comment: *"the value is captured when make
+runs, so `make clean && make` is what refreshes it after a commit -- an incremental build keeps
+the stamp its objects were built with."* The mitigation is therefore a rule a human has to
+remember.
+
+**It has now failed twice.** Commit `585432b` ("Rebuild so the next run is labelled with the
+commit that produced it") exists solely because the stamp read `d6dd293-dirty` when the source
+was `7a1b591`. On 2026-09-05 the identical thing happened again: the run launched with a binary
+stamping `6c97375-dirty` when the source was `e8f4135`. A rule that has been broken every time
+it has been tested is not a working control.
+
+**Why it matters more than it looks.** The stamp is the only link between a multi-GB table and
+the code that produced it. Every figure, every quoted number and every caveat in `PROGRESS.md`
+section 4 is ultimately justified by "this run contains change X", and the stamp is the evidence.
+A stamp naming a commit that predates the change it is being used to vouch for inverts that: a
+future session would look up `6c97375`, find no H2 columns in it, and conclude either that the
+table is corrupt or that the columns came from somewhere unrecorded.
+
+**Why it was not fixed on the spot.** The run it was found on was already in flight and the
+finding is a build-system change, not a physics change; folding it into a launched run would
+break the rule that a step does one thing. The specific run was rescued instead, by proof
+rather than by restart — see `PROGRESS.md` section 5c.
+
+**What the fix involves.** Make the stamp a file so `make` can reason about it. Generate a
+`git_commit.h` from a phony rule that rewrites it only when the description actually changes,
+and have the sources include it; then a commit invalidates exactly the objects that embed it and
+nothing else, and no one has to remember anything:
+
+```make
+.PHONY: force
+git_commit.h: force
+	@echo '#define GIT_COMMIT "$(GIT_COMMIT)"' > $@.tmp
+	@cmp -s $@.tmp $@ || mv $@.tmp $@   # only touch it when it really changed
+	@rm -f $@.tmp
+```
+
+Two smaller things belong with it. The binary should be able to print its own stamp
+(`./roman --version`) so it can be checked without launching a run or reading a provenance
+block. And `--dry-run` should print the stamp it would write, since `--dry-run` is already the
+documented way to inspect a run's cost before committing hours to it, and the stamp is part of
+what you would want to inspect.

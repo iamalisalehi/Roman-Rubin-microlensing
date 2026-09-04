@@ -487,6 +487,27 @@ is about pointing it at outputs that already matter, not about the technique.
 sightlines out of 1,829. `run.log` is block-buffered, so an empty log is not a failed run —
 that was diagnosed once already and is not worth diagnosing twice.
 
+**This run's provenance stamp reads `6c97375-dirty`. Do not believe it, and do not distrust the
+run because of it.** The binary was built at 00:22 on 2026-09-05, while H2 was written but not
+yet committed; H2 was then committed as `1c4f04e` and H5 as `e8f4135`, and neither commit
+touched a file `make` watches, so `make` reported "Nothing to be done" and the binary kept the
+stamp from its dirty build. The `-dirty` suffix is doing its job — it truthfully says "this
+commit plus edits" — it just cannot say which commit those edits became.
+
+**The gap was closed by proof rather than by restarting.** `Bulge_LSST.cpp` was recompiled from
+the clean `e8f4135` tree with identical flags and the running binary's stamp, and the two object
+files were compared after `objcopy --strip-debug`: the disassembly of `.text` is identical apart
+from the filename in objdump's own header line. The running binary therefore contains exactly
+`e8f4135`'s source, and this run's table may be attributed to `e8f4135`. The output confirms it
+independently — the header carries `du_sat nepL_pk nepR_pk` (H2), and the provenance block
+carries `stratified 1`, `stride_roman 5` (E1a) and `satellite_parallax 1`,
+`L2_offset_AU 0.0100267` (H1).
+
+The reason this keeps happening, and the build-system change that would stop it happening a
+third time, is an `OPEN_ITEMS.md` entry of its own. **Until that lands, `make clean && make`
+after the last commit and before any run is not optional** — the interim rule that commit
+`585432b` recorded the first time this went wrong.
+
 **Early cost, for whoever plans the next one.** The scan starts at `lon = -3.719 deg`, the
 western edge, well outside Roman's footprint. Those sightlines are barren, run to the
 `maxdraws` cap of 50,000 draws each, and are therefore both the slowest and the most

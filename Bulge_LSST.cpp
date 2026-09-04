@@ -156,7 +156,7 @@ const char* eventTableHeader()
         "magb_u magb_g magb_r magb_i magb_z magb_y magb_F146 "
         "blend_u blend_g blend_r blend_i blend_z blend_y blend_F146 "
         "relMl_J relMl_L relMl_R okB_J okB_L okB_R condB_J condB_L condB_R "
-        "dt_edge t0zone w_area";
+        "dt_edge t0zone w_area du_sat nepL_pk nepR_pk";
 }
 
 struct RunConfig {
@@ -1534,6 +1534,48 @@ int main(int argc, char** argv) {
                 sched.dtToSeasonEdge(l->t0), sched.zone(l->t0)
             });
    
+            // ------------------------------------------------------------------------------
+            // Step H2. Two quantities that make the satellite-parallax effect visible in the
+            // table instead of only implicit in the Fisher matrix.
+            //
+            // du_sat  the observer separation in Einstein radii at t0, piE * D_perp / AU.
+            //         This is the amplitude of the satellite effect for this event and the
+            //         natural x-axis of every Step H3 figure. It is NOT L2_OFFSET_AU * piE:
+            //         D_perp is the separation projected perpendicular to the line of sight
+            //         and runs ~0.87-0.99 of the full L2 offset around the year, so the
+            //         simple product is a ceiling (DEVIATIONS.md 28.2). Computed by asking
+            //         lightcurve() for both observers rather than re-deriving the projection
+            //         here, so the two can never drift apart.
+            //
+            // nepL_pk, nepR_pk  epochs from each survey within +-2 tE of t0, i.e. while the
+            //         event is actually magnified. Satellite parallax needs CONTEMPORANEOUS
+            //         coverage: an event Roman saw in season 3 and Rubin saw in season 7 has
+            //         none of it, however large ndw_L and ndw_R are. The plan asked for a
+            //         single `nep_both` flag; two counts are the same cost and strictly more
+            //         informative, and the flag is just (nepL_pk > 0 and nepR_pk > 0).
+            //
+            // Safe to call lightcurve() here: FisherM has already run, and the only state it
+            // touches (s->ux/uy, s->def*, s->pos*, as->ue_n*) is not read by the row written
+            // below and is recomputed from scratch by the next draw.
+            // ------------------------------------------------------------------------------
+            double duSat = 0.0;
+            {
+                lightcurve(*s, *l, *as, l->t0, 0);
+                const double r1 = as->ue_n1, r2 = as->ue_n2;
+                lightcurve(*s, *l, *as, l->t0, 1);
+                const double dn1 = as->ue_n1 - r1, dn2 = as->ue_n2 - r2;
+                duSat = l->piE * std::sqrt(dn1 * dn1 + dn2 * dn2);
+            }
+            int nepLpk = 0, nepRpk = 0;
+            {
+                const double win = 2.0 * l->tE;
+                for (int i = 0; i < ndw; ++i) {
+                    if (std::fabs(l->timn[i] - l->t0) > win) continue;
+                    if (int(l->tele[i]) == 1) nepRpk += 1;
+                    else                      nepLpk += 1;
+                }
+            }
+
             filg_in.open(testf, std::ios::app);
             filg_in << icon           << " " << FFG[0]         << " " << l->tE                      << " "
                     << l->RE / AU     << " " << l->piE         << " " << l->tetE                    << " "
@@ -1570,7 +1612,9 @@ int main(int argc, char** argv) {
                     // Sky area this event's sightline stands for, deg^2 (Step E1). Constant
                     // across an unstratified run; NOT constant once --stride-roman is used,
                     // and then any statistic pooled over sightlines must weight by it.
-                    << wArea << "\n";
+                    << wArea << " "
+                    // Step H2: the satellite-parallax observable and contemporaneous coverage.
+                    << duSat << " " << nepLpk << " " << nepRpk << "\n";
             filg_in.close();
 //          
 

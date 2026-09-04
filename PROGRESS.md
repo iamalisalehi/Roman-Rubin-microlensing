@@ -193,6 +193,11 @@ Commits are on `joint-fisher-refactor`. Where a step deviated from the plan, the
   off. **`D_perp` is the PROJECTED separation and ran 0.87–0.99 of the full L2 offset across a
   year** — `L2_OFFSET_AU · piE` is the ceiling on the effect, not its value (Deviation 28.2).
 
+- Step H2 — **the satellite observable is in the table.** `du_sat` (the observer separation in
+  Einstein radii at `t0`, `piE · D_perp/AU`) plus `nepL_pk`/`nepR_pk` (epochs from each survey
+  within ±2 `tE` of `t0`, i.e. while the event is magnified — satellite parallax needs
+  *contemporaneous* coverage, which `ndw_L`/`ndw_R` cannot express). **Deviation 30.**
+
 - Step H4 — **Roman has its own astrometric error.** `errRomanA()` in `helper.cpp`: a 1.1 mas
   centroiding floor (1% of the 110 mas pixel) for `F146 <= 20.62`, rising to 10 mas at 23.5 and
   at 0.4/mag beyond, from Sanderson et al. 2019 (arXiv:1712.05420) and arXiv:2608.24998.
@@ -376,8 +381,7 @@ Then, in roughly the order that makes sense:
 2. **Step E2 — revisit the per-sightline stopping criteria.** The current third floor (2
    well-conditioned events) was written when there was one Fisher matrix; with three
    matrices and stratified bins it needs replacing.
-3. **The rest of Phase H.** H1 and H4 are done. Remaining: **H2** (record `du_sat` and
-   contemporaneous-coverage per event), **H3** (the satellite-parallax experiment and its three
+3. **The rest of Phase H.** H1, H2 and H4 are done. Remaining: **H3** (the satellite-parallax experiment and its three
    figures — needs the twin runs), **H5** (the astrometric-shift analysis product, now
    unblocked by H4), **H6** (the whitepaper for collaborators). Full text and the dependency
    graph in `PHASE_H_PLAN.md`. **H3 replaces the original plan's Step G1**, which cannot be run

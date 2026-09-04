@@ -1849,3 +1849,30 @@ This affects every astrometric result predating this commit — `sigtetE_R`, `si
 `relMl_*`, and F4's panels (c) and (d). Their ordering is unlikely to change, since Roman's
 epochs still vastly outnumber Rubin's, but the absolute values move and should be recomputed
 before being quoted.
+
+---
+
+## 30. Step H2: the satellite observable recorded per event
+
+**Commit:** this step. **New columns:** `du_sat`, `nepL_pk`, `nepR_pk` in the per-event table.
+
+**Plan said** (`PHASE_H_PLAN.md` H2): record `du_sat`, and `nep_both` — "whether the event has
+epochs from both telescopes *while it is magnified*".
+
+**Done:** `du_sat` as specified. In place of the single `nep_both` flag, **two counts**:
+`nepL_pk` and `nepR_pk`, the number of Rubin and Roman epochs within ±2 `tE` of `t0`. Same
+cost, strictly more information, and the flag the plan asked for is just
+`nepL_pk > 0 and nepR_pk > 0`. A count also answers the question the flag cannot — *how much*
+contemporaneous coverage — which is what decides whether the satellite offset is measurable
+rather than merely present.
+
+**`du_sat` is computed by asking `lightcurve()` for both observers and differencing**, not by
+re-deriving the projection at the write site. Two copies of that geometry would drift apart,
+and the whole point of Step H1 was that this projection is easy to get subtly wrong.
+
+**Verification** (stub run, 48 events, 43 with Roman epochs): header and data both 92 columns.
+`du_sat / piE` came out in 0.0092–0.0100 across events, i.e. **0.92–1.00 of `L2_OFFSET_AU`**
+(0.010027) — the projection factor of Deviation 28.2, reproduced independently through a
+different code path. `nepL_pk`/`nepR_pk` separate events with genuine contemporaneous coverage
+(e.g. 258 Rubin and 11,724 Roman epochs near peak) from events with Roman epochs that are all
+far from `t0` — the distinction Step H3 needs and that `ndw_L`/`ndw_R` cannot make.

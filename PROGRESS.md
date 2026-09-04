@@ -1,7 +1,11 @@
 # PROGRESS.md — where this project stands
 
-**Last updated:** 2026-09-04, after Steps E1a (footprint-stratified sampling), H1
-(satellite parallax) and H4 (Roman's astrometric error model).
+**Last updated:** 2026-09-05, when the stratified production run was launched. The steps it
+carries are E1a (footprint-stratified sampling), H1 (satellite parallax), H2 (the satellite
+observable in the table) and H4 (Roman's astrometric error model). Step H5 (the astrometric
+shift as a product) is also done and is analysis-only.
+**A production run is in flight — see §5c** for its command, its output directory and how to
+check on it.
 **Branch:** `joint-fisher-refactor` (never commit to `main`).
 **Head at last update:** `738b54d` — "Report what each survey measures, not just how much the
 joint fit adds" (Step F4).
@@ -366,12 +370,15 @@ shift, then the whitepaper brought up to date for potential collaborators. `PHAS
 the roadmap for all three** — read it before starting any of them; it also explains why the
 original plan's Step G1 cannot be run as written.
 
-0. **The production run — this is the bottleneck now.** E1a (stratified sampling), H1
-   (satellite parallax) and H4 (Roman astrometric errors) are all in the code and all change
-   what a run produces. Nothing downstream can move until one run exists with all three.
-   Two decisions, both the user's: `--stride-roman` (see item 1) and whether to also do the
-   `--no-satellite-parallax` twin run that Step H3 needs. **Every result in §4 predates all
-   three changes.**
+0. **The production run — RUNNING since 2026-09-05 01:54.** E1a (stratified sampling), H1
+   (satellite parallax), H2 (the satellite observable) and H4 (Roman astrometric errors) are
+   all in the code and all change what a run produces; nothing downstream could move until one
+   run existed with all four. The user chose `--stride-roman 5`. See §5c for the command, where
+   the output lives and how to check on it. **Every result in §4 still predates all four
+   changes and stays caveated until this run lands.**
+
+   Still outstanding: **the `--no-satellite-parallax` twin run that Step H3 needs.** H3 is the
+   difference between the two runs, so it cannot start until both exist.
 
 Then, in roughly the order that makes sense:
 
@@ -439,6 +446,56 @@ are opened in append mode and a test run would concatenate itself onto the produ
 `files/density/*`, `files/ext/*`, `files/sigmaA_LSST.txt`, `files/sigma_roman.txt` are the
 inputs; `files/MONTLMC/files/{LpLMC,EfLMC,EfLMC*B,MapLMC}<IMnum>.dat` must exist (they can be
 empty) or the run exits with "Cannot open one or more files!".
+
+## 5c. The run that is in flight
+
+Launched 2026-09-05 01:54 local, from the worktree, at commit `e8f4135`:
+
+```bash
+./roman --events 300 --lenses 50 --stride-roman 5
+```
+
+**`--events 300 --lenses 50` are not the defaults and are not decoration.** The built-in
+defaults are 850 and 150. The 2026-08-30 production run passed 300/50 explicitly, so taking
+the defaults here would have changed the per-sightline statistical budget by ~2.8x at the same
+moment as the stratification and the new physics, and the two tables would not have been
+comparable. The only intended differences from the 2026-08-30 run are the ones that were
+chosen: stratified sky sampling, satellite parallax, Roman's own astrometric errors, and the
+three H2 columns.
+
+**Grid, from `--dry-run`:** 147 footprint sightlines at 0.1 deg (1.47 deg^2) and 1,682 outside
+sightlines at 0.2 deg (66.47 deg^2); 1,829 total over 67.94 deg^2. The footprint is 8.0% of
+the sightlines and 2.2% of the area — the imbalance that `w_area` exists to undo. Against the
+2026-08-30 run's 39 footprint sightlines this is **3.77x the in-footprint sample**, which is
+the sample that limits all four of the results in §4.
+
+**The output does not live in the worktree.** It is multi-GB and gitignored, and a worktree can
+be deleted with the session that made it, so `test5.dat` and the six append-mode files in
+`files/MONTLMC/files/` are symlinks into
+
+```
+/home/ali/Documents/PhD/Offline_project/roman_runs/2026-09-05_stride-roman-5/
+```
+
+which also holds `run.log`, `run.pid` and `run_provenance.txt`. This is a stronger guard than
+clearing the files would have been: the run physically cannot append onto the 2026-08-30
+outputs, which stay untouched at the repo root. **If you symlink outputs for a run of your own,
+give it its own directory** — the standing warning against symlinking `files/MONTLMC/files/`
+is about pointing it at outputs that already matter, not about the technique.
+
+**Checking on it:** `wc -l` on `MONTLMC/MapLMC5.dat` in that directory counts finished
+sightlines out of 1,829. `run.log` is block-buffered, so an empty log is not a failed run —
+that was diagnosed once already and is not worth diagnosing twice.
+
+**Early cost, for whoever plans the next one.** The scan starts at `lon = -3.719 deg`, the
+western edge, well outside Roman's footprint. Those sightlines are barren, run to the
+`maxdraws` cap of 50,000 draws each, and are therefore both the slowest and the most
+row-producing in the whole scan: the first 24 took 15.1 s each and wrote 317 MB. Do not
+extrapolate a total from the first few minutes of a scan in this geometry — you will
+overestimate. The 2026-08-30 run capped on 77 of 1,706 sightlines and finished in ~3.5 h at
+2.5 GB.
+
+---
 
 ## 6. Traps a new session will otherwise fall into
 

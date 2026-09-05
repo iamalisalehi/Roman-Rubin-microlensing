@@ -614,6 +614,33 @@ otherwise hold it until the primary exits rather than risk both.
 | `58d2863` | Roman blending Poisson — **14.6% of Roman events now blended, was 0%** |
 | `a5bb600` | `DET_ANOMALY` run total actually counted |
 
+**The cost model, measured three times and wrong the first two.** Runtime per sightline is
+not one number and not even two. Measured on the primary at 65/147 footprint and 655/1682
+outside sightlines, 3.55 h of CPU in:
+
+| | measured | how |
+|---|---|---|
+| outside sightline | ~13 s | joint solve of the primary and twin totals |
+| footprint sightline, run average | ~50-70 s | same solve |
+| footprint sightline, **in the plane** | **~360 s** | direct 20-min window, `nri` 40, lat -0.14 |
+
+Three traps, in the order they were fallen into. **The opening of the scan is not
+representative**: the first columns are empty sky that skips instantly, which is where an early
+"~2.2 s per outside sightline" came from; it does not survive contact with Rubin's coverage,
+where an outside sightline still carries ~2,300 epochs. **The overall average is not
+representative either**, because it is dominated by the ~92% of sightlines that are outside.
+And **the footprint stratum is itself strongly inhomogeneous**: cost rises by a factor of ~5-7
+as the scan crosses the Galactic plane, where the source density and optical depth peak, so
+more draws and more Fisher matrices are needed per sightline. The footprint columns run `nri`
+33-40 so far (lon -0.619 to +0.081), widening from 4 to 12 sightlines per column as they
+approach lat 0.
+
+The practical consequence: **any ETA built from a single seconds-per-sightline number is wrong,
+and wrong by a factor of several in whichever direction the current stratum differs from the
+average.** Progress must be split by stratum and re-measured as the scan moves. `watch_v3.sh`
+does this; the earlier watchers did not, and additionally counted `MapLMC5.dat` rows, which
+stall through skipped sightlines.
+
 **First result out of the run, and it is about H7 rather than H3.** The restored
 `DET_ANOMALY` counter reports for the first time, and the pathology is not a corner case.
 Summed over the primary's first 637 scored sightlines:

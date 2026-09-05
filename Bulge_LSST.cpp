@@ -1518,7 +1518,17 @@ int main(int argc, char** argv) {
                     NDetClassTE[gg][dcls] += 1;
                     // Diagnostic only: how often the raw joint test contradicted a
                     // single-survey detection, before monotonicity was imposed.
-                    if (!detJ_raw and (detL or detR)) nDetClass[DET_ANOMALY] += 1;
+                    // Both counters, and the run total is the one that was missing: it is
+                    // read at the end of the run to decide whether to explain DET_ANOMALY,
+                    // but was never incremented, so every run has reported exactly zero
+                    // anomalies since the counter was introduced -- including the 2026-08-30
+                    // production run, whose "0 ANOMALY" is this bug and not a measurement.
+                    // The per-sightline counter was always right, which is why the anomaly
+                    // was visible in the log all along and invisible in every summary.
+                    if (!detJ_raw and (detL or detR)) {
+                        nDetClass[DET_ANOMALY]    += 1;
+                        NDetClassTot[DET_ANOMALY] += 1;
+                    }
 
                     // Detected-event count for this tE bin. The joint detection is the one
                     // that defines "detected" here, per the taxonomy above; the per-class

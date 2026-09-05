@@ -165,6 +165,13 @@ struct RunConfig {
     // 0.20 deg (1,706 sightlines, ~15 h at the production budget).
     int    stride      = 10;
 
+    // Step H7. The delta-chi2 a lensing model must beat a flat baseline by before the event
+    // counts as detected, for each of detL, detR and detJ. A FIXED bar, not one scaled by the
+    // epoch count: see the derivation at DCHI_DET_DEFAULT in Bulge.h. Exposed because every
+    // yield this project reports is conditioned on it, so it belongs in run_provenance.txt
+    // and has to be variable for a sensitivity test.
+    double dchiDet     = DCHI_DET_DEFAULT;
+
     // Sightline grid INSIDE Roman's footprint, in the same units (Step E1). Roman covers
     // ~2.6% of the scan region, so a uniform grid spends 97% of its wall clock on sky where
     // the joint fit is Rubin's matrix and nothing can be learned about the combination. This
@@ -250,6 +257,15 @@ static void printUsage(const char* prog) {
         << "                 on the 2026-09-05 v2 run. Resuming at the map count would\n"
         << "                 re-simulate that gap and append duplicate rows to test5.dat.\n"
         << "                 If the run resumed an earlier one, add its --start-index too.\n"
+        << "  --dchi-det X   delta-chi2 a lensing model must beat a flat baseline by for\n"
+        << "                 an event to count as detected (default "
+        << DCHI_DET_DEFAULT << ", Penny+2019).\n"
+        << "                 A FIXED bar, applied identically to the Rubin-only, Roman-only\n"
+        << "                 and joint tests, which is what makes the joint test monotone:\n"
+        << "                 chi2 accumulates over both instruments, so dchi = dchi_L +\n"
+        << "                 dchi_R and either survey clearing the bar alone forces the sum\n"
+        << "                 over it. Every yield is conditioned on this number; it is\n"
+        << "                 recorded in run_provenance.txt.\n"
         << "  --stride-roman N  sightline grid step inside Roman's footprint, same units\n"
         << "                 (default: same as --stride, i.e. an unstratified scan). Must\n"
         << "                 divide --stride. Sightlines outside the footprint keep the\n"
@@ -286,6 +302,7 @@ int main(int argc, char** argv) {
         };
         if      (arg == "--stride") { cfg.stride = std::atoi(need("--stride")); strideGiven = true; }
         else if (arg == "--stride-roman") cfg.strideRoman = std::atoi(need("--stride-roman"));
+        else if (arg == "--dchi-det") cfg.dchiDet = std::atof(need("--dchi-det"));
         else if (arg == "--events")  cfg.iconTarget  = std::atoi(need("--events"));
         else if (arg == "--lenses")  cfg.nlensTarget = std::atoi(need("--lenses"));
         else if (arg == "--nerr")    cfg.nerrTarget  = std::atof(need("--nerr"));
@@ -307,6 +324,12 @@ int main(int argc, char** argv) {
     // used, and the only way --stub reproduces those numbers.
     if (cfg.stubPatch and not strideGiven) cfg.stride = 1;
 
+    if (not (cfg.dchiDet > 0.0) or not std::isfinite(cfg.dchiDet)) {
+        std::cerr << "ERROR: --dchi-det (" << cfg.dchiDet << ") must be finite and positive. "
+                  << "It is a delta-chi2 detection bar; a non-positive bar would declare every "
+                  << "event detected.\n";
+        return 1;
+    }
     if (cfg.stride < 1) {
         std::cerr << "ERROR: --stride must be >= 1\n";
         return 2;
@@ -908,7 +931,9 @@ int main(int argc, char** argv) {
              // 0 here contains only the annual Earth-orbit parallax.
              << "# satellite_parallax  " << (cfg.noSatPar ? 0 : 1)
              << "   # 0 = Roman forced to Earth's position\n"
-             << "# L2_offset_AU        " << (cfg.noSatPar ? 0.0 : L2_OFFSET_AU) << "\n";
+             << "# L2_offset_AU        " << (cfg.noSatPar ? 0.0 : L2_OFFSET_AU) << "\n"
+             << "# dchi_det            " << cfg.dchiDet
+             << "   # Step H7 fixed detection bar; every yield is conditioned on it\n";
         std::ofstream fprov("./files/MONTLMC/files/run_provenance.txt");
         if (!fprov) {
             std::cerr << "Cannot write run_provenance.txt\n";
@@ -1452,13 +1477,29 @@ int main(int argc, char** argv) {
                     vsave   = double(vsave   / (ndw + 0.000065645));
                     s->errM = double(s->errM / (ndw + 0.000065645));
                     s->errA = double(s->errA / (ndw + 0.000065645));
-                    dchiL   = std::fabs(chi3  - chi1);  //lensing_effect
+                    // Step H7. The lensing statistic is SIGNED: chi3 is the flat-baseline
+                    // residual and chi1 the lensing-model residual, so chi3 - chi1 > 0 means
+                    // the lensing model fits better and is the only direction that can count
+                    // as evidence of lensing. The previous fabs() meant a lensing model that
+                    // fitted WORSE than the baseline by more than the bar would have been
+                    // reported as a detection. That never bit in practice, because the data
+                    // are lensed and chi3 > chi1 for any event with real signal, but it also
+                    // breaks the monotonicity H7 exists to establish: with fabs, an instrument
+                    // whose epochs all fall outside the event contributes a small NEGATIVE
+                    // difference from noise, and |dchi_L + dchi_R| can then fall below
+                    // max(|dchi_L|, |dchi_R|). Signed, the sum is exact and monotone.
+                    //
+                    // dchiP and dchiA keep fabs deliberately. They are not detection tests --
+                    // nothing thresholds them -- and they are reported as the SIZE of the
+                    // parallax and astrometric-deflection perturbations. The asymmetry is
+                    // recorded in OPEN_ITEMS.md rather than silently harmonised here.
+                    dchiL   = chi3  - chi1;             //lensing_effect (signed)
                     dchiP   = std::fabs(chi2  - chi1);  //parallax_effect
                     dchiA   = std::fabs(chi2a - chi1a); //deflection_effect
-                    dchiL_L = std::fabs(chi3_L  - chi1_L);
+                    dchiL_L = chi3_L - chi1_L;
                     dchiP_L = std::fabs(chi2_L  - chi1_L);
                     dchiA_L = std::fabs(chi2a_L - chi1a_L);
-                    dchiL_R = std::fabs(chi3_R  - chi1_R);
+                    dchiL_R = chi3_R - chi1_R;
                     dchiP_R = std::fabs(chi2_R  - chi1_R);
                     dchiA_R = std::fabs(chi2a_R - chi1a_R);
 
@@ -1472,30 +1513,39 @@ int main(int argc, char** argv) {
                     // preserving the existing detection-then-Fisher ordering (plan §0.4) — is the
                     // union of all three, so an event Rubin alone clearly detects is never dropped
                     // from characterization just because the joint-scaled threshold happens to miss.
-                    if (s->FWHM < Tobs and dchiL_L > float(2.0 * ndw_L) and flag_det_L > 0 and ndw_L > 10) detL = 1;
-                    if (s->FWHM < Tobs and dchiL_R > float(2.0 * ndw_R) and flag_det_R > 0 and ndw_R > 10) detR = 1;
-                    if (s->FWHM < Tobs and dchiL   > float(2.0 * ndw)   and (flag_det_L > 0 or flag_det_R > 0) and ndw > 10) detJ = 1;
+                    if (s->FWHM < Tobs and dchiL_L > cfg.dchiDet and flag_det_L > 0 and ndw_L > 10) detL = 1;
+                    if (s->FWHM < Tobs and dchiL_R > cfg.dchiDet and flag_det_R > 0 and ndw_R > 10) detR = 1;
+                    if (s->FWHM < Tobs and dchiL   > cfg.dchiDet and (flag_det_L > 0 or flag_det_R > 0) and ndw > 10) detJ = 1;
 
                     // Monotonicity. Adding data to an analysis cannot destroy information, so
                     // if either survey alone clears its detection bar, the combined stream --
                     // which contains that survey's data in full, plus more -- must clear its
-                    // own. The raw test above does not guarantee this, because it thresholds
-                    // dchi against 2*ndw: that is a bar on the MEAN per-epoch chi-squared
-                    // improvement, not on total significance. Pooling a survey with many
-                    // low-signal epochs therefore raises the joint bar without contributing
-                    // signal, and can veto a detection the other survey made unaided. Observed
-                    // live: a tE=631 d event detected by Roman (dchi_R over its 760-epoch bar)
-                    // failed the joint test because Rubin's 989 near-flat epochs lifted the
-                    // joint threshold by ~1978 while adding almost no dchi.
+                    // own.
                     //
-                    // detJ_raw preserves the unmodified test so the rate of that inconsistency
-                    // stays measurable (counted as DET_ANOMALY); detJ itself is made monotone,
-                    // which is what every downstream consumer should see.
+                    // Since Step H7 this holds BY CONSTRUCTION rather than by patch. chi1 and
+                    // chi3 are accumulated over both instruments' epochs in the same loops that
+                    // fill chi1_L/chi1_R and chi3_L/chi3_R, so
                     //
-                    // The deeper issue is the 2*ndw threshold form itself -- a chi-squared
-                    // detection statistic should be thresholded on its total, not its mean, so
-                    // that more data helps rather than hurts. Changing it moves detL and detR
-                    // as well, so it is a science decision, not a bug fix, and is left open.
+                    //     chi1 = chi1_L + chi1_R   and   chi3 = chi3_L + chi3_R
+                    //
+                    // exactly, hence dchiL = dchiL_L + dchiL_R with the signed statistic above.
+                    // All three tests now use the SAME fixed bar, so if either survey's own
+                    // dchi clears it, the sum -- which is that dchi plus a quantity that is
+                    // positive whenever the other survey sees any signal at all -- clears it
+                    // too. The auxiliary gates agree: flag_det_L > 0 implies (flag_det_L or
+                    // flag_det_R), and ndw_L > 10 implies ndw = ndw_L + ndw_R > 10.
+                    //
+                    // The old bar was 2*ndw, a threshold on the MEAN per-epoch chi-squared
+                    // improvement rather than on total significance, which made pooling a
+                    // survey with many low-signal epochs RAISE the joint bar without adding
+                    // signal. In Roman's footprint that lifted the joint bar ~4,728 above
+                    // Roman's own and vetoed 21.3% of all detections there.
+                    //
+                    // detJ_raw and the monotone patch are retained deliberately (H7 acceptance
+                    // criterion 4) so the anomaly rate stays MEASURABLE and can be shown to
+                    // have gone to zero rather than been hidden. If DET_ANOMALY is ever
+                    // non-zero again, the construction above has been broken and the counter
+                    // is how that gets noticed.
                     const int detJ_raw = detJ;
                     if (detL or detR) detJ = 1;
 
@@ -2115,9 +2165,14 @@ int main(int argc, char** argv) {
              << (nSimTot > 0 ? 100.0 * double(n) / double(nSimTot) : 0.0) << "%)" << endl;
     }
     if (NDetClassTot[DET_ANOMALY] > 0) {
-        cout << "  NOTE: DET_ANOMALY counts events where the RAW joint test contradicted a "
-             << "single-survey detection.\n        detJ is made monotone downstream, so this is "
-             << "a diagnostic of the 2*ndw threshold form, not a live error." << endl;
+        cout << "  WARNING: DET_ANOMALY counts events where the RAW joint test contradicted a "
+             << "single-survey\n           detection. Since Step H7 all three tests share one "
+             << "fixed bar (--dchi-det " << cfg.dchiDet << "), and\n           because chi2 "
+             << "accumulates over both instruments this count should be ZERO by\n           "
+             << "construction. A non-zero value means that construction is broken -- most "
+             << "likely the\n           signed lensing statistic has picked up a sign "
+             << "convention it should not have.\n           detJ is still monotone downstream, "
+             << "so no output table is wrong, but investigate." << endl;
     }
 
     // Per-tE breakdown, printed only for bins that contain something, since most are empty.

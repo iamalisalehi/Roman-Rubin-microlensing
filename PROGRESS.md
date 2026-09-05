@@ -614,6 +614,27 @@ otherwise hold it until the primary exits rather than risk both.
 | `58d2863` | Roman blending Poisson — **14.6% of Roman events now blended, was 0%** |
 | `a5bb600` | `DET_ANOMALY` run total actually counted |
 
+**First result out of the run, and it is about H7 rather than H3.** The restored
+`DET_ANOMALY` counter reports for the first time, and the pathology is not a corner case.
+Summed over the primary's first 637 scored sightlines:
+
+| stratum | sightlines | detections | DET_ANOMALY |
+|---|---|---|---|
+| outside the footprint | 574 | 30,144 (all Rubin+joint) | **0** |
+| inside the footprint | 63 | 3,154 | **854 (21.3%)** |
+
+Outside, `ANOMALY` is zero everywhere and every sightline reports Rubin+joint 50/50, which is
+the correct degenerate case: with no Roman epochs the joint test *is* Rubin's test. Inside,
+**about one detection in five is found by a single telescope and then rejected by the joint
+test** — the `2*ndw` threshold pathology of Step H7, now measured on production data instead of
+argued from the source. Roman's 50,401 epochs put its own bar at 100,802; adding Rubin's ~2,300
+near-flat epochs lifts the joint bar to 105,530, so the joint test is *harder to pass than
+either telescope alone*, which is backwards.
+
+No table is wrong because of it — `detJ` is forced monotone (`if (detL or detR) detJ = 1;`) —
+but this is the number that justifies H7 blocking H3, H5 and H6, and it is large enough that
+H3/H5 results taken off these runs must be labelled provisional.
+
 **Expect the numbers to move a long way, and mostly against Rubin.** Rubin's astrometric
 information falls by ~715x, so any `tetE` or lens mass that leaned on Rubin astrometry gets
 worse. Roman's detection efficiency should fall too, because `testR <= blend[6]` was accepting

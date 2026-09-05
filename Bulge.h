@@ -1092,6 +1092,7 @@ void   print_mat_contents(gsl_matrix *matrix, int);
 
 double RandN(double , double);
 double RandR(double , double);
+int    RandPois(double);
 double drawKroupaInitialMass();
 double remnantMass(double initialMass);
 

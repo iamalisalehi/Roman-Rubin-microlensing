@@ -763,3 +763,47 @@ Deviation C-D.2 deliberately left alone. A chi-squared statistic should be thres
 total, not its mean. With Roman's epoch count 22x Rubin's, that asymmetry is no longer
 hypothetical, and the anomaly rate is the measurement of how hard it now bites.
 
+---
+
+## `--dry-run` destroys the previous run's output, and it has already cost one table
+
+**Status: open. Found 2026-09-05 the hard way — it destroyed the v1 partial production table.**
+
+**What happens.** `Bulge_LSST.cpp` opens the event table with `std::ofstream head(testf);` —
+truncating mode, the default — and writes the column header, at around line 632. The
+`--dry-run` early exit is at around line 916. So **every `--dry-run` truncates `test5.dat` and
+zeroes the append-mode files in `files/MONTLMC/files/` before it decides not to simulate
+anything.** A flag whose entire purpose is "build the scan and tell me the cost without
+running" is destructive to the previous run's output.
+
+**What it cost.** At 18:07 on 2026-09-05, `./roman --dry-run --stub --stride 2` was run from
+the worktree to check the freshly rebuilt provenance stamp. The worktree's `test5.dat` was at
+that moment still symlinked to the v1 partial run directory, so the dry run truncated it from
+773 MB and 1,643,024 rows to a 620-byte header, and zeroed its six MONTLMC outputs.
+
+The scientific loss is small — `run.log` (97 MB) and `README.md` survived, so the cost model,
+the detection-class totals and the 433 DET_ANOMALY events were all already extracted into
+`PROGRESS.md` and `DEVIATIONS.md`, and v1 was superseded by v2 in any case. But `PROGRESS.md`
+§5c said that table was preserved, and it was not.
+
+**Why this is dangerous rather than annoying.** The per-event write is
+`filg_in.open(testf, std::ios::app)` **inside the event loop**, so the path is re-resolved on
+every event. That means a live run cannot be protected by repointing the symlink out of harm's
+way mid-run — the running process would simply follow it. While a production run is in flight
+through the worktree symlink, **any** `./roman` invocation from the worktree, `--dry-run` and
+`--help`-adjacent flag checks included, destroys that run's table.
+
+**What the fix involves.** Move the header write after the `--dry-run` exit, which is where it
+belongs — a dry run should touch no output file at all. Two things belong with it:
+
+1. **Refuse to truncate a non-empty table without being told to.** The run already knows the
+   file name; if `test5.dat` exists and is larger than its header, require an explicit
+   `--overwrite` (or write to `test5.dat.N`). Losing hours of simulation to a mistyped command
+   should not be possible.
+2. **Say what is about to be destroyed.** The startup banner already prints the configuration;
+   printing "truncating an existing 773 MB table" would have made this visible immediately.
+
+**Until then, the working rule:** never invoke `./roman` from the worktree while a production
+run is writing through the worktree symlinks, not even `--dry-run`. Use a copy of the binary in
+an isolated directory (the pattern in `setup_variant.sh`) for any check made while a run is in
+flight.

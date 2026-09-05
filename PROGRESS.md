@@ -471,8 +471,14 @@ run consumed only **3,080 s (51 min) of CPU** across 7 h 35 min of wall clock. W
 CPU still to go and the expensive footprint band immediately ahead, it was not worth resuming
 in place.
 
-The partial output is kept, with a `README.md` describing it, at the directory named below. It
-is **not** a production table: the sky coverage stops around `lon = -0.2` and is systematically
+**The partial table no longer exists.** It was truncated to its header on 2026-09-05 at 18:07
+by a `./roman --dry-run` run from the worktree while the worktree symlinks still pointed here:
+`--dry-run` opens the event table in truncating mode and writes the header *before* it decides
+not to simulate (`OPEN_ITEMS.md`). `run.log` and `README.md` survive, so everything below that
+was extracted from the run is intact, and v2 supersedes it in any case. What follows describes
+what it held.
+
+It was **not** a production table: the sky coverage stops around `lon = -0.2` and is systematically
 one-sided, and it reached only **22 of 147 footprint sightlines**, fewer than the finished
 2026-08-30 run's 39. Its use is as a pipeline artefact — it carries the E1a, H1, H2 and H4
 columns, so H3 and the re-run F-series can be developed against it without waiting for a full
@@ -630,6 +636,11 @@ regression to hunt.
   the repo root; every data path is hardcoded and relative.
 - **Two output files open in append mode**, so a re-run without clearing them silently
   concatenates two runs — `OPEN_ITEMS.md`.
+- **`--dry-run` is destructive.** It truncates `test5.dat` and zeroes the `files/MONTLMC/files/`
+  outputs before it exits, because the header write comes first. It has already destroyed one
+  partial production table. **Never invoke `./roman` from the worktree while a run is writing
+  through the worktree symlinks** — the per-event write re-opens the path every time, so a live
+  run cannot be protected by moving the symlink. `OPEN_ITEMS.md`.
 - **The scientific Python lives in `/usr/bin/python3`, not the `python3` on `PATH`.** The
   `/usr/local/bin/python3` that `which python3` finds has no numpy. Every `analysis/` script
   needs `/usr/bin/python3`.

@@ -242,8 +242,14 @@ static void printUsage(const char* prog) {
         << "                 --stride-roman/--stub, and the output files are opened in\n"
         << "                 append mode, so a run interrupted after N sightlines is\n"
         << "                 continued exactly by re-running with the same flags plus\n"
-        << "                 --start-index N. N is the line count of MapLMC5.dat, minus\n"
-        << "                 any partially written final line.\n"
+        << "                 --start-index N, where N counts sightlines the scan ENTERED:\n"
+        << "                     grep -c 'NEW STEP' <the interrupted run's stdout log>\n"
+        << "                 NOT the line count of MapLMC5.dat. A sightline with no\n"
+        << "                 coverage, or a barren one, is entered and counted but never\n"
+        << "                 writes a map row, so the map file undercounts -- by 86 of 710\n"
+        << "                 on the 2026-09-05 v2 run. Resuming at the map count would\n"
+        << "                 re-simulate that gap and append duplicate rows to test5.dat.\n"
+        << "                 If the run resumed an earlier one, add its --start-index too.\n"
         << "  --stride-roman N  sightline grid step inside Roman's footprint, same units\n"
         << "                 (default: same as --stride, i.e. an unstratified scan). Must\n"
         << "                 divide --stride. Sightlines outside the footprint keep the\n"
@@ -981,6 +987,12 @@ int main(int argc, char** argv) {
         // and is written into the map file, so skipping it would renumber the first partial
         // column and a resumed run would not concatenate onto the interrupted one. Only the
         // simulation is skipped, not the numbering.
+        //
+        // The index to resume AT is the number of sightlines entered, which is the number of
+        // "NEW STEP" lines in the interrupted run's log -- this print sits above the
+        // no-coverage and barren skips, so it counts every sightline the scan reached. The map
+        // file counts only sightlines that produced something to aggregate and is therefore a
+        // smaller number; resuming at it would redo the difference and duplicate rows.
         //
         // This is safe precisely because `scan` is built deterministically from --stride,
         // --stride-roman and --stub and does not depend on the RNG. Note that the random

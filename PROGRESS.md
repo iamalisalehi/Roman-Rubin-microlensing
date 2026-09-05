@@ -503,8 +503,13 @@ parsing.
 `--start-index`; the sightline vector is rebuilt from scratch every launch and the outputs are
 opened in append mode. On a laptop that hibernates, a 3.5 h single-shot run is a poor bet. The
 cheap fix is a `--start-index N` that skips the first N entries of the already-deterministic
-`scan` vector, which would make an interrupted run resumable by reading the completed count out
-of `MapLMC5.dat`; the append-mode outputs already concatenate correctly.
+`scan` vector; the append-mode outputs already concatenate correctly. **Built as `91d4200`.**
+Note the resume index is the number of sightlines the scan **entered**,
+`grep -c 'NEW STEP'` on the interrupted run's log — **not** the `MapLMC5.dat` line count, which
+this paragraph originally proposed and which is wrong. A no-coverage or barren sightline is
+entered and counted but writes no map row, so the map file undercounts: on the v2 run it read
+624 against 710 entered. Resuming at the map count would re-simulate those 86 sightlines and
+append duplicate rows to `test5.dat`.
 
 Launched 2026-09-05 01:54 local, from the worktree, at commit `e8f4135`:
 

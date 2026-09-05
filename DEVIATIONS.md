@@ -1999,6 +1999,15 @@ run is a valid continuation with a different draw sequence, not a bit-identical 
 `run_provenance.txt` records `start_index` so a resumed table says so about itself.
 Commit `91d4200`.
 
+**Correction, made the same day.** The flag was first documented as taking the `MapLMC5.dat`
+line count. That is wrong. The `NEW STEP` print sits *above* the no-coverage and barren skips,
+so a sightline can be entered and counted while writing no map row, and the map file therefore
+undercounts what the scan reached — 624 against 710 on the v2 run, a gap of 86. Resuming at the
+map count would re-simulate that gap and append duplicate rows to the table. The resume index
+is `grep -c 'NEW STEP'` on the interrupted run's log, plus that run's own `--start-index` if it
+was itself a continuation. The usage text now says this at length, because getting it wrong
+produces a table that is silently duplicated rather than obviously broken.
+
 ### 32.3 Rubin's astrometric error was a mission average applied per epoch
 
 `files/sigmaA_LSST.txt` is mission-averaged and `errlsstA()` fed it into `l.erra[]`, a

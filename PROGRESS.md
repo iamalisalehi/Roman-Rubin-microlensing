@@ -4,10 +4,15 @@
 carries are E1a (footprint-stratified sampling), H1 (satellite parallax), H2 (the satellite
 observable in the table) and H4 (Roman's astrometric error model). Step H5 (the astrometric
 shift as a product) is also done and is analysis-only.
-**A production run was attempted on 2026-09-05 and stopped at 526 of 1,829 sightlines** — see
-§5c. It produced no usable production table, but it produced two things that matter: a measured
-cost model for the stratified scan, and an undiagnosed jump in `DET_ANOMALY` that should be
-settled before another multi-hour run is launched (`OPEN_ITEMS.md`).
+**A production run is in flight since 2026-09-05 18:31 — see §5d.** It is the v2 run, and it
+carries four fixes made that afternoon on top of E1a/H1/H2/H4: Rubin's astrometric error
+renormalised from a mission average to a per-visit one, Roman's blending made Poisson so it can
+be blended at all, `--start-index` so an interrupted scan can be continued, and the repaired
+`DET_ANOMALY` run total. The regression fixture, which had not compiled since H1, was repaired
+first so those changes could be checked at all.
+
+**Every number in §4 is now superseded twice over** — once by E1a/H1/H2/H4 and again by the
+Rubin astrometry and blending fixes. Do not quote §4 without saying so.
 **Branch:** `joint-fisher-refactor` (never commit to `main`).
 **Head at last update:** `738b54d` — "Report what each survey measures, not just how much the
 joint fit adds" (Step F4).
@@ -372,7 +377,8 @@ shift, then the whitepaper brought up to date for potential collaborators. `PHAS
 the roadmap for all three** — read it before starting any of them; it also explains why the
 original plan's Step G1 cannot be run as written.
 
-0. **The production run — ATTEMPTED 2026-09-05, STOPPED at 526/1,829 sightlines.** E1a (stratified sampling), H1
+0. **The production run — v2 IN FLIGHT since 2026-09-05 18:31 (§5d). The first attempt that
+   day was stopped at 526/1,829 sightlines (§5c).** E1a (stratified sampling), H1
    (satellite parallax), H2 (the satellite observable) and H4 (Roman astrometric errors) are
    all in the code and all change what a run produces; nothing downstream could move until one
    run existed with all four. The user chose `--stride-roman 5`. The run was stopped by the
@@ -380,20 +386,15 @@ original plan's Step G1 cannot be run as written.
    See §5c for what it produced and what it cost. **Every result in §4 still predates all four
    changes and stays caveated.**
 
-   **Do not simply relaunch it.** Two things should happen first, in this order:
+   Both blockers raised after the first attempt are now cleared. The `DET_ANOMALY` jump was
+   **not** a regression and **not** H1 — the run-total counter was simply never incremented, so
+   every run had reported zero (`OPEN_ITEMS.md`, and Deviation 32). And the run is now resumable
+   via `--start-index`, so an interruption no longer costs the whole scan.
 
-   a. **Settle the `DET_ANOMALY` jump** — 0 anomalies in the 5.6M-event 2026-08-30 run against
-      433 in this run's 421k, in 23 of its 24 Roman-covered sightlines. It is a diagnostic and
-      not a live error, but it is undiagnosed, the leading suspect is H1, and it bears directly
-      on Roman's detection counts, which are the numbers behind the gap-filling claim.
-      `OPEN_ITEMS.md` has the controlled stub experiment that settles it in minutes.
-   b. **Decide whether the machine can give ~3.5 h uninterrupted**, or make the run resumable
-      first. It currently is not: there is no checkpoint and no `--start-index`, so an
-      interruption costs everything. §5c has the measured cost model to price the choice.
-
-   Still outstanding after that: **the `--no-satellite-parallax` twin run that Step H3 needs.**
-   H3 is the difference between the two runs, so it cannot start until both exist. Note that the
-   experiment in (a) uses the same switch on a stub configuration, so it doubles as a rehearsal.
+   **The `--no-satellite-parallax` twin that Step H3 needs is scheduled, not forgotten.** H3 is
+   the difference between the two runs. A watcher checks memory at the primary's midpoint and
+   either starts the twin alongside it or holds it until the primary finishes; §5d has the rule
+   it applies and where the twin's output goes.
 
 Then, in roughly the order that makes sense:
 
@@ -568,6 +569,49 @@ overestimate. The 2026-08-30 run capped on 77 of 1,706 sightlines and finished i
 
 ---
 
+## 5d. The v2 run, in flight
+
+Launched 2026-09-05 18:31 local at commit `a5bb600`, built with `make clean && make` so the
+stamp is current and clean (no `-dirty`) — the rule §5c had to be written about twice:
+
+```bash
+./roman --events 300 --lenses 50 --stride-roman 5
+```
+
+Same targets as the 2026-08-30 run and the first 2026-09-05 attempt, for the same reason (§5c):
+the defaults are 850/150 and changing the statistical budget at the same moment as the physics
+would leave two tables that cannot be compared.
+
+**Output:** `/home/ali/Documents/PhD/Offline_project/roman_runs/2026-09-05_v2_stride-roman-5/`,
+outside the repository, symlinked in — same arrangement and same reasons as §5c.
+**Twin:** `.../2026-09-05_v2_twin_nosat/`, a fully isolated directory with its own input
+symlinks so it can run concurrently without sharing the worktree's output paths. The twin is
+`--no-satellite-parallax` with everything else identical, so the two runs draw identical events
+and Step H3's comparison is paired. The scheduling rule: at the primary's midpoint, start the
+twin alongside if at least 1.8 GB is available (an ~800 MB run plus 1 GB of headroom), and
+otherwise hold it until the primary exits rather than risk both.
+
+**What this run carries that no previous run did:**
+
+| | |
+|---|---|
+| E1a | stratified sky sampling, `w_area` on every row |
+| H1 | satellite parallax — Roman at L2, not at the centre of the Earth |
+| H2 | `du_sat`, `nepL_pk`, `nepR_pk` columns |
+| H4 | Roman's own astrometric error model, and the stale-`errs` fix |
+| `d393dc3` | Rubin astrometry renormalised per-visit — **26.7x worse, and correct** |
+| `58d2863` | Roman blending Poisson — **14.6% of Roman events now blended, was 0%** |
+| `a5bb600` | `DET_ANOMALY` run total actually counted |
+
+**Expect the numbers to move a long way, and mostly against Rubin.** Rubin's astrometric
+information falls by ~715x, so any `tetE` or lens mass that leaned on Rubin astrometry gets
+worse. Roman's detection efficiency should fall too, because `testR <= blend[6]` was accepting
+everything while `blend[6]` was pinned at 1. Both changes make the forecast more conservative
+and both were bugs, so a smaller joint gain in the next F-series is the expected outcome, not a
+regression to hunt.
+
+---
+
 ## 6. Traps a new session will otherwise fall into
 
 - **The two indexing systems.** `s.blend[i]` / `s.magb[i]` are indexed by **filter**
@@ -586,9 +630,13 @@ overestimate. The 2026-08-30 run capped on 77 of 1,706 sightlines and finished i
   the repo root; every data path is hardcoded and relative.
 - **Two output files open in append mode**, so a re-run without clearing them silently
   concatenates two runs — `OPEN_ITEMS.md`.
-- **`lightcurve()` has no telescope argument**, so both observatories sit at the centre of the
-  Earth and there is no satellite parallax. Do not describe any current `piE` forecast as
-  including it. Deviation 27; Step H1 fixes it.
+- **The scientific Python lives in `/usr/bin/python3`, not the `python3` on `PATH`.** The
+  `/usr/local/bin/python3` that `which python3` finds has no numpy. Every `analysis/` script
+  needs `/usr/bin/python3`.
+- **`lightcurve()` takes a telescope argument** since Step H1: Roman observes from L2 and
+  Rubin from the ground, so the two see different observer displacements. Passing the wrong one
+  silently removes satellite parallax. Any table written before H1 has none — do not describe
+  its `piE` forecasts as including it. Deviations 27, 28.
 - **The `t = 0` parallax gauge.** `lightcurve()` subtracts the observer displacement at
   `t = 0`, which is what makes `u0` and `t0` mean what they mean. When two observers exist they
   must share one origin — referencing each to its own `t = 0` cancels exactly the offset that

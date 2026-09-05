@@ -582,42 +582,31 @@ number is itself a result: it says how much the `errlsstA` placeholder was disto
 
 ---
 
-## Rubin's astrometric error model is unsourced, and is now BETTER than Roman's (found in Step H5)
+## RESOLVED 2026-09-05 — Rubin's astrometric error was a mission average used per epoch
 
-**What is wrong:** `files/sigmaA_LSST.txt`, which `errlsstA()` interpolates, runs from
-**0.374 mas at F = 16 to 4.92 mas at F = 24.4** per visit. Step H4 gave Roman a
-literature-sourced per-exposure model running **1.1 mas (the 1%-of-a-pixel centroiding floor)
-to 10 mas at F146 = 23.5**. So the simulation now says a ground-based 6.5 m telescope
-centroids a star roughly **three times better per visit than a diffraction-limited space
-telescope**. That is very likely wrong, and it was invisible before H4 because Roman's epochs
-were simply handed Rubin's curve.
+**Status: closed by commit `d393dc3`.**
 
-`sigmaA_LSST.txt` carries no provenance in this repository. Published expectations for LSST
-single-visit relative astrometry are of order several mas for bright stars, not a third of a
-milliarcsecond, so the file looks optimistic by an order of magnitude — but that is an
-impression, not a citation, and the file must be traced before anyone acts on it.
+The suspicion recorded here was right and the cause was worse than "unsourced".
+`files/sigmaA_LSST.txt` is a **mission-averaged** curve and `errlsstA()` fed it straight into
+`l.erra[]`, which is a **per-epoch** error that `FisherM` divides by once per epoch and then
+sums over ~2,300 epochs — applying the sqrt(N) averaging twice. Rubin's per-epoch astrometry
+was **26.7x better than reality** and its astrometric Fisher information ~715x too large.
 
-**Why it matters scientifically:** the astrometric Fisher matrix (`inputB`, parameters
-`tetE, mus1, mus2, piE`) weights each epoch by `1/erra^2`. If Rubin's per-epoch error is ~10x
-too small, Rubin's astrometric contribution — and therefore its share of every `theta_E` and
-lens-mass constraint — is overstated by ~100x in information. Every joint-vs-Roman-alone
-astrometric ratio would be affected, in the direction that flatters the joint fit.
+Two independent checks fix the factor. The table's bright-star floor is 0.3739576 mas, and
+10.0/0.3739576 = 26.74 — exactly Ivezic et al. 2019's "assumed astrometric accuracy of 10 mas
+per observation per coordinate" over sqrt(715), and ~715 visits is the right order for a
+ten-year all-band LSST count. Scaled by the same 26.74 the faint end reads 132 mas at
+r = 24.44 against an independent seeing-limited estimate FWHM/SNR ~ 700/5 ~ 140 mas. The
+table's shape was right; only its normalisation was wrong, so the fix renormalises rather than
+replaces, and does it in code so the delivered input file is untouched.
 
-Note this is **not** simply "Rubin cannot beat Roman": Rubin's ten-year baseline genuinely
-constrains the source proper motion `mus1`/`mus2` better than Roman's five-year window, and
-`mus` correlates with `tetE` in the same matrix, so a real Rubin contribution to `theta_E` is
-expected. The question is its size, and right now the size is set by an unsourced file.
+Roman is now the better astrometer, which is the physically obvious ordering and was not true
+before. 10 mas is the conservative reading: Rubin commissioning (SITCOMTN-159) reports a 3-7
+mas single-visit systematic, so the delivered floor may be better than assumed here.
 
-**Why it is deferred:** fixing it means finding the real LSST astrometric-error curve and
-regenerating `sigmaA_LSST.txt`, which changes every astrometric number in the project — a
-step of its own, and one that should be taken deliberately rather than folded into H5.
+**Every `tetE` and lens-mass number involving Rubin astrometry moves.** Nothing has been
+re-run against it yet; the 2026-09-05 v2 production run is the first that will be.
 
-**What the fix involves:** trace `sigmaA_LSST.txt` to its source (it predates this refactor;
-`Baseline/` and the LSST overview paper are the places to look), compare against the published
-single-visit astrometric expectation, regenerate if it is wrong, then re-run F4 and H5 and
-record how far the `tetE`, `Ml` and joint-gain numbers moved.
-
----
 
 ## The astrometric shift is not diluted by blending (found in Step H5)
 
@@ -647,56 +636,40 @@ visible on the figure rather than hidden.
 
 ---
 
-## Roman is completely unblended, by construction, in every event (found in Step H5)
+## RESOLVED 2026-09-05 — Roman was unblended because a Poisson count was drawn as a Gaussian
 
-**What is wrong:** `blend_F146` is **exactly 1.0 for all 1,950 in-footprint events** in the
-production table — not a narrow distribution, a constant. It is an artefact of how the blend
-is built, not a result. In `Lensing.cpp`:
+**Status: closed by commit `58d2863`.** The diagnosis recorded here was wrong; checking it is
+what found the real cause.
 
-```cpp
-s.nsbl[i]  = |Nstart * pi * (FWHM[i]/2)^2 / 3600^2|;   // stars in the seeing disc
-s.nsbl[i] += RandN(sqrt(s.nsbl[i]), 2.0);
-if (s.nsbl[i] <= 1.0) s.nsbl[i] = 1.0;                 // <-- clamp
-```
+**This entry guessed the input population was at fault** — that `Nstart` counts only stars
+above some completeness limit, so the faint unresolved population that actually blends a Roman
+pixel was missing from the density. **It is not.** `Nstart` is built from the mass density
+divided by the mean mass of each population, so it is complete down the whole IMF and stops at
+no survey's detection limit. The geometry was right too. The statistics were wrong.
 
-`FWHM[6]` (F146) is 0.105 arcsec against ~0.99 arcsec for Rubin's r band, and `nsbl` scales as
-FWHM^2. At a typical bulge density (`Nstart ~ 4e7` per deg^2) that is **~0.03 stars** in
-Roman's disc against ~2.4 in Rubin's, so Roman's count is clamped to 1 — the source alone —
-on every draw, and `blend[6] = 1` follows exactly. The Poisson term cannot rescue it: 0.03 +/-
-0.16 is still clamped. **The model cannot produce a blended Roman event at all.**
+The mean number of field stars in a seeing disc is a surface density times a disc area: ~12.7
+for Rubin's 0.993" r-band disc at a bulge `Nstart` of 2.13e8 per deg^2, and **~0.14 for
+Roman's 0.105" F146 disc**. The old code added `RandN(sqrt(mean), 2.0)` and clamped up to 1. At
+12.7 that is a passable Gaussian approximation to a Poisson count. At 0.14 it is qualitatively
+wrong: the truncated Gaussian can add at most 2*sqrt(0.14) = 0.75, and the clamp then rounds
+**every** draw to exactly 1. A mean of 0.14 neighbours was rendered as "no neighbours, always".
 
-**Why it matters scientifically, and it reaches further than astrometry:**
+The fix is a Poisson draw, `1 + Poisson(mean)` — the `1 +` because we are looking AT a source,
+so the disc is conditioned to contain it, and Slivnyak's theorem says the rest of a Poisson
+field is unchanged by that conditioning. `max(1, Poisson)` would absorb the first neighbour
+into the source and leave Roman unblended 99% of the time, the same bug one step on.
 
-1. **Roman's detection efficiency.** The per-survey pre-selection (Step B2) is
-   `acceptRoman = romanDetectable and (testR <= s.blend[6])`. With `blend[6] == 1` Roman
-   accepts **every** detectable event, while Rubin accepts `testL <= blend[2]`, median 0.15 —
-   about 15%. Any Roman-against-Rubin yield comparison inherits that asymmetry, including the
-   gap-filling numbers that are the thesis's second novelty claim.
-2. **The Fisher matrix.** `s.fb[1] = s.blend[6]`, so photometric parameter 7 (`fb1`, Roman's
-   source-flux fraction) is pinned at the boundary 1.0 for every event. Perturbing a parameter
-   sitting exactly on a physical boundary is what caused Deviation 1; the guard added there
-   holds, but the derivative is one-sided in a way nothing has re-examined since.
-3. **Astrometry.** It is why the two curves in `h5_astrometric_shift.py` panel (a) coincide.
+**Measured, same stub patch, before and after:** `blend_F146` fraction below 1 goes from
+**0.000 to 0.146**, against the predicted 1 - exp(-0.142) = 0.133; median stays 1.0, because
+Roman really is mostly unblended at 0.105" — that part of the old answer was right. `fb1` is
+off its boundary for the same 14.6% of events instead of pinned for all of them. Rubin moves as
+predicted and only slightly, `nsbl_r` 14.3 -> 15.0, the same Palm-conditioning correction.
 
-**Is it even wrong?** Not obviously — Roman's PSF really is ~10x narrower than Rubin's and
-blending really is far weaker. But "far weaker" and "exactly zero, always" are different
-claims, and the published Roman GBTDS literature does not treat its sources as unblended. The
-suspicion is that `Nstart` counts only stars above some completeness limit, so the faint
-unresolved population that actually blends a Roman pixel is missing from the density rather
-than from the geometry.
+**Consequences to re-examine once the v2 run lands:** Roman's detection efficiency was
+`testR <= blend[6]` with `blend[6] == 1`, so Roman accepted every detectable event while Rubin
+accepted ~15%. That asymmetry fed every Roman-against-Rubin yield comparison, including the
+gap-filling claim. It should now be smaller, and the size of the change is a result in itself.
 
-**Why it is deferred:** it is a change to the forward model with a wide blast radius — it moves
-Roman's detection efficiency, its yields, its blend parameter and its astrometry at once — and
-it should not be folded into a step about parallax or the astrometric shift, where its effect
-could not be attributed. It also needs a decision about what `Nstart` includes, which is a
-question about the input population, not about this code.
-
-**What the fix involves:** establish what magnitude limit `Nstart` is complete to; if it
-excludes the faint end, either extend it or replace the `nsbl <= 1 -> 1` clamp with a
-sub-Poisson treatment that lets a fractional expected count produce a fractional blend. Then
-re-run and report how far Roman's detection count, `fb1` distribution and `sigma_tetE` moved.
-
----
 
 ## The provenance stamp goes stale silently, and discipline has now failed twice
 
@@ -753,71 +726,40 @@ what you would want to inspect.
 
 ---
 
-## DET_ANOMALY went from 0 in 5.6M events to 433 in 421k — undiagnosed, and it blocks the next run
+## RESOLVED 2026-09-05 — DET_ANOMALY was never 0; the run total was never counted
 
-**Status:** open, and it is the **first thing to settle before another multi-hour run is
-launched.** Found on 2026-09-05 in the partial `--stride-roman 5` run.
+**Status: closed by commit `a5bb600`.** Kept because the wrong hypothesis in it is instructive.
 
-**What DET_ANOMALY is.** It counts events where one survey detected the event but the **raw**
-joint test did not — the thing that should be impossible, since adding data cannot destroy
-signal. Deviation C-D.2 diagnosed the cause as the threshold *form*: all three detection tests
-compare `dchi` against `2 * ndw`, i.e. they threshold the **mean** per-epoch chi-squared
-improvement, so pooling a survey with many low-signal epochs raises the joint bar without
-contributing signal. `detJ` is therefore forced monotone one line later
-(`if (detL or detR) detJ = 1;`) and `detJ_raw` is kept only so the rate stays measurable.
+**What was suspected.** The 2026-09-05 partial run logged 433 DET_ANOMALY events in 23 of its
+24 Roman-covered sightlines where the 2026-08-30 run reported 0 in 5.57M events, and this entry
+named **H1 (satellite parallax)** as the leading suspect, on the reasoning that it is the only
+one of E1a/H1/H2/H4 that touches the photometric model.
 
-**So this is not a live error, and the tables are not wrong.** Every downstream consumer sees
-the monotone `detJ`. What moved is the *rate* of the underlying pathology.
+**That was wrong, and the experiment this entry specified is what showed it.** A paired A/B on
+`--no-satellite-parallax` — same seed, same stub patch inside the footprint, `--events` equal to
+`--maxdraws` and `--lenses` set out of reach so both variants execute exactly 150 draws per
+sightline whatever they detect, hence identical events — came out **indistinguishable**:
 
-**The numbers.**
+| | none | Rubin+joint | Roman+joint | both+joint | DET_ANOMALY |
+|---|---|---|---|---|---|
+| satellite parallax on | 1197 | 36 | 81 | 35 | **15** |
+| satellite parallax off | 1197 | 36 | 81 | 35 | **15** |
 
-| run | events | DET_ANOMALY | Roman-covered sightlines showing it |
-|---|---|---|---|
-| 2026-08-30, finished | 5,571,168 | **0** | 0 of 39 footprint sightlines |
-| 2026-09-05, partial | 421,065 | **433** | **23 of 24** |
+**The actual cause.** `nDetClass[DET_ANOMALY]`, the per-sightline counter, was incremented.
+`NDetClassTot[DET_ANOMALY]`, the run total, was **not** — even though it is read at the end of
+the run to decide whether to print the note explaining what DET_ANOMALY means. Every run since
+the counter was introduced reported exactly zero anomalies in its summary and the explanatory
+note never fired once. **The 2026-08-30 run's "0 ANOMALY" is that bug, not a measurement.**
+The anomalies were in its log all along; nobody read that log, because it was unavailable.
 
-433 anomalies against only 618 Roman-detected events (337 `Roman+joint` + 281 `both+joint`) is
-not a knife-edge effect. It is close to every Roman-covered sightline and a large fraction of
-every Roman detection.
+**So nothing regressed.** The rate is what Deviation C-D.2 predicted: thresholding `dchi`
+against `2 * ndw` is a bar on the MEAN per-epoch improvement, and where Roman contributes
+50,401 epochs against Rubin's ~2,300, Rubin's epochs lift the joint bar by ~4,728 while adding
+little signal. Any event clearing Roman's own bar by less than that fails the joint one — about
+1% of footprint draws. `detJ` is still forced monotone, so no table was ever wrong.
 
-**It is not an artefact of the counter being new.** The diagnostic line was added in `e47390a`
-(2026-08-22), which is an ancestor of `d6dd293`, the commit the 2026-08-30 run was built from.
-Both runs could report it; one did and one did not.
+**Still open, and now with evidence behind it:** the `2 * ndw` threshold form itself, which
+Deviation C-D.2 deliberately left alone. A chi-squared statistic should be thresholded on its
+total, not its mean. With Roman's epoch count 22x Rubin's, that asymmetry is no longer
+hypothetical, and the anomaly rate is the measurement of how hard it now bites.
 
-**What changed between the two runs:** E1a (stratified sampling), H1 (satellite parallax), H2
-(two extra output columns) and H4 (Roman's astrometric error model). H2 only writes columns.
-H4 touches `erra`, the **astrometric** error, which does not enter the photometric detection
-statistic. That leaves **E1a and H1**, and H1 is the one that changes the photometric model:
-it moves Roman to L2, so Roman's `ue` differs from Rubin's by `piE * D_perp` at every epoch,
-which changes Roman's magnification, hence `dchi_R`, hence `detR` and `detJ_raw`.
-
-**The leading hypothesis, explicitly not yet verified:** H1 raised `dchi_R` enough to push many
-events over Roman's own bar (`2 * ndw_R`) while the joint bar (`2 * (ndw_L + ndw_R)`, about
-100,802 with Roman's 50,401 epochs) stayed out of reach — producing exactly the signature seen,
-a single-survey detection the raw joint test misses. **If that is right it is arguably correct
-behaviour** and the anomaly count is measuring a real strengthening of Roman-alone detection.
-**If it is wrong**, something in H1's rebuild of `magni0[fiR]`, `magni[fiR]`, `Astar0R` and
-`s->Astar` is inflating Roman's chi-squared, and the Roman detection counts in the next run
-would be wrong. These two possibilities are not distinguishable from the run output alone and
-they point in opposite directions.
-
-**How to settle it cheaply, without another production run.** The `--no-satellite-parallax`
-switch added in H1 makes this a controlled experiment on a stub configuration:
-
-```bash
-./roman --stub --stride 2 --events 2 --lenses 1 --nerr 0 --maxdraws 500
-./roman --stub --stride 2 --events 2 --lenses 1 --nerr 0 --maxdraws 500 --no-satellite-parallax
-```
-
-on a sightline **inside** the footprint (the stub regression configuration in `PROGRESS.md` §5b
-reaches Roman coverage), and compare `DET_ANOMALY`, `dchi_R` and the Roman detection counts. If
-the anomaly disappears with satellite parallax off, H1 is the cause and the question becomes
-whether the new `dchi_R` is right. That is minutes of work, not hours, and it is the
-prerequisite for trusting the next full run's Roman yields — which are the numbers behind the
-gap-filling claim.
-
-**Related, and probably the real fix:** Deviation C-D.2 left the `2 * ndw` threshold form itself
-open, noting a chi-squared statistic should be thresholded on its total rather than its mean so
-that more data helps rather than hurts. With Roman contributing 50,401 epochs against Rubin's
-~2,300, that asymmetry is now extreme, and this open item is the first evidence that it has
-started to bite.

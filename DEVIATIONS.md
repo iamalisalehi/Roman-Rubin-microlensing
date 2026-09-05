@@ -1946,3 +1946,92 @@ block, prints a warning and stamps it on the figure.
 - **Rubin's astrometric error model is unsourced and now better than Roman's** — 0.374 mas at
   F = 16 against Roman's sourced 1.1 mas floor, i.e. the simulation says a ground-based
   telescope centroids three times better per visit than a space telescope. `OPEN_ITEMS.md`.
+
+---
+
+## 32. Four fixes before the v2 production run (2026-09-05)
+
+Requested as a block by the user after the first `--stride-roman 5` attempt was stopped:
+settle the detection anomaly, make the scan resumable, re-research both astrometric error
+models, and stop Roman being unblended. Committed separately, one physical change each.
+
+### 32.0 The regression fixture had not compiled since H1
+
+`tests/fisher_fixture.cpp` still called `lightcurve(s, l, as, tim)` after Step H1 gave that
+function a telescope argument. The fixture is the only check that exercises `FisherM` and
+`ErrorCal` in seconds without data files, and the plan's §0 asks for it whenever `FisherM` is
+touched — so it was unavailable across exactly the stretch of work that changed the light
+curve, the astrometric errors and the output columns. The fixture already knew each epoch's
+telescope; it simply was not passing it on, so it now exercises satellite parallax too.
+**PASS, all assertions held**, joint/best-single `sigma(tE)` = 0.9707, 0.9824, 0.8022.
+Commit `3ade991`.
+
+### 32.1 DET_ANOMALY was never zero — the run total was never counted
+
+The 2026-09-05 partial run logged 433 anomalies in 23 of 24 Roman-covered sightlines where
+the 2026-08-30 run reported 0 in 5.57M events. Recorded as a suspected regression with **H1
+named as the leading suspect**, on the reasoning that it is the only change touching the
+photometric model.
+
+**H1 was exonerated by a paired A/B.** Same seed, same stub patch inside the footprint,
+`--events` equal to `--maxdraws` and `--lenses` set out of reach so both variants execute
+exactly 150 draws per sightline whatever they detect — hence identical events. Over 9
+sightlines and 1,351 draws the two variants are indistinguishable: **15 anomalies each**, and
+identical none/Rubin+joint/Roman+joint/both+joint of 1197/36/81/35.
+
+The cause was reporting, not physics. `nDetClass[DET_ANOMALY]` (per sightline) was
+incremented; `NDetClassTot[DET_ANOMALY]` (run total) was not, although it is read at the end
+of the run to decide whether to print the note explaining the counter. **Every run since the
+counter existed has reported zero, and the 2026-08-30 "0 ANOMALY" is that bug rather than a
+measurement.** The anomalies were in that run's log all along; the log was unavailable, so
+nobody read them. Nothing regressed, no table was ever wrong (`detJ` is forced monotone), and
+the rate is exactly what C-D.2 predicted from thresholding `dchi` on `2 * ndw` where Roman
+brings 50,401 epochs against Rubin's ~2,300. Commit `a5bb600`.
+
+### 32.2 `--start-index`, so an interrupted scan is continued rather than restarted
+
+A `--stride-roman 5` run costs ~3.5 h of uninterrupted CPU and one was lost after 526 of
+1,829 sightlines to a hibernation. `scan` is already deterministic and the outputs already
+append, so resuming needed only a skip. The `nri`/`nde` bookkeeping deliberately still runs
+for skipped sightlines, because `nde` is written to the map file and skipping it would
+renumber the first partial column. **Honest limitation:** the RNG is not rewound, so a resumed
+run is a valid continuation with a different draw sequence, not a bit-identical replay;
+`run_provenance.txt` records `start_index` so a resumed table says so about itself.
+Commit `91d4200`.
+
+### 32.3 Rubin's astrometric error was a mission average applied per epoch
+
+`files/sigmaA_LSST.txt` is mission-averaged and `errlsstA()` fed it into `l.erra[]`, a
+per-epoch error that `FisherM` divides by once per epoch and then sums over ~2,300 epochs —
+applying sqrt(N) twice. **Rubin's per-epoch astrometry was 26.7x too good and its astrometric
+Fisher information ~715x too large.** Two independent checks pin the factor: the table's
+bright floor of 0.3739576 mas times 26.74 is exactly the 10 mas per observation per coordinate
+assumed by Ivezic et al. 2019 (and 715 visits is the right order for ten years all-band); the
+same factor puts the faint end at 132 mas at r = 24.44 against FWHM/SNR ~ 700/5 ~ 140 mas. The
+shape was right, so the fix renormalises in code and leaves the delivered file alone. Roman is
+now the better astrometer, which was not true before and is physically obvious. Commit
+`d393dc3`.
+
+### 32.4 Roman's blending: a Poisson count was being drawn as a truncated Gaussian
+
+`blend_F146` was exactly 1.0 for every event. The open item guessed `Nstart` was incomplete;
+**it is not** — it is a mass density over a mean mass, complete down the whole IMF. The
+geometry was right too. The mean neighbour count in a seeing disc is ~12.7 for Rubin's 0.993"
+r band and **~0.14 for Roman's 0.105" F146**; the old `RandN(sqrt(mean), 2.0)` plus clamp-to-1
+is a fair Gaussian approximation at 12.7 and qualitatively wrong at 0.14, where the truncated
+Gaussian adds at most 0.75 and the clamp rounds every draw to exactly 1. Replaced with
+`1 + Poisson(mean)` — the `1 +` by Slivnyak's theorem, since we are looking at a source and
+the disc is conditioned to contain it; `max(1, Poisson)` would absorb the first neighbour and
+keep Roman unblended 99% of the time.
+
+**Measured on the same stub patch, before and after:** fraction of events with
+`blend_F146 < 1` goes **0.000 -> 0.146**, against the predicted `1 - exp(-0.142) = 0.133`.
+Median stays 1.0 — Roman really is mostly unblended at 0.105", which is the part the old
+answer got right. `fb1` is off its boundary for that 14.6% instead of pinned for all events.
+Rubin moves only as predicted, `nsbl_r` 14.3 -> 15.0. Commit `58d2863`.
+
+**Consequence still to be measured:** Roman's pre-selection is `testR <= blend[6]`, so with
+`blend[6] == 1` Roman accepted every detectable event against Rubin's ~15%. That asymmetry fed
+every Roman-against-Rubin yield comparison, the gap-filling claim included. How far it moves
+is a result of the v2 run.
+

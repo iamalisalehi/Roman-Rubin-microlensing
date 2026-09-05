@@ -26,12 +26,40 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
         // guard. Present since the initial commit, inherited from the legacy LMC code.
         s.Fluxb[i] = 0.0;
 
-        s.nsbl[i]  = std::fabs(s.Nstart * std::pow(FWHM[i] * 0.5, 2) * M_PI / (3600.0 * 3600.0));
-        s.nsbl[i] += RandN(std::sqrt(s.nsbl[i]), 2.0);
-
-        if (s.nsbl[i] <= 1.0)  {
-            s.nsbl[i] = 1.0;
-        }
+        // Number of stars sharing this filter's seeing disc with the source.
+        //
+        // lambda is the MEAN number of field stars in the disc: a surface density times the
+        // disc area. Nstart is a total number density -- mass density divided by the mean
+        // mass of the relevant population -- so it is complete down the whole IMF and does
+        // NOT stop at any survey's detection limit. The geometry is right too. What was
+        // wrong was the statistics.
+        //
+        // The old code added RandN(sqrt(lambda), 2.0) and clamped the result up to 1. For
+        // Rubin, where lambda ~ 12.7 in r band, that is a passable Gaussian approximation to
+        // a Poisson count. For Roman it is qualitatively wrong: lambda ~ 0.14 in the 0.105"
+        // F146 disc, the truncated Gaussian can add at most 2*sqrt(0.14) = 0.75, and the
+        // clamp then rounds every draw to exactly 1 -- the source alone. blend[6] came out
+        // as exactly 1.0 for all 1,950 events of the 2026-08-30 run: not a narrow
+        // distribution but a constant, and Roman could not be blended at all, by construction.
+        //
+        // A Poisson draw is the correct count and fixes it without special-casing anything:
+        // at lambda = 0.14, P(at least one neighbour) = 1 - exp(-0.14) = 13.3%, so Roman is
+        // mostly unblended -- which is physically right for a 0.105" PSF -- but not always,
+        // which is the part that was missing.
+        //
+        // Why 1 + Poisson(lambda) rather than max(1, Poisson(lambda)): we are looking AT a
+        // source, so the disc is conditioned to contain it. For a Poisson field, conditioning
+        // on a point at a given location leaves the rest of the field Poisson with the same
+        // rate (Slivnyak's theorem), so the total is the source plus Poisson(lambda)
+        // neighbours. max(1, .) would instead absorb the first neighbour into the source and
+        // keep Roman unblended 99% of the time -- the same bug in a new place.
+        //
+        // This moves Rubin slightly as well: its mean count goes from lambda to 1 + lambda,
+        // about +8% in r band. That is the same Palm-conditioning correction, previously
+        // missing, and it is not separable from the Roman fix -- they are one line.
+        const double lambda = std::fabs(s.Nstart * std::pow(FWHM[i] * 0.5, 2) * M_PI
+                                        / (3600.0 * 3600.0));
+        s.nsbl[i] = 1.0 + double(RandPois(lambda));
         if (s.nsbl[i] > maxnb) {
             maxnb = s.nsbl[i];
         }

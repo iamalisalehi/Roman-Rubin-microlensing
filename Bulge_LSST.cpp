@@ -211,6 +211,9 @@ struct RunConfig {
     // Restrict the scan to the old hardcoded 0.1x0.1 deg patch instead of the full
     // region. Kept only so a run can be compared against the pre-Step-4 numbers.
     bool   stubPatch   = false;
+    // Step: resume. Index into the (deterministic) sightline scan vector at which to begin.
+    // 0 means "start from the beginning", which is what every non-resumed run wants.
+    long   startIndex  = 0;
 
     // Put Roman back at the centre of the Earth, killing the Earth-L2 spatial baseline while
     // leaving the timing untouched (Step H1). This is the "off" half of Step H3's
@@ -234,6 +237,13 @@ static void printUsage(const char* prog) {
         << "  --stride N     sightline grid step, in units of dd=" << dd << " deg (default 10)\n"
         << "                 grid spacing is N*dd deg; must be <= " << FoVRoman * 1.41421356
         << " deg or Roman fields can be missed\n"
+        << "  --start-index N   skip the first N sightlines of the scan and resume there.\n"
+        << "                 The scan vector is deterministic for a given --stride/\n"
+        << "                 --stride-roman/--stub, and the output files are opened in\n"
+        << "                 append mode, so a run interrupted after N sightlines is\n"
+        << "                 continued exactly by re-running with the same flags plus\n"
+        << "                 --start-index N. N is the line count of MapLMC5.dat, minus\n"
+        << "                 any partially written final line.\n"
         << "  --stride-roman N  sightline grid step inside Roman's footprint, same units\n"
         << "                 (default: same as --stride, i.e. an unstratified scan). Must\n"
         << "                 divide --stride. Sightlines outside the footprint keep the\n"
@@ -275,6 +285,7 @@ int main(int argc, char** argv) {
         else if (arg == "--nerr")    cfg.nerrTarget  = std::atof(need("--nerr"));
         else if (arg == "--maxdraws") cfg.maxDraws    = std::atof(need("--maxdraws"));
         else if (arg == "--stub")    cfg.stubPatch   = true;
+        else if (arg == "--start-index") cfg.startIndex = std::atol(need("--start-index"));
         else if (arg == "--dry-run") cfg.dryRun      = true;
         else if (arg == "--no-satellite-parallax") cfg.noSatPar = true;
         else if (arg == "--help")  { printUsage(argv[0]); return 0; }
@@ -300,6 +311,10 @@ int main(int argc, char** argv) {
     }
     // A cap below the event budget would stop every sightline early, which is not a cap
     // but a silent redefinition of the budget.
+    if (cfg.startIndex < 0) {
+        std::cerr << "ERROR: --start-index (" << cfg.startIndex << ") cannot be negative.\n";
+        return 1;
+    }
     if (cfg.maxDraws < double(cfg.iconTarget)) {
         std::cerr << "ERROR: --maxdraws (" << cfg.maxDraws << ") is below --events ("
                   << cfg.iconTarget << "); no sightline could reach its budget\n";
@@ -867,6 +882,8 @@ int main(int argc, char** argv) {
              << "# lenses_target       " << cfg.nlensTarget << "   # nlens\n"
              << "# nerr_target         " << cfg.nerrTarget << "\n"
              << "# maxdraws            " << cfg.maxDraws << "   # per-sightline draw cap\n"
+             << "# start_index         " << cfg.startIndex
+             << "   # sightlines skipped; >0 means this run RESUMES an earlier one\n"
              << "# region              " << (cfg.stubPatch ? "stub patch" : "full") << "\n"
              << "# Tobs_days           " << Tobs << "\n"
              << "# roman_seasons       " << sched.seasons.size() << "\n"
@@ -940,7 +957,9 @@ int main(int argc, char** argv) {
     // stand for equal pieces of sky and a count is not an area (Step E1).
     double areaAggregated = 0.0, areaNoCoverage = 0.0, areaBarren = 0.0;
     int lastCol = -1;
+    long iScan = -1;
     for (const auto& sightline : scan) {
+        iScan += 1;
         s->lon = sightline.lon;
         s->lat = sightline.lat;
         // The sky area THIS sightline stands for. Written into every event row it produces;
@@ -955,8 +974,21 @@ int main(int argc, char** argv) {
         // coarse columns.
         nri = sightline.col;
         if (sightline.col != lastCol) { nde = -1; lastCol = sightline.col; }
+        nde += 1;
+
+        // --start-index. Resuming an interrupted run. The nri/nde bookkeeping above runs for
+        // skipped sightlines too, deliberately: nde counts position within a longitude column
+        // and is written into the map file, so skipping it would renumber the first partial
+        // column and a resumed run would not concatenate onto the interrupted one. Only the
+        // simulation is skipped, not the numbering.
+        //
+        // This is safe precisely because `scan` is built deterministically from --stride,
+        // --stride-roman and --stub and does not depend on the RNG. Note that the random
+        // sequence IS advanced by the sightlines a full run would have simulated, so a
+        // resumed run is not bit-identical to an uninterrupted one -- it is a valid
+        // continuation with a different draw sequence, not a replay.
+        if (iScan < cfg.startIndex) continue;
         {
-            nde += 1;
             cout << ">>>>>>>>>>> NEW STEP " << nde << " <<<<<<<<\t nri:  " << nri << endl;
             cout << "longtitude: " << s->lon << "\t latitude: " << s->lat << endl;
 

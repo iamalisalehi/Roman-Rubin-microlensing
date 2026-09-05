@@ -167,7 +167,11 @@ double modelMag(const source& s, int tt, double Astar)
 // model rather than a noise realisation.
 void appendEpoch(source& s, lens& l, astromet& as, double tim, int tele, int& ndw)
 {
-    lightcurve(s, l, as, tim);
+    // Step H1 gave lightcurve() a telescope argument: Roman observes from L2, so its
+    // observer displacement differs from Rubin's by the projected Earth-L2 separation.
+    // The fixture already knew which telescope each epoch belonged to; it just was not
+    // passing it on, and had not compiled since that signature changed.
+    lightcurve(s, l, as, tim, tele);
     s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
 
     l.timn[ndw] = tim;

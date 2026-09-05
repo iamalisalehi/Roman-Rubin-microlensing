@@ -451,6 +451,66 @@ every figure made from `test5.dat` carries a wrong `git_commit` in its footer (`
 
 ---
 
+### Step H7. Threshold the detection statistic on its total, not its mean  *(blocks H3, H5, H6)*
+
+**Added 2026-09-05, at the user's decision, after the DET_ANOMALY investigation (Deviation
+32.1) measured how hard the present threshold bites.**
+
+**The physics reason this belongs in Phase H at all.** Satellite parallax and the astrometric
+shift do not improve detection; they break degeneracies and improve parameter estimation, and
+they can only do that for events that were detected accurately in the first place. So the
+detection test is not a neighbouring concern to H3 and H5 — it is their precondition. Every
+`sigma_piE` H3 quotes and every `sigma_tetE` H5 quotes is conditioned on a detection decision,
+and if that decision is wrong for a large fraction of Roman events, the conditioning is wrong
+and the forecast describes a sample that would not exist.
+
+**What is wrong.** All three detection tests compare `dchi` against `2 * ndw`. That thresholds
+the **mean** per-epoch chi-squared improvement, not the total significance. A chi-squared
+detection statistic should be thresholded on its total, so that adding data can only help. As
+written, pooling a survey with many low-signal epochs raises the joint bar without contributing
+signal.
+
+**How hard it bites, measured.** In Roman's footprint Roman contributes 50,401 epochs against
+Rubin's ~2,300. Roman's own bar is `2 * ndw_R` = 100,802; the joint bar is
+`2 * (ndw_L + ndw_R)` = 105,530. Rubin's near-flat epochs therefore lift the joint bar by
+~4,728 while adding almost no `dchi`, and any event clearing Roman's bar by less than that
+fails the joint test. On the 2026-09-05 v2 run this is **399 anomalies against 516
+Roman-detected events — about three in four.**
+
+**Why nothing is visibly broken today, and why that is not reassuring.** `detJ` is forced
+monotone one line after the test (`if (detL or detR) detJ = 1;`), so no downstream consumer
+ever sees a non-monotone joint flag and no table is wrong. But that patch conceals a detection
+test that is contradicting itself on most Roman detections, and Phase H's whole subject is what
+those detections let you measure. Deviation C-D.2 left the threshold form open on the grounds
+that changing it is a science decision rather than a bug fix. That is still true; what has
+changed is that the decision now has a measurement behind it instead of a hypothetical.
+
+**What the step does.**
+
+1. Replace the `2 * ndw` bar with a total-significance criterion for all three tests. The
+   natural form is a fixed `dchi` threshold, or one scaled as `ndw + k*sqrt(2*ndw)` — the
+   mean and standard deviation of a chi-squared with `ndw` degrees of freedom — so the bar
+   tracks the noise rather than the count. Pick one, justify it, and say what `k` means.
+2. **`detL` and `detR` move too**, which is the whole reason this is a science decision. Report
+   how far: Rubin-alone, Roman-alone and joint detection counts, before and after, on a fixed
+   stub configuration inside the footprint and one outside it.
+3. `DET_ANOMALY` should fall to zero or near it by construction. If it does not, the new form
+   is not monotone either and the step is not finished.
+4. Keep `detJ_raw` and the monotone patch in place through the change, so the anomaly rate
+   stays measurable and can be shown to have gone away rather than been hidden.
+5. Re-check the interaction with blending. Roman's pre-selection is `testR <= blend[6]`, which
+   Deviation 32.4 has just changed; the two together decide Roman's efficiency and should be
+   reported together.
+
+**Acceptance:** `DET_ANOMALY` is zero (or explained) on both stub configurations; the Fisher
+fixture still passes; detection counts for all three partitions are reported before and after
+with the change in each attributed; and `DEVIATIONS.md` records what the new threshold means
+physically, since every yield in the project is now conditioned on it.
+
+**Cost:** the code change is small. The expensive part is that **it invalidates the detected
+sample**, so the production runs have to be repeated. That is why it is placed here rather than
+after H3 — see the ordering note below.
+
 ## Ordering, and what depends on what
 
 ```
@@ -470,6 +530,13 @@ E1a run (stratified sampling, already built) ───────────�
 - **H6 last**, and it wants the E1a production run to have happened, or it will quote
   sample-limited numbers to collaborators.
 - **H1 before the E1a production run**, if only one run is affordable (§0.4).
+- **H7 is the awkward one.** It changes which events count as detected, so it invalidates any
+  table made before it and forces the production runs to be redone. Strictly it should come
+  before H3, H5 and H6, because all three quote statistics over the detected sample. It was
+  added after the 2026-09-05 v2 runs were already launched, so the honest sequence is: let
+  those runs finish and use them for H3 and H5 as **provisional** results, do H7, then re-run
+  and re-issue. H6 (the whitepaper) should not go to collaborators on pre-H7 numbers, because
+  the detection criterion is exactly the kind of thing a reader will ask about.
 
 ## What is deliberately NOT in this phase
 

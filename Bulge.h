@@ -229,6 +229,46 @@ constexpr double ROMAN_AST_SBKG  = 10.0;   //mas, sigma_ast at ROMAN_AST_MBKG [2
 // exactly as errlsstA reads files/sigmaA_LSST.txt.
 constexpr double ROMAN_AST_SLOPE_SRC = 0.33285;
 constexpr double ROMAN_AST_SLOPE_BKG = 0.4;
+
+// ---------------------------------------------------------------------------------------
+// Rubin/LSST astrometric error: renormalising files/sigmaA_LSST.txt from mission-averaged
+// to PER VISIT.
+//
+// Sources:
+//   [3] Ivezic et al. 2019, "LSST: From Science Drivers to Reference Design and Anticipated
+//       Data Products", ApJ 873, 111 (arXiv:0805.2366): the survey's proper-motion and
+//       parallax requirements are derived from "an assumed astrometric accuracy of 10 mas
+//       per observation per coordinate", with ~1000 observations needed to reach the ~0.6-1
+//       mas mission parallax accuracy.
+//   [4] SITCOMTN-159 (Rubin commissioning, Operations Rehearsal 3): single-visit source
+//       positions carry a systematic uncertainty of 3-7 mas to be added in quadrature to
+//       the pipeline uncertainty.
+//
+// THE DEFECT. files/sigmaA_LSST.txt is a MISSION-AVERAGED curve, not a per-visit one, and
+// errlsstA() was feeding it straight into l.erra[], which FisherM divides by per epoch and
+// then sums over ~2,300 epochs -- applying the sqrt(N) averaging a second time. Two
+// independent checks identify the factor:
+//
+//   * the table's bright-star floor is 0.3739576 mas; 10.0/0.3739576 = 26.74, i.e. exactly
+//     [3]'s 10 mas per visit divided by sqrt(715), and ~715 visits is the right order for a
+//     10-year all-band LSST count;
+//   * scaled by that same 26.74 the faint end reads 132 mas at r = 24.44, against an
+//     independent seeing-limited estimate FWHM/SNR ~ 700 mas / 5 ~ 140 mas.
+//
+// The shape of the table is therefore right and only its normalisation is wrong, so the fix
+// renormalises rather than replaces: multiply by LSST_AST_FLOOR / LSST_AST_TABLE_FLOOR so
+// the bright end sits on [3]'s published per-visit figure and the magnitude dependence
+// already encoded in the file is preserved untouched.
+//
+// Uncorrected, this made Rubin's per-epoch astrometry 26.7x better than reality and its
+// astrometric Fisher information ~715x too large -- which is why a ground-based telescope
+// was out-centroiding Roman (0.374 mas against Roman's sourced 1.1 mas) before this.
+// 10 mas is the conservative choice of the two sources: [4] suggests the delivered
+// single-visit floor may be nearer 3-7 mas, which would make Rubin better than assumed here.
+// ---------------------------------------------------------------------------------------
+constexpr double LSST_AST_FLOOR       = 10.0;      //mas per visit per coordinate [3]
+constexpr double LSST_AST_TABLE_FLOOR = 0.3739576; //mas, the bright-star floor as shipped
+constexpr double LSST_AST_RENORM      = LSST_AST_FLOOR / LSST_AST_TABLE_FLOOR; //26.74
 constexpr double omegae = double(2.0 * M_PI / year); //radian per day
 constexpr double vearth = omegae;                    //radian per day
 // Finite-difference stencils used by FisherM. For each parameter it evaluates the model at

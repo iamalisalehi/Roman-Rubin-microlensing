@@ -208,6 +208,16 @@ double errlsstA(lsst & ls, double ghadr){ //LSST Astrometric Error  //Change it!
     CHECK(error >= ls.err[0]);
     CHECK(ghadr >= 0.0);
 
+    // Renormalise the shipped mission-averaged curve to a PER-VISIT error, which is what
+    // l.erra[] means and what FisherM assumes. See the LSST_AST_* block in Bulge.h for the
+    // two independent checks that fix the factor at 26.74. Applied here rather than by
+    // editing files/sigmaA_LSST.txt so the input data stay as delivered and the correction
+    // is visible in the code that depends on it.
+    error *= LSST_AST_RENORM;
+
+    CHECK(error >= LSST_AST_FLOOR * 0.999);
+    CHECK(std::isfinite(error));
+
     return(error);
 }
 

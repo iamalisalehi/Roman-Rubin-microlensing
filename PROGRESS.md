@@ -4,8 +4,10 @@
 carries are E1a (footprint-stratified sampling), H1 (satellite parallax), H2 (the satellite
 observable in the table) and H4 (Roman's astrometric error model). Step H5 (the astrometric
 shift as a product) is also done and is analysis-only.
-**A production run is in flight — see §5c** for its command, its output directory and how to
-check on it.
+**A production run was attempted on 2026-09-05 and stopped at 526 of 1,829 sightlines** — see
+§5c. It produced no usable production table, but it produced two things that matter: a measured
+cost model for the stratified scan, and an undiagnosed jump in `DET_ANOMALY` that should be
+settled before another multi-hour run is launched (`OPEN_ITEMS.md`).
 **Branch:** `joint-fisher-refactor` (never commit to `main`).
 **Head at last update:** `738b54d` — "Report what each survey measures, not just how much the
 joint fit adds" (Step F4).
@@ -370,15 +372,28 @@ shift, then the whitepaper brought up to date for potential collaborators. `PHAS
 the roadmap for all three** — read it before starting any of them; it also explains why the
 original plan's Step G1 cannot be run as written.
 
-0. **The production run — RUNNING since 2026-09-05 01:54.** E1a (stratified sampling), H1
+0. **The production run — ATTEMPTED 2026-09-05, STOPPED at 526/1,829 sightlines.** E1a (stratified sampling), H1
    (satellite parallax), H2 (the satellite observable) and H4 (Roman astrometric errors) are
    all in the code and all change what a run produces; nothing downstream could move until one
-   run existed with all four. The user chose `--stride-roman 5`. See §5c for the command, where
-   the output lives and how to check on it. **Every result in §4 still predates all four
-   changes and stays caveated until this run lands.**
+   run existed with all four. The user chose `--stride-roman 5`. The run was stopped by the
+   user after the laptop hibernated mid-run and the remaining cost was measured at ~2.5 h.
+   See §5c for what it produced and what it cost. **Every result in §4 still predates all four
+   changes and stays caveated.**
 
-   Still outstanding: **the `--no-satellite-parallax` twin run that Step H3 needs.** H3 is the
-   difference between the two runs, so it cannot start until both exist.
+   **Do not simply relaunch it.** Two things should happen first, in this order:
+
+   a. **Settle the `DET_ANOMALY` jump** — 0 anomalies in the 5.6M-event 2026-08-30 run against
+      433 in this run's 421k, in 23 of its 24 Roman-covered sightlines. It is a diagnostic and
+      not a live error, but it is undiagnosed, the leading suspect is H1, and it bears directly
+      on Roman's detection counts, which are the numbers behind the gap-filling claim.
+      `OPEN_ITEMS.md` has the controlled stub experiment that settles it in minutes.
+   b. **Decide whether the machine can give ~3.5 h uninterrupted**, or make the run resumable
+      first. It currently is not: there is no checkpoint and no `--start-index`, so an
+      interruption costs everything. §5c has the measured cost model to price the choice.
+
+   Still outstanding after that: **the `--no-satellite-parallax` twin run that Step H3 needs.**
+   H3 is the difference between the two runs, so it cannot start until both exist. Note that the
+   experiment in (a) uses the same switch on a stub configuration, so it doubles as a rehearsal.
 
 Then, in roughly the order that makes sense:
 
@@ -447,7 +462,42 @@ are opened in append mode and a test run would concatenate itself onto the produ
 inputs; `files/MONTLMC/files/{LpLMC,EfLMC,EfLMC*B,MapLMC}<IMnum>.dat` must exist (they can be
 empty) or the run exits with "Cannot open one or more files!".
 
-## 5c. The run that is in flight
+## 5c. The run that was attempted on 2026-09-05, and what it cost
+
+**Outcome: stopped at 526 of 1,829 sightlines, no usable production table.** Launched 01:54,
+stopped 09:29 on the user's instruction. The laptop hibernated for most of that window, so the
+run consumed only **3,080 s (51 min) of CPU** across 7 h 35 min of wall clock. With ~2.5 h of
+CPU still to go and the expensive footprint band immediately ahead, it was not worth resuming
+in place.
+
+The partial output is kept, with a `README.md` describing it, at the directory named below. It
+is **not** a production table: the sky coverage stops around `lon = -0.2` and is systematically
+one-sided, and it reached only **22 of 147 footprint sightlines**, fewer than the finished
+2026-08-30 run's 39. Its use is as a pipeline artefact — it carries the E1a, H1, H2 and H4
+columns, so H3 and the re-run F-series can be developed against it without waiting for a full
+run. Its final `MapLMC5.dat` line is a partially flushed buffer, so drop the last line when
+parsing.
+
+**What it produced that is worth keeping.**
+
+1. **A measured cost model.** Outside the footprint a sightline costs **~2.2 s**; inside it,
+   **~18-40 s** — roughly **8-18x**. The reason is in the log: a footprint sightline gives every
+   event **50,401 Roman epochs** against Rubin's ~2,300, and H1 calls `lightcurve()` twice per
+   Roman epoch. **A full `--stride-roman 5` run costs about 3.5 h of uninterrupted CPU.**
+   Note that both naive extrapolations fail: the scan opens on the barren western edge where
+   every sightline runs to the 50,000-draw cap, so the first minutes are the slowest and most
+   row-producing and overestimate the total (the first 24 sightlines took 15.1 s each); the
+   middle of the scan is all cheap outside sightlines and underestimates it (2.2 s each).
+2. **The `DET_ANOMALY` jump**, which is the more important of the two and has its own
+   `OPEN_ITEMS.md` entry. Detection classes over the partial run: 393,331 none · 26,683
+   Rubin+joint · 337 Roman+joint · 281 both+joint · 0 joint-only · **433 DET_ANOMALY**.
+
+**It is not resumable, and that is now the binding constraint.** There is no checkpoint and no
+`--start-index`; the sightline vector is rebuilt from scratch every launch and the outputs are
+opened in append mode. On a laptop that hibernates, a 3.5 h single-shot run is a poor bet. The
+cheap fix is a `--start-index N` that skips the first N entries of the already-deterministic
+`scan` vector, which would make an interrupted run resumable by reading the completed count out
+of `MapLMC5.dat`; the append-mode outputs already concatenate correctly.
 
 Launched 2026-09-05 01:54 local, from the worktree, at commit `e8f4135`:
 

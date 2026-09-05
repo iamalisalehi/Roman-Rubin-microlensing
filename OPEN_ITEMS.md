@@ -750,3 +750,74 @@ Two smaller things belong with it. The binary should be able to print its own st
 block. And `--dry-run` should print the stamp it would write, since `--dry-run` is already the
 documented way to inspect a run's cost before committing hours to it, and the stamp is part of
 what you would want to inspect.
+
+---
+
+## DET_ANOMALY went from 0 in 5.6M events to 433 in 421k — undiagnosed, and it blocks the next run
+
+**Status:** open, and it is the **first thing to settle before another multi-hour run is
+launched.** Found on 2026-09-05 in the partial `--stride-roman 5` run.
+
+**What DET_ANOMALY is.** It counts events where one survey detected the event but the **raw**
+joint test did not — the thing that should be impossible, since adding data cannot destroy
+signal. Deviation C-D.2 diagnosed the cause as the threshold *form*: all three detection tests
+compare `dchi` against `2 * ndw`, i.e. they threshold the **mean** per-epoch chi-squared
+improvement, so pooling a survey with many low-signal epochs raises the joint bar without
+contributing signal. `detJ` is therefore forced monotone one line later
+(`if (detL or detR) detJ = 1;`) and `detJ_raw` is kept only so the rate stays measurable.
+
+**So this is not a live error, and the tables are not wrong.** Every downstream consumer sees
+the monotone `detJ`. What moved is the *rate* of the underlying pathology.
+
+**The numbers.**
+
+| run | events | DET_ANOMALY | Roman-covered sightlines showing it |
+|---|---|---|---|
+| 2026-08-30, finished | 5,571,168 | **0** | 0 of 39 footprint sightlines |
+| 2026-09-05, partial | 421,065 | **433** | **23 of 24** |
+
+433 anomalies against only 618 Roman-detected events (337 `Roman+joint` + 281 `both+joint`) is
+not a knife-edge effect. It is close to every Roman-covered sightline and a large fraction of
+every Roman detection.
+
+**It is not an artefact of the counter being new.** The diagnostic line was added in `e47390a`
+(2026-08-22), which is an ancestor of `d6dd293`, the commit the 2026-08-30 run was built from.
+Both runs could report it; one did and one did not.
+
+**What changed between the two runs:** E1a (stratified sampling), H1 (satellite parallax), H2
+(two extra output columns) and H4 (Roman's astrometric error model). H2 only writes columns.
+H4 touches `erra`, the **astrometric** error, which does not enter the photometric detection
+statistic. That leaves **E1a and H1**, and H1 is the one that changes the photometric model:
+it moves Roman to L2, so Roman's `ue` differs from Rubin's by `piE * D_perp` at every epoch,
+which changes Roman's magnification, hence `dchi_R`, hence `detR` and `detJ_raw`.
+
+**The leading hypothesis, explicitly not yet verified:** H1 raised `dchi_R` enough to push many
+events over Roman's own bar (`2 * ndw_R`) while the joint bar (`2 * (ndw_L + ndw_R)`, about
+100,802 with Roman's 50,401 epochs) stayed out of reach — producing exactly the signature seen,
+a single-survey detection the raw joint test misses. **If that is right it is arguably correct
+behaviour** and the anomaly count is measuring a real strengthening of Roman-alone detection.
+**If it is wrong**, something in H1's rebuild of `magni0[fiR]`, `magni[fiR]`, `Astar0R` and
+`s->Astar` is inflating Roman's chi-squared, and the Roman detection counts in the next run
+would be wrong. These two possibilities are not distinguishable from the run output alone and
+they point in opposite directions.
+
+**How to settle it cheaply, without another production run.** The `--no-satellite-parallax`
+switch added in H1 makes this a controlled experiment on a stub configuration:
+
+```bash
+./roman --stub --stride 2 --events 2 --lenses 1 --nerr 0 --maxdraws 500
+./roman --stub --stride 2 --events 2 --lenses 1 --nerr 0 --maxdraws 500 --no-satellite-parallax
+```
+
+on a sightline **inside** the footprint (the stub regression configuration in `PROGRESS.md` §5b
+reaches Roman coverage), and compare `DET_ANOMALY`, `dchi_R` and the Roman detection counts. If
+the anomaly disappears with satellite parallax off, H1 is the cause and the question becomes
+whether the new `dchi_R` is right. That is minutes of work, not hours, and it is the
+prerequisite for trusting the next full run's Roman yields — which are the numbers behind the
+gap-filling claim.
+
+**Related, and probably the real fix:** Deviation C-D.2 left the `2 * ndw` threshold form itself
+open, noting a chi-squared statistic should be thresholded on its total rather than its mean so
+that more data helps rather than hurts. With Roman contributing 50,401 epochs against Rubin's
+~2,300, that asymmetry is now extreme, and this open item is the first evidence that it has
+started to bite.

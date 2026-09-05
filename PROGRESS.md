@@ -1,10 +1,18 @@
 # PROGRESS.md — where this project stands
 
+**Last updated:** 2026-09-06, when Step H7 changed the detection threshold and the v2
+production runs were killed because of it — see §5e.
+
 **Last updated:** 2026-09-05, when the stratified production run was launched. The steps it
 carries are E1a (footprint-stratified sampling), H1 (satellite parallax), H2 (the satellite
 observable in the table) and H4 (Roman's astrometric error model). Step H5 (the astrometric
 shift as a product) is also done and is analysis-only.
-**A production run is in flight since 2026-09-05 18:31 — see §5d.** It is the v2 run, and it
+**The v2 runs were killed on 2026-09-06 at 734 and 618 sightlines, deliberately, because
+Step H7 changed which events count as detected — see §5e.** Their tables are kept as the only
+pre-H7 measurement of the Rubin-astrometry and blending fixes, and are labelled provisional.
+Nothing taken from them is a result.
+
+**A production run was in flight from 2026-09-05 18:31 — see §5d.** It is the v2 run, and it
 carries four fixes made that afternoon on top of E1a/H1/H2/H4: Rubin's astrometric error
 renormalised from a mission average to a per-visit one, Roman's blending made Poisson so it can
 be blended at all, `--start-index` so an interrupted scan can be continued, and the repaired
@@ -580,7 +588,7 @@ overestimate. The 2026-08-30 run capped on 77 of 1,706 sightlines and finished i
 
 ---
 
-## 5d. The v2 run, in flight
+## 5d. The v2 run — KILLED 2026-09-06 for Step H7, superseded by §5e
 
 Launched 2026-09-05 18:31 local at commit `a5bb600`, built with `make clean && make` so the
 stamp is current and clean (no `-dirty`) — the rule §5c had to be written about twice:

@@ -2044,3 +2044,124 @@ Rubin moves only as predicted, `nsbl_r` 14.3 -> 15.0. Commit `58d2863`.
 every Roman-against-Rubin yield comparison, the gap-filling claim included. How far it moves
 is a result of the v2 run.
 
+---
+
+## 33. Step H7: the detection bar stops scaling with the epoch count
+
+**Done 2026-09-06, at the user's decision, before the post-H7 production runs.**
+
+### What was wrong
+
+All three detection tests compared the lensing statistic against `2 * ndw`:
+
+```cpp
+if (... dchiL_L > float(2.0 * ndw_L) ...) detL = 1;
+if (... dchiL_R > float(2.0 * ndw_R) ...) detR = 1;
+if (... dchiL   > float(2.0 * ndw)   ...) detJ = 1;
+```
+
+`dchi` is a chi-squared **difference** between nested models — a flat baseline against a lensing
+model. Under the null hypothesis of no lensing it is distributed as chi-squared with `p` degrees
+of freedom, `p` being the number of extra parameters the lensing model carries, **not** the
+number of epochs. Its expectation is `p` and its variance `2p`: both fixed, both small, neither
+growing with how often you looked. A bar proportional to `ndw` is therefore a bar on the *mean
+per-epoch* improvement, and it rises as data are added.
+
+The consequence is a joint test that can be harder to pass than either survey alone. In Roman's
+footprint Roman contributes 50,401 epochs against Rubin's ~2,300, so Roman's own bar was
+100,802 while the joint bar was 105,530: Rubin's near-flat epochs lifted the bar by ~4,728
+while adding almost no `dchi`. **Measured on the v2 run before it was killed: 854 anomalies
+against 3,154 detections inside the footprint, 21.3%.** Roughly one detection in five was found
+by a single telescope and then vetoed by the combination.
+
+### Why this was Phase H's business
+
+Satellite parallax and the astrometric shift do not improve detection. They break degeneracies
+and improve parameter estimation, and they can only do that for events detected accurately in
+the first place. So the detection test is not adjacent to H3 and H5 — it is their precondition.
+Every `sigma_piE` and every `sigma_tetE` this project quotes is conditioned on a detection
+decision, and if that decision was wrong for a fifth of Roman's events the conditioning
+described a sample that would not exist.
+
+### What replaced it
+
+A fixed bar, identical for all three tests: `dchi > 500`, from Penny et al. 2019 (ApJS 241, 3),
+the reference Roman/WFIRST microlensing yield forecast. Matching that number keeps this
+project's yields comparable with the one the Roman community already quotes. It is deliberately
+far above a nominal 3-sigma bar on a few parameters — which would be nearer 20 — because the
+real false-alarm population is systematics, variable stars and blending, not Gaussian noise,
+and a high bar is the standard defence. Exposed as `--dchi-det` and written to
+`run_provenance.txt`, because every yield is conditioned on it.
+
+**The plan offered `ndw + k*sqrt(2*ndw)` as the alternative and it was rejected.** That is the
+mean and standard deviation of a chi-squared with `ndw` degrees of freedom — the distribution
+of the *absolute* chi-squared of a good fit, not of the *difference* between nested models. It
+still grows linearly with `ndw`, so it would have left the pathology essentially intact while
+looking like a fix.
+
+### The second change, which was not optional
+
+`dchiL` is now the **signed** `chi3 - chi1`, where `fabs` stood before. Two reasons. Only
+`chi3 > chi1` — the lensing model fitting better than a flat baseline — is evidence of lensing;
+under `fabs` a model fitting far *worse* would have cleared the bar. And `fabs` breaks the
+monotonicity the whole step exists to establish: an instrument whose epochs all fall outside
+the event contributes a small negative difference from noise, so `|dchi_L + dchi_R|` can fall
+below `max(|dchi_L|, |dchi_R|)`, which is precisely the `DET_ANOMALY` condition.
+
+Signed, monotonicity is exact and structural. `chi1` and `chi3` are accumulated over both
+instruments' epochs in the same loops that fill the per-instrument copies, so
+`chi1 = chi1_L + chi1_R` and `chi3 = chi3_L + chi3_R` hold identically, hence
+`dchiL = dchiL_L + dchiL_R`. With one shared bar, either survey clearing it alone forces the
+sum over it. The auxiliary gates agree: `flag_det_L > 0` implies `(flag_det_L or flag_det_R)`,
+and `ndw_L > 10` implies `ndw > 10`. **`DET_ANOMALY` is now impossible rather than rare.**
+
+`dchiP` and `dchiA` keep `fabs` — they are not detection tests and are reported as perturbation
+sizes. The resulting sign-convention asymmetry across three similar-looking columns is recorded
+in `OPEN_ITEMS.md` rather than silently harmonised.
+
+`detJ_raw` and the monotone patch are retained (acceptance criterion 4) so the anomaly rate
+stays measurable. The end-of-run note is now a **warning**: a non-zero count means the
+construction above has been broken, not that a known issue is being tolerated.
+
+### Measured, before and after
+
+Paired runs of the pre-H7 binary (`a5bb600`) and the post-H7 binary on the same seed, the same
+scan indices and a fixed draw budget — one sightline inside Roman's footprint (scan index 716,
+lon +0.081, lat -0.14, 50,401 Roman epochs) and one outside it but well covered by Rubin (index
+702, lat -1.94, 2,407 Rubin epochs, no Roman).
+
+| | inside, pre | inside, post | outside, pre | outside, post |
+|---|---|---|---|---|
+| Rubin+joint | 6 | 12 | 29 | 51 |
+| Roman+joint | 12 | 30 | 3 | 11 |
+| both+joint | 5 | 9 | 8 | 14 |
+| **DET_ANOMALY** | **5** | **0** | **9** | **0** |
+| all detections | 28 | 51 | 49 | 76 |
+| detection rate | 10.1% | 18.7% | 8.5% | 13.4% |
+
+`DET_ANOMALY` goes to zero on both configurations, which is acceptance criterion 3, and it does
+so by construction rather than by tuning. Detections roughly double inside the footprint and
+rise by about half outside it. **All three partitions move, which is why this is a science
+decision and not a bug fix**: every yield this project has ever reported was conditioned on a
+threshold that has now changed, and no pre-H7 number survives.
+
+**Caveat on the pairing.** The scored-event counts differ slightly between the two sides (278 vs
+273 inside, 575 vs 566 outside, ~2%), so the comparison is closely but not exactly paired — a
+detection changes what happens downstream of the draw, and the RNG streams separate after the
+first divergence. The 2% does not touch the conclusions: `DET_ANOMALY -> 0` is structural, not
+statistical, and a doubling of detections is an order of magnitude clear of the drift.
+
+### Cost
+
+The code change is small; the expense is that it **invalidates the detected sample**, so the
+production runs were killed at 734 and 618 sightlines and restarted. That is why H7 was placed
+before H3 rather than after.
+
+Runtime per sightline should *fall* rather than rise, despite roughly twice the detections. The
+per-sightline loop stops at `--lenses` **detections**, so detections arriving about twice as
+fast means about half the draws to fill the same 50 Fisher matrices; Fisher cost per sightline
+is unchanged and draw cost roughly halves. The paired A/B above ran the post-H7 binary ~6x
+slower per sightline inside the footprint, but that is an artefact of pinning it to a fixed
+100-draw budget, which forced it to do the same draws with twice the Fisher work. Production
+does not work that way. To be measured on the run, not predicted.
+

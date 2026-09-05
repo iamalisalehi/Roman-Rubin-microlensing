@@ -807,3 +807,37 @@ belongs — a dry run should touch no output file at all. Two things belong with
 run is writing through the worktree symlinks, not even `--dry-run`. Use a copy of the binary in
 an isolated directory (the pattern in `setup_variant.sh`) for any check made while a run is in
 flight.
+
+---
+
+## `dchiP` and `dchiA` are still absolute values while `dchiL` is signed
+
+**Status: open. Created deliberately by Step H7 on 2026-09-06, not inherited.**
+
+Step H7 made the lensing detection statistic signed:
+
+```cpp
+dchiL   = chi3  - chi1;             // signed: chi3 is the flat-baseline residual
+dchiP   = std::fabs(chi2  - chi1);  // still an absolute value
+dchiA   = std::fabs(chi2a - chi1a); // still an absolute value
+```
+
+**Why `dchiL` had to change.** Only `chi3 - chi1 > 0` — the lensing model fitting *better* than
+a flat baseline — is evidence of lensing. Under `fabs`, a lensing model fitting far *worse*
+than the baseline would have cleared the detection bar. More importantly it breaks the
+monotonicity H7 exists to establish: an instrument whose epochs all fall outside the event
+contributes a small negative difference from noise, and `|dchi_L + dchi_R|` can then fall below
+`max(|dchi_L|, |dchi_R|)`, which is exactly the `DET_ANOMALY` condition. Signed, the sum is
+exact and the joint test cannot contradict a single-survey detection.
+
+**Why the other two were left alone.** `dchiP` (parallax) and `dchiA` (astrometric deflection)
+are not detection tests — nothing thresholds them. They are reported as the *size* of a
+perturbation, for which an absolute value is defensible. Changing them would alter two more
+output columns for no acceptance criterion, and Step H7's remit is the detection decision.
+
+**Why it is still an open item.** Three columns that look like the same kind of quantity now
+have two different sign conventions, which is exactly the sort of thing that produces a wrong
+plot two months from now. Either give `dchiP`/`dchiA` the same signed convention — noting that
+"the parallax model fits worse than the no-parallax model" is a meaningful negative that
+`fabs` currently hides — or rename the two absolute ones so the asymmetry is visible at the
+call site. Do it as its own step with its own before/after, not as a drive-by.

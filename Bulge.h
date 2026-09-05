@@ -269,6 +269,46 @@ constexpr double ROMAN_AST_SLOPE_BKG = 0.4;
 constexpr double LSST_AST_FLOOR       = 10.0;      //mas per visit per coordinate [3]
 constexpr double LSST_AST_TABLE_FLOOR = 0.3739576; //mas, the bright-star floor as shipped
 constexpr double LSST_AST_RENORM      = LSST_AST_FLOOR / LSST_AST_TABLE_FLOOR; //26.74
+// ---------------------------------------------------------------------------------------
+// Step H7. The detection threshold.
+//
+// A microlensing detection is declared when the lensing model beats a flat-baseline model by
+// enough chi-squared. The statistic is
+//
+//     dchi = chi2(flat baseline) - chi2(lensing model)
+//
+// which is a chi-squared DIFFERENCE between nested models. Under the null hypothesis of no
+// lensing it is distributed as chi-squared with p degrees of freedom, where p is the number of
+// extra parameters the lensing model carries -- NOT the number of epochs. Its expectation is p
+// and its variance 2p, both fixed and small. The bar therefore does not scale with the epoch
+// count, and a detection threshold that does scale with it is thresholding the MEAN per-epoch
+// improvement rather than the total significance.
+//
+// This is the whole content of Step H7. The previous form, dchi > 2*ndw, made the bar grow
+// with the number of epochs, so pooling a survey with many low-signal epochs raised the joint
+// bar without adding signal: in Roman's footprint Roman's own bar was 2*50401 = 100,802 while
+// the joint bar was 105,530, and Rubin's ~2,300 near-flat epochs lifted it by ~4,728. An event
+// clearing Roman's bar by less than that failed the JOINT test -- measured at 21.3% of all
+// detections inside the footprint on the 2026-09-05 v2 run.
+//
+// A fixed bar also restores monotonicity by construction, which is the property that actually
+// matters: chi1 and chi3 are accumulated over both instruments' epochs, so chi1 = chi1_L +
+// chi1_R and chi3 = chi3_L + chi3_R exactly, hence dchi = dchi_L + dchi_R. With the same
+// threshold on all three tests, either survey clearing the bar alone forces the joint sum over
+// it too, so detL or detR implies detJ and DET_ANOMALY cannot occur. (This requires the SIGNED
+// difference; see the note on fabs at the test site in Bulge_LSST.cpp.)
+//
+// The value 500 is Penny et al. 2019 (ApJS 241, 3), the reference Roman/WFIRST microlensing
+// yield forecast, which adopts dchi2 > 500 against a flat baseline. Matching it keeps this
+// project's yields comparable with the number the Roman community already quotes. It is
+// deliberately conservative -- a nominal 3-sigma bar on a few parameters would be nearer 20 --
+// because the real false-alarm population is systematics, variable stars and blending, not
+// Gaussian noise, and a high bar is the standard defence. Overridable with --dchi-det for
+// sensitivity tests, and recorded in run_provenance.txt because every yield in this project
+// is conditioned on it.
+// ---------------------------------------------------------------------------------------
+constexpr double DCHI_DET_DEFAULT = 500.0; //delta-chi2 against a flat baseline [Penny+2019]
+
 constexpr double omegae = double(2.0 * M_PI / year); //radian per day
 constexpr double vearth = omegae;                    //radian per day
 // Finite-difference stencils used by FisherM. For each parameter it evaluates the model at

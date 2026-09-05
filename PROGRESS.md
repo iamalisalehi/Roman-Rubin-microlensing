@@ -679,6 +679,53 @@ regression to hunt.
 
 ---
 
+## 5e. The v3 runs, post-H7 — in flight
+
+Launched 2026-09-06 00:55 local at commit `f959c8c`, `make clean && make`, stamp clean.
+
+```bash
+./roman --events 300 --lenses 50 --stride-roman 5                            # primary
+./roman --events 300 --lenses 50 --stride-roman 5 --no-satellite-parallax    # twin
+```
+
+Same budget and same grid as v2, deliberately, so the only difference between the v2 and v3
+tables is Step H7. 1,829 sightlines: 147 inside Roman's footprint at 0.1 deg, 1,682 outside at
+0.2 deg.
+
+**Both runs are in fully isolated directories**, each with its own input symlinks and **its own
+copy of the binary**:
+
+- `/home/ali/Documents/PhD/Offline_project/roman_runs/2026-09-06_v3_h7/`
+- `/home/ali/Documents/PhD/Offline_project/roman_runs/2026-09-06_v3_h7_twin_nosat/`
+
+This is a change from v2, where the primary was reached through the worktree's output symlinks.
+Nothing in the worktree points at either run, so a `./roman` invoked there — `--dry-run`
+included — cannot truncate them. That is how the v1 table was destroyed.
+
+**What v3 carries that v2 did not:** Step H7 (`f959c8c`) — the detection bar is a fixed
+`dchi > 500` on the signed statistic instead of `2*ndw`, applied identically to the Rubin-only,
+Roman-only and joint tests. `DET_ANOMALY` is zero by construction; if the run reports any, the
+construction is broken. Deviations 33.
+
+**Expect detections to rise and every pre-H7 yield to be superseded.** On the paired test the
+detection rate went 10.1% -> 18.7% inside the footprint and 8.5% -> 13.4% outside. Runtime per
+sightline should *fall* despite that, because the loop stops at `--lenses` detections and
+detections now arrive about twice as fast, so about half the draws fill the same 50 Fisher
+matrices. Measured, not predicted — the v2 cost model is in §5d and does not transfer.
+
+**Run in chunks.** At the user's instruction these run until told to pause, then are checkpointed
+and resumed. The resume index is `grep -c 'NEW STEP' run.log` on the interrupted run, plus that
+run's own `--start-index` if it was itself a continuation — **not** the `MapLMC5.dat` row count.
+
+### The v2 tables, kept and labelled
+
+`2026-09-05_v2_stride-roman-5/` (734 sightlines, 806 MB) and `2026-09-05_v2_twin_nosat/` (618
+sightlines) are kept. They are the only measurement of the Rubin-astrometry and blending fixes
+uncontaminated by H7, and they carry the 21.3% anomaly measurement that justified H7. **They are
+not results**: every detection in them was decided by the threshold H7 replaced.
+
+---
+
 ## 6. Traps a new session will otherwise fall into
 
 - **The two indexing systems.** `s.blend[i]` / `s.magb[i]` are indexed by **filter**

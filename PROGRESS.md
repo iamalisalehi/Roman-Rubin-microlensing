@@ -724,8 +724,39 @@ detections against 56-87. Fewer lightcurves, no more Fisher matrices, six times 
 rather than asserted here. Do not repeat it as an explanation.
 
 **Run in chunks.** At the user's instruction these run until told to pause, then are checkpointed
-and resumed. The resume index is `grep -c 'NEW STEP' run.log` on the interrupted run, plus that
-run's own `--start-index` if it was itself a continuation — **not** the `MapLMC5.dat` row count.
+and resumed. The resume index is `grep -c 'NEW STEP' run<k>.log` for the chunk, plus the
+`--start-index` that chunk began at — **not** the `MapLMC5.dat` row count.
+
+**Each chunk writes its own log** (`run.log`, `run2.log`, ...). This is not tidiness: if every
+chunk appended to one log, `grep -c 'NEW STEP'` would count the whole history and the resume
+index would be wrong by the sum of all previous chunks. `resume_v3.sh` picks the next free name.
+
+### Chunk 1: 2026-09-06 00:55 -> 09:50, paused at scan index 774
+
+| | primary | twin |
+|---|---|---|
+| sightlines entered | 775 | 775 |
+| footprint done | 78/147 | 78/147 |
+| outside done | 689/1682 | 689/1682 |
+| CPU | 8.88 h | 8.88 h |
+| table rows (after trim) | 1,936,653 | 1,938,264 |
+| `DET_ANOMALY` | **0** | **0** |
+
+**Resume both with `--start-index 774`.**
+
+**The last sightline was incomplete and its rows were removed.** Both runs were stopped
+mid-sightline at scan index 774 (lon 0.281, lat -0.04), which had written 314 rows to the
+primary's table and 118 to the twin's, plus 58 and 29 characterised events to `LpLMC5.dat`.
+Those events are real but the sightline never reached its `--events`/`--lenses` budget, so its
+event count does not represent the sky area it stands for and its `w_area`-weighted yield would
+be an undercount. Leaving them and resuming at 775 would orphan them in the table; leaving them
+and resuming at 774 would append a second, complete copy on top. Both files were therefore
+truncated back to the last complete sightline (lon 0.281, lat -0.14) and the run resumes AT 774
+so that sightline is done properly.
+
+A trap for whoever automates this: `test5.dat` writes lon/lat as `0.281 -0.04` and
+`LpLMC5.dat` writes the same values as `0.2810000 -0.0400000`. A string comparison finds the
+rows in one file and silently misses them in the other. Compare numerically.
 
 ### The v2 tables, kept and labelled
 

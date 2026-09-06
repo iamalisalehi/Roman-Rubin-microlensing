@@ -841,3 +841,53 @@ plot two months from now. Either give `dchiP`/`dchiA` the same signed convention
 "the parallax model fits worse than the no-parallax model" is a meaningful negative that
 `fabs` currently hides — or rename the two absolute ones so the asymmetry is visible at the
 call site. Do it as its own step with its own before/after, not as a drive-by.
+
+---
+
+## Step H7 made footprint sightlines ~6x more expensive, and the mechanism is unknown
+
+**Status: open, measured 2026-09-06 on the v3 runs. Not blocking — the runs are correct and
+proceeding — but unexplained, and the explanation may matter.**
+
+**What was predicted.** H7 lowers the detection bar from `2*ndw` (100,802 inside the footprint)
+to a fixed 500, so detections arrive about twice as fast. The per-sightline loop stops on its
+`--events`/`--lenses` targets, so reaching those targets in fewer draws should make every
+sightline *cheaper*. That is what was written in `PROGRESS.md` §5e and in Deviations 33.
+
+**What happened.** Outside the footprint, exactly that: **14.3 s -> 6.8 s** per sightline.
+Inside it, the opposite and larger: **~52 s -> ~317 s**, a factor of about six. The footprint
+term dominates the total, so the run got *slower*: projected ~8.8 h for v2 against **~16 h**
+for v3. Both v3 runs agree independently (299 and 329 s/sightline at n=11, 317 s at n=22), and
+the outside figure rests on 556 samples, so the measurement is not in doubt.
+
+**Why it is strange.** The comparison is at *identical* sky positions — the v2 and v3 scans are
+the same deterministic grid, and the first twelve footprint sightlines were verified to match
+on `nri`, lon and lat. At those same positions v3 does **less** work:
+
+| per footprint sightline | v2 (pre-H7) | v3 (post-H7) |
+|---|---|---|
+| scored events (lightcurves built) | 333-917 | 300-435 |
+| detections (= Fisher calls) | 56-87 | 50-81 |
+
+Fewer lightcurves built, no more Fisher matrices, the same 50,401 Roman epochs and the same
+`ndw` — and six times the wall clock. Nothing in the H7 diff obviously accounts for that.
+
+**Untested hypothesis.** A bar of 500 admits genuinely marginal events, where a bar of 100,802
+admitted only overwhelming ones. Marginal events may produce near-singular Fisher matrices, and
+`invert_matrix` / the GSL eigen-decomposition may be much slower on those — or may be doing
+work that is wasted because the matrix is then rejected. This is a guess. It has not been
+tested and should not be repeated as though it were the answer.
+
+**How to settle it cheaply.** Run one footprint sightline under `perf record` (or simply time
+`FisherM` and `invert_matrix` with a counter) against the pre-H7 binary at the same
+`--start-index`, with a fixed draw budget so both sides see identical events — the pattern in
+`h7_ab.sh`. About 20 minutes, and it competes with the production runs for cores, so it belongs
+between chunks rather than during one.
+
+**Why it might matter beyond runtime.** If marginal detections are producing ill-conditioned
+Fisher matrices, the question is not only what they cost but whether their `sigma` values are
+trustworthy. `okA`/`okB` gate on successful inversion, so nothing invalid should reach the
+table — but the *fraction* of detections that fail characterisation is now a number worth
+reporting, because H7 changed which events are offered to the Fisher step at all. Check
+`sigmaas`/`okA` rates on the v3 table against v2 before quoting any yield.
+

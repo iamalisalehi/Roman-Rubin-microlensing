@@ -708,10 +708,20 @@ Roman-only and joint tests. `DET_ANOMALY` is zero by construction; if the run re
 construction is broken. Deviations 33.
 
 **Expect detections to rise and every pre-H7 yield to be superseded.** On the paired test the
-detection rate went 10.1% -> 18.7% inside the footprint and 8.5% -> 13.4% outside. Runtime per
-sightline should *fall* despite that, because the loop stops at `--lenses` detections and
-detections now arrive about twice as fast, so about half the draws fill the same 50 Fisher
-matrices. Measured, not predicted — the v2 cost model is in §5d and does not transfer.
+detection rate went 10.1% -> 18.7% inside the footprint and 8.5% -> 13.4% outside.
+
+**The runtime prediction made here was wrong, and is corrected in place.** It said runtime per
+sightline should *fall*, because the loop stops on its targets and detections now arrive about
+twice as fast. That holds outside the footprint — **14.3 s -> 6.8 s** per sightline, measured
+over 556 of them — and fails inside it, where cost went **~52 s -> ~317 s**. The footprint term
+dominates, so v3 is *slower* overall: ~8.8 h projected for v2 against **~16 h** for v3.
+
+The comparison is at identical sky positions (same deterministic grid; the first twelve
+footprint sightlines were checked to match on `nri`, lon and lat), and at those positions v3
+does **less** work — 300-435 scored events per sightline against v2's 333-917, and 50-81
+detections against 56-87. Fewer lightcurves, no more Fisher matrices, six times the wall clock.
+**The mechanism is not known**, and the untested hypothesis is recorded in `OPEN_ITEMS.md`
+rather than asserted here. Do not repeat it as an explanation.
 
 **Run in chunks.** At the user's instruction these run until told to pause, then are checkpointed
 and resumed. The resume index is `grep -c 'NEW STEP' run.log` on the interrupted run, plus that

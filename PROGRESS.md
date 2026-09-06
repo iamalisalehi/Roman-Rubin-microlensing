@@ -712,16 +712,30 @@ detection rate went 10.1% -> 18.7% inside the footprint and 8.5% -> 13.4% outsid
 
 **The runtime prediction made here was wrong, and is corrected in place.** It said runtime per
 sightline should *fall*, because the loop stops on its targets and detections now arrive about
-twice as fast. That holds outside the footprint — **14.3 s -> 6.8 s** per sightline, measured
-over 556 of them — and fails inside it, where cost went **~52 s -> ~317 s**. The footprint term
-dominates, so v3 is *slower* overall: ~8.8 h projected for v2 against **~16 h** for v3.
+twice as fast. That reasoning fails because the three targets are ANDed: the loop runs until
+`icon >= --events` **and** `nlens >= --lenses` **and** `nerr >= --nerr`. `icon` counts events
+simulated and H7 does not touch it, so `--events 300` stays the binding constraint, the number
+of draws is unchanged, and the faster-arriving detections buy nothing — they only add Fisher
+calls. Outside the footprint the cost still fell, **14.3 s -> 6.8 s** per sightline over 556 of
+them, because there are few detections either way. Inside it the cost rose.
+
+**How much it rose was also overstated, and is corrected here (2026-09-07).** This section
+previously said ~52 s -> ~317 s, "six times the wall clock", and that the mechanism was
+unknown. Profiling settled both. The mechanism is that `FisherM` runs only under
+`if (detL or detR or detJ)`, so doubling the detection rate roughly doubles the Fisher work and
+nothing else changes: on a paired profile of the same footprint sightline the detection-gated
+path went 21.3 s -> 48.6 s (2.28x) against 2.57x more characterised detections, while
+everything else went 1.11x. **Cost per Fisher call is unchanged.** The per-sightline factor is
+**~1.4-2.0x, not 6x**; the old figure came from counting `NEW STEP` lines, which mix footprint
+and outside sightlines. `OPEN_ITEMS.md` has the measurement and the arithmetic error in full.
+
+So v3 is modestly slower overall, not dramatically: with the corrected footprint cost, v3's
+savings outside the footprint offset most of what it spends inside, and the projected totals
+are roughly **14 h for v2 against ~16 h for v3** — not 8.8 h against 16 h. The extra time buys
+the detections H7 exists to recover, and per *detected* event H7 is slightly cheaper.
 
 The comparison is at identical sky positions (same deterministic grid; the first twelve
-footprint sightlines were checked to match on `nri`, lon and lat), and at those positions v3
-does **less** work — 300-435 scored events per sightline against v2's 333-917, and 50-81
-detections against 56-87. Fewer lightcurves, no more Fisher matrices, six times the wall clock.
-**The mechanism is not known**, and the untested hypothesis is recorded in `OPEN_ITEMS.md`
-rather than asserted here. Do not repeat it as an explanation.
+footprint sightlines were checked to match on `nri`, lon and lat).
 
 **Run in chunks.** At the user's instruction these run until told to pause, then are checkpointed
 and resumed. The resume index is `grep -c 'NEW STEP' run<k>.log` for the chunk, plus the
@@ -757,6 +771,27 @@ so that sightline is done properly.
 A trap for whoever automates this: `test5.dat` writes lon/lat as `0.281 -0.04` and
 `LpLMC5.dat` writes the same values as `0.2810000 -0.0400000`. A string comparison finds the
 rows in one file and silently misses them in the other. Compare numerically.
+
+### Between chunks 1 and 2: the H7 cost regression was profiled and resolved
+
+`perf` was used on one footprint sightline under each binary with a fixed draw budget, while no
+production run was in flight. Result above and in `OPEN_ITEMS.md`: the extra cost is entirely
+`FisherM` and its callees running more often, cost per call unchanged, and the regression is
+~1.4-2.0x rather than the 2.5-6.6x previously recorded.
+
+Two things worth keeping from how it was measured. **`perf`'s extrapolated cycle counts are not
+comparable across runs** that experienced different machine load, because frequency-mode
+sampling adapts the period and was throttled to 808-924 Hz; only within-run sample shares and
+wall spans were used. And **startup is ~170 s of CPU** (~43% of it parsing the ~1000 extinction
+files), which a one-sightline profile is mostly made of — it has to be subtracted before any
+per-sightline number means anything. It was measured directly by running `--start-index 5000`,
+past the end of the grid, so no sightline is entered.
+
+### Chunk 2: resumed 2026-09-07 00:35 at scan index 774, in flight
+
+Both runs relaunched with `resume_v3.sh 774`, logging to `run2.log`. Next resume index is
+`774 + $(grep -c 'NEW STEP' <dir>/run2.log)`. About 8.6 h of work remained at the start of this
+chunk (69 footprint and 993 outside sightlines).
 
 ### The v2 tables, kept and labelled
 

@@ -844,10 +844,112 @@ call site. Do it as its own step with its own before/after, not as a drive-by.
 
 ---
 
+## Step H7's cost regression: RESOLVED by profiling, and its size was overstated
+
+**Status: RESOLVED 2026-09-07 by `perf` profiling. The mechanism is identified and the
+magnitude was overstated by roughly a factor of 3. The original entry is kept verbatim below,
+because the two hypotheses it refutes are still correctly refuted; only its conclusion is
+withdrawn.**
+
+### The answer
+
+**H7 costs more because it detects more, and for no other reason.** `FisherM` -- and, inside
+it, `lightcurve` and the GSL matrix work -- runs only under `if (detL or detR or detJ)`.
+Lowering the bar to a fixed 500 roughly doubles how often that branch is taken, and the cost
+follows the branch. Nothing got slower per call.
+
+Profiled with `perf record -F 999 -e cycles:u` on scan index 716 (a footprint sightline,
+`ndd (Roman) = 50401`) under both binaries -- v2's actual `a5bb600` build and v3's `f959c8c`
+build, verified against each run's `run_provenance.txt` -- with a fixed draw budget
+(`--maxdraws 100`, `--events`/`--lenses` unreachable) so both simulated the same population.
+The pairing held: 104 events simulated against 101.
+
+| | pre-H7 | post-H7 | ratio |
+|---|---|---|---|
+| characterised detections (`LpLMC5.dat` rows) | 7 | 18 | **2.57x** |
+| detection-gated path (`FisherM` + `lightcurve` + `gsl_*`) | 21.3 s | 48.6 s | **2.28x** |
+| everything else | 228.3 s | 254.0 s | **1.11x** |
+
+The gated path grows *slightly slower* than the detection count, so the cost **per Fisher call
+is unchanged or marginally lower**. The "roughly 3x per characterised event" conclusion in the
+entry below is withdrawn. Everything outside that branch is unchanged to within the
+measurement's error.
+
+Note this is not a regression to regret: the extra cost buys the detections H7 exists to
+recover. Per *detected* event, H7 is slightly cheaper than what it replaced.
+
+### The magnitude: ~1.4-2.0x per footprint sightline, not 2.5-6.6x
+
+Two independent estimates, both far below the old claim:
+
+- **From the profile.** Startup is a large one-time cost and has to be removed first (see the
+  next item). After removing it the sightline itself costs **80.0 s -> 137.1 s, a factor
+  1.72**; composing the two rows of the table above instead gives 1.35. The spread between
+  those is the honest precision of a one-sightline profile sitting on a ~170 s startup.
+- **From the corrected A/B.** Same fixed budget, 900 s each, startup removed: pre-H7 does
+  6 footprint sightlines, post-H7 does 4, giving **~2.0x**.
+
+**Why the old number was ~3x too large.** The claim "the pre-H7 binary completed 18 footprint
+sightlines to the post-H7 binary's 3" counted `NEW STEP` lines, which count *every* sightline
+entered, not footprint ones. Split by stratum, those same two logs say:
+
+| in 900 s, from index 716 | footprint | outside |
+|---|---|---|
+| pre-H7 | **6** | 13 |
+| post-H7 | **4** | 0 |
+
+Six against four, not eighteen against three. The pre-H7 side spent most of its run on cheap
+outside sightlines and was credited with footprint throughput it never had. This is the third
+time in this investigation that a per-stratum cost was quoted from a number that mixed strata.
+**Any statement about sightline cost must name the stratum and be counted with
+`ndd (Roman): 50401` versus `ndd (Roman): 0`, never with `NEW STEP`.**
+
+### Method note: why the cycle counts could not simply be subtracted
+
+`perf` sampled in frequency mode and was throttled to 808-924 Hz rather than the requested
+999; its "Event count (approx.)" is the sum of adapted sample periods. Across runs under
+different contention those totals are not comparable -- subtracting them made a footprint
+sightline look like 4% of its own run, which is impossible. Within a single profile the
+per-symbol share of samples is reliable, and so is the run's wall span; every number above
+uses only those two.
+
+Startup was separated using float parsing as a tracer: `std::num_get::_M_extract_float` runs
+only at startup, so its share of a paired run divided by its share of a pure-startup run
+(`--start-index 5000`, which enters no sightline) is the fraction of that run that was
+startup. The check that this works: it recovers **171.0 s and 167.6 s** from two independent
+profiles for a quantity that must be identical.
+
+Scripts: `perf_h7.sh`, `perf_startup.sh`, `perf_cmp.py`, `h7_final.py`, `h7_attrib.py`.
+
+## Startup costs ~170 s, ~40% of it parsing ~1000 extinction files, and every chunk pays it
+
+**Status: open, measured 2026-09-07. Not a correctness issue.**
+
+Running with `--start-index 5000`, so that no sightline is ever entered, still takes **116 s of
+wall time** and, under load, ~170 s of CPU. Its profile is dominated by text parsing:
+`_M_extract_float` alone is **27.7%** and the whole iostream float-parsing group is ~43%. That
+is `readBayestar` reading the ~1000 `files/ext/bayestar_*.txt` files with `>>` on an
+`ifstream`.
+
+Across a full 1829-sightline run this is negligible, ~0.5% of the total. It matters only
+because the runs are now **chunked**: every resume pays it again, so a 10-chunk run spends
+~30 minutes re-reading extinction files it has already read.
+
+Worth doing only if chunking gets much finer, and the fix is routine (`std::from_chars`, or
+cache the parsed grid to one binary file). Filed rather than fixed because it is not this
+step's business.
+
+---
+
+<!-- Superseded 2026-09-07 by the entry above. Kept verbatim: its two refuted
+     hypotheses remain correct and useful; only its concluding magnitude is withdrawn. -->
+
 ## Step H7 made footprint sightlines ~6x more expensive, and the mechanism is unknown
 
-**Status: open, measured 2026-09-06 on the v3 runs. Not blocking — the runs are correct and
-proceeding — but unexplained, and the explanation may matter.**
+**Status: SUPERSEDED 2026-09-07 — see the resolved entry above. Left as written for the
+record. Its two refuted hypotheses stand; its concluding magnitude (2.5-6.6x, and "roughly 3x
+per Fisher call") is withdrawn, having rested on a footprint-sightline count that mixed
+strata.**
 
 **What was predicted.** H7 lowers the detection bar from `2*ndw` (100,802 inside the footprint)
 to a fixed 500, so detections arrive about twice as fast. The per-sightline loop stops on its

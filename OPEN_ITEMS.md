@@ -898,8 +898,33 @@ lightcurves against v2's **510**, and makes **59** Fisher calls against v2's **5
 lightcurves, ~16% more Fisher calls, and several times the wall clock. For the arithmetic to
 work, the cost *per Fisher call* would have to have risen roughly fivefold — but `FisherM`
 evaluates a fixed finite-difference stencil whose cost goes as `ndw * Nx`, and neither changed.
-The remaining suspects are `activePhotParams()` selecting a different number of free parameters
-for marginal events, or something in `ErrorCal`. Both are guesses; neither has been tested.
+**A second hypothesis was tested and is also REFUTED (2026-09-06).** It proposed that the old
+`2*ndw` bar systematically rejected high-epoch events — an event with more epochs faced a
+proportionally higher bar — so that H7 now admits exactly the events whose Fisher matrices cost
+the most, since `FisherM` scales with `ndw`. The table says no:
+
+| mean `ndw` over joint detections, footprint | v3 post-H7 | v2 pre-H7 |
+|---|---|---|
+| all footprint events | 51,299 | 51,217 |
+| joint detected | **51,086** | **50,914** |
+| detected/all ratio | 0.996 | 0.994 |
+
+A 0.3% difference. Inside the footprint `ndw` is dominated by Roman's 50,401 epochs and is
+near-constant across events, so `2*ndw` was effectively a *constant* bar as well — just a very
+high one. Its scaling with epoch count did its damage *between partitions* (the joint bar
+sitting above Roman's own), which is what H7 fixed, not between individual events.
+
+**What is established, and what is not.** The controlled A/B settles that the regression is
+real and not an artefact of comparing two production runs: with a *fixed* draw budget, so both
+sides build identical lightcurves, the pre-H7 binary completed 18 footprint sightlines to the
+post-H7 binary's 3 in the same 900 s, while making only 1.8x as many Fisher calls. That is
+roughly 3x the cost per Fisher call, at identical `ndw`, with `FisherM` itself unchanged.
+
+**No further hypotheses should be invented here.** Two have been proposed and both refuted by
+measurement; a third would be guessing. Settle it by profiling — `perf record` on one footprint
+sightline for each binary at the same `--start-index` and the same fixed draw budget, which is
+about 20 minutes and will name the function. Until that is done, the honest statement is that
+H7 costs roughly 3x per characterised event for reasons not yet identified.
 
 **How to settle it cheaply.** Run one footprint sightline under `perf record` (or simply time
 `FisherM` and `invert_matrix` with a counter) against the pre-H7 binary at the same

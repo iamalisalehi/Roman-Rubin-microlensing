@@ -855,10 +855,17 @@ to a fixed 500, so detections arrive about twice as fast. The per-sightline loop
 sightline *cheaper*. That is what was written in `PROGRESS.md` §5e and in Deviations 33.
 
 **What happened.** Outside the footprint, exactly that: **14.3 s -> 6.8 s** per sightline.
-Inside it, the opposite and larger: **~52 s -> ~317 s**, a factor of about six. The footprint
-term dominates the total, so the run got *slower*: projected ~8.8 h for v2 against **~16 h**
-for v3. Both v3 runs agree independently (299 and 329 s/sightline at n=11, 317 s at n=22), and
-the outside figure rests on 556 samples, so the measurement is not in doubt.
+Inside it, the opposite and larger: **~346 s** per sightline, against somewhere between 52 s
+and 136 s for v2. The footprint term dominates the total, so the run got *slower*: projected
+~8.8-13 h for v2 against **~16 h** for v3.
+
+**The v3 number is solid and the v2 number is not.** Both v3 runs agree independently
+(299 and 329 s/sightline at n=11, 339 and 346 at n=41), and v3's outside cost rests on 618
+samples. But v2's per-stratum split came from a two-run solve that was already flagged as
+weakly determined: its footprint cost is 52 s if its outside sightlines cost 14.3 s and 136 s
+if they cost 6 s, and v2's outside cost was never measured cleanly — the same mistake this file
+records elsewhere, made a second time. **So the regression is a factor of 2.5-6.6, direction
+certain, magnitude not.** Quoting "six times" without that range overstates what was measured.
 
 **Why it is strange.** The comparison is at *identical* sky positions — the v2 and v3 scans are
 the same deterministic grid, and the first twelve footprint sightlines were verified to match
@@ -872,11 +879,27 @@ on `nri`, lon and lat. At those same positions v3 does **less** work:
 Fewer lightcurves built, no more Fisher matrices, the same 50,401 Roman epochs and the same
 `ndw` — and six times the wall clock. Nothing in the H7 diff obviously accounts for that.
 
-**Untested hypothesis.** A bar of 500 admits genuinely marginal events, where a bar of 100,802
-admitted only overwhelming ones. Marginal events may produce near-singular Fisher matrices, and
-`invert_matrix` / the GSL eigen-decomposition may be much slower on those — or may be doing
-work that is wasted because the matrix is then rejected. This is a guess. It has not been
-tested and should not be repeated as though it were the answer.
+**The first hypothesis was tested and is REFUTED (2026-09-06).** It proposed that a bar of 500
+admits marginal events whose Fisher matrices are near-singular, so that `invert_matrix` does
+expensive work that is then thrown away. Characterisation rates on footprint events say
+otherwise:
+
+| detections characterised (`okA == 1`) | v3 post-H7 | v2 pre-H7 |
+|---|---|---|
+| joint | 2405/2419 = **99.4%** | 3276/3301 = 99.2% |
+| Rubin | 1308/1320 = 99.1% | 1928/1954 = 98.7% |
+| Roman | 1693/1709 = 99.1% | 2201/2225 = 98.9% |
+
+Marginal detections invert *at least as reliably* as the overwhelming ones did. Nothing is being
+computed and discarded. Whatever costs the time, it is not failed inversions.
+
+**What the same measurement makes stranger.** Per footprint sightline, v3 builds **307**
+lightcurves against v2's **510**, and makes **59** Fisher calls against v2's **51**. Fewer
+lightcurves, ~16% more Fisher calls, and several times the wall clock. For the arithmetic to
+work, the cost *per Fisher call* would have to have risen roughly fivefold — but `FisherM`
+evaluates a fixed finite-difference stencil whose cost goes as `ndw * Nx`, and neither changed.
+The remaining suspects are `activePhotParams()` selecting a different number of free parameters
+for marginal events, or something in `ErrorCal`. Both are guesses; neither has been tested.
 
 **How to settle it cheaply.** Run one footprint sightline under `perf record` (or simply time
 `FisherM` and `invert_matrix` with a counter) against the pre-H7 binary at the same

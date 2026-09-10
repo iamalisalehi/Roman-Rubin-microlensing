@@ -806,13 +806,46 @@ truncation offsets -- and nothing was re-checked after the *resume*, which is wh
 happened. A checkpoint is not verified until the run that follows it has been shown to still
 contain the run that preceded it.
 
-### Chunk 1 REDONE (part one), 2026-09-10
+### Chunk 1 REDONE (part one), 2026-09-10 -- RECOVERED AND VERIFIED
 
-Indices 0-773 re-run for both primary and twin into fresh directories, then spliced in front of
-the surviving chunk-2 table. This recovers the identical rows rather than resampling: the RNG is
-a `mt19937_64` with a fixed seed advanced as one stream, so a run from index 0 reproduces chunk
-1's draws exactly. The recovered rows are checkable against the surviving `MapLMC5.dat` and
-`LpLMC5.dat` chunk-1 entries, which came from those same draws.
+Indices 0-773 re-run for both primary and twin into fresh directories (`2026-09-10_v3_part1`,
+`..._twin_nosat`), then spliced in front of the surviving chunk-2 table. Fresh directories
+deliberately: running with `--start-index 0` inside the v3 directories would now correctly, and
+loudly, truncate them and destroy chunk 2.
+
+**The recovery is exact, and that was proved rather than assumed.** The re-run's `MapLMC5.dat`
+rows came out **686/686 byte-identical** to the chunk-1 rows that survived in the v3 directory,
+for both runs. Independently, the computed trim offsets came out at **922,213,653** (primary)
+and **905,619,093** (twin) bytes -- exactly the offsets the 2026-09-06 checkpoint truncated to.
+The re-run reproduced chunk 1 down to the byte, as a fixed-seed `mt19937_64` advanced as a
+single stream must.
+
+| | primary | twin |
+|---|---|---|
+| combined `test5.dat` rows | **6,075,045** | **6,072,298** |
+| header lines | 1 | 1 |
+| first data row | lon -3.719, lat -4.14 | same |
+| last data row | lon 5.081, lat 1.26 | same |
+| `EfLMC5(B).dat` | 69,286 + 92,920 = 162,206 = 101 x 1606 | same |
+
+Subtracting chunk 2 leaves 1,936,652 and 1,938,263 recovered data rows, matching the originals.
+`MapLMC5.dat` (1606 rows) and `LpLMC5.dat` were never damaged and were left untouched. The
+chunk-2-only table is kept beside the combined one as `test5_chunk2only.dat`.
+
+**The v3 tables are complete: all 1829 sightlines, 147/147 footprint, 1682/1682 outside.**
+
+### A throttled laptop, not a cost model, explains the runtime numbers
+
+Part one redid **provably identical** work -- byte-identical outputs -- in **3 h 08 m** of wall
+clock, against the 8.88 h of CPU that chunk 1 was recorded as taking for the same 775
+sightlines. Identical work cannot take 2.8x the CPU-seconds unless the clock itself was slower,
+so the overnight run was throttled (thermal or power-save).
+
+This retires a puzzle recorded earlier in this file: chunk 1 and chunk 2 could not be reconciled
+into a single two-stratum cost model -- solving them together gave a *negative* footprint cost.
+The reason was not that footprint sightlines vary by 3x with position. It is that the two chunks
+ran at different clock speeds. **Per-sightline costs measured in different sessions on this
+laptop are not comparable**, and any ETA built from them has to be bracketed accordingly.
 
 ### Chunk 2 (original launch record): resumed 2026-09-07 00:35 at scan index 774
 

@@ -619,7 +619,10 @@ int main(int argc, char** argv) {
    
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 // Create/clear files if IMnum == 1
-    if (IMnum == 1) {
+    // Cleared only when the scan STARTS. On a continuation this file, like every other
+    // output, holds the earlier chunks' rows and must not be cleared. (cfg.startIndex is
+    // read directly here because `resuming` is declared with the other opens below.)
+    if (IMnum == 1 and cfg.startIndex == 0) {
         std::string filnam0 = "./files/MONTLMC/files/BHLSSTMONTS.dat";
         std::ofstream(filnam0).close(); // create/clear file
     }
@@ -634,13 +637,31 @@ int main(int argc, char** argv) {
     std::string fnGam   = "./files/MONTLMC/files/MapLMC" + std::to_string(IMnum) +  ".dat";
     std::string testf   = "./test"                       + std::to_string(IMnum) +  ".dat";
 
-    // Open files
+    // Open files.
+    //
+    // Every output below ACCUMULATES across the scan: fil2/fil2b write one block per
+    // aggregated sightline, fil4/fil5 write per event, fil3 writes one map row per
+    // sightline, and the per-event table is appended to per event. So a run that is a
+    // CONTINUATION (--start-index > 0) must append to them; truncating would throw away
+    // everything the interrupted run wrote.
+    //
+    // This was not always so, and it destroyed a production table. Before this, all of
+    // these except fil3 were opened in the default mode -- ios::out, which truncates --
+    // regardless of --start-index. The 2026-09-06 v3 run was paused at scan index 774 and
+    // resumed; the resume silently wiped the first 774 sightlines out of test5.dat
+    // (1,936,653 rows) and out of EfLMC5/EfLMC5B, and the loss was invisible until the run
+    // finished, because the file simply started filling again from the resume point.
+    // MapLMC5.dat survived only because fil3 was already ios::app. See DEVIATIONS.md 34.
+    const bool resuming = (cfg.startIndex > 0);
+    const std::ios::openmode accumulate =
+        std::ios::out | (resuming ? std::ios::app : std::ios::trunc);
+
     std::ifstream fil0(fnLDt);
 //    std::ifstream fil1(filnam0);
-    std::ofstream fil2(fnEff);
-    std::ofstream fil2b(fnEffB);
-    std::ofstream fil4(filnam1);
-    std::ofstream fil5(filnam2);
+    std::ofstream fil2(fnEff,   accumulate);
+    std::ofstream fil2b(fnEffB, accumulate);
+    std::ofstream fil4(filnam1, accumulate);
+    std::ofstream fil5(filnam2, accumulate);
     std::ofstream fil3(fnGam, std::ios::app);
 
     // The per-event table (Step D1). Truncate and write the column header once, in a
@@ -657,13 +678,55 @@ int main(int argc, char** argv) {
     // The open/append/close per event is deliberate and stays: it flushes each row to
     // disk as it is produced, so a 15-hour run that is interrupted keeps everything it
     // had computed. At ~1.2 s of physics per event the syscalls are not measurable.
+    //
+    // The header is written when, and only when, the table has no content yet. That single
+    // rule covers both uses of --start-index, which the flag itself cannot distinguish:
+    //
+    //   * CONTINUING an interrupted run, in its directory. The table already holds the
+    //     header and every earlier chunk's rows, so it must be appended to and the header
+    //     must NOT be rewritten. Opening it here in the default mode -- which truncates --
+    //     is what destroyed 1,936,653 rows of the v3 run.
+    //   * STARTING a fresh run at an offset, in an empty directory, which is how every A/B
+    //     and profiling comparison in this project is set up (see h7_ab.sh, perf_h7.sh).
+    //     Here there is nothing to preserve and the header does need writing.
+    //
+    // An earlier version of this fix made --start-index > 0 mean "continuation" and refused
+    // to run against an empty table. That is wrong: it breaks the second case, which is the
+    // more common one. Emptiness, not the flag, is the thing worth testing.
+    std::streamoff tableBytes = -1;
     {
+        std::ifstream probe(testf, std::ios::ate | std::ios::binary);
+        tableBytes = probe ? static_cast<std::streamoff>(probe.tellg()) : std::streamoff(-1);
+    }
+    if (tableBytes <= 0) {
         std::ofstream head(testf);
         if (!head) {
             std::cerr << "Cannot open " << testf << std::endl;
             return 1;
         }
         head << eventTableHeader() << "\n";
+        if (resuming) {
+            std::cout << "  NOTE: --start-index " << cfg.startIndex << " with an empty "
+                      << testf << ": treating this as a fresh run\n        that begins at "
+                      << "an offset, not as a continuation. The table will hold only the "
+                      << "sightlines\n        from this index onward." << std::endl;
+        }
+    } else if (!resuming) {
+        // The one remaining way to lose data silently: re-running the scan from the start
+        // in a directory that already holds a table. Say so, loudly, before it is gone.
+        std::cout << "  NOTE: " << testf << " already held " << tableBytes << " bytes and "
+                  << "is being TRUNCATED, because this run\n        starts the scan "
+                  << "(--start-index 0). If it was meant to continue one, stop now."
+                  << std::endl;
+        std::ofstream head(testf);   // truncates
+        if (!head) {
+            std::cerr << "Cannot open " << testf << std::endl;
+            return 1;
+        }
+        head << eventTableHeader() << "\n";
+    } else {
+        std::cout << "  Continuing an existing " << testf << " (" << tableBytes
+                  << " bytes); rows will be appended." << std::endl;
     }
     std::ofstream filg_in; //opened in append mode per event -- see above
 

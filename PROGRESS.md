@@ -787,7 +787,34 @@ files), which a one-sightline profile is mostly made of — it has to be subtrac
 per-sightline number means anything. It was measured directly by running `--start-index 5000`,
 past the end of the grid, so no sightline is entered.
 
-### Chunk 2: resumed 2026-09-07 00:35 at scan index 774, in flight
+### Chunk 2: resumed 2026-09-07 00:35 at scan index 774 -- FINISHED, and it exposed a data-loss bug
+
+Chunk 2 entered 1055 sightlines and completed the grid (774 + 1055 = 1829). Both runs ended
+cleanly with full summaries, `ANOMALY(single-not-joint) = 0`, 920 aggregated, 76 no-coverage,
+59 barren, 59 capped on `--maxdraws`. Footprint accounting closes exactly: 82 + 66 - 1 (index
+774 redone) = 147/147, outside 693 + 989 = 1682/1682.
+
+**But the resume had silently truncated the event table.** `test5.dat` came out holding only
+chunk 2 -- 4,138,393 rows, first data row at lon 0.281, lat -0.04, which is index 774. Chunk 1's
+1,936,653 rows were destroyed at the moment chunk 2 started, by an `ofstream` opened in the
+default (truncating) mode purely to write the column header. `EfLMC5.dat` and `EfLMC5B.dat` went
+the same way. `MapLMC5.dat` (1606 rows) and `LpLMC5.dat` (82,888 rows) survived because they
+were already opened `ios::app`. Fixed, with the rule and the verification, in Deviations 34.
+
+**How it got missed:** the chunk-1 pause was verified thoroughly -- row counts, column counts,
+truncation offsets -- and nothing was re-checked after the *resume*, which is where the loss
+happened. A checkpoint is not verified until the run that follows it has been shown to still
+contain the run that preceded it.
+
+### Chunk 1 REDONE (part one), 2026-09-10
+
+Indices 0-773 re-run for both primary and twin into fresh directories, then spliced in front of
+the surviving chunk-2 table. This recovers the identical rows rather than resampling: the RNG is
+a `mt19937_64` with a fixed seed advanced as one stream, so a run from index 0 reproduces chunk
+1's draws exactly. The recovered rows are checkable against the surviving `MapLMC5.dat` and
+`LpLMC5.dat` chunk-1 entries, which came from those same draws.
+
+### Chunk 2 (original launch record): resumed 2026-09-07 00:35 at scan index 774
 
 Both runs relaunched with `resume_v3.sh 774`, logging to `run2.log`. Next resume index is
 `774 + $(grep -c 'NEW STEP' <dir>/run2.log)`. About 8.6 h of work remained at the start of this

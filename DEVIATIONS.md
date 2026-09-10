@@ -2165,3 +2165,85 @@ slower per sightline inside the footprint, but that is an artefact of pinning it
 100-draw budget, which forced it to do the same draws with twice the Fisher work. Production
 does not work that way. To be measured on the run, not predicted.
 
+
+
+## 34. Resuming a scan silently truncated the event table, and destroyed part of a run
+
+**This is a bug fix, not a plan step. It was found on 2026-09-07 by checking the finished v3
+tables, after the run had already lost data.**
+
+### What happened
+
+The v3 pair was run in two chunks: indices 0-773, then a resume at 774. When the second chunk
+finished, `test5.dat` held 4,138,393 rows -- exactly chunk 2's 4,138,392 events plus a header --
+and its first data row was lon 0.281, lat -0.04, which is scan index **774**. Chunk 1's
+1,936,653 rows were gone.
+
+### Why
+
+Five outputs accumulate across the scan, and all five were opened in the default `ofstream`
+mode, which is `ios::out` and therefore **truncates**, regardless of `--start-index`:
+
+| file | written | was | now |
+|---|---|---|---|
+| `test5.dat` | per event | truncated at startup to write the header | header only if empty |
+| `EfLMC5.dat` | per sightline | truncated | appended when resuming |
+| `EfLMC5B.dat` | per sightline | truncated | appended when resuming |
+| `magC0.dat` | per event | truncated | appended when resuming |
+| `datC0.dat` | per event | truncated | appended when resuming |
+| `MapLMC5.dat` | per sightline | **already `ios::app`** | unchanged |
+| `LpLMC5.dat` | per event | **already `ios::app`** | unchanged |
+
+`test5.dat` was the costly one, and the mechanism is worth stating exactly because it looks
+harmless: the file is opened once at startup *purely to write the column header*, in a scope of
+its own, and that open truncates. Nothing else in the resume path touches it -- the per-event
+writes are all `ios::app`. So the damage is done in the first second of the run, before a
+single sightline is simulated, and everything afterwards behaves normally.
+
+`MapLMC5.dat` and `LpLMC5.dat` survived intact only because they happened to be opened in
+append mode already. That is why the loss was recoverable at all: the per-sightline map
+(1606 rows) and the characterised-event file (82,888 rows) still span both chunks.
+
+**This contradicted the program's own documentation.** The `--start-index` help text warns that
+a wrong resume index would "append duplicate rows to test5.dat" -- appending is the documented
+intent, two hundred lines above the code that truncates.
+
+### The rule now
+
+The header is written **iff the table has no content yet**, and the accumulating files are
+opened with `ios::app` when `--start-index > 0`. Emptiness of the file, not the value of the
+flag, is what decides. That matters because `--start-index` has two legitimate uses that the
+flag alone cannot tell apart:
+
+- **continuing** an interrupted run in its own directory (table non-empty -> append, no header);
+- **starting fresh at an offset** in an empty directory, which is how every A/B and profiling
+  comparison in this project is set up (`h7_ab.sh`, `perf_h7.sh`) (table empty -> write header).
+
+A first version of this fix made `--start-index > 0` mean "continuation" and *refused* to run
+against an empty table. That was wrong and was caught by the test: it breaks the second case,
+which is the more common one. Recorded because the wrong rule is the tempting one.
+
+### What is loud now
+
+The failure cost a 9-hour run entirely because nothing said anything. So the run now prints
+which of the three situations it is in:
+
+- continuing: `Continuing an existing ./test5.dat (N bytes); rows will be appended.`
+- offset start: `NOTE: --start-index N with an empty test5.dat: treating this as a fresh run...`
+- truncating a real table: `NOTE: ./test5.dat already held N bytes and is being TRUNCATED...`
+
+### Verification
+
+`test_resume.sh`: run A at `--start-index 716`, stopped; run B continuing from where A stopped.
+After B the table had **5,772 rows against A's 2,764**, exactly **one** header line, and a first
+data row still equal to A's (lon 0.081, lat -0.14). Before the fix, B's first row replaced A's.
+The offset-start case is asserted in the same script. The Fisher fixture is **bit-identical** to
+the post-H7 baseline, as an I/O-only change must be.
+
+### Consequence for the v3 run
+
+Chunk 1 has to be redone: indices 0-773, both primary and twin. It is a genuine re-run, not a
+re-simulation with new draws -- the RNG is a `mt19937_64` seeded with a fixed seed and advanced
+as a single stream, so a run from index 0 reproduces chunk 1's draws exactly. The recovered rows
+are therefore the same rows that were destroyed, and they can be checked against the surviving
+`MapLMC5.dat` and `LpLMC5.dat` chunk-1 entries, which were produced by those very draws.

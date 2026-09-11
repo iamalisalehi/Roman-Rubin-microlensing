@@ -2421,3 +2421,88 @@ say pending a comparison that passes its own checks.
 back to the `du_sat` statement. Writing "53% of events improve" out of a comparison that fails
 them would have been a fabricated result, and the checks exist so that it cannot happen quietly
 on a later run either.
+
+
+## 36. The H3 paired comparison was broken by a stale derivative reference, not by physics
+
+**The cause of the failure recorded in 35.1, found and fixed. 35.1 stands as written -- the
+measurements in it are correct, and the conclusion drawn from them (that the ratios were not
+measuring satellite parallax) was right. What was wrong there is the list of candidate causes:
+neither of the two guesses was it.**
+
+### What the bug is
+
+`FisherM` forms every derivative as
+
+```
+    (model(theta + Delta) - reference) / Delta
+```
+
+and takes `reference` from the arrays filled when the light curve was generated -- `l.magn[i]`
+for photometry, `l.soux[i]`/`l.souy[i]` for astrometry. Those were written under whatever
+observer position the run itself used. For that expression to be a derivative, the reference
+must be `model(theta)` evaluated under the **same** observing geometry.
+
+Inside a normal run `as.satScale` never changes, the two agree bit for bit, and nothing is
+wrong. Step H3 breaks the assumption deliberately: it re-characterises one event with Roman
+moved to Earth (`satScale = 0`). Then `model(theta) != l.magn[i]`, and the difference
+`dm_sat` -- the satellite-parallax perturbation itself, the very signal being looked for --
+enters every derivative as a **constant** `dm_sat/Delta`. With `Delta ~ 1e-4` of the parameter
+(Step C3's plateau scaling) that constant is enormous, and it is information the data do not
+contain.
+
+### Why it survived the obvious checks
+
+It cancels wherever the finite-difference stencil is symmetric. With `sig = {+1,-1}` the two
+terms are `(model(theta+D) - ref)/D` and `(model(theta-D) - ref)/(-D)`, whose average is
+`(model(theta+D) - model(theta-D))/(2D)`: `ref` drops out **exactly**, whatever it was. That
+covers `u0`, `tE`, `piE`, `xi`, `t0` -- which is why a spot-check of the photometric parallax
+row would have looked clean.
+
+It does not cancel in three places, and each is load-bearing:
+
+| where | stencil | what happens |
+|---|---|---|
+| cross-telescope rows (`co.diff = 1.0` dummy) | none -- both `h` give the same term | derivative must be **exactly zero** (Rubin's data says nothing about Roman's blend fraction) but becomes `dm_sat`, coupling `fb0`/`mbs0` to Roman epochs and `fb1`/`mbs1` to Rubin ones, destroying the block structure `F[SJOINT] == F[SRUBIN] + F[SROMAN]` relies on |
+| `fb` outer bins | `co.bb` = two same-signed forward steps | constant survives, multiplied by ~1e5 |
+| astrometric `tetE`, `piE` | `sig2 = {+0.5,+1.0}`, two forward differences | nothing cancels for any parameter at all |
+
+### The bug predicts the measured signature exactly
+
+This is why it is the cause rather than another candidate. The spurious term is proportional to
+`dm_sat`, so:
+
+- **Wrong-sign correlation.** A larger observer separation means a larger `dm_sat`, so the
+  `satScale = 0` matrix gains *more* fake information and its sigma *falls* as `du_sat` rises.
+  The ratio sat/no-sat therefore rises with separation -- measured `corr = +0.227` -- which
+  looked like the mechanism running backwards and was instead the artefact running forwards.
+- **`sigma_tE` five-fold "worse".** Same thing: the no-satellite matrix is the fake-informative
+  one, so anything divided by it looks bad. Median ratio 4.88.
+- **A control that passes perfectly.** Events with no Roman epochs near the peak have
+  `dm_sat = 0` identically, so the artefact vanishes and the ratio is 1.000000 on n = 29,171.
+  The control was not evidence that the comparison worked; it was evidence that the artefact
+  needed Roman coverage, which is exactly the population the comparison was about.
+- **The sharpest tell, in hindsight.** 35.1 recorded that it was the *no-satellite* forecast
+  that swung by a factor of five between the improving and worsening groups. That is the broken
+  matrix identifying itself, and it was already in the data.
+
+### The fix
+
+`FisherM` now computes its own unperturbed reference per epoch, under the observer
+configuration currently in force, and differences against that instead of the cached arrays.
+One extra `lightcurve()` call per epoch against the ~108 the photometric block already makes,
+so the cost is below 1%.
+
+**Verified to change nothing in production.** `./fishertest` is byte-identical across the
+change (md5 `cc23d5a8018e1d54774f45db3e415102` before and after, all 88 lines, PASS both
+times). That is a stronger statement than it looks: it proves the cached references were
+*exactly* equal to the recomputed model values under an unchanged observer, so there was no
+second latent inconsistency hiding behind this one, and no existing result moves.
+
+### What this invalidates
+
+`roman_runs/2026-09-11_h3_paired/h3_pair.dat` and every ratio computed from it. The `du_sat`
+column in it is unaffected -- it is geometry, not a Fisher output -- so 35.2's statement of the
+observer separation stands. The run is superseded rather than deleted, and DEVIATIONS 35.1 is
+kept verbatim because the reasoning that refused to publish its ratios is the reason the bug
+was found rather than shipped.

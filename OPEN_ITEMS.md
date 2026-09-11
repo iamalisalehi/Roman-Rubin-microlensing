@@ -1043,7 +1043,24 @@ reporting, because H7 changed which events are offered to the Fisher step at all
 
 
 
-## Step H3's paired Fisher comparison fails its own physical checks
+## Step H3's paired Fisher comparison fails its own physical checks -- RESOLVED
+
+**Status: RESOLVED 2026-09-11. Cause found: `FisherM` differenced every derivative against the
+model value cached at light-curve generation time, which belongs to the observer the run
+actually used. Re-evaluating with Roman moved to Earth made that reference inconsistent with
+the perturbed model, injecting a constant `dm_sat/Delta` into every derivative that the
+symmetric stencil happened to cancel for `u0`/`tE`/`piE`/`xi`/`t0` and did not cancel for the
+cross-telescope rows, `fb`'s outer bins, or anything astrometric. Fixed by recomputing the
+reference under the observer in force; `./fishertest` byte-identical across the change, so no
+production result moves. Full account in DEVIATIONS.md 36.**
+
+**Neither of the two candidates guessed below was the cause.** Recording that, because the
+diagnostic that would have separated them -- the condition numbers -- would not have found
+this, whereas asking "what is each derivative actually differenced against?" did.
+
+The original entry is kept verbatim below. SUPERSEDED.
+
+---
 
 **Status: open, measured 2026-09-11 on the full paired run. Blocking the H3 result; not
 blocking anything else.**

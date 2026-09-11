@@ -2482,6 +2482,46 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
             }
         }
 
+        // Step H3b. The unperturbed model magnitude for THIS epoch, recomputed under the
+        // observer configuration currently in force -- NOT the cached l.magn[i].
+        //
+        // Why this is physics and not tidying. Every derivative below is formed as
+        //     (model(theta + Delta) - reference) / Delta
+        // and for that to BE a derivative the reference must be model(theta) under the SAME
+        // observing geometry. l.magn[i] was written when the light curve was generated, at
+        // whatever as.satScale the run itself used. While satScale never changes the two agree
+        // to the last bit and this line is a no-op -- that is the production case, and it is
+        // why the Fisher fixture is unchanged by this.
+        //
+        // Step H3 breaks that assumption on purpose: it re-characterises one event with Roman
+        // moved to Earth (satScale = 0) to ask what that geometry alone could measure. Then
+        // model(theta) != l.magn[i], and their difference dm_sat -- the satellite-parallax
+        // perturbation itself, the very signal being looked for -- leaks into every derivative
+        // as a CONSTANT dm_sat/Delta. With Delta ~ 1e-4 of the parameter that constant is
+        // enormous, and it is information the data do not contain.
+        //
+        // It cancels wherever the stencil is symmetric (sig = {+1,-1}: the +Delta and -Delta
+        // terms carry +dm_sat/Delta and -dm_sat/Delta), which is what hid it for u0, tE, piE,
+        // xi and t0. It does NOT cancel in the places that decide the answer:
+        //   - the cross-telescope rows, where co.diff = 1.0 is a dummy and the derivative must
+        //     be exactly ZERO -- Rubin's data says nothing about Roman's blend fraction -- but
+        //     becomes dm_sat instead, coupling fb0/mbs0 to Roman epochs and fb1/mbs1 to Rubin
+        //     ones and destroying the block structure the partitioned matrices rely on;
+        //   - fb's outer bins, where co.bb is two same-signed forward steps rather than a
+        //     central pair, so the constant survives multiplied by ~1e5.
+        // The astrometric block below is worse still: tetE and piE use sig2 = {+0.5,+1.0}, two
+        // forward differences, where nothing cancels for any parameter at all.
+        //
+        // This explains the measured failure exactly, which is why it is the cause and not a
+        // candidate: the satScale = 0 matrix gained spurious information that GREW with the
+        // observer separation, so its sigma FELL as du_sat rose (the wrong-sign correlation),
+        // sigma_tE looked five-fold better for it, and events with no Roman epochs near the
+        // peak -- where dm_sat is identically zero -- returned ratio 1.000000 and made the
+        // plumbing look verified. DEVIATIONS.md 36.
+        lightcurve(s, l, as, l.timn[i], tt);
+        s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
+        const double magn0 = s.mbs[tt] - 2.5 * std::log10(s.Astar * s.fb[tt] + 1.0 - s.fb[tt]);
+
         for (int j = 0; j < Nx; ++j) {
             for (int h = 0; h < 2; ++h) {
 
@@ -2515,7 +2555,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 lightcurve(s, l, as, l.timn[i], int(l.tele[i]));
                 s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
                 co.magw = s.mbs[tt] - 2.5 * std::log10(s.Astar * s.fb[tt] + 1.0 - s.fb[tt]);
-                co.derm1[h] = double(co.magw - l.magn[i]) / co.diff;
+                co.derm1[h] = double(co.magw - magn0) / co.diff;
 
                 CHECK(l.tE > 0.0);
                 CHECK(s.fb[tt] > 0.0);
@@ -2563,7 +2603,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                     lightcurve(s, l, as, l.timn[i], int(l.tele[i])); //Step H1: same observer as the datum
                     s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
                     co.magw = s.mbs[tt] - 2.5 * std::log10(s.Astar * s.fb[tt] + 1.0 - s.fb[tt]);
-                    co.derm2[h] = double(co.magw - l.magn[i]) / co.diff;
+                    co.derm2[h] = double(co.magw - magn0) / co.diff;
 
                     CHECK(l.tE > 0.0);
                     CHECK(s.fb[tt] >= 0.0);
@@ -2709,6 +2749,15 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 
     for (int i = 0; i < ndw; ++i) {
         const int survB = surveyOfTele(int(l.tele[i])); // same partition as the photometric side
+
+        // Step H3b, astrometric half of the same correction -- and here it matters for every
+        // parameter, not just the cross-telescope rows: tetE and piE use the one-sided sig2
+        // stencil, so a reference from the wrong observer does not cancel anywhere. soux/souy
+        // were stored as s.pos1c/s.pos2c straight out of lightcurve(), so under an unchanged
+        // observer these two lines reproduce them bit for bit.
+        lightcurve(s, l, as, l.timn[i], int(l.tele[i]));
+        const double soux0 = s.pos1c, souy0 = s.pos2c;
+
         for (int j = 0; j < Ny;  ++j) {
 
             for (int h = 0; h < 2; ++h) {
@@ -2722,8 +2771,8 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 // with a different observer than its datum makes the Fisher matrix
                 // inconsistent, and the error it produces is not a forecast of anything.
                 lightcurve(s, l, as, l.timn[i], int(l.tele[i]));
-                co.dera1[h] = double(s.pos1c - l.soux[i]) / co.diff;
-                co.derb1[h] = double(s.pos2c - l.souy[i]) / co.diff;
+                co.dera1[h] = double(s.pos1c - soux0) / co.diff;
+                co.derb1[h] = double(s.pos2c - souy0) / co.diff;
 
                 CHECK(l.tetE > 0.0);
                 CHECK(l.piE > 0.0);
@@ -2763,8 +2812,8 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                     if (k==3) {co.diff = double(co.Delta2[k] * sig2[h]);  l.piE  += co.diff;}
 
                     lightcurve(s, l, as, l.timn[i], int(l.tele[i])); //Step H1: same observer as the datum
-                    co.dera2[h] = double(s.pos1c - l.soux[i]) / co.diff;
-                    co.derb2[h] = double(s.pos2c - l.souy[i]) / co.diff;
+                    co.dera2[h] = double(s.pos1c - soux0) / co.diff;
+                    co.derb2[h] = double(s.pos2c - souy0) / co.diff;
 
                     CHECK(l.tetE > 0.0);
                     CHECK(l.piE > 0.0);

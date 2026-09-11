@@ -1,39 +1,33 @@
 #!/usr/bin/env python3
-"""Step H3 -- what Roman's displacement from Earth buys for the parallax forecast.
+"""Step H3 -- what Roman's displacement to L2 buys for the parallax forecast.
 
-THE EXPERIMENT, AND WHY IT IS NOT THE ONE THE PLAN DESCRIBES
-------------------------------------------------------------
-The plan asks for two runs differing only in `L2_OFFSET_AU`, matched event by row, "every
-event appears in both". That is impossible here, and the reason is physics rather than
-bookkeeping (DEVIATIONS.md 35). The RNG is one mt19937_64 stream shared across the scan, and
-the per-event path draws `RandR(0,100)` *conditionally* on `acceptRubin or acceptRoman`. Moving
-Roman off the Earth-Sun line changes the trajectory, changes what is detectable, and so changes
-whether that draw is taken. The two runs are byte-identical for 1,740,091 events across 459
-sightlines -- and then fork at the first footprint sightline the scan reaches, which is exactly
-the first place the satellite offset can do anything. They stay paired only where the effect is
-identically zero.
+THE EXPERIMENT
+--------------
+Every detected event is characterised TWICE inside one run: once with Roman at L2 and once
+with `L2_OFFSET_AU` zeroed, the same draw, the same epochs, the same photometry, only the
+observer moved (`--pair-satellite`). Each row of `h3_pair.dat` is therefore a genuine pair, and
+the ratio below is a per-event ratio.
 
-So this is a POPULATION comparison, not a paired one. Both runs are gated identically, cut to
-events where Roman actually contributes, and compared as distributions inside bins. The ratios
-plotted are RATIOS OF BINNED MEDIANS, never per-event ratios; a reader who takes the scatter
-for per-event dispersion will over-read it, which is why the captions say so.
+WHY NOT TWO RUNS, WHICH IS WHAT THE PLAN ASKS FOR
+-------------------------------------------------
+Because the physics forbids it (DEVIATIONS.md 35). The RNG is one mt19937_64 stream and the
+per-event path draws conditionally on `acceptRubin or acceptRoman`; moving the observer changes
+what is detectable, so the streams fork. Measured on the v3 pair: byte-identical for 1,740,091
+events across 459 sightlines, then divergent from the first footprint sightline onward -- the
+two runs stay matched only where the effect is identically zero.
 
-The design that would restore true pairing -- call FisherM twice per detected event, once with
-the offset and once with it zeroed, inside a single run -- is recorded in DEVIATIONS.md 35 and
-OPEN_ITEMS.md. It costs about one extra Fisher call per detection.
+The unpaired fallback was tried and its own control rejected it: the median `sigma_tE` ratio
+came out 1.1503 [1.0805, 1.2170], i.e. the satellite apparently making the TIMESCALE forecast
+15% worse. That is impossible for matched events -- a Fisher forecast at fixed parameters and
+epochs does not degrade because the geometry changed -- so the 15% measured how much the two
+DETECTED populations differ, which is larger than the ~6% effect being sought. Hence pairing.
 
-GATING. Events must be jointly detected AND jointly characterised: `detJ == 1 and okA_J == 1`,
-with -1.0 excluded as the not-measured sentinel. A sigma that was never measured is not a
-large sigma. Applied in the extractor (h3_extract.py) and re-asserted here.
+GATING. A ratio needs both forecasts to exist: `okA_sat == 1 and okA_nosat == 1`, with -1.0
+excluded as the not-measured sentinel. A sigma that never inverted is not a large sigma.
 
-SELECTION. `nepR_pk > 0` -- Roman has epochs near the peak. This is the symmetric cut: it is a
-property of the event and the schedule, identical in meaning in both runs, and it is the only
-place the satellite offset can act. `du_sat` cannot be used to select, because it is
-identically 0 in the no-satellite run by construction.
-
-BINNING VARIABLE. `piE`, not `du_sat`, for the same reason: `du_sat` is 0 in one run. They are
-near-equivalent -- du_sat = piE * D_perp/AU and D_perp/AU runs 0.87-0.99 of L2_OFFSET_AU, so
-du_sat ~ 0.01 * piE to within ~13% -- and the top axis of H3a is labelled in du_sat accordingly.
+THE BUILT-IN CONTROL. Events with `nepR_pk == 0` have no Roman epochs near the peak, so the
+satellite cannot act on them and their ratio must be 1. They are kept deliberately and reported
+as a control; if they ever drift from 1, the measurement is wrong.
 """
 import argparse
 import sys
@@ -43,260 +37,212 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-L2_OFFSET_AU = 0.0100267
-
-# Temporal-baseline gain, for H3c. Median sigma_joint/sigma_Roman for piE on in-gap events,
-# measured in Step F2 and recorded in DEVIATIONS.md 24.2. This is a DIFFERENT physical effect
-# from satellite parallax -- Rubin filling Roman's season gaps in time, not two observers
-# separated in space -- and H3c exists to put the two on one axis at the right scale.
+# Temporal-baseline gain for H3c: median sigma_joint/sigma_Roman for piE on in-gap events,
+# from Step F2 (DEVIATIONS.md 24.2). A DIFFERENT physical effect -- Rubin filling Roman's
+# season gaps in time, not two observers separated in space. H3c exists to put the two on one
+# axis at the right scale, not to declare a winner.
 TEMPORAL_GAIN = {"10-30 d": 0.31, "30-100 d": 0.80, "100-300 d": 0.95, "> 300 d": 0.984}
 TE_EDGES = [10.0, 30.0, 100.0, 300.0, np.inf]
 TE_LABELS = list(TEMPORAL_GAIN.keys())
-
 BG = "#fcfcfb"
+COLS = ("lon lat tE u0 piE du_sat okA_sat okA_nosat sigtE_sat sigtE_nosat "
+        "sigpiE_sat sigpiE_nosat nepL_pk nepR_pk w_area").split()
 
 
 def load(path):
-    df = pd.read_csv(path, sep="\t")
-    for c in df.columns:
+    df = pd.read_csv(path, sep=r"\s+", comment="#", names=COLS, engine="python")
+    for c in COLS:
         df[c] = pd.to_numeric(df[c], errors="coerce")
-    n0 = len(df)
-    df = df[(df["sigpiE_J"] > 0) & (df["sigtE_J"] > 0)].copy()
-    if len(df) != n0:
-        print(f"  dropped {n0 - len(df)} rows with a non-positive sigma (sentinel)")
-    return df
-
-
-def boot_median_ratio(a, b, n=400, rng=None):
-    """Bootstrap CI for median(a)/median(b) with a and b INDEPENDENT samples.
-
-    They are independent here -- the two runs stopped being paired at the first footprint
-    sightline -- so the ratio's uncertainty is not the paired one and must not be computed as
-    though the events matched.
-    """
-    rng = rng or np.random.default_rng(42)
-    if len(a) < 20 or len(b) < 20:
-        return np.nan, np.nan, np.nan
-    ra = rng.choice(a, (n, len(a)), replace=True)
-    rb = rng.choice(b, (n, len(b)), replace=True)
-    r = np.median(ra, axis=1) / np.median(rb, axis=1)
-    return np.median(a) / np.median(b), np.percentile(r, 16), np.percentile(r, 84)
-
-
-def te_bin(df):
-    return pd.cut(df["tE"], TE_EDGES, labels=TE_LABELS, right=False)
+    return df.dropna()
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--sat", required=True, help="cached subset of the satellite-parallax run")
-    ap.add_argument("--nosat", required=True, help="cached subset of the twin (L2_OFFSET_AU=0)")
+    ap.add_argument("pairs", help="h3_pair.dat from a --pair-satellite run")
     ap.add_argument("--out-prefix", default="figures/h3")
     a = ap.parse_args()
 
-    print("== loading")
-    S, N = load(a.sat), load(a.nosat)
-    print(f"  satellite run : {len(S):,} detected+characterised")
-    print(f"  twin (no sat) : {len(N):,} detected+characterised")
+    df = load(a.pairs)
+    print(f"== {len(df):,} detected events in {a.pairs}")
 
-    # ---- the satellite observable must be non-zero in one run and zero in the other.
-    # If this ever fails the twin's flag did nothing and the whole comparison is empty.
-    fs = float((S["du_sat"] > 0).mean())
-    fn = float((N["du_sat"] != 0).mean())
-    print(f"  du_sat > 0 in satellite run : {fs:6.1%}")
-    print(f"  du_sat != 0 in twin         : {fn:6.1%}   (must be 0.0%)")
-    if fn != 0.0:
-        sys.exit("ABORT: the twin carries a non-zero satellite observable; --no-satellite-parallax did nothing")
-    if fs == 0.0:
-        sys.exit("ABORT: the satellite run carries no satellite observable")
+    ok = (df.okA_sat == 1) & (df.okA_nosat == 1) & \
+         (df.sigpiE_sat > 0) & (df.sigpiE_nosat > 0) & \
+         (df.sigtE_sat > 0) & (df.sigtE_nosat > 0)
+    d = df[ok].copy()
+    print(f"   both forecasts inverted (okA on both sides): {len(d):,}"
+          f"   ({len(d)/max(len(df),1):.1%})")
+    if len(d) == 0:
+        sys.exit("no events with both forecasts; nothing to compare")
 
-    # ---- selection: Roman contributes near the peak
-    S = S[S["nepR_pk"] > 0].copy()
-    N = N[N["nepR_pk"] > 0].copy()
-    print(f"\n== Roman contributes near peak (nepR_pk > 0)")
-    print(f"  satellite run : {len(S):,}")
-    print(f"  twin          : {len(N):,}")
-    if len(S) == 0 or len(N) == 0:
-        sys.exit("ABORT: no events with Roman coverage near the peak")
+    d["ratio"] = d.sigpiE_sat / d.sigpiE_nosat
+    d["ratio_tE"] = d.sigtE_sat / d.sigtE_nosat
+    d["tb"] = pd.cut(d.tE, TE_EDGES, labels=TE_LABELS, right=False)
 
-    # ---- are the two populations comparable? An unpaired comparison is only meaningful if
-    # the underlying event populations match; these are the same draws from the same model,
-    # so they should agree closely on quantities the satellite cannot influence.
-    print("\n== population comparability (quantities the satellite should NOT shift)")
-    for c in ("tE", "u0", "piE"):
-        ms, mn = S[c].median(), N[c].median()
-        print(f"  median {c:4s}  sat {ms:10.4f}   nosat {mn:10.4f}   "
-              f"ratio {ms / mn:6.4f}")
+    covered = d[d.nepR_pk > 0]
+    blind = d[d.nepR_pk == 0]
 
-    # ---- headline
-    r, lo, hi = boot_median_ratio(S["sigpiE_J"].to_numpy(), N["sigpiE_J"].to_numpy())
-    rt, tlo, thi = boot_median_ratio(S["sigtE_J"].to_numpy(), N["sigtE_J"].to_numpy())
-    print("\n== headline, all Roman-covered detections")
-    print(f"  median sigma_piE  sat/nosat = {r:.4f}  [{lo:.4f}, {hi:.4f}]  (68% boot)")
-    print(f"  median sigma_tE   sat/nosat = {rt:.4f}  [{tlo:.4f}, {thi:.4f}]   <- control, expect ~1")
+    # ---- the control comes first. If it is not ~1 the rest is meaningless.
+    print("\n== CONTROL: events with no Roman epochs near the peak (nepR_pk == 0)")
+    print("   the satellite cannot act on these, so the ratio must be 1")
+    if len(blind):
+        print(f"   n = {len(blind):,}   median sigma_piE ratio = {blind.ratio.median():.6f}")
+        print(f"                       median sigma_tE  ratio = {blind.ratio_tE.median():.6f}")
+        print(f"   fraction within 1% of unity: {(blind.ratio.between(0.99,1.01)).mean():.1%}")
+    else:
+        print("   none in this sample")
 
-    figures(S, N, a.out_prefix, r, lo, hi)
+    print("\n== events where Roman covers the peak (nepR_pk > 0)")
+    print(f"   n = {len(covered):,}")
+    if len(covered) == 0:
+        sys.exit("no Roman-covered events")
+    q = covered.ratio.quantile([0.05, 0.25, 0.5, 0.75, 0.95])
+    print(f"   sigma_piE ratio  median {covered.ratio.median():.4f}"
+          f"   quartiles {q[0.25]:.4f} / {q[0.75]:.4f}"
+          f"   5-95% {q[0.05]:.4f} / {q[0.95]:.4f}")
+    print(f"   sigma_tE  ratio  median {covered.ratio_tE.median():.4f}   (not a control here:")
+    print("                     tE and piE are correlated, so the geometry moves both)")
+    better = (covered.ratio < 0.99).mean()
+    big = (covered.ratio < 0.5).mean()
+    print(f"   improved by >1%  : {better:.1%}")
+    print(f"   improved by >2x  : {big:.1%}")
+
+    figures(d, covered, blind, a.out_prefix)
+    verdict(covered, blind)
     return 0
 
 
-def figures(S, N, prefix, r_all, lo_all, hi_all):
-    rng = np.random.default_rng(7)
-
-    # =====================================================================  H3a
-    # Where the effect lives: ratio of binned medians against du_sat (via piE).
-    pi_edges = np.geomspace(max(1e-3, S["piE"].quantile(0.01)), S["piE"].quantile(0.999), 13)
-    S["tb"], N["tb"] = te_bin(S), te_bin(N)
-
-    fig, ax = plt.subplots(figsize=(8.4, 5.4), facecolor=BG)
+def figures(d, covered, blind, prefix):
+    # ================================================================= H3a
+    fig, ax = plt.subplots(figsize=(8.6, 5.4), facecolor=BG)
     ax.set_facecolor(BG)
     colors = plt.cm.viridis(np.linspace(0.12, 0.88, len(TE_LABELS)))
-    rows = []
     for lab, col in zip(TE_LABELS, colors):
-        xs, ys, els, ehs = [], [], [], []
-        for i in range(len(pi_edges) - 1):
-            lo_e, hi_e = pi_edges[i], pi_edges[i + 1]
-            sa = S[(S["tb"] == lab) & (S["piE"] >= lo_e) & (S["piE"] < hi_e)]["sigpiE_J"]
-            nb = N[(N["tb"] == lab) & (N["piE"] >= lo_e) & (N["piE"] < hi_e)]["sigpiE_J"]
-            if len(sa) < 30 or len(nb) < 30:
-                continue
-            rr, rlo, rhi = boot_median_ratio(sa.to_numpy(), nb.to_numpy(), 200, rng)
-            xs.append(np.sqrt(lo_e * hi_e)); ys.append(rr)
-            els.append(rr - rlo); ehs.append(rhi - rr)
-            rows.append((lab, np.sqrt(lo_e * hi_e), rr, rlo, rhi, len(sa), len(nb)))
-        if xs:
-            ax.errorbar(xs, ys, yerr=[els, ehs], marker="o", ms=4.5, lw=1.4,
-                        capsize=2.5, color=col, label=f"tE {lab}")
+        g = covered[covered.tb == lab]
+        if len(g) < 5:
+            continue
+        ax.scatter(g.du_sat, g.ratio, s=7, alpha=0.28, color=col, lw=0, label=f"tE {lab}")
+    if len(blind):
+        ax.scatter(blind.du_sat, blind.ratio, s=7, alpha=0.30, color="#b02020", lw=0,
+                   marker="x", label="no Roman epochs at peak (control)")
     ax.axhline(1.0, color="#444", lw=1.0, ls="--")
     ax.set_xscale("log")
-    ax.set_xlabel(r"$\pi_E$   (satellite separation $\Delta u_{\rm sat}\simeq 0.010\,\pi_E$)")
-    ax.set_ylabel(r"median $\sigma_{\pi_E}$  (with L2) / (without)")
+    ax.set_yscale("log")
+    ax.set_xlabel(r"$\Delta u_{\rm sat} = \pi_E\,D_\perp/{\rm AU}$   [$\theta_E$]")
+    ax.set_ylabel(r"$\sigma_{\pi_E}$(Roman at L2) / $\sigma_{\pi_E}$(Roman at Earth)")
     ax.set_title("H3a  Where the satellite baseline acts\n"
-                 "ratio of BINNED MEDIANS -- not a per-event ratio", fontsize=11)
-    ax2 = ax.secondary_xaxis("top", functions=(lambda x: x * L2_OFFSET_AU,
-                                               lambda x: x / L2_OFFSET_AU))
-    ax2.set_xlabel(r"$\Delta u_{\rm sat}$  [$\theta_E$]", fontsize=9)
-    ax.legend(frameon=False, fontsize=9)
+                 "per-event ratio, same event characterised both ways", fontsize=11)
+    ax.legend(frameon=False, fontsize=8, loc="lower left")
     ax.grid(alpha=0.25, lw=0.6)
-    fig.text(0.01, -0.04,
-             "Below 1 means the satellite baseline improves the parallax forecast. Bars are 68% "
-             "bootstrap on the ratio of medians,\ncomputed for INDEPENDENT samples: the two runs "
-             "stop being event-matched at the first footprint sightline (Deviations 35).",
-             fontsize=7.5, color="#444")
+    fig.text(0.01, -0.05,
+             "Below 1 means Roman's displacement to L2 tightens the parallax forecast. Red "
+             "crosses are the control: events with no Roman\nepochs near the peak, where the "
+             "satellite cannot act and the ratio must sit at 1. Pairing is exact -- one run, "
+             "two Fisher\nevaluations per event (DEVIATIONS.md 35).", fontsize=7.5, color="#444")
     fig.savefig(f"{prefix}a_where.png", dpi=160, bbox_inches="tight", facecolor=BG)
     plt.close(fig)
-    print(f"\nwrote {prefix}a_where.png  ({len(rows)} populated bins)")
+    print(f"\nwrote {prefix}a_where.png")
 
-    # =====================================================================  H3b
-    # The corner: (tE, u0) with contemporaneous coverage from both observatories.
-    Sc = S[(S["nepL_pk"] > 0) & (S["nepR_pk"] > 0)]
-    Nc = N[(N["nepL_pk"] > 0) & (N["nepR_pk"] > 0)]
-    print(f"H3b contemporaneous coverage: sat {len(Sc):,}, nosat {len(Nc):,}")
+    # ================================================================= H3b
+    both = covered[(covered.nepL_pk > 0) & (covered.nepR_pk > 0)]
+    print(f"H3b contemporaneous coverage (both surveys at peak): {len(both):,}")
     te_e = np.geomspace(5, 400, 9)
-    u0_e = np.linspace(0, 1.0, 9)
+    u0_e = np.linspace(0, 1.2, 9)
     M = np.full((len(u0_e) - 1, len(te_e) - 1), np.nan)
-    Cnt = np.zeros_like(M)
     for i in range(len(u0_e) - 1):
         for j in range(len(te_e) - 1):
-            sa = Sc[(Sc["u0"] >= u0_e[i]) & (Sc["u0"] < u0_e[i + 1]) &
-                    (Sc["tE"] >= te_e[j]) & (Sc["tE"] < te_e[j + 1])]["sigpiE_J"]
-            nb = Nc[(Nc["u0"] >= u0_e[i]) & (Nc["u0"] < u0_e[i + 1]) &
-                    (Nc["tE"] >= te_e[j]) & (Nc["tE"] < te_e[j + 1])]["sigpiE_J"]
-            if len(sa) >= 30 and len(nb) >= 30:
-                M[i, j] = sa.median() / nb.median()
-                Cnt[i, j] = min(len(sa), len(nb))
+            g = both[(both.u0 >= u0_e[i]) & (both.u0 < u0_e[i + 1]) &
+                     (both.tE >= te_e[j]) & (both.tE < te_e[j + 1])]
+            if len(g) >= 8:
+                M[i, j] = g.ratio.median()
 
-    fig, ax = plt.subplots(figsize=(8.0, 5.2), facecolor=BG)
+    fig, ax = plt.subplots(figsize=(8.2, 5.2), facecolor=BG)
     ax.set_facecolor(BG)
-    span = np.nanmax(np.abs(np.log10(M))) if np.isfinite(M).any() else 0.1
-    span = max(span, 0.02)
-    im = ax.pcolormesh(te_e, u0_e, np.log10(M), cmap="RdBu_r",
-                       vmin=-span, vmax=span, shading="flat")
+    if np.isfinite(M).any():
+        span = max(np.nanmax(np.abs(np.log10(M))), 0.05)
+        im = ax.pcolormesh(te_e, u0_e, np.log10(M), cmap="RdBu_r",
+                           vmin=-span, vmax=span, shading="flat")
+        cb = fig.colorbar(im, ax=ax)
+        cb.set_label(r"$\log_{10}$ median ratio;  blue = satellite helps")
+        for i in range(M.shape[0]):
+            for j in range(M.shape[1]):
+                if np.isfinite(M[i, j]):
+                    ax.text(np.sqrt(te_e[j] * te_e[j + 1]), (u0_e[i] + u0_e[i + 1]) / 2,
+                            f"{M[i, j]:.2f}", ha="center", va="center", fontsize=6.2)
     ax.set_xscale("log")
     ax.set_xlabel(r"$t_E$  [d]")
     ax.set_ylabel(r"$u_0$")
     ax.set_title("H3b  The corner, if there is one\n"
-                 r"$\log_{10}$ of median $\sigma_{\pi_E}$ ratio, contemporaneous coverage only",
-                 fontsize=11)
-    cb = fig.colorbar(im, ax=ax)
-    cb.set_label(r"$\log_{10}$ (with L2 / without);  blue = satellite helps")
-    for i in range(M.shape[0]):
-        for j in range(M.shape[1]):
-            if np.isfinite(M[i, j]):
-                ax.text(np.sqrt(te_e[j] * te_e[j + 1]), (u0_e[i] + u0_e[i + 1]) / 2,
-                        f"{M[i, j]:.3f}", ha="center", va="center", fontsize=6.2,
-                        color="#222")
+                 "median per-event ratio, contemporaneous coverage only", fontsize=11)
     fig.text(0.01, -0.05,
-             "Cells need >=30 characterised events on BOTH sides; blank cells are unpopulated, "
-             "not null results.\nNumbers are ratios of medians over independent samples "
-             "(Deviations 35).", fontsize=7.5, color="#444")
+             "Cells need >=8 paired events; blank cells are unpopulated, not null results.",
+             fontsize=7.5, color="#444")
     fig.savefig(f"{prefix}b_corner.png", dpi=160, bbox_inches="tight", facecolor=BG)
     plt.close(fig)
     print(f"wrote {prefix}b_corner.png")
 
-    # =====================================================================  H3c
-    # Honest comparison: satellite baseline beside temporal baseline, same axis.
-    sat_by_te, err_by_te = [], []
-    for lab in TE_LABELS:
-        sa = S[S["tb"] == lab]["sigpiE_J"].to_numpy()
-        nb = N[N["tb"] == lab]["sigpiE_J"].to_numpy()
-        rr, rlo, rhi = boot_median_ratio(sa, nb, 300, rng)
-        sat_by_te.append(rr)
-        err_by_te.append((rr - rlo, rhi - rr))
-
-    fig, ax = plt.subplots(figsize=(8.6, 5.0), facecolor=BG)
+    # ================================================================= H3c
+    fig, ax = plt.subplots(figsize=(8.8, 5.0), facecolor=BG)
     ax.set_facecolor(BG)
     x = np.arange(len(TE_LABELS))
     w = 0.36
-    yerr = np.array(err_by_te).T
-    ax.bar(x - w / 2, sat_by_te, w, yerr=yerr, capsize=3, color="#3b6ea5",
-           label="satellite baseline  (Roman at L2 vs at Earth)")
+    sat = [covered[covered.tb == l].ratio.median() if (covered.tb == l).sum() >= 5 else np.nan
+           for l in TE_LABELS]
+    ax.bar(x - w / 2, sat, w, color="#3b6ea5",
+           label="satellite baseline  (Roman at L2 vs at Earth), this work")
     ax.bar(x + w / 2, [TEMPORAL_GAIN[l] for l in TE_LABELS], w, color="#c0703a",
-           label="temporal baseline  (Rubin filling Roman's gaps, F2)")
+           label="temporal baseline  (Rubin filling Roman's gaps), Step F2")
     ax.axhline(1.0, color="#444", lw=1.0, ls="--")
     ax.set_xticks(x, TE_LABELS)
+    ax.set_yscale("log")
     ax.set_xlabel(r"$t_E$ bin")
-    ax.set_ylabel(r"median $\sigma_{\pi_E}$ ratio  (lower = bigger gain)")
+    ax.set_ylabel(r"median $\sigma_{\pi_E}$ ratio   (lower = bigger gain)")
     ax.set_title("H3c  Two different effects, at the same scale", fontsize=11)
-    ax.legend(frameon=False, fontsize=9)
+    ax.legend(frameon=False, fontsize=8.5)
     ax.grid(alpha=0.25, axis="y", lw=0.6)
-    for xi, v in zip(x - w / 2, sat_by_te):
+    for xi, v in zip(x - w / 2, sat):
         if np.isfinite(v):
-            ax.text(xi, v + 0.012, f"{v:.3f}", ha="center", fontsize=8)
+            ax.text(xi, v * 1.06, f"{v:.3f}", ha="center", fontsize=8)
     for xi, l in zip(x + w / 2, TE_LABELS):
-        ax.text(xi, TEMPORAL_GAIN[l] + 0.012, f"{TEMPORAL_GAIN[l]:.2f}", ha="center", fontsize=8)
+        ax.text(xi, TEMPORAL_GAIN[l] * 1.06, f"{TEMPORAL_GAIN[l]:.2f}", ha="center", fontsize=8)
     fig.text(0.01, -0.06,
-             "These are DIFFERENT PHYSICAL EFFECTS and the pairing of bars is a scale "
-             "comparison, not a competition. The temporal\nnumbers are in-gap medians from "
-             "Step F2 (Deviations 24.2); the satellite numbers are all Roman-covered "
-             "detections here.", fontsize=7.5, color="#444")
+             "DIFFERENT PHYSICAL EFFECTS. Pairing the bars compares their size, not their "
+             "merit: one is two observers separated in\nspace, the other is one observer's "
+             "gaps filled in time. The temporal numbers are in-gap medians from Step F2 "
+             "(Deviations 24.2).", fontsize=7.5, color="#444")
     fig.savefig(f"{prefix}c_honest.png", dpi=160, bbox_inches="tight", facecolor=BG)
     plt.close(fig)
     print(f"wrote {prefix}c_honest.png")
 
-    # =====================================================================  the null
-    print("\n" + "=" * 72)
+
+def verdict(covered, blind):
+    print("\n" + "=" * 74)
     print("THE RESULT, STATED PLAINLY")
-    print("=" * 72)
-    print(f"  All Roman-covered joint detections: median sigma_piE ratio "
-          f"{r_all:.4f} [{lo_all:.4f}, {hi_all:.4f}]")
-    best = min((v for v in sat_by_te if np.isfinite(v)), default=np.nan)
-    print("  by tE bin (satellite):")
-    for lab, v, e in zip(TE_LABELS, sat_by_te, err_by_te):
-        if np.isfinite(v):
-            print(f"    {lab:10s} {v:7.4f}   -{e[0]:.4f}/+{e[1]:.4f}")
-    if np.isfinite(M).any():
-        k = np.unravel_index(np.nanargmin(M), M.shape)
-        print(f"  most favourable (tE,u0) cell: ratio {M[k]:.4f} "
-              f"at tE~{np.sqrt(te_e[k[1]]*te_e[k[1]+1]):.0f} d, u0~{(u0_e[k[0]]+u0_e[k[0]+1])/2:.2f}"
-              f"  (n>={int(Cnt[k])})")
+    print("=" * 74)
+    med = covered.ratio.median()
+    better = (covered.ratio < 0.99).mean()
+    print(f"  Roman-covered events: n = {len(covered):,}, median sigma_piE ratio {med:.4f}")
+    print(f"  improved by more than 1%: {better:.1%} of them")
+    for lab in TE_LABELS:
+        g = covered[covered.tb == lab]
+        if len(g) >= 5:
+            print(f"    tE {lab:10s} n={len(g):6,}  median {g.ratio.median():.4f}"
+                  f"  best 5% {g.ratio.quantile(0.05):.4f}")
+    if len(blind):
+        print(f"  control (no Roman epochs at peak): median {blind.ratio.median():.6f}"
+              f" on n={len(blind):,}  <- must be 1")
     print()
-    if np.isfinite(best) and best > 0.99:
-        print("  READ AS A NULL. No tE bin shows a median improvement better than 1%.")
+    if better < 0.01:
+        print("  THIS IS A NULL. Fewer than 1% of Roman-covered events gain anything")
+        print("  measurable from Roman's displacement to L2.")
     else:
-        print(f"  Largest binned improvement: {(1 - best) * 100:.1f}% (median), in a single tE bin.")
-    print("  Caveat that belongs in every caption: these are ratios of binned medians over")
-    print("  INDEPENDENT samples, not per-event ratios. See DEVIATIONS.md 35.")
+        strong = covered[covered.ratio < 0.5]
+        print(f"  NOT a null. {better:.1%} of Roman-covered events improve by >1%, and")
+        print(f"  {len(strong):,} ({len(strong)/len(covered):.1%}) improve by more than 2x.")
+        if len(strong):
+            print(f"  Those events sit at median tE {strong.tE.median():.1f} d, "
+                  f"u0 {strong.u0.median():.3f}, piE {strong.piE.median():.3f}, "
+                  f"du_sat {strong.du_sat.median():.4f}.")
 
 
 if __name__ == "__main__":

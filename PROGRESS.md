@@ -992,9 +992,25 @@ fractional error of 15* (1500%). An inverted matrix is not a measured mass. Any 
 
    Monotone across all five, `corr(log delta_max, log sigma/theta_E) = -0.481`.
 
-Both were computed by a second script written from the physics rather than from
-`analysis/h5_astrometric_shift.py`, so the two are an independent cross-check of each other and
-not one code path agreeing with itself.
+Both were computed by a second script (`analysis/h5_crosscheck.py`) written from the physics
+rather than from `analysis/h5_astrometric_shift.py`, so the two are an independent cross-check of
+each other and not one code path agreeing with itself. Where they overlap they agree to every
+digit either prints:
+
+| quantity | `h5_astrometric_shift.py` | `h5_crosscheck.py` |
+|---|---|---|
+| median max centroid shift | 0.110635 mas | 0.1106 mas |
+| fraction reaching `u = sqrt(2)` | 0.741286 | 74.1% |
+| per-exposure precision | 6.69197 mas | 6.6938 mas |
+| fraction of shifts above one exposure | 0.112435% | 0.1124% |
+| sqrt(N)-averaged precision | 0.0300273 mas | 0.0299 mas |
+| median signal significance | 3.68449 sigma | 3.69 sigma |
+| `sigma_tetE` < 10%, joint / Rubin / Roman | 0.331572 / 0.0073083 / 0.327524 | 33.2% / 0.7% / 32.8% |
+| violations of `sigma_joint <= sigma_single` | 0 and 0 | 0 and 0 |
+
+Two independent implementations of `errRomanA` reading the same 2.9 GB table, agreeing on the
+per-exposure precision to four significant figures, is what makes the 6.69 mas number safe to
+build on -- and it is the number I had wrong before, so it was worth checking twice.
 
 ---
 

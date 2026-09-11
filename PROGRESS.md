@@ -881,6 +881,66 @@ not results**: every detection in them was decided by the threshold H7 replaced.
 
 ---
 
+## 5g. Step H3's satellite-parallax result, measured (2026-09-11)
+
+`roman_runs/2026-09-11_h3_footprint/`, `--pair-satellite --events 60 --lenses 20 --nerr 2
+--stride-roman 5 --start-index 518`, binary `a3c323d`.
+
+**Why `--start-index 518`.** Roman-covered events -- the only ones H3 can speak about -- exist
+only in the footprint stratum, which runs from scan ordinal 518 to 1070 of 1829. Starting at 0
+on a machine then carrying ~45 competing processes would have taken ~9 hours just to reach
+sightline 518. The cost is that the run consumes a different stretch of the RNG stream from the
+superseded one, so the two are not comparable row by row. That comparison was a convenience:
+`./fishertest` is byte-identical across the DEVIATIONS 36 fix, which is what establishes that
+the `satScale = 1` path is untouched.
+
+### The result
+
+| | median `sigma(piE)` ratio | improved | n |
+|---|---|---|---|
+| control, no Roman epochs at peak | **1.000000** (89.7% bit-exactly 1) | 8.5% | 427 |
+| Roman covers the peak, **joint** | **0.9924** | 80.9% | 111 |
+| Roman covers the peak, **Roman alone** | **0.9904** | 88.8% | 98 |
+
+Sign test on the Roman-covered events: 89 of 110 non-tied improve, one-sided `p = 9e-10`.
+Bootstrap 95% CI on the joint median: **[0.99126, 0.99594]**.
+
+**Satellite parallax improves `sigma(piE)` by 0.4-0.9%, and the effect is overwhelmingly
+significant.** Highly significant and very small is the physically expected combination: the
+two observers are separated by a median of 0.00214 Einstein radii, so the perturbation is tiny,
+while the paired design removes essentially all the noise that would otherwise hide it.
+
+Elsewhere it does nothing, correctly:
+
+- `sigma(theta_E)`: median ratio **0.999977**. The astrometric Einstein radius comes from the
+  deflection amplitude, not from a parallax baseline.
+- `sigma(tE)`: median **0.998**, 8.1% of events worse. (Before the fix: 4.881 and 85.5%.)
+- lens mass `relMl`: median **0.9971**, a 0.3% gain, inherited from `piE`.
+
+### Two things the analysis got wrong on the way, both now recorded
+
+**The validation gate tested a confounded variable** (DEVIATIONS 37). It required the gain to
+grow with `du_sat`. But `du_sat = piE * D_perp/AU` and `D_perp` is one observatory's orbit,
+identical for every event: `du_sat/piE` spans a factor of **1.14** while `piE` spans **35.6**,
+and `corr(log piE, log du_sat) = +0.9985`. The check was testing a dependence on `piE`. It is
+replaced by five checks that do follow from the physics -- the control being bit-exact,
+`sigma_tE` intact, `sigma(theta_E)` untouched, the two geometries equally conditioned, and a
+sign test against the control's exact null. **The `sigma_tE` check is kept unchanged, so the new
+gate would still have refused the corrupted run.**
+
+**`nepR_pk` was tried as the replacement monotone axis and also shows no trend** -- and the
+reason is physics, not noise. The lowest tercile, median **43** Roman epochs near the peak,
+already shows the full gain (0.9917) against 0.9961 for the highest with 16,410 epochs. A
+simultaneous baseline is a geometric constraint: once a few epochs see the source from both
+positions at once, the offset is constrained, and further epochs only reduce photon noise on a
+term that is already small. **The gain saturates almost immediately**, so there is no monotone
+axis to test.
+
+This supersedes the statement in DEVIATIONS 35.2 that the precision consequence is unmeasured.
+It is measured, and it is under one percent.
+
+---
+
 ## 5f. The astrometric deflection, measured on the post-H7 v3 table (2026-09-11)
 
 Step H5's script existed but its numbers were labelled **provisional** throughout this file,

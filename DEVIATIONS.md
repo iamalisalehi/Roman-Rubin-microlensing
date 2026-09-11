@@ -2506,3 +2506,97 @@ column in it is unaffected -- it is geometry, not a Fisher output -- so 35.2's s
 observer separation stands. The run is superseded rather than deleted, and DEVIATIONS 35.1 is
 kept verbatim because the reasoning that refused to publish its ratios is the reason the bug
 was found rather than shipped.
+
+
+## 37. The H3 validation gate tested a confounded variable, and is replaced
+
+**Not a weakening of the gate to let a result through. The check it removes cannot do the job it
+was written for, and the reason is measurable.**
+
+### What the old check assumed
+
+`validate()` in `analysis/h3_satellite_parallax.py` required
+
+```
+    corr(log du_sat, log sigma_piE_ratio) < 0
+```
+
+on the argument that "a real satellite baseline improves with separation, so a larger
+`du_sat` cannot buy less". That argument treats `du_sat` as a measure of how far apart the two
+observers are, varying from event to event.
+
+### Why that is wrong
+
+`du_sat` is defined as `piE * D_perp / AU`. The Earth-L2 separation `D_perp` is the same for
+every event in the survey -- it is one observatory's orbit, not a per-event quantity. Measured
+on the fixed run over Roman-covered events:
+
+| quantity | min | median | max | spread |
+|---|---|---|---|---|
+| `du_sat / piE` | 0.008781 | 0.009259 | 0.010022 | **1.14x** |
+| `piE` | 0.05259 | 1.87395 | | 35.6x |
+| `du_sat` | 0.00046 | 0.01657 | | 35.8x |
+
+`corr(log piE, log du_sat) = +0.9985`. **`du_sat` is `piE` rescaled by a near-constant.** Varying
+`du_sat` across the sample does not vary the observer separation; it varies `piE`. So the old
+check tested whether the fractional gain correlates with `piE` -- a different physical claim,
+and one with competing effects on both sides, since a larger `piE` means both a larger
+simultaneous-baseline signal and an annual parallax that is already better measured.
+
+The check could therefore never have been passed or failed for the right reason. It is also
+unfixable by collecting more data: at the measured correlation of `-0.001` the sample needed to
+put it two sigma from zero is ~2.5 million events.
+
+### The second candidate, also tested and also rejected
+
+`nepR_pk`, the number of Roman epochs near the peak, IS independent of `piE`
+(`corr = +0.14`) and was tried as the replacement monotone axis. It shows no trend either, and
+the reason turns out to be physics rather than noise: the lowest tercile, with a median of **43**
+Roman epochs near the peak, already shows the full gain (ratio 0.9917) against 0.9961 for the
+highest with 16,410 epochs. **The gain saturates almost immediately.** A simultaneous baseline is
+a geometric constraint -- once a few epochs see the source from both positions at once, the
+offset is constrained, and further epochs add only photon noise reduction on a term that is
+already small. There is no monotone axis to test because the effect has no slope to find.
+
+### What replaces it
+
+Checks that follow from the physics rather than from an assumed trend:
+
+1. **The control is exact.** Events with no Roman epochs near the peak must return a ratio of
+   exactly 1 -- the artefact-free case. Measured: median `1.000000`, with **89.7% of 426 events
+   bit-exactly 1**.
+2. **`sigma_tE` must not degrade.** Moving an observer re-weights information; it cannot destroy
+   a timescale set by a light-curve shape both observatories sample at the same epochs.
+   Measured: median `0.997`, 7.0% of events worse. (Before the DEVIATIONS 36 fix: median 4.88,
+   85.5% worse -- this is the check that caught the bug and it is kept unchanged.)
+3. **`sigma_theta_E` must be untouched.** The astrometric Einstein radius comes from the
+   deflection amplitude, not from a parallax baseline, so moving the observer must not move it.
+   Measured: median ratio `0.999978` over Roman-covered events, `1.000000` over the control.
+4. **The two geometries must be equally conditioned.** Otherwise a difference in sigma could be
+   an inversion artefact. Measured: median condition-number ratio `1.0094` photometric,
+   `1.0001` astrometric.
+5. **The gain must be a decrease, tested against the control rather than against a trend.**
+   The control pins the null at exactly 1, so this is a sign test. Measured: 79 of 99 non-tied
+   Roman-covered events improve, one-sided `p = 9e-10`.
+
+Check 2 is the one that failed before the fix and passes now, so the gate retains the property
+that mattered: it would still have refused the corrupted run.
+
+### The result the new gate admits
+
+| | median `sigma(piE)` ratio | improved | n |
+|---|---|---|---|
+| control, no Roman epochs at peak | **1.000000** | 8.5% | 426 |
+| Roman covers the peak, joint | **0.9927** | 79.0% | 100 |
+| Roman covers the peak, Roman alone | **0.9904** | 88.8% | 98 |
+
+Bootstrap 95% CI on the joint median: **[0.99126, 0.99594]**, i.e. a gain of **0.4% to 0.9%**.
+
+Highly significant and very small, which is the physically expected combination: the two
+observers are separated by a median of `0.00214` Einstein radii, so the light-curve perturbation
+is tiny, and the paired design removes essentially all of the noise that would otherwise hide a
+sub-percent effect. The lens mass improves by 0.3% (median `relMl` ratio 0.9971) and
+`sigma(theta_E)` not at all.
+
+**This supersedes 35.2's statement that the precision consequence is unmeasured.** It is
+measured; it is under one percent.

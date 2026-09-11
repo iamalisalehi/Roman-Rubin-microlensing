@@ -1089,3 +1089,47 @@ numbers of both matrices in `h3_pair.dat` would separate these cheaply and was n
 Until this is settled H3 reports only `du_sat` (median 0.0022, max 0.039 theta_E) and states
 that the precision consequence is unmeasured. `analysis/h3_satellite_parallax.py` enforces this
 in code: it withholds the ratios when the checks fail.
+
+
+## Roman's 1.1 mas astrometric floor is treated as independent per exposure, and it may not be
+
+**Status: open, identified 2026-09-11 while producing the H5 astrometric results. This is the
+dominant caveat on every theta_E and lens-mass number in the project.**
+
+Step H4 gives Roman a per-exposure astrometric error with a floor of 1.1 mas, and documents that
+floor as **1% of the 110 mas pixel -- a centroiding systematic, not photon noise**, which is why
+it does not improve for brighter stars. That reasoning is about brightness. It leaves the
+separate question untouched: does the floor average down over *exposures*?
+
+`FisherM` assumes it does, and completely. Each epoch contributes
+`(dtheta/dparam)^2 / erra[i]^2` as an independent term, so N epochs buy a factor `sqrt(N)`. The
+numbers that follow from that assumption are large:
+
+- ~50,000 Roman exposures per detected event (median `ndwR` = 49,977; a GBTDS field gets 50,401
+  12.1-minute exposures and `--stride-roman` strides sightlines, not epochs);
+- so an independent 1.1 mas floor averages to `1.1/sqrt(49977)` = **0.0049 mas**;
+- against a median peak centroid shift of **0.111 mas**, i.e. a signal 23x the averaged floor,
+  even though it is only **1/10 of a single exposure's precision**.
+
+**The whole astrometric result rests on that factor of 224.** If any component of the 1.1 mas is
+correlated between exposures -- and a centroiding systematic is exactly the kind of error that
+usually is, through the PSF model, the distortion solution, or the reference frame -- then the
+effective floor is higher, by up to the full 1.1 mas in the fully-correlated limit, and every
+`sigma_tetE` and `relMl` in the project is optimistic. In the fully-correlated limit the median
+signal sits an order of magnitude *below* the floor and theta_E would not be measurable at all.
+
+So the honest statement of the H5 result is conditional: 33.2% of Roman-observed detections
+measure theta_E to better than 10% **if the per-exposure astrometric error is independent
+between exposures**. That conditional is not currently stated in the whitepaper.
+
+**What would settle it.** The error model would need a two-component form -- a white part that
+averages and a correlated floor that does not,
+`sigma_eff^2 = sigma_white^2/N + sigma_corr^2` -- with the split taken from the Roman
+astrometry literature rather than assumed. Sanderson et al. 2019's claim of ~0.1 mas from
+stacking ~100 exposures is itself evidence that *some* averaging is real (1.1/sqrt(100) = 0.11,
+which matches their number almost exactly, implying the floor is close to fully white over 100
+exposures); whether that continues for another 500x in N is the open question, and nothing in
+the two sources cited by H4 addresses it.
+
+Recording rather than fixing, because inventing a split would be worse than naming the
+assumption.

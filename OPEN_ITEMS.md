@@ -1058,6 +1058,21 @@ production result moves. Full account in DEVIATIONS.md 36.**
 diagnostic that would have separated them -- the condition numbers -- would not have found
 this, whereas asking "what is each derivative actually differenced against?" did.
 
+**The conditioning guess is now refuted by data, not merely unused.** `h3_pair.dat` records both
+matrices' condition numbers for both observer positions since `a3c323d`. Measured on the fixed
+run, over Roman-covered events:
+
+| matrix | satellite median | no-satellite median | ratio no-sat / sat |
+|---|---|---|---|
+| photometric `condA` | 1.094e+06 | 1.214e+06 | **1.0094** |
+| astrometric `condB` | 4.545 | 4.548 | **1.0001** |
+
+The two observer geometries are equally conditioned to within 1%. There is no near-degeneracy
+at `satScale = 0`, so that hypothesis is closed. The other guess -- that the per-epoch
+photometric weights were not recomputed on the flip -- was also wrong, and in a way worth
+keeping: those weights are deliberately held fixed, which is what makes the comparison
+controlled. Changing them would have confounded the geometry change with a noise-model change.
+
 The original entry is kept verbatim below. SUPERSEDED.
 
 ---

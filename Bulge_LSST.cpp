@@ -760,8 +760,12 @@ int main(int argc, char** argv) {
             probe ? static_cast<std::streamoff>(probe.tellg()) : std::streamoff(-1);
         if (have <= 0) {
             std::ofstream h(fnPair);
-            h << "# lon lat tE u0 piE du_sat okA_sat okA_nosat "
-              << "sigtE_sat sigtE_nosat sigpiE_sat sigpiE_nosat nepL_pk nepR_pk w_area\n";
+            h << "# lon lat tE u0 piE tetE du_sat okA_sat okA_nosat okB_sat okB_nosat "
+              << "sigtE_sat sigtE_nosat sigpiE_sat sigpiE_nosat "
+              << "sigpiER_sat sigpiER_nosat sigtetE_sat sigtetE_nosat "
+              << "sigpiEb_sat sigpiEb_nosat relMl_sat relMl_nosat "
+              << "condA_sat condA_nosat condB_sat condB_nosat "
+              << "nepL_pk nepR_pk w_area\n";
         }
     }
 
@@ -1576,8 +1580,14 @@ int main(int argc, char** argv) {
                 // Step H3's second forecast for this event. Declared one scope out from the
                 // detection block below, because the row is written further down, where the
                 // satellite observable and the coverage counts have been computed.
-                double sigtE_ns = -1.0, sigpiE_ns = -1.0;
-                int    okNS     = 0;
+                // Step H3's no-satellite forecast for this same event. Declared here, before
+                // the detection block, so the row write further down can see them whether or
+                // not the Fisher step ran. -1.0 is the not-measured sentinel used everywhere
+                // else in this code: a sigma that never inverted is not a large sigma.
+                double sigtE_ns   = -1.0, sigpiE_ns  = -1.0, sigpiER_ns = -1.0;
+                double sigtetE_ns = -1.0, sigpiEb_ns = -1.0, relMl_ns   = -1.0;
+                double condA_ns   = -1.0, condB_ns   = -1.0;
+                int    okNS       = 0,    okNSb      = 0;
 
                 if (flagf > 0 and ndw > 2) { //if star is visible
                     cout << "************** DETECTABLE!!!!!! ********" << endl;
@@ -1706,12 +1716,42 @@ int main(int argc, char** argv) {
                             if (coNS->flagi > 0) ErrorCal(*coNS, *l, *s);
                             as->satScale = keepScale;
 
-                            okNS = coNS->okA[SJOINT];
-                            // -1.0 is the not-measured sentinel, as everywhere else: a sigma
-                            // that never inverted is not a large sigma, and the analysis has
-                            // to gate on okA rather than compare it.
-                            sigtE_ns  = okNS ? coNS->Era[SJOINT][1] : -1.0;
-                            sigpiE_ns = okNS ? coNS->Era[SJOINT][3] : -1.0;
+                            // Both halves of the forecast are recorded, because moving the
+                            // observer acts on both and they carry different physics.
+                            //
+                            //   PHOTOMETRIC (okA, Era): the magnification depends on |u|, and
+                            //   the two observers see different |u| at the same instant. That
+                            //   difference is the simultaneous parallax baseline, and it lands
+                            //   on piE.
+                            //
+                            //   ASTROMETRIC (okB, Erb): the centroid deflection is a vector,
+                            //   theta_E * u/(u^2+2), so moving the observer changes its
+                            //   direction as well as its size. Erb[0] is sigma(theta_E) and
+                            //   Erb[3] the astrometric route to piE, which is independent of
+                            //   the photometric one.
+                            //
+                            // relMl combines them: Ml = theta_E/(kappa piE) is the quantity a
+                            // microlensing survey actually wants, and it needs one observable
+                            // from each matrix, so it is the only place where a change in
+                            // either shows up as a change in the science.
+                            //
+                            // SROMAN as well as SJOINT: the L2 offset is Roman's geometry, so
+                            // Roman's own matrix is where any effect must appear first and
+                            // undiluted by Rubin's epochs.
+                            //
+                            // Condition numbers for both matrices and both observers, so the
+                            // conditioning question can be answered from the data instead of
+                            // hypothesised. This is the diagnostic OPEN_ITEMS asked for.
+                            okNS  = coNS->okA[SJOINT];
+                            okNSb = coNS->okB[SJOINT];
+                            sigtE_ns   = okNS  ? coNS->Era[SJOINT][1] : -1.0;
+                            sigpiE_ns  = okNS  ? coNS->Era[SJOINT][3] : -1.0;
+                            sigpiER_ns = coNS->okA[SROMAN] ? coNS->Era[SROMAN][3] : -1.0;
+                            sigtetE_ns = okNSb ? coNS->Erb[SJOINT][0] : -1.0;
+                            sigpiEb_ns = okNSb ? coNS->Erb[SJOINT][3] : -1.0;
+                            relMl_ns   = coNS->relMl[SJOINT];
+                            condA_ns   = coNS->condA[SJOINT];
+                            condB_ns   = coNS->condB[SJOINT];
                         }
                     }
 
@@ -1874,12 +1914,20 @@ int main(int argc, char** argv) {
             // every H3 figure uses.
             if (cfg.pairSat and (detL or detR or detJ)) {
                 std::ofstream fpair(fnPair, std::ios::app);
+                const int okAs = co->okA[SJOINT], okBs = co->okB[SJOINT];
                 fpair << std::setprecision(7)
                       << s->lon << " " << s->lat << " "
-                      << l->tE  << " " << l->u0  << " " << l->piE << " " << duSat << " "
-                      << co->okA[SJOINT] << " " << okNS << " "
-                      << (co->okA[SJOINT] ? co->Era[SJOINT][1] : -1.0) << " " << sigtE_ns  << " "
-                      << (co->okA[SJOINT] ? co->Era[SJOINT][3] : -1.0) << " " << sigpiE_ns << " "
+                      << l->tE  << " " << l->u0  << " " << l->piE << " " << l->tetE << " "
+                      << duSat << " "
+                      << okAs << " " << okNS << " " << okBs << " " << okNSb << " "
+                      << (okAs ? co->Era[SJOINT][1] : -1.0) << " " << sigtE_ns   << " "
+                      << (okAs ? co->Era[SJOINT][3] : -1.0) << " " << sigpiE_ns  << " "
+                      << (co->okA[SROMAN] ? co->Era[SROMAN][3] : -1.0) << " " << sigpiER_ns << " "
+                      << (okBs ? co->Erb[SJOINT][0] : -1.0) << " " << sigtetE_ns << " "
+                      << (okBs ? co->Erb[SJOINT][3] : -1.0) << " " << sigpiEb_ns << " "
+                      << co->relMl[SJOINT] << " " << relMl_ns << " "
+                      << co->condA[SJOINT] << " " << condA_ns << " "
+                      << co->condB[SJOINT] << " " << condB_ns << " "
                       << nepLpk << " " << nepRpk << " " << wArea << "\n";
                 fpair.close();
             }

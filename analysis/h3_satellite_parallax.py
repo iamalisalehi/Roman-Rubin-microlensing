@@ -108,8 +108,58 @@ def main():
     print(f"   improved by >2x  : {big:.1%}")
 
     figures(d, covered, blind, a.out_prefix)
-    verdict(covered, blind)
+    passed = validate(covered)
+    verdict(covered, blind, passed)
     return 0
+
+
+def validate(c):
+    """Two checks the measurement must pass before any number from it can be quoted.
+
+    Neither is a statistical test; both are statements about what the physics has to do, and
+    they exist because the first full run failed them. Reporting "53% of events improve" from
+    a comparison that fails these would have been a fabricated result.
+
+    1. MONOTONICITY IN du_sat. The entire mechanism is that separating the two observers gives
+       a simultaneous baseline on the parallax. A larger separation cannot buy less. If the
+       improvement shrinks as du_sat grows, whatever is being measured is not the separation.
+
+    2. sigma_tE MUST NOT COLLAPSE. Moving an observer re-weights the information; it does not
+       destroy the timescale, which is set by the shape of a light curve both observatories
+       still sample at the same epochs. A large systematic degradation in sigma_tE means the
+       two Fisher matrices are not two descriptions of the same event.
+    """
+    import numpy as np
+    ok = True
+    print("\n" + "=" * 74)
+    print("VALIDATION -- must pass before any ratio here is quotable")
+    print("=" * 74)
+
+    r = float(np.corrcoef(np.log10(c.du_sat), np.log10(c.ratio))[0, 1])
+    print(f"  1. corr(log du_sat, log sigma_piE ratio) = {r:+.3f}")
+    print("     a real satellite baseline improves with separation, so this must be NEGATIVE")
+    if r >= 0:
+        print("     *** FAILED: the gain shrinks as the observers separate ***")
+        ok = False
+    else:
+        print("     passed")
+
+    worse = float((c.ratio_tE > 1.01).mean())
+    med = float(c.ratio_tE.median())
+    print(f"  2. sigma_tE worse for {worse:.1%} of events, median ratio {med:.3f}")
+    print("     moving an observer cannot destroy the timescale; expect ~1")
+    if worse > 0.5 or med > 1.5:
+        print("     *** FAILED: sigma_tE degrades systematically ***")
+        ok = False
+    else:
+        print("     passed")
+
+    if not ok:
+        print("\n  VALIDATION FAILED. The ratios in this run are dominated by something other")
+        print("  than satellite parallax and MUST NOT be quoted as an H3 result. The control")
+        print("  (nepR_pk == 0) passing only shows the plumbing works: those events barely")
+        print("  involve Roman, so flipping the offset changes almost nothing for them.")
+    return ok
 
 
 def figures(d, covered, blind, prefix):
@@ -215,7 +265,7 @@ def figures(d, covered, blind, prefix):
     print(f"wrote {prefix}c_honest.png")
 
 
-def verdict(covered, blind):
+def verdict(covered, blind, passed=True):
     print("\n" + "=" * 74)
     print("THE RESULT, STATED PLAINLY")
     print("=" * 74)
@@ -232,6 +282,17 @@ def verdict(covered, blind):
         print(f"  control (no Roman epochs at peak): median {blind.ratio.median():.6f}"
               f" on n={len(blind):,}  <- must be 1")
     print()
+    if not passed:
+        print("  NO RESULT. The validation above failed, so none of these numbers measure")
+        print("  satellite parallax. What IS established, and does not depend on the Fisher")
+        print("  comparison at all, is the size of the observable itself:")
+        print(f"    du_sat median {covered.du_sat.median():.5f}, "
+              f"95th pct {covered.du_sat.quantile(0.95):.5f}, "
+              f"max {covered.du_sat.max():.5f}  [theta_E]")
+        print("  The two observers are separated by a few thousandths of an Einstein radius,")
+        print("  so the light-curve perturbation is tiny and a large precision gain would be")
+        print("  surprising on physical grounds. See DEVIATIONS.md 35.")
+        return
     if better < 0.01:
         print("  THIS IS A NULL. Fewer than 1% of Roman-covered events gain anything")
         print("  measurable from Roman's displacement to L2.")

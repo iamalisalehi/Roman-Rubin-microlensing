@@ -809,6 +809,19 @@
 
 	Astrometric microlensing is \textbf{not} a per-epoch detection in the GBTDS. The median maximum centroid shift is $0.121$~mas against a median Roman per-exposure astrometric precision of $5.28$~mas at these (faint) source magnitudes, and only $0.1\%$ of events have a shift exceeding Roman's own single-exposure precision. $\theta_E$ is nonetheless well forecast, because the survey stacks: the constraint comes from many epochs of a coherent trajectory rather than from any single measurement resolving the shift.
 
+	\subsection{Satellite parallax: the separation is small, and its effect is not yet measured}
+	\label{subsec:satpar}
+
+	Roman observes from L2 and Rubin from the ground, so the two see the source along slightly different lines of sight and the microlens parallax acquires a \emph{simultaneous} baseline in addition to the time-evolving annual one. The observable is the observer separation projected into Einstein radii,
+	\[
+	\Delta u_{\mathrm{sat}} = \pi_E\,D_\perp/\mathrm{AU},
+	\]
+	recorded per event. Over joint detections with Roman coverage near the peak its median is $\mathbf{0.0022}\,\theta_E$, its $95$th percentile $0.0096$, and its maximum $0.039$. The two observers are separated by a few thousandths of an Einstein radius, so the light-curve perturbation is small and a large gain in parallax precision would be surprising on physical grounds.
+
+	\textbf{What that separation buys in forecast precision is not yet measured, and no number for it is quoted here.} The natural experiment -- two runs differing only in the offset, matched event by event -- is impossible in this code, and for a physical reason rather than a bookkeeping one: moving the observer changes which events are detectable, the random-number stream is shared across the scan, and the two runs consequently diverge from the first sightline where the effect is non-zero. Measured, they agree exactly for $1{,}740{,}091$ events and then part company at precisely the first field inside Roman's footprint. An unpaired comparison of the two populations was attempted and rejected by its own control: it reported the satellite making the \emph{timescale} forecast $15\%$ worse, which is impossible for matched events and instead measures how much the two detected samples differ.
+
+	The comparison was therefore re-implemented as a controlled one, evaluating both observer positions for the same event inside a single run. That machinery is verified -- for events with no Roman epochs near the peak, where moving Roman cannot matter, the two forecasts agree to a median ratio of $1.000000$ over $29{,}171$ events -- but for events Roman does cover it fails two consistency checks that follow from the physics: the apparent improvement \emph{shrinks} as the observer separation grows, and $\sigma_{t_E}$ degrades systematically. Neither is possible for two descriptions of one event, so the ratios are being driven by something other than parallax information, and the cause has not yet been identified. The analysis code withholds the numbers rather than presenting them.
+
 	\subsection{The detection criterion, and what it invalidates}
 
 	The detection bar described in Section~\ref{subsec:detclass} -- a fixed $\Delta\chi^2>500$ on a signed statistic -- replaced a bar proportional to the epoch count. The change roughly doubles the detection rate inside Roman's footprint and raises it by about half outside, and it eliminates a class of inconsistency in which a single survey detected an event that the joint test rejected. \textbf{Every yield in this project that predates this change was conditioned on a different criterion and none of those numbers survive it.} Yields quoted here are conditioned on $\Delta\chi^2>500$, recorded in each run's provenance block.
@@ -821,6 +834,7 @@
 	\begin{itemize}
 		\item \textbf{Roman's astrometric error model is a placeholder.} Several filter-dependent constants carry either no F146 entry or the original K-band placeholder, and Roman's own astrometric precision curve is not yet a Roman curve. Every astrometric parameter uncertainty in this paper inherits that.
 		\item \textbf{Satellite parallax was absent from every result predating the observer-position work.} Results computed before Roman was given a position at L2 implicitly placed it at Earth. Anything involving $\pi_E$ from that era should be regarded as superseded.
+		\item \textbf{The precision gain from satellite parallax is unmeasured} (Section~\ref{subsec:satpar}). The paired comparison fails its own physical checks and the reason is not yet known; two untested candidates are that the per-epoch photometric weights are not recomputed when the observer is moved, and that the zero-offset configuration leaves a near-degeneracy that passes the conditioning gate while leaving marginalised errors unstable.
 		\item \textbf{Roman's halo orbit is not modelled.} The mean L2 offset is used; the halo orbit adds a periodic wobble on an effect that is already of order $10^{-3}$.
 		\item \textbf{The per-sightline stopping criterion is weak in its third floor}, requiring only two well-conditioned Fisher matrices, so a field can complete with very few characterisable events (Section~\ref{sec:fisher_caveats}).
 		\item \textbf{The GBTDS footprint is Penny et al.'s, and the footprint has since changed.} Rubin's wide field sees more of the bulge than the adopted region.

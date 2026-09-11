@@ -2247,3 +2247,113 @@ re-simulation with new draws -- the RNG is a `mt19937_64` seeded with a fixed se
 as a single stream, so a run from index 0 reproduces chunk 1's draws exactly. The recovered rows
 are therefore the same rows that were destroyed, and they can be checked against the surviving
 `MapLMC5.dat` and `LpLMC5.dat` chunk-1 entries, which were produced by those very draws.
+
+
+## 35. Step H3: the paired design cannot work, because the physics forbids it
+
+**Step H3 as written specifies:** "two production runs, identical seed and configuration,
+differing only in `L2_OFFSET_AU` (real vs 0). Match events by row; every event appears in both."
+
+**It does not hold, and cannot be made to hold.** Measured on the completed v3 pair:
+
+| | |
+|---|---|
+| events in exact lockstep from the start | **1,740,091** |
+| sightlines fully in lockstep | **459** |
+| first divergence | lon -0.619, lat -1.34 -- `ndd (Roman): 50401` |
+| footprint sightlines in the matched prefix | **1** |
+| footprint events in the matched prefix | **84** |
+
+The two runs are identical for the first 459 sightlines and then fork permanently, at the
+**first footprint sightline the scan reaches**. They stay in step only where Roman has no
+epochs -- which is exactly where satellite parallax is identically zero -- and diverge the
+moment it is not. The matched sample is therefore a paired experiment about nothing.
+
+### Why, mechanically
+
+The RNG is one `mt19937_64` stream shared across the whole scan, so any difference in how many
+draws are consumed shifts every subsequent event.
+
+It is **not** the Fisher path: `FisherM` and `ErrorCal` contain zero RNG draws (checked). It is
+the *detectability* branch. Each event draws `testL` and `testR` unconditionally, but the block
+guarded by `if (acceptRubin or acceptRoman)` draws a further `test = RandR(0.0, 100.0)`. Whether
+that branch is taken depends on `romanDetectable`, which depends on the light curve, which
+depends on where the observer is. Move Roman off the Earth-Sun line and some events change
+detectability; the conditional draw is taken in one run and skipped in the other; the stream
+forks and never resynchronises.
+
+**This is the physics working correctly, not a bug.** Changing Roman's location changes the
+parallax, which changes the trajectory, which changes what is detectable. The code is reflecting
+reality. What is wrong is the *experimental design* in the plan, which assumed two runs could be
+held event-for-event identical while varying the one thing that determines which events there
+are. Nothing in the simulation should be changed to force them back into step -- that would mean
+suppressing a real consequence of moving the observer in order to make a plot easier.
+
+**A fixed draw budget does not rescue it.** The fork is inside the per-event path, not in the
+loop's stopping rule, so pinning `--maxdraws` with unreachable targets does not align the
+streams. This also explains, after the fact, the 104-vs-101 event mismatch in the Step H7 A/B
+(Deviations 33) and in the `perf` profiling pair -- both used a fixed budget and still came out
+a couple of events apart. That was noted at the time and not chased; this is the reason.
+
+### The unpaired comparison was tried, and its own control rejects it
+
+Before adding anything to the simulation, the population comparison was run on the completed
+v3 pair: both runs gated to `detJ == 1 and okA_J == 1`, cut to `nepR_pk > 0` (Roman covers the
+peak), 6,793 and 6,844 events respectively, compared as distributions.
+
+| | median ratio, satellite / no-satellite | 68% bootstrap |
+|---|---|---|
+| `sigma_piE` -- the effect being measured | 0.9385 | [0.8957, 0.9951] |
+| **`sigma_tE`** -- the **control** | **1.1503** | **[1.0805, 1.2170]** |
+
+The control fails, and it fails in a direction that is physically impossible. Moving an
+observer cannot make the timescale forecast for a given event 15% WORSE; a Fisher forecast for
+fixed parameters and epochs does not degrade because the geometry changed. The 15% is therefore
+not an effect at all -- it is the two DETECTED POPULATIONS differing, because satellite
+parallax changes which events clear the detection bar. That selection systematic (15%) is
+larger than the precision effect being looked for (~6%), so the unpaired comparison cannot
+measure this, and its `sigma_piE` number must not be quoted.
+
+This is what motivated `--pair-satellite` below, and it is the reason the control was included
+at all: without it, 0.9385 would have read as a clean 6% improvement.
+
+### What is done instead
+
+**A binned population comparison, not per-event pairing.** Both runs are gated to jointly
+detected and jointly characterised events (`detJ == 1 and okA_J == 1`, with `-1.0` excluded as
+the not-measured sentinel), restricted to Roman's footprint, and compared as distributions
+within bins of `du_sat`, `tE` and `u0`. With tens of thousands of characterised detections per
+run the bins are well populated, and the questions Step H3 actually asks -- where the effect
+lives, how big it is, and whether it is a null -- are all answerable this way.
+
+What is lost is the per-event ratio `sigma_piE(with)/sigma_piE(without)` for an individual
+event. Figures H3a and H3b therefore show **ratios of binned summary statistics**, not a cloud
+of per-event ratios, and their captions must say so. A reader who believes the axis is a
+per-event ratio would over-read the scatter.
+
+### The design that would give true pairing
+
+Evaluate both values of `L2_OFFSET_AU` for the **same event inside one run**: at the point where
+a detected event is characterised, call `FisherM` twice, once with the satellite offset and once
+with it zeroed, and write both `sigma_piE` values on the same row. That is paired by
+construction, immune to the RNG question entirely (one stream, one sequence of events), and
+costs roughly one extra Fisher call per detection -- from the Step H7 profiling, the
+detection-gated path is about a quarter to a third of a footprint sightline, so the run gets
+perhaps 30% more expensive inside the footprint and not at all outside it.
+
+**This was implemented**, as `--pair-satellite`, once the control above showed the unpaired
+route could not work. Where a detected event is characterised, `as->satScale` -- the single
+knob carrying `L2_OFFSET_AU` into `lightcurve()` -- is flipped to zero, `FisherM` and
+`ErrorCal` run again into a second `covarian`, and both forecasts for that same event go to
+`h3_pair.dat`. The flag is off by default, so production runs are unaffected, and it refuses to
+run alongside `--no-satellite-parallax`, which would leave nothing to compare.
+
+Re-evaluating the Fisher matrix for an event whose data were generated with the offset ON is
+legitimate: the matrix is built from model derivatives at the true parameters, not from the
+realised noise. The question is what each observing geometry can constrain.
+
+The first smoke test shows the design works and carries its own control. Where Roman covers the
+peak the improvement is large -- `sigma_piE` 9.22 -> 2.01, 35.79 -> 2.82, 2.50 -> 0.029. Where
+`nepR_pk == 0`, so Roman contributes nothing near the peak, the two forecasts agree to 1%
+(11.13 vs 11.04). That is what the physics requires, and no amount of population matching could
+have shown it.

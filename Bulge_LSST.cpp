@@ -228,6 +228,11 @@ struct RunConfig {
     // is a clean no-op when disabled: with this flag the run must reproduce the pre-H1 output
     // byte for byte.
     bool   noSatPar    = false;
+    // Step H3. Characterise every detected event TWICE -- once with Roman at L2, once with
+    // the offset zeroed -- and write both forecasts to a side file. Two separate runs cannot
+    // answer this: moving the observer changes which events are detected, so the detected
+    // populations differ by more than the effect (DEVIATIONS.md 35).
+    bool   pairSat     = false;
 
     // Build the sightline grid, write the provenance block, report the strata, and stop
     // before drawing a single star. The point of stratifying (Step E1) is to decide how to
@@ -257,6 +262,13 @@ static void printUsage(const char* prog) {
         << "                 on the 2026-09-05 v2 run. Resuming at the map count would\n"
         << "                 re-simulate that gap and append duplicate rows to test5.dat.\n"
         << "                 If the run resumed an earlier one, add its --start-index too.\n"
+        << "  --pair-satellite\n"
+        << "                 characterise each detected event twice, with Roman at L2 and\n"
+        << "                 with the offset zeroed, writing both forecasts to h3_pair.dat.\n"
+        << "                 Step H3's experiment, done on one event at a time because two\n"
+        << "                 runs cannot be compared event-for-event. Costs about one extra\n"
+        << "                 Fisher call per detection. Incompatible with\n"
+        << "                 --no-satellite-parallax, which leaves nothing to compare.\n"
         << "  --dchi-det X   delta-chi2 a lensing model must beat a flat baseline by for\n"
         << "                 an event to count as detected (default "
         << DCHI_DET_DEFAULT << ", Penny+2019).\n"
@@ -311,6 +323,7 @@ int main(int argc, char** argv) {
         else if (arg == "--start-index") cfg.startIndex = std::atol(need("--start-index"));
         else if (arg == "--dry-run") cfg.dryRun      = true;
         else if (arg == "--no-satellite-parallax") cfg.noSatPar = true;
+        else if (arg == "--pair-satellite") cfg.pairSat = true;
         else if (arg == "--help")  { printUsage(argv[0]); return 0; }
         else {
             std::cerr << "ERROR: unknown option '" << arg << "'\n";
@@ -324,6 +337,12 @@ int main(int argc, char** argv) {
     // used, and the only way --stub reproduces those numbers.
     if (cfg.stubPatch and not strideGiven) cfg.stride = 1;
 
+    if (cfg.pairSat and cfg.noSatPar) {
+        std::cerr << "ERROR: --pair-satellite compares Roman at L2 against Roman at Earth, but "
+                  << "--no-satellite-parallax\n       has already put it at Earth. There "
+                  << "would be nothing to compare.\n";
+        return 1;
+    }
     if (not (cfg.dchiDet > 0.0) or not std::isfinite(cfg.dchiDet)) {
         std::cerr << "ERROR: --dchi-det (" << cfg.dchiDet << ") must be finite and positive. "
                   << "It is a delta-chi2 detection bar; a non-positive bar would declare every "
@@ -405,6 +424,10 @@ int main(int argc, char** argv) {
     auto ls = std::make_unique<lsst>();
     auto ro = std::make_unique<roman>();
     auto co = std::make_unique<covarian>();
+    // Step H3's second forecast: the same event with the satellite offset zeroed. Allocated
+    // once beside `co` rather than per event -- covarian owns several vectors, and building
+    // one per detection would cost more than the Fisher call it serves.
+    auto coNS = std::make_unique<covarian>();
 
     // Step H1: Roman's observer position. satScale multiplies L2_OFFSET_AU inside
     // lightcurve(), so 0 puts Roman back at the centre of the Earth -- the pre-H1 behaviour,
@@ -636,6 +659,7 @@ int main(int argc, char** argv) {
     std::string fnEffB  = "./files/MONTLMC/files/EfLMC"  + std::to_string(IMnum) + "B.dat";
     std::string fnGam   = "./files/MONTLMC/files/MapLMC" + std::to_string(IMnum) +  ".dat";
     std::string testf   = "./test"                       + std::to_string(IMnum) +  ".dat";
+    std::string fnPair  = "./h3_pair.dat";   //Step H3, written only under --pair-satellite
 
     // Open files.
     //
@@ -728,6 +752,19 @@ int main(int argc, char** argv) {
         std::cout << "  Continuing an existing " << testf << " (" << tableBytes
                   << " bytes); rows will be appended." << std::endl;
     }
+    // Step H3's side file. Same rule as the event table: the header is written only when
+    // there is no content yet, so a continuation appends instead of truncating.
+    if (cfg.pairSat) {
+        std::ifstream probe(fnPair, std::ios::ate | std::ios::binary);
+        const std::streamoff have =
+            probe ? static_cast<std::streamoff>(probe.tellg()) : std::streamoff(-1);
+        if (have <= 0) {
+            std::ofstream h(fnPair);
+            h << "# lon lat tE u0 piE du_sat okA_sat okA_nosat "
+              << "sigtE_sat sigtE_nosat sigpiE_sat sigpiE_nosat nepL_pk nepR_pk w_area\n";
+        }
+    }
+
     std::ofstream filg_in; //opened in append mode per event -- see above
 
     // Check all
@@ -995,6 +1032,8 @@ int main(int argc, char** argv) {
              << "# satellite_parallax  " << (cfg.noSatPar ? 0 : 1)
              << "   # 0 = Roman forced to Earth's position\n"
              << "# L2_offset_AU        " << (cfg.noSatPar ? 0.0 : L2_OFFSET_AU) << "\n"
+             << "# pair_satellite      " << (cfg.pairSat ? 1 : 0)
+             << "   # Step H3: every detection characterised at L2 AND at Earth\n"
              << "# dchi_det            " << cfg.dchiDet
              << "   # Step H7 fixed detection bar; every yield is conditioned on it\n";
         std::ofstream fprov("./files/MONTLMC/files/run_provenance.txt");
@@ -1534,6 +1573,12 @@ int main(int argc, char** argv) {
                     vsave = s->mus;
                 }
 
+                // Step H3's second forecast for this event. Declared one scope out from the
+                // detection block below, because the row is written further down, where the
+                // satellite observable and the coverage counts have been computed.
+                double sigtE_ns = -1.0, sigpiE_ns = -1.0;
+                int    okNS     = 0;
+
                 if (flagf > 0 and ndw > 2) { //if star is visible
                     cout << "************** DETECTABLE!!!!!! ********" << endl;
                     icon +=1;
@@ -1628,6 +1673,45 @@ int main(int argc, char** argv) {
                                         << l->piE      << " " << l->tetE     << " " << co->resu[1]  << " " << co->resu[2]  << " " << co->resu[3] << " "
                                         << co->resu[5] << " " << co->resu[9] << " " << co->resu[10] << " " << co->resu[13] << "\n";
                             fil0_append.close();
+                        }
+
+                        // -----------------------------------------------------------------
+                        // Step H3. The satellite-parallax experiment as a CONTROLLED
+                        // comparison on one event, instead of a difference between two runs.
+                        //
+                        // Why it must be done here. The obvious design -- two runs differing
+                        // only in L2_OFFSET_AU, matched by row -- cannot work. The RNG is one
+                        // stream and the per-event path draws conditionally on `acceptRubin
+                        // or acceptRoman`, so moving the observer changes what is detectable,
+                        // the streams fork at the first footprint sightline, and the two
+                        // runs' DETECTED populations then differ. Measured on the v3 pair,
+                        // that selection difference shifts the median sigma_tE -- which the
+                        // satellite cannot physically touch -- by 15%, several times the
+                        // effect being looked for. DEVIATIONS.md 35.
+                        //
+                        // Here the event is fixed: same draw, same epochs, same photometry,
+                        // only the observer moves. satScale is the single knob carrying
+                        // L2_OFFSET_AU into lightcurve(), and FisherM rebuilds the light
+                        // curve from it, so flipping it and recomputing gives the forecast
+                        // THIS event would have had with Roman at Earth.
+                        //
+                        // Re-evaluating is legitimate for an event whose data were generated
+                        // with the offset on: the Fisher matrix is built from model
+                        // derivatives at the true parameters, not from realised noise. The
+                        // question is what each observing geometry can constrain.
+                        if (cfg.pairSat) {
+                            const double keepScale = as->satScale;
+                            as->satScale = 0.0;
+                            FisherM(*s, *l, *as, *coNS, ndw);
+                            if (coNS->flagi > 0) ErrorCal(*coNS, *l, *s);
+                            as->satScale = keepScale;
+
+                            okNS = coNS->okA[SJOINT];
+                            // -1.0 is the not-measured sentinel, as everywhere else: a sigma
+                            // that never inverted is not a large sigma, and the analysis has
+                            // to gate on okA rather than compare it.
+                            sigtE_ns  = okNS ? coNS->Era[SJOINT][1] : -1.0;
+                            sigpiE_ns = okNS ? coNS->Era[SJOINT][3] : -1.0;
                         }
                     }
 
@@ -1783,6 +1867,22 @@ int main(int argc, char** argv) {
                     // Step H2: the satellite-parallax observable and contemporaneous coverage.
                     << duSat << " " << nepLpk << " " << nepRpk << "\n";
             filg_in.close();
+
+            // Step H3. One row per DETECTED event, carrying both forecasts for that same
+            // event. Written here rather than beside the Fisher call because duSat and the
+            // contemporaneous-coverage counts are computed above, and they are the axes
+            // every H3 figure uses.
+            if (cfg.pairSat and (detL or detR or detJ)) {
+                std::ofstream fpair(fnPair, std::ios::app);
+                fpair << std::setprecision(7)
+                      << s->lon << " " << s->lat << " "
+                      << l->tE  << " " << l->u0  << " " << l->piE << " " << duSat << " "
+                      << co->okA[SJOINT] << " " << okNS << " "
+                      << (co->okA[SJOINT] ? co->Era[SJOINT][1] : -1.0) << " " << sigtE_ns  << " "
+                      << (co->okA[SJOINT] ? co->Era[SJOINT][3] : -1.0) << " " << sigpiE_ns << " "
+                      << nepLpk << " " << nepRpk << " " << wArea << "\n";
+                fpair.close();
+            }
 //          
 
 

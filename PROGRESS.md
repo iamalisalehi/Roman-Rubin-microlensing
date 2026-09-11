@@ -881,6 +881,101 @@ not results**: every detection in them was decided by the threshold H7 replaced.
 
 ---
 
+## 5f. The astrometric deflection, measured on the post-H7 v3 table (2026-09-11)
+
+Step H5's script existed but its numbers were labelled **provisional** throughout this file,
+because they came off pre-H7 runs and H7 changed which events reach the Fisher step at all. Run
+against the v3 table -- which is post-H4 (Roman's own astrometric error model, `6c97375`) and
+post-H7 (`f959c8c`) -- they are provisional no longer.
+
+Sample: **82,888 detected events**, of which **8,894 (10.7%)** were observed by Roman at all.
+Roman is the only astrometric instrument here worth the name, so every number below is over
+those 8,894.
+
+### The signal is far below a single exposure
+
+The centroid of the source's unresolved images is displaced by
+`delta(u) = theta_E * u/(u^2+2)`, which peaks at `u = sqrt(2)`, **not** at closest approach. So
+the largest deflection an event ever reaches is `theta_E/sqrt(8)` for the **74.1%** whose
+trajectory crosses `u = sqrt(2)`, and `theta_E*u0/(u0^2+2)` for the rest.
+
+| max centroid shift | [mas] |
+|---|---|
+| 5th percentile | 0.0258 |
+| median | **0.1106** |
+| 95th percentile | 0.4601 |
+
+Roman's per-exposure astrometric precision is **1.1 mas**. The median event's peak astrometric
+signal is therefore **a tenth of what one exposure can measure**, and the measurement exists
+only through averaging ~50,000 exposures. See `OPEN_ITEMS.md` -- that averaging is an
+assumption, and it is the dominant caveat on everything in this section.
+
+### theta_E is measured, and it is Roman's alone
+
+Fractional precision `sigma(theta_E)/theta_E`, over events where the astrometric matrix inverted:
+
+| partition | median | better than 10% | better than 1% |
+|---|---|---|---|
+| joint | **0.2523** | **33.2%** | 4.3% |
+| Rubin only | 1.9282 | 0.7% | 0.0% |
+| Roman only | 0.2686 | 32.8% | 4.2% |
+
+Rubin's ground-based astrometry is not a capability here -- a median fractional error of 193%.
+Its contribution to `theta_E` is a 5% tightening of Roman's number (0.2686 -> 0.2523), not an
+independent measurement. **Any claim that the joint fit measures the Einstein radius should
+attribute it to Roman.**
+
+Note against the pre-H4 record: §4 of this file quotes F4's "90.1% of events measure `tetE` to
+better than 10%". It is now **33.2%**. H4 replacing Rubin's error curve with Roman's real one
+made the astrometry substantially worse, which is correct -- the placeholder was flattering
+Roman -- and it is the size of the distortion H4's verification step asked for.
+
+### The lens mass is the quantity that needs both telescopes
+
+`Ml = theta_E/(kappa piE)` takes one observable from each matrix: `theta_E` from Roman's
+astrometry, `piE` from the photometric baseline. It is the only place a change in either shows
+up as a change in the science.
+
+| Ml measured better than | joint | Rubin only | Roman only | joint gets it, **neither alone** |
+|---|---|---|---|---|
+| 100% | 36.0% | 6.6% | 28.1% | **608** |
+| 30% | 17.8% | 0.8% | 13.9% | **338** |
+| 10% | 7.5% | 0.0% | 5.9% | **145** |
+
+That last column is the synergy result, and it is a real one: 338 events get a lens mass to
+better than 30% from the joint fit that neither survey delivers by itself.
+
+**Counted with a precision threshold, deliberately.** A first pass counted events where
+`relMl` was merely not the `-1` sentinel and found **zero** masses exclusive to the joint fit --
+a meaningless number, because `relMl_L` exists for 99.9% of these events with a *median
+fractional error of 15* (1500%). An inverted matrix is not a measured mass. Any future count of
+"how many events measure X" in this project needs a threshold, not a sentinel check.
+
+### Two validation checks, both passed
+
+1. **`sigma_joint <= sigma_single`, event by event.** `F[SJOINT] == F[SRUBIN] + F[SROMAN]`
+   exactly, so the joint matrix sees strictly more information and its marginalised error cannot
+   exceed either single-survey error. **0 violations** over 8,889 joint-vs-Rubin and 8,893
+   joint-vs-Roman comparisons.
+2. **Precision improves with the size of the deflection.** If it did not, the astrometric matrix
+   would not be responding to the deflection at all:
+
+   | max-shift quintile | median shift [mas] | median `sigma(theta_E)/theta_E` |
+   |---|---|---|
+   | 1 | 0.0357 | 0.9670 |
+   | 2 | 0.0702 | 0.4153 |
+   | 3 | 0.1106 | 0.2801 |
+   | 4 | 0.1729 | 0.1413 |
+   | 5 | 0.3403 | 0.0701 |
+
+   Monotone across all five, `corr(log delta_max, log sigma/theta_E) = -0.481`.
+
+Both were computed by a second script written from the physics rather than from
+`analysis/h5_astrometric_shift.py`, so the two are an independent cross-check of each other and
+not one code path agreeing with itself.
+
+---
+
 ## 6. Traps a new session will otherwise fall into
 
 - **The two indexing systems.** `s.blend[i]` / `s.magb[i]` are indexed by **filter**
@@ -904,9 +999,14 @@ not results**: every detection in them was decided by the threshold H7 replaced.
   partial production table. **Never invoke `./roman` from the worktree while a run is writing
   through the worktree symlinks** — the per-event write re-opens the path every time, so a live
   run cannot be protected by moving the symlink. `OPEN_ITEMS.md`.
-- **The scientific Python lives in `/usr/bin/python3`, not the `python3` on `PATH`.** The
-  `/usr/local/bin/python3` that `which python3` finds has no numpy. Every `analysis/` script
-  needs `/usr/bin/python3`.
+- **The `analysis/` scripts need the project venv, `.roman/bin/python`.** This trap entry
+  previously said `/usr/bin/python3`, which is wrong and would cost a session an hour:
+  `/usr/bin/python3` has numpy but **no pandas**, and every `analysis/` script uses pandas.
+  Measured 2026-09-11: `/usr/bin/python3 -c "import pandas"` raises `ModuleNotFoundError`,
+  while `/home/ali/Documents/PhD/Offline_project/Roman/.roman/bin/python` has pandas,
+  matplotlib and scipy. The `/usr/local/bin/python3` that `which python3` finds has neither.
+  Corrected in place rather than left standing, because a trap list that is itself wrong is
+  worse than no trap list.
 - **`lightcurve()` takes a telescope argument** since Step H1: Roman observes from L2 and
   Rubin from the ground, so the two see different observer displacements. Passing the wrong one
   silently removes satellite parallax. Any table written before H1 has none — do not describe

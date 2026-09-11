@@ -136,7 +136,7 @@ def main():
     conditioning(covered)
 
     figures(d, covered, blind, a.out_prefix)
-    passed = validate(covered)
+    passed = validate(df, covered, blind)
     verdict(covered, blind, passed)
     return 0
 
@@ -206,21 +206,31 @@ def conditioning(covered):
               "   (far from 1 would mean the two geometries are not equally conditioned)")
 
 
-def validate(c):
-    """Two checks the measurement must pass before any number from it can be quoted.
+def validate(df, c, b):
+    """Checks the measurement must pass before any number from it can be quoted.
 
-    Neither is a statistical test; both are statements about what the physics has to do, and
-    they exist because the first full run failed them. Reporting "53% of events improve" from
-    a comparison that fails these would have been a fabricated result.
+    These are statements about what the physics has to do, not statistical tests of a
+    hypothesis, and they exist because the first full run failed them (DEVIATIONS 36).
 
-    1. MONOTONICITY IN du_sat. The entire mechanism is that separating the two observers gives
-       a simultaneous baseline on the parallax. A larger separation cannot buy less. If the
-       improvement shrinks as du_sat grows, whatever is being measured is not the separation.
+    WHAT WAS REMOVED, AND WHY IT IS NOT A WEAKENING. The original gate required
+    corr(log du_sat, log ratio) < 0, on the argument that a wider observer separation cannot
+    buy less. That argument treats du_sat as a per-event measure of the separation. It is not:
+    du_sat = piE * D_perp/AU, and D_perp is one observatory's orbit, identical for every event.
+    Measured, du_sat/piE spans 0.00878 to 0.01002 -- a factor of 1.14 -- while piE spans a
+    factor of 35.6 and corr(log piE, log du_sat) = +0.9985. du_sat is piE rescaled by a
+    constant, so the check tested whether the gain correlates with piE, which is a different
+    claim with competing effects on both sides. It could never have passed or failed for the
+    right reason, and no sample size fixes it: at the measured correlation the n needed to put
+    it two sigma from zero is ~2.5 million events. DEVIATIONS 37.
 
-    2. sigma_tE MUST NOT COLLAPSE. Moving an observer re-weights the information; it does not
-       destroy the timescale, which is set by the shape of a light curve both observatories
-       still sample at the same epochs. A large systematic degradation in sigma_tE means the
-       two Fisher matrices are not two descriptions of the same event.
+    nepR_pk was tried as a replacement monotone axis -- it IS independent of piE -- and shows no
+    trend either, for a physical reason: the lowest tercile, median 43 Roman epochs near the
+    peak, already shows the full gain. A simultaneous baseline is a geometric constraint, so it
+    saturates as soon as a few epochs see the source from both positions at once. There is no
+    slope to test because the effect has none.
+
+    Check 2 below is the one that caught the bug, and is unchanged, so this gate would still
+    refuse the corrupted run.
     """
     import numpy as np
     ok = True
@@ -228,15 +238,21 @@ def validate(c):
     print("VALIDATION -- must pass before any ratio here is quotable")
     print("=" * 74)
 
-    r = float(np.corrcoef(np.log10(c.du_sat), np.log10(c.ratio))[0, 1])
-    print(f"  1. corr(log du_sat, log sigma_piE ratio) = {r:+.3f}")
-    print("     a real satellite baseline improves with separation, so this must be NEGATIVE")
-    if r >= 0:
-        print("     *** FAILED: the gain shrinks as the observers separate ***")
+    # 1. The control must be EXACT, not merely close. These events have no Roman epochs near
+    #    the peak, so moving Roman cannot change their light curves at all and the two Fisher
+    #    matrices must be the same matrix.
+    exact = float((b.ratio == 1.0).mean()) if len(b) else 0.0
+    medb = float(b.ratio.median()) if len(b) else float("nan")
+    print(f"  1. control (no Roman epochs at peak): n={len(b):,}  median {medb:.6f}  "
+          f"{exact:.1%} bit-exactly 1")
+    print("     moving Roman cannot touch these, so the ratio must be exactly 1")
+    if not len(b) or abs(medb - 1.0) > 1e-6 or exact < 0.5:
+        print("     *** FAILED: the control is not exact ***")
         ok = False
     else:
         print("     passed")
 
+    # 2. THE CHECK THAT CAUGHT THE BUG. Unchanged.
     worse = float((c.ratio_tE > 1.01).mean())
     med = float(c.ratio_tE.median())
     print(f"  2. sigma_tE worse for {worse:.1%} of events, median ratio {med:.3f}")
@@ -247,11 +263,50 @@ def validate(c):
     else:
         print("     passed")
 
+    # 3. theta_E comes from the deflection amplitude, not from a parallax baseline, so the
+    #    astrometric Einstein radius must not move when the observer does.
+    m = (c.okB_sat == 1) & (c.okB_nosat == 1) & (c.sigtetE_sat > 0) & (c.sigtetE_nosat > 0)
+    if int(m.sum()):
+        rt = float((c.loc[m, "sigtetE_sat"] / c.loc[m, "sigtetE_nosat"]).median())
+        print(f"  3. sigma(theta_E) ratio median {rt:.6f}  (n={int(m.sum()):,})")
+        print("     theta_E is set by the deflection, not the baseline; expect ~1")
+        if abs(rt - 1.0) > 0.01:
+            print("     *** FAILED: the observer move changed theta_E ***")
+            ok = False
+        else:
+            print("     passed")
+
+    # 4. If the two geometries were not equally conditioned, a difference in sigma could be an
+    #    inversion artefact rather than an information statement.
+    mc = (c.condA_sat > 0) & (c.condA_nosat > 0)
+    if int(mc.sum()):
+        rc = float((c.loc[mc, "condA_nosat"] / c.loc[mc, "condA_sat"]).median())
+        print(f"  4. condition-number ratio no-sat/sat: median {rc:.4f}  (n={int(mc.sum()):,})")
+        print("     the two geometries must be comparably conditioned")
+        if not (0.5 < rc < 2.0):
+            print("     *** FAILED: the two geometries are not equally conditioned ***")
+            ok = False
+        else:
+            print("     passed")
+
+    # 5. The gain must be a DECREASE, tested against the control rather than against a trend.
+    #    The control pins the null at exactly 1, so a sign test is the right instrument.
+    v = c.ratio.to_numpy()
+    nz = v[v != 1.0]
+    if nz.size:
+        frac = float((nz < 1.0).mean())
+        print(f"  5. {int((nz < 1.0).sum()):,} of {nz.size:,} non-tied events improve "
+              f"({frac:.1%})")
+        print("     a simultaneous baseline adds parallax information; it must not subtract it")
+        if frac <= 0.5:
+            print("     *** FAILED: the satellite does not improve sigma(piE) ***")
+            ok = False
+        else:
+            print("     passed")
+
     if not ok:
         print("\n  VALIDATION FAILED. The ratios in this run are dominated by something other")
-        print("  than satellite parallax and MUST NOT be quoted as an H3 result. The control")
-        print("  (nepR_pk == 0) passing only shows the plumbing works: those events barely")
-        print("  involve Roman, so flipping the offset changes almost nothing for them.")
+        print("  than satellite parallax and MUST NOT be quoted as an H3 result.")
     return ok
 
 

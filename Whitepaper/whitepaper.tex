@@ -809,6 +809,12 @@
 
 	Astrometric microlensing is \textbf{not} a per-epoch detection in the GBTDS. The median maximum centroid shift is $0.121$~mas against a median Roman per-exposure astrometric precision of $5.28$~mas at these (faint) source magnitudes, and only $0.1\%$ of events have a shift exceeding Roman's own single-exposure precision. $\theta_E$ is nonetheless well forecast, because the survey stacks: the constraint comes from many epochs of a coherent trajectory rather than from any single measurement resolving the shift.
 
+	\subsection{How well anything is measured at all}
+
+	Every comparison above is a \emph{ratio}, and a ratio is unfalsifiable without the absolute scale it is a ratio of: a factor of two improvement on a $300\%$ error is not a measurement. The forecasts are therefore also reported directly, as cumulative distributions of the fractional $1\sigma$ forecast on $t_E$ and $\pi_E$ from the photometric matrix, on $\theta_E$ from the astrometric matrix, and on the derived lens mass $M_L = \theta_E/(\kappa\pi_E)$, for each of the three partitions separately. Two further panels carry the diagnostics that decide how much of it to believe: the per-event joint-against-single scatter, which must satisfy $\sigma_{\mathrm{joint}} \le \sigma_{\mathrm{single}}$ event by event, and the distribution of condition numbers, which says which inverses are trustworthy.
+
+	Those distributions are normalised to the full detected sample rather than to the measured subset, deliberately. Normalising to the subset that happens to invert would report the precision of the events that were easy to characterise and silently drop the rest, which is the same selection error that makes a naive ratio misleading. Alongside these, the $(t_E,\pi_E)$ plane is mapped to show \emph{where} in parameter space the combination characterises events that a single survey cannot -- which is the same population as the $245$-event yield gain above, shown as a region rather than a count.
+
 	\subsection{Satellite parallax: the separation is small, and its effect is not yet measured}
 	\label{subsec:satpar}
 

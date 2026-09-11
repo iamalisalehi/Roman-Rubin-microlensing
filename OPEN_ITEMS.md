@@ -1107,16 +1107,20 @@ numbers that follow from that assumption are large:
 
 - ~50,000 Roman exposures per detected event (median `ndwR` = 49,977; a GBTDS field gets 50,401
   12.1-minute exposures and `--stride-roman` strides sightlines, not epochs);
-- so an independent 1.1 mas floor averages to `1.1/sqrt(49977)` = **0.0049 mas**;
-- against a median peak centroid shift of **0.111 mas**, i.e. a signal 23x the averaged floor,
-  even though it is only **1/10 of a single exposure's precision**.
+- the per-exposure precision for these sources is **6.69 mas** at the median, not the 1.1 mas
+  bright-source floor -- `errRomanA` at each source's own F146 magnitude, median F146 ~ 22.98;
+- so an independent error averages to **0.0300 mas**;
+- against a median peak centroid shift of **0.1106 mas**, i.e. a signal at **3.68 sigma** of the
+  averaged precision, even though only **0.11%** of events have a shift exceeding a SINGLE
+  exposure's precision.
 
-**The whole astrometric result rests on that factor of 224.** If any component of the 1.1 mas is
+**The whole astrometric result rests on that factor of ~224 in averaging.** If any component of the 1.1 mas is
 correlated between exposures -- and a centroiding systematic is exactly the kind of error that
 usually is, through the PSF model, the distortion solution, or the reference frame -- then the
-effective floor is higher, by up to the full 1.1 mas in the fully-correlated limit, and every
-`sigma_tetE` and `relMl` in the project is optimistic. In the fully-correlated limit the median
-signal sits an order of magnitude *below* the floor and theta_E would not be measurable at all.
+effective precision is worse, approaching the full 6.69 mas per-exposure value in the
+fully-correlated limit, and every `sigma_tetE` and `relMl` in the project is optimistic. In that
+limit the median signal sits nearly two orders of magnitude *below* the noise and theta_E would
+not be measurable at all.
 
 So the honest statement of the H5 result is conditional: 33.2% of Roman-observed detections
 measure theta_E to better than 10% **if the per-exposure astrometric error is independent

@@ -905,10 +905,29 @@ trajectory crosses `u = sqrt(2)`, and `theta_E*u0/(u0^2+2)` for the rest.
 | median | **0.1106** |
 | 95th percentile | 0.4601 |
 
-Roman's per-exposure astrometric precision is **1.1 mas**. The median event's peak astrometric
-signal is therefore **a tenth of what one exposure can measure**, and the measurement exists
-only through averaging ~50,000 exposures. See `OPEN_ITEMS.md` -- that averaging is an
-assumption, and it is the dominant caveat on everything in this section.
+Roman's per-exposure astrometric precision for **these** sources is **6.69 mas** (median). The
+1.1 mas figure quoted for Roman is the bright-source centroiding floor and does not apply here:
+`errRomanA` evaluated at each source's own F146 magnitude gives 6.69 mas at the median, which
+inverts to F146 ~ 22.98 -- faint bulge main-sequence stars, exactly what a GBTDS microlensing
+source is.
+
+So the median event's peak astrometric signal is about **one sixtieth of what a single exposure
+can measure**, and only **0.11%** of events have a peak shift exceeding single-exposure
+precision at all. The measurement exists entirely through averaging: ~50,000 exposures take the
+precision to **0.0300 mas** (median), against which the median 0.1106 mas signal stands at
+**3.68 sigma**.
+
+That factor of ~224 in averaging is the whole astrometric result, and that it is available is an
+assumption -- see `OPEN_ITEMS.md`. It is the dominant caveat on everything in this section.
+
+### The astrometric peak is not the photometric peak, and seasons cut it
+
+Because the deflection peaks at `u = sqrt(2)` rather than at closest approach, an event's
+astrometric maximum falls at `|t - t0| = tE*sqrt(2 - u0^2)` -- twice, symmetrically, up to
+~1.41 tE either side of the photometric peak. Measured on this sample, **42.5%** of events have
+an astrometric peak that crosses a season edge, and of the events whose photometric peak Roman
+does catch inside a season, **52.8%** have an astrometric peak outside one. Catching the
+brightening is not the same as catching the wobble.
 
 ### theta_E is measured, and it is Roman's alone
 
@@ -921,8 +940,11 @@ Fractional precision `sigma(theta_E)/theta_E`, over events where the astrometric
 | Roman only | 0.2686 | 32.8% | 4.2% |
 
 Rubin's ground-based astrometry is not a capability here -- a median fractional error of 193%.
-Its contribution to `theta_E` is a 5% tightening of Roman's number (0.2686 -> 0.2523), not an
-independent measurement. **Any claim that the joint fit measures the Einstein radius should
+Its contribution to `theta_E` is a **1.7%** tightening of Roman's number: the paired,
+event-by-event median of `sigma_joint/sigma_Roman` is **0.9829**. (Comparing the two medians
+instead gives 0.2523/0.2686 = 0.939, a 6% gain -- the ratio of medians is not the median of
+ratios, and for a paired quantity the per-event statistic is the right one.) Against Rubin alone
+the same paired median is **0.1293**. **Any claim that the joint fit measures the Einstein radius should
 attribute it to Roman.**
 
 Note against the pre-H4 record: §4 of this file quotes F4's "90.1% of events measure `tetE` to

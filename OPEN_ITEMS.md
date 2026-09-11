@@ -1041,3 +1041,34 @@ table — but the *fraction* of detections that fail characterisation is now a n
 reporting, because H7 changed which events are offered to the Fisher step at all. Check
 `sigmaas`/`okA` rates on the v3 table against v2 before quoting any yield.
 
+
+
+## Step H3's paired Fisher comparison fails its own physical checks
+
+**Status: open, measured 2026-09-11 on the full paired run. Blocking the H3 result; not
+blocking anything else.**
+
+`--pair-satellite` characterises each detected event twice, at L2 and at Earth, in one run. The
+plumbing is verified -- events with no Roman epochs near the peak return a ratio of exactly
+1.000000 on n = 29,171 -- but for the 2,264 Roman-covered events the comparison fails two
+checks that follow from the physics rather than from statistics:
+
+- the improvement **shrinks** as `du_sat` grows (log-log correlation +0.227), where the whole
+  mechanism requires it to grow;
+- `sigma_tE` is worse for 85.5% of events, median ratio 4.88, which cannot be an information
+  statement about the same event at the same epochs.
+
+The diagnostic that points at the cause: it is the `satScale = 0` forecast that swings wildly
+between the improving and worsening groups (`sigma_piE` 0.904 vs 0.165), not the `satScale = 1`
+one.
+
+**Two untested candidates, recorded rather than asserted.** (1) The per-epoch photometric
+weights entering `FisherM` are computed from the `satScale = 1` magnitudes and are not
+recomputed when the offset is flipped. (2) With `satScale = 0` the two observatories see model
+curves identical in shape, which may leave a near-degeneracy that clears the `okA`
+condition-number gate while leaving marginalised errors unstable. Recording the condition
+numbers of both matrices in `h3_pair.dat` would separate these cheaply and was not done.
+
+Until this is settled H3 reports only `du_sat` (median 0.0022, max 0.039 theta_E) and states
+that the precision consequence is unmeasured. `analysis/h3_satellite_parallax.py` enforces this
+in code: it withholds the ratios when the checks fail.

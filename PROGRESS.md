@@ -834,6 +834,25 @@ chunk-2-only table is kept beside the combined one as `test5_chunk2only.dat`.
 
 **The v3 tables are complete: all 1829 sightlines, 147/147 footprint, 1682/1682 outside.**
 
+### Step H3's paired run, and its provenance label
+
+`roman_runs/2026-09-11_h3_paired/`, launched 2026-09-11 with `--pair-satellite --events 60
+--lenses 20 --nerr 2 --stride-roman 5`. A reduced per-sightline budget on purpose: H3 needs
+per-event ratios, not area-weighted yields, so how completely each sightline is sampled does
+not enter the statistic.
+
+**Its provenance stamp says `4570e53-dirty`, and the sources are the content of `85aa501`.**
+The binary was built after patching in `--pair-satellite` and before committing it -- exactly
+the trap recorded in section 3 of this file, walked into a second time. The `-dirty` suffix
+means the stamp is at least honest: it says the sources were not the named commit. The mapping
+is verified rather than asserted -- `git diff 85aa501 -- Bulge_LSST.cpp Lensing.cpp helper.cpp
+Bulge.h` is empty, so the binary's sources are exactly that commit's.
+
+The run was NOT restarted for this, because the data are unaffected and 520 sightlines were
+already done. The worktree binary has since been rebuilt clean (`make clean && make` after the
+last commit) and now stamps without a suffix. Any H3 figure must carry `85aa501`, not the
+string in the file.
+
 ### A throttled laptop, not a cost model, explains the runtime numbers
 
 Part one redid **provably identical** work -- byte-identical outputs -- in **3 h 08 m** of wall

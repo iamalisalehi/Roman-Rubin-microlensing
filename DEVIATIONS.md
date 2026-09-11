@@ -2357,3 +2357,67 @@ peak the improvement is large -- `sigma_piE` 9.22 -> 2.01, 35.79 -> 2.82, 2.50 -
 `nepR_pk == 0`, so Roman contributes nothing near the peak, the two forecasts agree to 1%
 (11.13 vs 11.04). That is what the physics requires, and no amount of population matching could
 have shown it.
+
+
+### 35.1 The paired run was done, and its result is that the method does not work yet
+
+`roman_runs/2026-09-11_h3_paired/`, full 1829-sightline scan, 32,255 detected events written to
+`h3_pair.dat`, 31,435 (97.5%) with both forecasts inverted, 2,264 of them with Roman epochs near
+the peak.
+
+**The plumbing is verified.** The 29,171 events with `nepR_pk == 0` -- no Roman epochs near the
+peak, so moving Roman cannot touch them -- come back with a median `sigma_piE` ratio of
+**1.000000**, 98.5% inside 1% of unity. The two Fisher evaluations really are the same event
+computed twice.
+
+**The comparison is not.** Taken at face value the Roman-covered events give a median ratio of
+0.9526 with 53.3% improving by more than 1%. That number is not reportable, because the same
+data fail two checks that are statements about physics rather than statistics:
+
+| check | what physics requires | measured |
+|---|---|---|
+| gain vs `du_sat` | a larger observer separation cannot buy *less* | median ratio rises 0.754 -> 0.852 -> 0.710 -> 0.914 -> 1.000 -> **1.353** across `du_sat` sextiles; log-log correlation **+0.227** |
+| `sigma_tE` | moving an observer does not destroy the timescale | **85.5%** of events worse, median ratio **4.88** |
+
+The correlation has the wrong sign: whatever is being measured gets *weaker* as the observers
+separate, which the mechanism forbids. And a five-fold systematic degradation of `sigma_tE` --
+a quantity set by the shape of a light curve both observatories still sample at the same epochs
+-- cannot be an information statement.
+
+The clearest single diagnostic: among events whose ratio improves, `sigma_piE` goes
+0.904 -> 0.234; among those that worsen, 0.165 -> 0.336. It is the **no-satellite** value that
+swings by a factor of five between the two groups, not the satellite value. The `satScale = 0`
+matrix is behaving erratically. Restricting to events where both forecasts are informative
+(`sigma_piE < piE` on both sides, n = 868) the median ratio is **1.038** -- no gain at all.
+
+Events that improve and events that worsen are also physically indistinguishable: median `tE`
+46.2 d against 46.8 d, `du_sat` 0.0019 against 0.0028, `piE` 0.202 against 0.301.
+
+**Why is not established, and no mechanism is asserted here.** Candidates not yet tested: the
+per-epoch photometric weights are computed from the `satScale = 1` magnitudes and are not
+recomputed when the offset is flipped; and with `satScale = 0` the two observatories' model
+curves become identical in shape, which may create a near-degeneracy that passes the `okA`
+condition-number gate while still leaving marginalised errors unstable. Neither has been
+measured, and the pattern above is the evidence, not the explanation.
+
+### 35.2 What Step H3 therefore delivers
+
+**One defensible physical statement, which needs no Fisher comparison at all.** The observer
+separation itself is tiny:
+
+| `du_sat` over Roman-covered detections | [$\theta_E$] |
+|---|---|
+| median | **0.0022** |
+| 95th percentile | 0.0096 |
+| maximum | 0.0391 |
+
+Roman and Earth are separated by a few thousandths of an Einstein radius. The light-curve
+perturbation that follows is correspondingly small, so a large precision gain would be
+surprising on physical grounds -- which is consistent with the null, and is the honest thing to
+say pending a comparison that passes its own checks.
+
+**The analysis script now refuses to report a result when those checks fail** (`validate()` in
+`analysis/h3_satellite_parallax.py`). It prints the failure, withholds the ratios, and falls
+back to the `du_sat` statement. Writing "53% of events improve" out of a comparison that fails
+them would have been a fabricated result, and the checks exist so that it cannot happen quietly
+on a later run either.

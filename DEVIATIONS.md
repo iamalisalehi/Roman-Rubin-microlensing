@@ -2586,11 +2586,13 @@ that mattered: it would still have refused the corrupted run.
 
 | | median `sigma(piE)` ratio | improved | n |
 |---|---|---|---|
-| control, no Roman epochs at peak | **1.000000** | 8.5% | 426 |
-| Roman covers the peak, joint | **0.9927** | 79.0% | 100 |
-| Roman covers the peak, Roman alone | **0.9904** | 88.8% | 98 |
+| control, no Roman epochs at peak | **1.000000** (90.6% bit-exactly 1) | 7.3% | 2,114 |
+| Roman covers the peak, joint | **0.992353** | 84.5% | 528 |
+| Roman covers the peak, Roman alone | **0.991085** | 87.3% | 526 |
 
-Bootstrap 95% CI on the joint median: **[0.99126, 0.99594]**, i.e. a gain of **0.4% to 0.9%**.
+Bootstrap 95% CI on the joint median: **[0.99151, 0.99347]**, i.e. a gain of **0.65% to 0.85%**,
+with a sign test at `p = 2.1e-62`. The median was 0.9927 at n = 71 and 0.99235 at n = 528, so
+the estimate is stable and only the interval narrowed.
 
 Highly significant and very small, which is the physically expected combination: the two
 observers are separated by a median of `0.00214` Einstein radii, so the light-curve perturbation

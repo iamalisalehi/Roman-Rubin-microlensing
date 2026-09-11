@@ -896,14 +896,30 @@ the `satScale = 1` path is untouched.
 
 ### The result
 
+Final sample: the run was stopped after 137 sightlines (scan ordinals 518-654), giving 2,673
+paired rows.
+
 | | median `sigma(piE)` ratio | improved | n |
 |---|---|---|---|
-| control, no Roman epochs at peak | **1.000000** (89.7% bit-exactly 1) | 8.5% | 427 |
-| Roman covers the peak, **joint** | **0.9924** | 80.9% | 111 |
-| Roman covers the peak, **Roman alone** | **0.9904** | 88.8% | 98 |
+| control, no Roman epochs at peak | **1.000000** (90.6% bit-exactly 1) | 7.3% | 2,114 |
+| Roman covers the peak, **joint** | **0.992353** | 84.5% | 528 |
+| Roman covers the peak, **Roman alone** | **0.991085** | 87.3% | 526 |
 
-Sign test on the Roman-covered events: 89 of 110 non-tied improve, one-sided `p = 9e-10`.
-Bootstrap 95% CI on the joint median: **[0.99126, 0.99594]**.
+Sign test on the Roman-covered events: 446 of 527 non-tied improve, one-sided
+**`p = 2.1e-62`**. Bootstrap 95% CI on the joint median: **[0.99151, 0.99347]**.
+
+**The estimate did not move as the sample grew.** The median ratio was 0.9927 at n = 71,
+0.9924 at n = 111 and 0.99235 at n = 528 -- stable to four decimals across a sevenfold increase,
+with the confidence interval narrowing from [0.9913, 0.9959] to [0.99151, 0.99347] as expected.
+That is what makes stopping early defensible rather than convenient.
+
+**Coverage caveat.** Those 137 sightlines contain **36 of the scan's 147 footprint sightlines**
+(24%), spanning `lon -0.62..-0.12`, `lat -1.44..+0.06` -- a contiguous piece of Roman's
+footprint, not all of it. The H3 statistic is a per-event ratio of two forecasts for the same
+event, so it is far less sensitive to which sightlines were sampled than an area-weighted yield
+would be; but stellar density and extinction do vary across the footprint, so the event mix is
+not guaranteed representative. Anyone quoting these numbers as a footprint-wide average should
+finish the stratum first (`--start-index 518`, run to ordinal 1070).
 
 **Satellite parallax improves `sigma(piE)` by 0.4-0.9%, and the effect is overwhelmingly
 significant.** Highly significant and very small is the physically expected combination: the
@@ -912,10 +928,11 @@ while the paired design removes essentially all the noise that would otherwise h
 
 Elsewhere it does nothing, correctly:
 
-- `sigma(theta_E)`: median ratio **0.999977**. The astrometric Einstein radius comes from the
+- `sigma(theta_E)`: median ratio **0.999857**. The astrometric Einstein radius comes from the
   deflection amplitude, not from a parallax baseline.
-- `sigma(tE)`: median **0.998**, 8.1% of events worse. (Before the fix: 4.881 and 85.5%.)
-- lens mass `relMl`: median **0.9971**, a 0.3% gain, inherited from `piE`.
+- `sigma(tE)`: median **0.998**, 7.0% of events worse. (Before the fix: 4.881 and 85.5%.)
+- lens mass `relMl`: a sub-percent gain, inherited from `piE`.
+- condition numbers, no-satellite / satellite: **1.0070** photometric, **1.0006** astrometric.
 
 ### Two things the analysis got wrong on the way, both now recorded
 
@@ -930,7 +947,7 @@ gate would still have refused the corrupted run.**
 
 **`nepR_pk` was tried as the replacement monotone axis and also shows no trend** -- and the
 reason is physics, not noise. The lowest tercile, median **43** Roman epochs near the peak,
-already shows the full gain (0.9917) against 0.9961 for the highest with 16,410 epochs. A
+already shows the full gain against the highest tercile with 16,410 epochs. A
 simultaneous baseline is a geometric constraint: once a few epochs see the source from both
 positions at once, the offset is constrained, and further epochs only reduce photon noise on a
 term that is already small. **The gain saturates almost immediately**, so there is no monotone

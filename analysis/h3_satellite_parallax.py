@@ -45,11 +45,36 @@ TEMPORAL_GAIN = {"10-30 d": 0.31, "30-100 d": 0.80, "100-300 d": 0.95, "> 300 d"
 TE_EDGES = [10.0, 30.0, 100.0, 300.0, np.inf]
 TE_LABELS = list(TEMPORAL_GAIN.keys())
 BG = "#fcfcfb"
-COLS = ("lon lat tE u0 piE du_sat okA_sat okA_nosat sigtE_sat sigtE_nosat "
-        "sigpiE_sat sigpiE_nosat nepL_pk nepR_pk w_area").split()
+# The current h3_pair.dat layout. Order matters absolutely: the file's header line begins with
+# a lone '#', so pandas is told comment="#" and the names are supplied here instead. Get this
+# list out of step with Bulge_LSST.cpp and every column silently shifts by one -- which has
+# already happened once in this project and cost a debugging session (PROGRESS.md traps).
+COLS = ("lon lat tE u0 piE tetE du_sat "
+        "okA_sat okA_nosat okB_sat okB_nosat "
+        "sigtE_sat sigtE_nosat sigpiE_sat sigpiE_nosat "
+        "sigpiER_sat sigpiER_nosat sigtetE_sat sigtetE_nosat "
+        "sigpiEb_sat sigpiEb_nosat relMl_sat relMl_nosat "
+        "condA_sat condA_nosat condB_sat condB_nosat "
+        "nepL_pk nepR_pk w_area").split()
+
+# The superseded layout, recognised only so it can be refused by name.
+COLS_OLD_15 = 15
 
 
 def load(path):
+    probe = pd.read_csv(path, sep=r"\s+", comment="#", header=None, nrows=1,
+                        engine="python")
+    n = probe.shape[1]
+    if n == COLS_OLD_15:
+        sys.exit(
+            f"{path} has the superseded 15-column layout.\n"
+            "That file was written before the derivative-reference fix (DEVIATIONS.md 36) and\n"
+            "every forecast in it is corrupted on the no-satellite side. Refusing to read it\n"
+            "rather than reporting numbers from it. Re-run with --pair-satellite on a binary\n"
+            "built from 3a88180 or later.")
+    if n != len(COLS):
+        sys.exit(f"{path} has {n} columns; this script expects {len(COLS)}. "
+                 "If Bulge_LSST.cpp changed the row, update COLS to match it.")
     df = pd.read_csv(path, sep=r"\s+", comment="#", names=COLS, engine="python")
     for c in COLS:
         df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -107,10 +132,78 @@ def main():
     print(f"   improved by >1%  : {better:.1%}")
     print(f"   improved by >2x  : {big:.1%}")
 
+    astrometry(df, covered, blind)
+    conditioning(covered)
+
     figures(d, covered, blind, a.out_prefix)
     passed = validate(covered)
     verdict(covered, blind, passed)
     return 0
+
+
+def astrometry(df, covered, blind):
+    """What moving the observer does to the ASTROMETRIC forecast, and to the lens mass.
+
+    Different physics from the photometric side, and worth separating. The magnification
+    depends only on |u|, so the satellite baseline reaches piE through a change in separation.
+    The centroid deflection theta_E u/(u^2+2) is a VECTOR, so moving the observer changes its
+    direction as well as its magnitude, and the astrometric matrix carries both sigma(theta_E)
+    and a route to piE independent of the photometric one.
+
+    The lens mass is the quantity that matters: Ml = theta_E/(kappa piE) needs one observable
+    from each matrix, so it is the only place where a change in either becomes a change in the
+    science rather than a change in a nuisance parameter.
+    """
+    print("\n== ASTROMETRY: what the observer move does to theta_E and to the mass")
+    okb = (df.okB_sat == 1) & (df.okB_nosat == 1) & \
+          (df.sigtetE_sat > 0) & (df.sigtetE_nosat > 0)
+    b = df[okb]
+    print(f"   both astrometric matrices inverted: {len(b):,} of {len(df):,}")
+    if len(b) == 0:
+        print("   none; nothing to report")
+        return
+    for lab, sel in (("Roman covers the peak", b[b.nepR_pk > 0]),
+                     ("CONTROL, no Roman epochs near peak", b[b.nepR_pk == 0])):
+        if not len(sel):
+            print(f"   {lab}: none")
+            continue
+        r = (sel.sigtetE_sat / sel.sigtetE_nosat)
+        print(f"   {lab}: n = {len(sel):,}   median sigma(theta_E) ratio = {r.median():.6f}")
+
+    m = (df.relMl_sat > 0) & (df.relMl_nosat > 0) & (df.nepR_pk > 0)
+    if m.sum():
+        rm = (df.loc[m, "relMl_sat"] / df.loc[m, "relMl_nosat"])
+        print(f"   lens mass: n = {int(m.sum()):,}   median relMl ratio = {rm.median():.6f}")
+        print(f"              improved by >1%: {(rm < 0.99).mean():.1%}")
+
+    mr = (covered.sigpiER_sat > 0) & (covered.sigpiER_nosat > 0)
+    if mr.sum():
+        rr = covered.loc[mr, "sigpiER_sat"] / covered.loc[mr, "sigpiER_nosat"]
+        print(f"   Roman ALONE, sigma(piE): n = {int(mr.sum()):,}   median ratio = {rr.median():.6f}")
+        print("              the L2 offset is Roman's geometry, so an effect must show here first")
+
+
+def conditioning(covered):
+    """Answer the near-degeneracy question from the data instead of hypothesising it.
+
+    OPEN_ITEMS recorded a guess that the satScale = 0 configuration might leave a
+    near-degeneracy that clears the okA condition-number gate while leaving marginalised errors
+    unstable. That guess was NOT the cause of the original H3 failure -- a stale derivative
+    reference was, DEVIATIONS 36 -- but the question is real and the columns are now here.
+    """
+    print("\n== CONDITIONING of the two matrices (the OPEN_ITEMS question, answered)")
+    for lab, a, b in (("photometric (condA)", "condA_sat", "condA_nosat"),
+                      ("astrometric (condB)", "condB_sat", "condB_nosat")):
+        m = (covered[a] > 0) & (covered[b] > 0)
+        if not m.sum():
+            print(f"   {lab}: no valid pairs")
+            continue
+        ca, cb = covered.loc[m, a], covered.loc[m, b]
+        print(f"   {lab}: n = {int(m.sum()):,}")
+        print(f"      satellite    median {ca.median():.4g}   95th {ca.quantile(0.95):.4g}")
+        print(f"      no-satellite median {cb.median():.4g}   95th {cb.quantile(0.95):.4g}")
+        print(f"      median ratio no-sat/sat = {(cb/ca).median():.4f}"
+              "   (far from 1 would mean the two geometries are not equally conditioned)")
 
 
 def validate(c):

@@ -2602,3 +2602,79 @@ sub-percent effect. The lens mass improves by 0.3% (median `relMl` ratio 0.9971)
 
 **This supersedes 35.2's statement that the precision consequence is unmeasured.** It is
 measured; it is under one percent.
+
+---
+
+## 38. Step H6: the whitepaper is written as a blueprint, not as a record of what changed
+
+**What the plan said.** `PHASE_H_PLAN.md` H6 lists what the collaborator draft must carry, and
+much of that list is phrased as supersession: "the old text describes none of this", "any number
+in the current draft predating this describes a MACHO population and must go", "the results as
+they stand", "an open-items section built from `OPEN_ITEMS.md`". The natural reading -- and what
+the 2026-09-11 pass produced -- is a document that tells the reader what the project used to do
+and what it now does instead.
+
+**What was done instead, at the user's instruction (2026-09-12).** "The purpose of H6 is for a
+reader to be able to use it as a blueprint to do what we are trying to do here, both
+scientifically and computationally." Every passage whose content was project archaeology was
+either deleted or converted into forward-facing design guidance, and a new **Implementation**
+section (§7) was added covering code layout, the three traps a reimplementation hits (the two
+indexing systems, the telescope tag, the `-1.0` sentinel), the output schema, determinism and
+provenance, and what a full scan costs.
+
+The conversions, since the distinction is the whole point of the step:
+
+| Was | Is |
+|---|---|
+| "both were changed after earlier versions of this work and no result predating the change survives it" | why a nested-model statistic must be thresholded on its total and why the statistic must be signed |
+| "this replaces a mass range inherited unchanged from an LMC simulation ... no number in any earlier draft describes a Galactic bulge" | four medians that are a cheap sanity check on any reimplementation's lens population |
+| "an earlier version of this code perturbed the diagonal by 1e-10" | a singular Fisher matrix is a finding, not an obstacle |
+| §8.5 "The detection criterion, and what it invalidates" | deleted; the criterion and its rationale live in §5.4, where a reader needs them |
+| "the advisor's original code paired Rubin with an ELT follow-up campaign" | deleted; §4.2 now documents `errRomanA`/`errRomanM` as they exist |
+
+**Two claims in the draft were false and are corrected, not merely restyled.**
+
+1. **§8.4 said the satellite-parallax effect was unmeasured** and that the paired comparison
+   failed two physics checks for an unknown reason. That was true when written at 10:41 on
+   2026-09-11 and false by 17:00, when Deviations 36 and 37 landed. It now reports the measured
+   result (median ratio 0.9924, `p = 2.1e-62`, control bit-exact).
+2. **§4.2 said Roman's astrometric errors came from an ELT-scale `FWHM` entry and that `gama[6]`
+   defaulted to zero.** Neither describes the code after H4: `errRomanA()` reads neither array.
+   §4.2 now gives the three-regime model, its sources, and the two factors of ten (per-exposure
+   vs daily-binned; the bright-source floor vs these sources' actual 6.69 mas) that are the
+   easiest way to get the astrometric result wrong by an order of magnitude.
+
+**The F-series was re-run on the post-H7 v3 table**, which the plan requires ("H6 should not go
+to collaborators on pre-H7 numbers") and which had not been done: §8.1's headline numbers still
+came from `f1_kroupa.csv`/`f2_kroupa.csv` of 2026-08-30, predating H1, E1a, H4 and H7. The
+result moved substantially:
+
+| | pre-H7 (2026-08-30) | post-H7 v3 |
+|---|---|---|
+| characterised by the joint fit, by neither survey alone | 245 | **351** |
+| in-gap median `sigma_piE(joint)/sigma_piE(Roman)`, by `tE` bin | 0.31 / 0.80 / 0.95 / 0.984 | **0.433 / 0.936 / 0.978 / 0.991** |
+| same for `sigma_tE` | 0.13 (short bin) | **0.250** |
+
+**The in-season control is new and is what makes the in-gap row a measurement.** The same
+statistic for events peaking *inside* a Roman season is 0.98 in every `tE` bin, so Rubin's
+2% in-season contribution is the floor against which the short-`tE` in-gap 0.250 must be read.
+It was not computed before; without it, "Rubin improves the forecast by 4x" is not separable
+from "Rubin improves every forecast a little".
+
+**`TEMPORAL_GAIN` in `analysis/h3_satellite_parallax.py` was updated to the v3 numbers** and the
+H3 figures regenerated, because H3c's whole function is to put the two baselines on one axis at
+the right scale and half that axis was pre-H7. All five validation gates still pass, unchanged.
+
+**Method note: the F-series ran against a detected-only extract, not the 2.7 GB table.** 2 GB of
+RAM was free on the machine; `f1`/`f2`/`f3` still load the whole table (the open item from Step
+F4). The extract keeps every column and every row with `detL | detR | detJ` -- 82,888 of
+6,075,044 -- which is exactly what F2/F3/F4 select internally, so those three are unaffected.
+**F1 is affected in three fields only**: `N_events`, `N_neither` and `frac_gap_seen_by_rubin`
+become conditional on detection. None is quoted in the whitepaper, and `N_neither` conditioned
+this way is the more useful quantity anyway -- it is the joint-only detection count.
+
+**Verification.** 45 pages, no undefined citations or references, all seven result figures
+embedded and all carrying `git_commit=f959c8c` in their own footers. Detected-event count from
+the extract (82,888) matches the independently produced H5 sample of PROGRESS §5f exactly.
+
+**Commit:** this step.

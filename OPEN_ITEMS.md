@@ -458,6 +458,20 @@ undetected events during the read -- they are 98.66% of the table and every one 
 scripts throws them away immediately anyway -- then diff the regenerated CSV against the
 committed one to prove nothing moved.
 
+**Still not taken, and worked around instead during Step H6 (2026-09-12).** With ~2 GB free the
+v3 table (6,075,044 rows) cannot be loaded at all, so the F-series was run against a streaming
+`awk` extract of the rows with `detL | detR | detJ` set -- 82,888 rows, every column kept, the
+`#` header preserved so `load_events()` still reads names from the file:
+
+    head -1 test5.dat > det.dat
+    awk 'NR>1 && ($38==1 || $39==1 || $40==1)' test5.dat >> det.dat   # detL detR detJ
+
+F2, F3 and F4 are unaffected, because each discards undetected rows itself. **F1 is affected in
+three fields** -- `N_events`, `N_neither` and `frac_gap_seen_by_rubin` become conditional on
+detection -- so an F1 run on such an extract must not be used to quote a detection efficiency.
+The workaround is a shell one-liner and does not close this item; the predicates still want
+writing.
+
 ---
 
 ## Two Phase F panels pool events across sightlines and do not yet apply the area weight (raised during Step E1)

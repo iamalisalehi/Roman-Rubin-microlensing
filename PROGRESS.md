@@ -1,5 +1,8 @@
 # PROGRESS.md — where this project stands
 
+**Last updated:** 2026-09-12, when Step H6 (the collaborator whitepaper) was written against
+the post-H7 v3 table — see §5h. **Phase H is complete.**
+
 **Last updated:** 2026-09-06, when Step H7 changed the detection threshold and the v2
 production runs were killed because of it — see §5e.
 
@@ -218,12 +221,12 @@ Commits are on `joint-fisher-refactor`. Where a step deviated from the plan, the
   *contemporaneous* coverage, which `ndw_L`/`ndw_R` cannot express). **Deviation 30.**
 
 - Step H5 — **the astrometric shift is a product.** `analysis/h5_astrometric_shift.py`, six
-  panels. The headline is a reconciliation: the median centroid shift is 0.121 mas and **only
-  0.1% of events exceed Roman's single-exposure astrometric precision**, yet `theta_E` is well
-  forecast because the median shift is **5.1x the stacked precision** (0.0236 mas over ~50,000
-  epochs). Detectable and forecastable are different questions with opposite answers. Also:
-  **49% of events have their astrometric peak beyond a Roman season edge** from `t0`, because
-  astrometry peaks at `u = sqrt(2)`, not at closest approach. **Deviation 31.**
+  panels. The headline is a reconciliation: the centroid shift is far below a single exposure
+  and only clears the noise after averaging, so *detectable* and *forecastable* are different
+  questions with opposite answers. **Deviation 31.** The numbers first recorded here were
+  pre-H7 and are superseded by §5f, measured on the v3 table: median shift **0.1106 mas**
+  against **6.69 mas** per exposure, **0.11%** of events above a single exposure, **3.68 sigma**
+  against the stack, **42.5%** with an astrometric peak across a season edge.
 
 - Step H4 — **Roman has its own astrometric error.** `errRomanA()` in `helper.cpp`: a 1.1 mas
   centroiding floor (1% of the 110 mas pixel) for `F146 <= 20.62`, rising to 10 mas at 23.5 and
@@ -420,10 +423,10 @@ Then, in roughly the order that makes sense:
 2. **Step E2 — revisit the per-sightline stopping criteria.** The current third floor (2
    well-conditioned events) was written when there was one Fisher matrix; with three
    matrices and stratified bins it needs replacing.
-3. **The rest of Phase H.** H1, H2, H4 and H5 are done. Remaining: **H3** (the satellite-parallax experiment and its three
-   figures — needs the twin runs), **H6** (the whitepaper for collaborators). Full text and the dependency
-   graph in `PHASE_H_PLAN.md`. **H3 replaces the original plan's Step G1**, which cannot be run
-   as written (Deviation 27).
+3. **Phase H is complete.** H1, H2, H4, H5, H7, H3 (§5g) and H6 (§5h) are all done. **H3
+   replaced the original plan's Step G1**, which cannot be run as written (Deviation 27), and
+   **G3 was absorbed into H6**. What Phase H leaves open is in `OPEN_ITEMS.md`, and the item
+   that matters most is the exposure-independence assumption behind every `theta_E` number.
 
 4. **The rest of Phase G.** G2: validate the Rubin-alone branch against Abrams et al. 2025 at
    l = 0.33°, b = 2.82°, **reweighting to their sampling first** or the comparison will look
@@ -1088,6 +1091,76 @@ digit either prints:
 Two independent implementations of `errRomanA` reading the same 2.9 GB table, agreeing on the
 per-exposure precision to four significant figures, is what makes the 6.69 mas number safe to
 build on -- and it is the number I had wrong before, so it was worth checking twice.
+
+---
+
+## 5h. Step H6 — the whitepaper, written as a blueprint (2026-09-12)
+
+`Whitepaper/whitepaper.tex`, **45 pages**, compiles clean: no undefined citations, no undefined
+references. Build: `pdflatex; bibtex whitepaper; pdflatex; pdflatex` from `Whitepaper/`.
+
+**The framing is the user's, and it changed the step.** "The purpose of H6 is for a reader to be
+able to use it as a blueprint to do what we are trying to do here, both scientifically and
+computationally." So project archaeology is out — no "an earlier version of this code…", no "no
+number predating this survives" — and anything instructive inside it was converted into design
+guidance a reimplementer can act on. **Deviation 38** has the conversion table, entry by entry.
+
+**What is new in the document**
+
+- **§7 Implementation** (new section): code layout; the three traps (the per-filter vs
+  per-telescope indexing, the telescope tag, the `-1.0` sentinel); the output schema;
+  determinism and the provenance block; what a full scan costs and where the time goes.
+- **§9 Results**: rewritten on the post-H7 v3 table, with seven figures.
+- **§10 Open items**: reordered by how much each would move the numbers, led by the
+  exposure-independence assumption. Two stale entries retired (H4 landed; H3 is measured).
+- **§4.2** rewritten: `errRomanA`'s three regimes with their sources, and the two factors of ten
+  (per-exposure vs daily-binned, bright-source floor vs these sources' 6.69 mas).
+
+**Two false claims were removed, not restyled.** §8.4 said the satellite-parallax effect was
+unmeasured — true when written on the morning of 2026-09-11, false by that evening. §4.2 said
+Roman's astrometry came from an ELT-scale `FWHM` entry and a zero `gama[6]`; `errRomanA()` reads
+neither array.
+
+### The F-series was re-run on the v3 table, and the headline numbers moved
+
+Everything in the old §8.1 came from `f1_kroupa.csv`/`f2_kroupa.csv` (2026-08-30), predating H1,
+E1a, H4 **and H7**. Re-run against
+`/home/ali/Documents/PhD/Offline_project/roman_runs/2026-09-06_v3_h7/test5.dat`:
+
+| | pre-H7 | post-H7 v3 |
+|---|---|---|
+| characterised jointly, by neither survey alone (in the six fields) | 245 | **351** |
+| in-gap median `sigma_piE(joint)/sigma_piE(Roman)` by `tE` bin | 0.31 / 0.80 / 0.95 / 0.984 | **0.433 / 0.936 / 0.978 / 0.991** |
+| in-gap median `sigma_tE` ratio, short bin | 0.13 | **0.250** |
+
+**The in-season control is new and is the reason the in-gap row means anything:** the same
+statistic for events peaking *inside* a season is **0.98 in every `tE` bin**. Rubin's in-season
+contribution is ~2%; the in-gap short-`tE` 0.250 is against that floor, not against 1.0.
+
+Other numbers the document now carries: 82,888 detections of 6,075,044 draws; detection classes
+76,146 Rubin+joint / 3,935 Roman+joint / 2,647 both / **160 joint-only**, anomaly 0; inside the
+six fields 8,902 detections, characterised joint 2,795, Roman 2,042, Rubin 1,113; fraction
+measured better than 10% (joint / Roman / Rubin) `tE` 20.4/14.3/6.3, `piE` 15.9/11.9/5.3,
+`tetE` 33.2/32.8/0.7, `Ml` 7.5/5.9/0.0.
+
+### Where the products are
+
+| | |
+|---|---|
+| detected-event extract (82,888 rows, all columns) | scratch only — regenerate with the `awk` one-liner in `OPEN_ITEMS.md` |
+| F1 table | `figures/f1_results_table_v3.csv` |
+| F2 / F3 / F4 figures + CSVs | `figures/f2_gap_filling_v3.*`, `f2_gap_filling_piE_v3.*`, `f3_characterization_map_v3.*`, `f4_fisher_precision_v3.*` |
+| H3 figures | `figures/h3a_where.png`, `h3b_corner.png`, `h3c_honest.png` (regenerated; `TEMPORAL_GAIN` in `analysis/h3_satellite_parallax.py` is now the v3 in-gap `piE` medians) |
+| H5 figures | `figures/h5_astrometric_shift_v3.png`, `h5_astrometry_summary.png` |
+
+All seven figures in the paper carry `git_commit=f959c8c` in their own footers. `whitepaper.tex`
+reaches them through `\graphicspath{{./}{../figures/}}` rather than by copying.
+
+**A trap for the next session:** `f1`/`f2`/`f3` still cannot load the 2.7 GB table on this
+machine (~2 GB free). The F-series above ran against the `awk` extract. F2/F3/F4 are unaffected
+by that — they filter to detections themselves — but **F1's `N_events`, `N_neither` and
+`frac_gap_seen_by_rubin` become conditional on detection**, so do not quote a detection
+efficiency off that run. `OPEN_ITEMS.md` carries the one-liner and the caveat.
 
 ---
 

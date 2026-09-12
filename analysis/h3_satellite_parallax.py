@@ -37,11 +37,13 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-# Temporal-baseline gain for H3c: median sigma_joint/sigma_Roman for piE on in-gap events,
-# from Step F2 (DEVIATIONS.md 24.2). A DIFFERENT physical effect -- Rubin filling Roman's
-# season gaps in time, not two observers separated in space. H3c exists to put the two on one
-# axis at the right scale, not to declare a winner.
-TEMPORAL_GAIN = {"10-30 d": 0.31, "30-100 d": 0.80, "100-300 d": 0.95, "> 300 d": 0.984}
+# Temporal-baseline gain for H3c: median sigma_joint/sigma_Roman for piE on in-gap events
+# (t0zone == 1, Roman-covered), recomputed from Step F2 on the post-H7 v3 table. A DIFFERENT
+# physical effect -- Rubin filling Roman's season gaps in time, not two observers separated in
+# space. H3c exists to put the two on one axis at the right scale, not to declare a winner.
+# The in-season control for the same quantity is ~0.98 in every bin, so the short-tE number
+# below is a gap effect and not a general "Rubin helps a bit" offset.
+TEMPORAL_GAIN = {"10-30 d": 0.433, "30-100 d": 0.936, "100-300 d": 0.978, "> 300 d": 0.991}
 TE_EDGES = [10.0, 30.0, 100.0, 300.0, np.inf]
 TE_LABELS = list(TEMPORAL_GAIN.keys())
 BG = "#fcfcfb"

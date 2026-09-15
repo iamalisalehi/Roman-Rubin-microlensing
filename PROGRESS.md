@@ -1,5 +1,18 @@
 # PROGRESS.md — where this project stands
 
+**Last updated:** 2026-09-15, when **Step G2 was started** and the advisor's paper on the parent
+code (Sajadian & Makler, arXiv:2608.16448) was read against it — **§5i**. **G2 is deferred by
+the user**; the designed replacement ("Option A") is in `OPEN_ITEMS.md`. **Step E2 is done**
+(Deviation 40): the plan's premise was wrong — the "well-conditioned" stopping floor had counted
+detections since the first commit. The floor now counts `okA[SJOINT]`; no per-bin floor was
+added, because pooled precision is set by `--stride-roman`. Output byte-identical on the stub
+regression; at production `--nerr 2` it changes no stopping decision. **Next, in order of
+consequence:** derive and apply the pooled per-sightline weight (`OPEN_ITEMS.md`, "Pooled
+per-event statistics give every sightline the same number of events") — it touches every pooled
+number in the whitepaper — then E1b's decision, then G2 Option A when the user wants it. G1 needs nothing: it was
+done as H3, astrometric half included. **§1 and the top of §5 below are stale** (they still
+describe the v2 run as in flight and E1a as unrun); §5h and §5i are current.
+
 **Last updated:** 2026-09-12, when Step H6 (the collaborator whitepaper) was written against
 the post-H7 v3 table — see §5h. **Phase H is complete.**
 
@@ -1161,6 +1174,48 @@ machine (~2 GB free). The F-series above ran against the `awk` extract. F2/F3/F4
 by that — they filter to detections themselves — but **F1's `N_events`, `N_neither` and
 `frac_gap_seen_by_rubin` become conditional on detection**, so do not quote a detection
 efficiency off that run. `OPEN_ITEMS.md` carries the one-liner and the caveat.
+
+---
+
+## 5i. Step G2 started, and the advisor's paper read against the parent code (2026-09-15)
+
+**Nothing in the code has changed.** Two documentation products and one decision pending.
+
+**1. Deviation 39** — Sajadian & Makler 2026 (arXiv:2608.16448) and its code
+(`LSSTHealpix.cpp`, github.com/SSajadian54/MapsMLRubin) are the parent of this pipeline. The
+entry tables which inherited choices were bugs and which were right for the LMC black-hole target.
+Two facts a later session would otherwise get wrong: **the Deviation 4 overwrite bug is NOT in the
+advisor's code** (it came in with this repo's GSL port, `e40716a`), and **the advisor's code
+expects a per-visit `sigmaA_LSST.txt`** (10-74 mas), independently confirming Deviation 32.3.
+
+**The scratch measurement** in that entry (fixing `t0` and `mbs0` vs marginalising them, on the
+fixture's events, Rubin partition): sigmas shrink by ×1.0-4.2 typically, ×133 for a sparse 5-day
+event, and by ×1.9-2.5 on the 900-day event, where the baseline magnitude, not `t0`, is the
+degeneracy. The program lived in the session scratchpad and is gone; Deviation 39 gives the exact
+method (four subset inversions of `inputA[SRUBIN]`, checked against `Era` to 0.0).
+
+**2. G2's premise, checked against Abrams et al. 2025 (arXiv:2309.15310) — it does not hold as
+written** (plan §0.1 rule 6):
+
+- The plan asks to compare the **parallax** characterised fraction (`tE > 2σ`, `piE > 2σ`) at
+  l = 0.33°, b = 2.82°. **Abrams et al. publish no absolute value for it** — §3.7 gives only
+  OpSim-to-OpSim ratio maps (Figs. 11-14) and a histogram without numbers (Fig. 10).
+- The only absolute efficiencies are **Table 6's Fisher metric**: fraction with `σtE/tE < 0.1` in
+  bins 10-20 / 20-30 / 30-60 / 200-500 d, e.g. `baseline_v3.0_10yrs` = 0.05 / 0.12 / 0.22 / 0.80.
+  But that is **sky-wide** (TRILEGAL N²-weighted HEALPix), **no parallax**, one mean star
+  (r = 24.5), fixed 50% blend, `u0` in [0, 1], analytic Fisher over `tE, t0, u0` and a
+  **per-band** `F_S, F_B` pair, and OpSims only up to v3.0.
+- **Our Rubin visit file does not reach that field**: `Baseline/BulgeBaseline.dat` spans
+  b = -3.59 to +1.10; zero visits within 1.75° of (0.33, 2.82). `Baseline/baseline_v5.1.0_10yrs.db`
+  (773 MB) is on disk, so a field-specific visit list can be queried. **`rubin_sim` is not
+  installed** in `.roman/`.
+- Our Rubin light curve uses **one** reference-band flux pair (`RUBIN_REF_BANDS = {2}`, the
+  unfinished half of Step C2, Deviation 3); Abrams et al. fit one per band.
+
+**Pending: the user chooses the comparison** (options in the session's G2 brief; recommendation
+there is to run Abrams et al.'s own public metric, `rubin_sim`'s `MicrolensingMetric`, and this
+pipeline's `FisherM` on the same OpSim, field and parameter-space sample, paired event by event,
+and to anchor the `rubin_sim` run by reproducing a Table 6 row first).
 
 ---
 

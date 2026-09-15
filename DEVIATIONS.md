@@ -2678,3 +2678,171 @@ embedded and all carrying `git_commit=f959c8c` in their own footers. Detected-ev
 the extract (82,888) matches the independently produced H5 sample of PROGRESS §5f exactly.
 
 **Commit:** this step.
+
+---
+
+## 39. The advisor's paper on the parent code: which inherited choices were bugs, which were context (2026-09-15)
+
+**What the plan said.** Nothing. Sajadian & Makler, arXiv:2608.16448 (v1 2026-08-17), postdates
+the plan. §0.1 describes the parent code only as "my advisor's legacy simulation for a different
+science case (LSST + ELT toward the LMC)".
+
+**What the paper is.** A Rubin-only forecast for isolated black holes of 3-5000 solar masses
+toward the LMC and SMC, on OpSim `baseline_v5.1`. Its code is `LSSTHealpix.cpp` in
+github.com/SSajadian54/MapsMLRubin (2,661 lines, read 2026-09-15), which shares `FisherM`,
+`ErrorCal`, the `covarian`/`lens`/`source` structs and the detection block with this project's
+pre-refactor code nearly line for line. **It is the same lineage, so it cannot be the G2
+validation** -- a defect common to both codes would pass silently. What it does do is tell us,
+for each inherited piece this refactor changed, whether the change fixed a bug or adapted a
+choice that was right for the original target.
+
+| Earlier entry | In the advisor's code / paper | Verdict |
+|---|---|---|
+| **22** -- `Ml_min/Ml_max` = 3/5000 | lines 88-89; the paper's stated IBH mass range | right for that paper; wrong only for the bulge |
+| **4** -- Fisher matrices overwritten each epoch | **absent**: `co.inputA[j][k] += ...` and `co.inputB[j][k] += ...` on plain arrays (lines 1181, 1272) | **introduced by this repo's initial commit `e40716a`** in the port to GSL: `gsl_matrix_set(co.inputA.get(), j, k, co.derm1f*co.derm2f/...)` (that commit's `Bulge_LSST.cpp`:881, :1023). Nothing in entry 4 bears on the paper's numbers |
+| **32.3** -- `sigmaA_LSST.txt` was mission-averaged | the parent code aborts on any table row outside 10-74 mas (line 317), i.e. it expects a **per-visit** table | the file delivered to this project (bright floor 0.3739576 mas) would fail that check. **Independent confirmation of the 26.74x renormalisation**, whose bright end lands at exactly 10 mas |
+| **33 / H7** -- `dchiL > 2*ndw`, `fabs` | lines 703, 710; the paper's detection criterion (I) | a convention there, not a bug: the `DET_ANOMALY` mechanism needs two surveys with very different epoch counts. The bar still rises with visit count, so the paper's efficiencies inherit that dependence (not quantified) |
+| **9 / C1** -- `t0` added as a free parameter | paper §4.5: `t0` and `m_base` "put aside ... to speed up the calculations"; `FisherM` perturbs only `u0, tE, fb, piE, xi` (lines 1113-1135) | **a real methodological difference, measured below** |
+| **1** -- `fb` stencil binned on `s.fb[0]` | line 1105, same code | harmless in a Rubin-only code, where `tt` is always 0 |
+| `piE` from the better of the two matrices | paper §4.5 | same as `ErrorCal` here |
+
+### The measurement: what fixing `t0` and the baseline magnitude does to Rubin's sigmas
+
+Holding a parameter fixed in a Fisher forecast asserts it is known perfectly. Where it is
+correlated with the parameters of interest this can only shrink their sigmas (Cramer-Rao), so the
+question is by how much.
+
+**Method.** A scratch copy of `tests/fisher_fixture.cpp` (not committed) runs the fixture's seven
+synthetic events through the production `FisherM`, then inverts four subsets of the **Rubin**
+partition's accumulated photometric information matrix: `{u0,tE,fb0,piE,xi}` (the paper), that
+plus `t0`, that plus `mbs0`, and all seven (this pipeline). Same matrix, same event; only the
+inverted subset differs. **Check:** the seven-parameter inversion reproduces the production
+`Era[SRUBIN]` to 0.0 relative difference on every event and parameter.
+
+`ratio` = sigma with both free / sigma with both fixed (>1 means fixing them is optimistic):
+
+| event | tE [d] | Rubin epochs | tE | piE | u0 | fb0 | which of the two matters |
+|---|---|---|---|---|---|---|---|
+| short_inseason | 5 | 46 | 133.3 | 9.25 | 13.8 | 1.79 | `t0` |
+| short_ingap | 5 | 60 | 3.17 | 3.34 | 3.17 | 1.69 | `t0` |
+| mid_inseason | 25 | 238 | 1.13 | 1.10 | 1.12 | 1.03 | `mbs0` |
+| mid_ingap | 25 | 220 | 2.34 | 4.08 | 2.14 | 2.41 | `t0` |
+| long_inseason | 100 | 840 | 1.39 | 1.01 | 1.06 | 1.28 | `t0` |
+| long_ingap | 100 | 710 | 2.84 | 4.23 | 2.00 | 2.90 | `t0` |
+| **verylong** | **900** | 840 | **2.53** | **1.86** | **2.13** | **2.06** | **`mbs0`** (t0 alone: 1.01-1.04) |
+
+**Reading it.** Two different degeneracies. For events short or badly sampled against the cadence,
+the peak time is poorly pinned and fixing `t0` removes most of the uncertainty. For an event
+lasting years, `t0` is pinned by the long rise and fall, but the unmagnified baseline is barely
+sampled inside a ten-year window, so the baseline magnitude trades off against blending and
+`u0` -- and fixing it halves every sigma. **That second regime is the paper's**: its detected
+events have mean `tE` of 1.1-9 years (paper Table 1).
+
+**What this is not.** It is not a correction to the paper's numbers. The fixture's events are
+bulge-geometry, noiseless, with flat 0.02 mag errors, a 3-day/250-day-per-year cadence and a fit
+window of 20 `tE`; none of that is the paper's setup. It establishes the direction and the order
+of magnitude of the effect of the choice, on the regime the paper works in, and nothing more.
+
+**Side note on the fixture.** Its existing "t0-marginalization" printout compares against the
+leading `{u0,tE,fb0,piE,xi}` subset, which for the Rubin partition drops `mbs0` as well as `t0`.
+The Cramer-Rao assertion it serves is still valid (fixing more parameters can only shrink sigmas
+further); only the label understates what it compares.
+
+**Consequence for G2.** Abrams et al. 2025 (arXiv:2309.15310, §2.4) marginalise over `t0`, the
+blend parameter and the source magnitude, as this pipeline does, so their parallax
+characterisation is methodologically compatible with ours where the paper's is not. And Martin
+Makler co-authors both papers, which is a direct route to Abrams et al.'s sampling details.
+
+**Commit:** documentation only; the measurement program is not committed (see PROGRESS §5 for
+whether it becomes a fixture mode in G2).
+
+---
+
+## 40. Step E2's premise: the "well-conditioned" stopping floor has counted detections since the first commit (2026-09-15)
+
+**What the plan said.** Step E2: "each field runs until three floors are met -- at least 850
+detected stars, at least 150 detected lensing events, and at least 2 events with a
+well-conditioned Fisher matrix. The third floor is very weak."
+
+**What is actually true, found while preparing E2 (no code changed).**
+
+1. **The third floor is not weak; it does not exist.** `nerr += 1.0` runs under
+   `if (co->flagi > 0)` (`Bulge_LSST.cpp`, detection block). `FisherM` sets `co.flagi =+ 1` on
+   entry (itself a typo for `= +1`, harmless), and **every path that could set it negative is
+   inside a `/* ... */` block** -- the `F * F^-1 != I` checks for both matrices. They were
+   already commented out in this repo's first commit, `e40716a` (its `Bulge_LSST.cpp`:914-941),
+   i.e. lost in the port to GSL. In the parent code they are live: `LSSTHealpix.cpp`:1194-1206
+   and 1286-1300 set `co.flagi = -1` when the product deviates from the identity by more than
+   0.2 (Deviation 39). **Measured on the post-H7 v3 map file: `nerr == numd1` on all 1,605
+   sightlines.** The conditioning test that does work is `invert_matrix`'s per-partition
+   `okA`/`okB` (Step C4), which the stopping rule never reads.
+2. **The floors are not "detected stars" and "detected lensing events" in the sense the plan
+   meant.** `icon` counts *observable* stars (`flagf > 0 and ndw > 2`); `nlens` counts events
+   passing any of the three detection tests. And the production values are not 850/150/2 but
+   `--events 300 --lenses 50 --nerr 2` (v3 provenance).
+3. **Which floor binds depends on the footprint.** Outside Roman's footprint 1,377 of 1,459
+   aggregated sightlines stopped at exactly 50 detections (`nlens` binds); inside it 95 of 146
+   stopped with more (median 84), because detections arrive faster than observable stars and
+   `icon = 300` binds. Median draws per sightline 783, max 34,156; 59 capped at 5e4.
+4. **Nearly every detection is characterised.** One streaming pass over `test5.dat` (82,888-ish
+   detections, 1,612 sightline keys), per sightline, medians:
+
+   | | detections | okA joint | okA Rubin | okA Roman | okB joint |
+   |---|---|---|---|---|---|
+   | footprint (149) | 57 | 57 | 56 | 56 | 57 |
+   | outside (1,463) | 50 | 50 | 50 | 0 | 50 |
+
+   Joint-characterised events **per tE bin, per sightline** (median; sightlines with zero):
+
+   | | < 10 d | 10-30 | 30-100 | 100-300 | > 300 d |
+   |---|---|---|---|---|---|
+   | footprint | 7 (0) | 16 (0) | 19 (0) | 12 (0) | 4 (2) |
+   | outside | 2 (426) | 10 (102) | 18 (10) | 14 (0) | 5 (10) |
+
+**Consequence for E2.** The plan's proposed direction -- "enough well-conditioned events per bin
+per matrix", per sightline -- would chase single-digit counts at every sightline for statistics
+that no analysis product computes per sightline: F2, F3, F4, H3 and H5 all pool across
+sightlines. The quantities those products depend on are the pooled count per stratum
+(footprint/outside x tE bin x partition) and how sightlines are weighted when pooled
+(`OPEN_ITEMS.md`, the entry on per-sightline weights). E2's brief is written against that.
+
+### What Step E2 did (approved by the user 2026-09-15)
+
+**Plan said:** propose a replacement stopping rule with enough well-conditioned events per bin
+per matrix, and explain the run-time trade-off.
+
+**Done instead, three parts:**
+
+1. **Code: the third floor now counts what it is named for.** In the detection block,
+   `nerr += 1.0` became `nerr += co->okA[SJOINT] ? 1.0 : 0.0` -- the joint photometric matrix
+   inverted within `kMaxCondition` (Step C4). `flagi` and its disabled checks are left alone
+   (the `flagi` entry in `OPEN_ITEMS.md` still stands).
+2. **No per-sightline per-bin floor.** Per the table above it would chase single-digit counts for
+   statistics nothing computes per sightline. **Pooled precision is set by sky density, i.e. by
+   `--stride-roman`** (≈6x footprint sightlines at 2 vs 5) and secondarily by `--lenses` (≈2x at
+   double the value, at ≈2x the Fisher-dominated footprint cost). A production choice, not code.
+3. **Pooled weighting deferred to its own analysis step** -- `OPEN_ITEMS.md`.
+
+**What the code change does and does not do in production.** 2,002 of 82,888 v3 detections
+(2.415%) had `okA_J != 1` -- 62 of 9,002 in the footprint, 1,940 of 73,886 outside -- spread over
+689 sightlines. So the counter now diverges from `nlens` on real runs. **But at the production
+`--nerr 2` the floor still does not bind**: the fewest successful joint inversions at any v3
+sightline is 7 (measured over all 1,612 sightline keys), and `nlens` (outside) or `icon`
+(footprint) still decides when the loop ends. The change makes the floor honest and usable; it does not move
+a v3-configuration run. Raising `--nerr` is now meaningful where before it was a synonym for
+`--lenses`.
+
+**Verification.**
+- `g++ -std=c++17 -fsyntax-only Bulge_LSST.cpp`: pass.
+- `./fishertest`: exit 0, all assertions held, output **identical** to the pre-change run
+  (`FisherM` untouched).
+- **Stub regression**, baseline binary built from `HEAD`'s own sources against the new one, each
+  in an isolated directory with symlinked inputs and private outputs,
+  `--stub --stride 2 --events 2 --lenses 1 --nerr 1 --maxdraws 500` (`--nerr 1`, not the recipe's
+  0, so the floor is consulted): `test5.dat` (78 lines), `MapLMC5.dat`, `LpLMC5.dat`,
+  `EfLMC5.dat`, `EfLMC5B.dat` **byte-identical**; `run_provenance.txt` differs only in
+  `git_commit`/`built`. **Honest limitation:** none of the stub's 9 detections had `okA_J != 1`,
+  so the stub proves no regression but does not exercise the new branch; the v3 count above is
+  the evidence that the branch is reachable.
+
+**Commit:** this step.

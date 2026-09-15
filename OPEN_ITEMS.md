@@ -1166,3 +1166,97 @@ the two sources cited by H4 addresses it.
 
 Recording rather than fixing, because inventing a split would be worse than naming the
 assumption.
+
+---
+
+## Step G2 as the plan writes it has no published number to compare against; the replacement is designed but deferred
+
+**Status: open, raised 2026-09-15. The user chose to skip G2 for now and do E2 first.** Full
+reasoning: `DEVIATIONS.md` entry 39 and `PROGRESS.md` §5i.
+
+**What is wrong.** `JOINT_FIT_REFACTOR_PLAN.md` Step G2 asks for the Rubin-alone characterised
+fraction (`tE > 2 sigma_tE` and `piE > 2 sigma_piE`) at Abrams et al. 2025's bulge field,
+l = 0.33°, b = 2.82°, compared against "their published value". Abrams et al.
+(arXiv:2309.15310) **publish no absolute value for that quantity** -- §3.7 shows only
+OpSim-to-OpSim ratio maps (Figs. 11-14) and an unlabelled histogram (Fig. 10). Their only
+absolute efficiencies are Table 6's `sigma_tE/tE < 0.1` fractions, which are sky-wide,
+parallax-free, single-mean-star and per-band-flux, on OpSims up to `baseline_v3.0`.
+
+**Why it matters scientifically.** G2 is the one external check on the Rubin branch -- the answer
+to "why trust a new simulator". The advisor's paper (arXiv:2608.16448) cannot substitute: it runs
+the same parent code, so a shared defect would pass silently.
+
+**Why deferred.** User decision, 2026-09-15. It also needs a new dependency and two large
+downloads (below).
+
+**What the fix involves -- Option A, a paired comparison on identical inputs:**
+
+1. **Anchor.** Install `rubin_sim` in `.roman/` (not installed as of 2026-09-15; needs network,
+   plus its support data, possibly several GB -- check disk and the ~2 GB free RAM first).
+   Download `baseline_v3.0_10yrs.db` (~800 MB) and reproduce one Table 6 row with
+   `rubin_sim`'s `MicrolensingMetric`: Fisher metric 0.05 / 0.12 / 0.22 / 0.80 in `tE` bins
+   10-20 / 20-30 / 30-60 / 200-500 d. This proves their metric is being run as they ran it
+   before anything is compared against it.
+2. **Cadence.** Query `Baseline/baseline_v5.1.0_10yrs.db` (on disk) for a 3.5° square around
+   RA = 263.89°, Dec = -27.16°. **Do not reuse `Baseline/BulgeBaseline.dat`**: it spans
+   b = -3.59 to +1.10 and has zero visits within 1.75° of that field.
+3. **One event list, their sampling.** `tE` uniform within each bin, `u0` uniform on [0, 1],
+   `t0` uniform over the survey, source magnitudes u 25.2, g 25.0, r 24.5, i 23.4, z 22.8,
+   y 22.5, blend fraction 0.5 (Abrams et al. §2.3).
+4. **Both codes on every event.** `rubin_sim`'s Fisher metric, and this pipeline's `FisherM` in
+   a new standalone driver in the style of `tests/fisher_fixture.cpp` (production code
+   untouched), with `piE` and `xi` held fixed by subset inversion of `inputA[SRUBIN]` so both
+   fit the same geometric parameters (method and its `Era` cross-check: Deviation 39).
+5. **Compare per event**, not only per bin: the `sigma_tE` ratio distribution, then the
+   `sigma_tE/tE < 0.1` fraction per bin.
+6. **Fix the matching rules before running**, so agreement cannot be tuned into existence. Two
+   differences are expected and are not bugs; measure each separately if the codes disagree:
+   (a) Abrams et al. fit a source/blend flux pair **per band**, this pipeline one r-band pair
+   (`RUBIN_REF_BANDS = {2}`, unfinished Step C2, Deviation 3), so theirs should be the larger
+   sigma; (b) `calc_mag_error_m5` in `rubin_sim` against `errlsstM`, same Ivezic et al. 2019
+   family, constants to be compared.
+
+**Option B, cheap and complementary:** ask Martin Makler (co-author of both papers) for the
+numbers behind Abrams et al.'s bulge-field parallax characterisation (Fig. 10). It is the only
+route to testing the parallax quantity the plan actually named.
+
+**Rejected, Option C:** comparing directly against Table 6. A sky-wide v3.0 number against a
+single-field v5.1 number cannot distinguish a bug from a setup difference.
+
+---
+
+## Pooled per-event statistics give every sightline the same number of events, whatever its event rate
+
+**Status: open, found 2026-09-15 while preparing Step E2. Effect size not yet measured.**
+
+**What is wrong.** The per-sightline loop stops on a *count* (Deviation 40): outside Roman's
+footprint almost every sightline contributes exactly 50 detections, inside it ~57-84. So a
+sightline's share of the per-event table is set by the stopping rule, not by how many events the
+sky there actually produces -- which varies with stellar density, extinction and optical depth
+across the scan. Any statistic pooled over events from several sightlines therefore weights
+sightlines roughly equally per event rather than by expected yield. `w_area` corrects only the
+sky-area part of that (Step E1), and **no analysis script applies even that**: `f1`-`f4` never
+call `romanlib.area_weight()`, and nothing in `analysis/` reads `nsim`.
+
+The code already knew. The map-file writer's comment (`Bulge_LSST.cpp`, Step E1 columns) says
+the columns were added so that "the correct pooled weight, `w_area/nsim`, is computable" -- the
+join exists (`lon`, `lat` in both files), the weight was never applied. Whether `w_area/nsim` is
+itself sufficient, or also needs the per-sightline star count (`log10 Nstart` is in the map file)
+and event rate (`log10 Gamma`), is **not yet derived** -- derive it before applying anything.
+
+**Why it matters scientifically.** It does not touch anything computed per event (a ratio of two
+forecasts for the same event, H3's paired comparison) or per sightline. It does touch every
+pooled fraction and median: the whitepaper's "fraction measured better than 10%" numbers, F2's
+per-bin medians, F3's map, F4's distributions. Inside the footprint the sightlines are fairly
+alike and the effect may be small; pooled across footprint and outside, where detection rates
+differ most, it may not be.
+
+**Why deferred.** It is an analysis-layer fix, not a simulation one, and it needs the weight
+derived first. It is also coupled to E2: any new stopping rule changes the per-sightline counts,
+and so changes how much this matters.
+
+**What the fix involves.** (1) Derive the per-event weight for a pooled statistic from how a draw
+maps to sky events (`nsim`, `Nstart`, `Gamma`, `w_area`). (2) Add it to `romanlib.py` beside
+`area_weight()`, joined on (`lon`, `lat`). (3) Re-run one headline pooled number both ways --
+the six-field "better than 10%" fractions are the cheapest -- and record the shift. Only then
+decide whether F1-F4 need regenerating.

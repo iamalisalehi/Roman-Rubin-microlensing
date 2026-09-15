@@ -1673,7 +1673,9 @@ int main(int argc, char** argv) {
                         FisherM(*s, *l, *as, *co, ndw);
 
                         if (co->flagi > 0) {
-                            nerr += 1.0;
+                            // flagi is always +1: FisherM's F*F^-1 checks are commented out
+                            // (Deviation 40). The conditioning test that works is okA.
+                            nerr += co->okA[SJOINT] ? 1.0 : 0.0;
                             ErrorCal(*co, *l, *s);
 
                             std::ofstream fil0_append(fnLDt, std::ios::app);

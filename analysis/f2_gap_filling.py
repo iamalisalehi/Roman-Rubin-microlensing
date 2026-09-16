@@ -108,9 +108,18 @@ def main():
                     help="largest dt_edge to plot [d]; dt_edge is distance to the NEAREST "
                          "edge, so a ~110 d gap tops out near 55 d")
     ap.add_argument("--width", type=float, default=15.0, help="dt_edge bin width [d]")
+    ap.add_argument("--map", default=None,
+                    help="MapLMC5.dat -- needed for the event-rate weight (Deviation 41)")
+    ap.add_argument("--log", action="append", default=[],
+                    help="run log(s), for sightlines whose map rows a killed run lost")
+    ap.add_argument("--unweighted", action="store_true",
+                    help="deliberately report the raw sample, with no event-rate weight")
     a = ap.parse_args()
 
     df = R.load_events(a.events)
+    w, wlabel = R.attach_weight(df, a.map, a.log, a.unweighted)
+    df["W"] = w
+    print(f"weighting: {wlabel}")
 
     # See the module docstring: both restrictions matter, and dropping the second one
     # (ndw_R > 0) silently turns this figure into a plot of Roman's footprint.
@@ -140,18 +149,29 @@ def main():
             continue
 
         # ---- precision panel: median ratio, IQR band ----
-        xs, med, q25, q75 = [], [], [], []
+        xs, med, q25, q75, med_raw = [], [], [], [], []
         for iv, g in sub.groupby("dtBin", observed=True):
-            r = g["ratio"].dropna()
-            if len(r) < MIN_PER_BIN:
+            ok = g["ratio"].notna()
+            r = g.loc[ok, "ratio"].to_numpy()
+            rw = g.loc[ok, "W"].to_numpy()
+            # Gate on the EFFECTIVE sample, not the raw count: under the weight a bin of
+            # forty events can carry the precision of eight, and a median drawn from that
+            # is noise wearing a data point's clothes.
+            neff = R.kish_neff(rw)
+            if len(r) < MIN_PER_BIN or neff < MIN_PER_BIN:
                 continue
-            xs.append(centres[iv]); med.append(r.median())
-            q25.append(r.quantile(0.25)); q75.append(r.quantile(0.75))
+            xs.append(centres[iv]); med.append(R.weighted_median(r, rw))
+            q25.append(R.weighted_quantile(r, rw, 0.25))
+            q75.append(R.weighted_quantile(r, rw, 0.75))
+            med_raw.append(float(np.median(r)))
             rows.append(dict(panel="precision", param=a.param, teBin=label,
                              dt_centre=centres[iv],
-                             n=len(r), median=r.median(),
-                             q25=r.quantile(0.25), q75=r.quantile(0.75)))
+                             n=len(r), n_eff=neff, median=R.weighted_median(r, rw),
+                             median_unweighted=float(np.median(r)),
+                             q25=R.weighted_quantile(r, rw, 0.25),
+                             q75=R.weighted_quantile(r, rw, 0.75)))
         if xs:
+            axP.plot(xs, med_raw, color=colour, lw=0.9, ls=(0, (3, 2)), alpha=0.55, zorder=2)
             # Quartiles as thin error bars, not a filled band: with three series the bands
             # overlapped so heavily they hid the medians they were supposed to qualify.
             lo = np.array(med) - np.array(q25)
@@ -163,12 +183,17 @@ def main():
         # ---- yield panel: rescue fraction ----
         xs2, frac = [], []
         for iv, g in sub.groupby("dtBin", observed=True):
-            if len(g) < MIN_PER_BIN:
+            gw = g["W"].to_numpy()
+            neff = R.kish_neff(gw)
+            if len(g) < MIN_PER_BIN or neff < MIN_PER_BIN:
                 continue
-            xs2.append(centres[iv]); frac.append(g["rescued"].mean())
+            xs2.append(centres[iv])
+            frac.append(R.weighted_fraction(g["rescued"], gw))
             rows.append(dict(panel="yield", param=a.param, teBin=label,
                              dt_centre=centres[iv],
-                             n=len(g), rescue_fraction=g["rescued"].mean()))
+                             n=len(g), n_eff=neff,
+                             rescue_fraction=R.weighted_fraction(g["rescued"], gw),
+                             rescue_fraction_unweighted=float(g["rescued"].mean())))
         if xs2:
             axY.plot(xs2, frac, color=colour, linewidth=2.0, marker="o", markersize=5,
                      markeredgecolor="#fcfcfb", markeredgewidth=1.0, label=label)
@@ -207,7 +232,8 @@ def main():
     for t in leg.get_texts():
         t.set_color(INK2)
 
-    stamp = f"param={a.param}  " + R.describe(a.events, a.provenance)
+    stamp = (f"param={a.param}  solid: {wlabel}; dashed: raw sample  "
+             + R.describe(a.events, a.provenance))
     fig.suptitle("Roman season gaps: what Rubin's year-round coverage recovers",
                  color=INK, fontsize=13, x=0.005, ha="left")
     fig.text(0.005, -0.02, stamp, color=INK2, fontsize=7.5, ha="left")

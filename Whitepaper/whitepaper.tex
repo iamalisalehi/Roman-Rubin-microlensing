@@ -542,6 +542,16 @@
 
 	These thresholds are an analysis choice trading runtime against how noisy the per-field efficiency and precision estimates are. The third is a comparatively weak floor and worth revisiting if per-field parameter-precision estimates turn out to be volatile -- see the caveats in Section~\ref{sec:fisher_caveats}.
 	
+	\paragraph{Every pooled number in this paper is weighted by the event rate.}\label{sec:weighting} The simulation draws a lens distance in proportion to the microlensing rate, but draws the lens mass from the number-weighted mass function and the velocities from the component velocity distributions, neither of which carries the rate's factor of $2u_{0,\max}R_E v_t$. The drawn population is therefore not the population of \emph{events}: relative to the sky it over-represents long, slow, massive lenses. Dividing the rate by the sampling density leaves a weight per simulated event,
+	\begin{equation}
+		W \;=\; \underbrace{\frac{A\,N_\star}{N_{\mathrm{draws}}}}_{\text{sightline}}\;\times\;\underbrace{\sqrt{M_L}\;v_t\;Z(D_s)}_{\text{rate}},
+		\qquad
+		Z(D_s)=\int_0^{D_s}\!\rho(D_l)\sqrt{\frac{(D_s-D_l)D_l}{D_s}}\;\mathrm{d}D_l ,
+	\end{equation}
+	with $A$ the sky area the sightline stands for, $N_\star$ its stellar column density and $N_{\mathrm{draws}}$ the draws it took; $Z$ is the normalisation of the lens-distance sampler. Constants common to every event cancel in any fraction, median or ratio, so $W$ gives no absolute yield. The sightline factors matter little -- under a point on any fraction here -- while the per-event rate factor changes pooled numbers by factors of two to six.
+
+	The check that this is right, rather than merely derived, is external: applying $W$ to all $6{,}075{,}044$ draws gives a mean Einstein timescale of $24.0$~d, against the $22$~d that OGLE-IV measures in its central fields after correcting for detection efficiency \cite{Mroz2019OGLEIV}; unweighted, the same sample gives $56.2$~d. Weighting costs precision, so every weighted number here is quoted with Kish's effective sample size $N_{\mathrm{eff}}=(\sum W)^2/\sum W^2$: the $8{,}894$ Roman-observed detections weigh as $2{,}564$. Quantities formed \emph{per event} -- every $\sigma_{\mathrm{joint}}/\sigma_{\mathrm{single}}$ ratio in this paper -- are unaffected by $W$; only the aggregation over events is.
+
 	Each simulated star's summary quantities are appended to an in-memory buffer (\texttt{std::vector<EventRecord>}) rather than written to disk and re-read, avoiding both an I/O bottleneck and the silent precision loss of a text round-trip, which truncates columns to 4--7 significant figures -- enough to corrupt a finite-difference derivative computed from them downstream. At the end of the field's simulation, this buffer is used to build detection-efficiency curves as a function of each physical parameter (Einstein time, lens mass, parallax, impact parameter, blend fraction, baseline magnitude, relative proper motion), the microlensing optical depth and event rate $\Gamma$, and the expected number of events for that field, before moving on to the next pointing.
 	
 	\section{Fisher Forecast}
@@ -859,16 +869,18 @@
 		\toprule
 		 & $10$--$30$~d & $30$--$100$~d & $100$--$300$~d & $>300$~d \\
 		\midrule
-		$\sigma(t_E)$, peak in a gap    & $\mathbf{0.250}$ & $0.924$ & $0.975$ & $0.990$ \\
-		$\sigma(\pi_E)$, peak in a gap  & $\mathbf{0.433}$ & $0.936$ & $0.978$ & $0.991$ \\
+		$\sigma(t_E)$, peak in a gap    & $\mathbf{0.261}$ & $0.826$ & $0.980$ & $0.985$ \\
+		$\sigma(\pi_E)$, peak in a gap  & $\mathbf{0.485}$ & $0.863$ & $0.983$ & $0.988$ \\
 		\addlinespace
-		$\sigma(t_E)$, peak in a season & $0.984$ & $0.975$ & $0.977$ & $0.992$ \\
-		$\sigma(\pi_E)$, peak in a season & $0.986$ & $0.978$ & $0.980$ & $0.992$ \\
+		$\sigma(t_E)$, peak in a season & $0.988$ & $0.987$ & $0.995$ & $0.981$ \\
+		$\sigma(\pi_E)$, peak in a season & $0.988$ & $0.991$ & $0.995$ & $0.981$ \\
+		\addlinespace
+		in-gap events ($N_{\mathrm{eff}}$) & $818\ (372)$ & $1{,}148\ (348)$ & $635\ (33)$ & $193\ (66)$ \\
 		\bottomrule
 	\end{tabular}
 	\end{center}
 
-	\noindent with $818$, $1{,}148$, $635$ and $193$ in-gap events per bin. The in-season rows are the control, and they are what make the in-gap rows a measurement rather than an offset: where Roman has the event in-season, Rubin sharpens it by about $2\%$ in every $t_E$ bin, and that $2\%$ is the floor against which the short-$t_E$ in-gap number of $0.25$ should be read. Deeper into the gap the effect is larger still: for $10$--$30$~d events peaking more than $45$ days past a season edge, the median ratio is $0.017$ in $t_E$ and $0.063$ in $\pi_E$ -- Roman has essentially nothing and the joint forecast is Rubin's.
+	\noindent These are weighted by the event rate (Section~\ref{sec:weighting}); unweighted, the same four in-gap $\sigma(t_E)$ medians read $0.250$, $0.924$, $0.975$, $0.990$ and the $\sigma(\pi_E)$ ones $0.433$, $0.936$, $0.978$, $0.991$. The short-$t_E$ result is the one the paper rests on and it barely moves, $0.250\to0.261$; the $30$--$100$~d bin moves the other way, from $0.924$ to $0.826$, so Rubin's contribution there is about twice what the raw sample suggested. \textbf{The last two columns should not be read as measurements}: weighting costs effective sample size, and at $N_{\mathrm{eff}}=33$ and $66$ those medians are consistent with the in-season control. The in-season rows are the control, and they are what make the in-gap rows a measurement rather than an offset: where Roman has the event in-season, Rubin sharpens it by $1$--$2\%$ in every $t_E$ bin, and that is the floor against which the short-$t_E$ in-gap number of $0.26$ should be read. Deeper into the gap the effect is larger still: for $10$--$30$~d events peaking more than $45$ days past a season edge, the median ratio is $0.007$ in $t_E$ and $0.044$ in $\pi_E$ ($104$ events, $N_{\mathrm{eff}}=52$) -- Roman has essentially nothing and the joint forecast is Rubin's.
 
 	\textbf{The ordering runs the opposite way to the intuition usually offered for it.} The argument advanced for combining a space survey with a ground survey is generally about \emph{long} events: a longer temporal baseline samples the annual-parallax signal better. That is not where the effect lives. The gain deepens as $t_E$ gets \emph{shorter}, and the reason is geometric rather than subtle: a $20$-day event peaking inside a $110$-day gap is over before Roman's next season opens, while a $500$-day event is still magnified when it does. Rubin does not improve Roman's sampling of a long event by much; it is the only instrument that sees a short one at all.
 
@@ -904,7 +916,7 @@
 
 	\subsection{How well anything is measured, in absolute terms}
 
-	Every comparison above is a ratio, and a ratio is unfalsifiable without the scale it is a ratio of: a factor of two on a $300\%$ error is not a measurement. Figure~\ref{fig:f4} gives the forecasts themselves, as cumulative distributions over the $8{,}894$ Roman-observed detections.
+	Every comparison above is a ratio, and a ratio is unfalsifiable without the scale it is a ratio of: a factor of two on a $300\%$ error is not a measurement. Figure~\ref{fig:f4} gives the forecasts themselves, as cumulative distributions over the $8{,}894$ Roman-observed detections, weighted by the event rate to an effective $2{,}564$ (Section~\ref{sec:weighting}); each panel also carries the unweighted curve as a dashed line.
 
 	\begin{figure}[htbp]
 		\centering
@@ -918,13 +930,15 @@
 		\toprule
 		fraction measured to better than $10\%$ & joint & Roman alone & Rubin alone \\
 		\midrule
-		$t_E$        & $20.4\%$ & $14.3\%$ & $6.3\%$ \\
-		$\pi_E$      & $15.9\%$ & $11.9\%$ & $5.3\%$ \\
-		$\theta_E$   & $33.2\%$ & $32.8\%$ & $0.7\%$ \\
-		$M_L$        & $7.5\%$  & $5.9\%$  & $0.0\%$ \\
+		$t_E$        & $10.1\%$ & $6.0\%$  & $2.1\%$ \\
+		$\pi_E$      & $2.6\%$  & $1.8\%$  & $0.5\%$ \\
+		$\theta_E$   & $27.9\%$ & $27.5\%$ & $0.4\%$ \\
+		$M_L$        & $1.4\%$  & $1.1\%$  & $0.004\%$ \\
 		\bottomrule
 	\end{tabular}
 	\end{center}
+
+	\noindent Weighted by the event rate, over $N_{\mathrm{eff}}=2{,}564$. The unweighted sample gives $20.4/14.3/6.3$ for $t_E$, $15.9/11.9/5.3$ for $\pi_E$, $33.2/32.8/0.7$ for $\theta_E$ and $7.5/5.9/0.03$ for $M_L$ -- larger throughout, because the raw sample over-represents the long, slow, massive events that are easiest to characterise (Section~\ref{sec:weighting}). $\pi_E$ moves most, by a factor of six, and it is the parameter the gap-filling argument is about; the ordering between partitions is unchanged.
 
 	That normalisation choice matters more than it looks. Normalising instead to the subset that happens to invert would report the precision of the events that were easy to characterise and silently drop the rest, which is the same selection error that makes a naive ratio misleading.
 
@@ -952,11 +966,11 @@
 		\label{fig:h5sum}
 	\end{figure}
 
-	\textbf{$\theta_E$ is Roman's measurement.} Median fractional precision $\sigma(\theta_E)/\theta_E$ is $0.252$ for the joint fit, $0.269$ for Roman alone and $1.93$ for Rubin alone: ground-based astrometry is not a capability here. Rubin's contribution is a $1.7\%$ tightening of Roman's number -- the paired, event-by-event median of $\sigma_{\mathrm{joint}}/\sigma_{\mathrm{Roman}}$ is $0.983$. (Comparing the two medians instead gives $0.939$, an apparent $6\%$ gain; the ratio of medians is not the median of ratios, and for a paired quantity the per-event statistic is the correct one.) Any claim that the joint fit measures the Einstein radius should attribute it to Roman.
+	\textbf{$\theta_E$ is Roman's measurement.} Median fractional precision $\sigma(\theta_E)/\theta_E$ is $0.317$ for the joint fit, $0.345$ for Roman alone and $2.13$ for Rubin alone: ground-based astrometry is not a capability here. Rubin's contribution is a $2.3\%$ tightening of Roman's number -- the paired, event-by-event median of $\sigma_{\mathrm{joint}}/\sigma_{\mathrm{Roman}}$ is $0.977$. (Comparing the two medians instead gives $0.918$, an apparent $8\%$ gain; the ratio of medians is not the median of ratios, and for a paired quantity the per-event statistic is the correct one.) Any claim that the joint fit measures the Einstein radius should attribute it to Roman.
 
-	\textbf{The lens mass is the quantity that genuinely needs both telescopes.} $M_L=\theta_E/(\kappa\pi_E)$ takes $\theta_E$ from Roman's astrometry and $\pi_E$ from the photometric baseline, so it is the one place where a change in either shows up as a change in the science. Counting Roman-observed detections whose mass the joint fit measures to a given precision and \emph{neither survey alone} does: $608$ events at better than $100\%$, $338$ at better than $30\%$, $145$ at better than $10\%$.
+	\textbf{The lens mass is the quantity that genuinely needs both telescopes.} $M_L=\theta_E/(\kappa\pi_E)$ takes $\theta_E$ from Roman's astrometry and $\pi_E$ from the photometric baseline, so it is the one place where a change in either shows up as a change in the science. Counting Roman-observed detections whose mass the joint fit measures to a given precision and \emph{neither survey alone} does: $608$ events at better than $100\%$, $338$ at better than $30\%$, $145$ at better than $10\%$. Those are counts of simulated events, and the sample they are counted in is not distributed like the sky: as a weighted share of the footprint population they are $3.3\%$, $1.2\%$ and $0.26\%$ (Section~\ref{sec:weighting}), against the raw $6.8\%$, $3.8\%$ and $1.6\%$.
 
-	That count is deliberately taken at a precision threshold. Counting instead the events where a mass merely exists -- where the inversion succeeded and the value is not a sentinel -- returns zero events exclusive to the joint fit, because Rubin's matrix inverts for almost all of them with a median fractional error of $15$, i.e. $1500\%$. An inverted matrix is not a measured mass.
+	That count is deliberately taken at a precision threshold. Counting instead the events where a mass merely exists -- where the inversion succeeded and the value is not a sentinel -- returns zero events exclusive to the joint fit, because Rubin's matrix inverts for almost all of them with a median fractional error of $82$ -- i.e. $8200\%$, and $15$ in the unweighted sample. An inverted matrix is not a measured mass.
 
 	\subsection{Satellite parallax: Roman at L2 against Roman at Earth}
 	\label{subsec:satpar}
@@ -1018,6 +1032,8 @@
 		\item \textbf{The satellite-parallax measurement covers a quarter of the footprint stratum.} $36$ of $147$ footprint sightlines, contiguous rather than spread. The statistic is a per-event ratio and so is robust to this, but a footprint-wide average would require finishing the stratum.
 
 		\item \textbf{The sample is stratified in sky position only.} Stratifying in $t_E$ as well would sharpen the short-$t_E$ bins, which is where the gap-filling effect lives and where the bins are thinnest.
+
+		\item \textbf{The astrometric and satellite-parallax sections are not yet event-rate weighted.} Section~\ref{sec:weighting}'s weight is applied to the detection and precision results, but the numbers in the astrometric-shift and satellite-parallax sections -- the $74.1\%$ reaching $u=\sqrt{2}$, the $0.111$~mas median shift, the $0.9924$ median parallax ratio -- are still statistics of the raw sample. Each is a median or fraction over events, so each will move; the per-event pairing they rest on will not.
 
 		\item \textbf{The Rubin-alone branch has not been validated against an independent published forecast.} The natural comparison is \cite{Abrams2025MicrolensingRubin}, and it must reweight to their sampling first, or the difference in selection will look like a bug in this code.
 	\end{itemize}

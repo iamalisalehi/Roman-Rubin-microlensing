@@ -109,27 +109,45 @@ def frac_precision(df, param, denom, survey):
     return s if denom is None else s / df[denom]
 
 
-def draw_cdf(ax, df, param, denom, symbol, title, note, surveys):
+def draw_cdf(ax, df, w, param, denom, symbol, title, note, surveys):
+    """CDF of a fractional forecast. Solid curve weighted, dashed curve the raw sample.
+
+    Both are drawn because they answer different questions. The weighted curve is the sky's:
+    the draws are not distributed like events, so a raw fraction describes the simulation's
+    sample and not the population (Deviation 41). The raw curve stays visible as the control,
+    since it is what every earlier version of this figure showed.
+    """
     n_total = len(df)
+    w = np.asarray(w, dtype=float)
+    w_total = w.sum()
     ax.set_facecolor(SURFACE)
     ax.axvline(TARGET, color="#b0b0b0", lw=0.9, ls=":", zorder=1)
     ax.text(TARGET, 0.02, " 10%", color=MUTED, fontsize=7, ha="left", va="bottom", zorder=1)
 
     rows = []
     for s in surveys:
-        v = frac_precision(df, param, denom, s).dropna().to_numpy()
-        v = np.sort(v[v > 0])
+        vs = frac_precision(df, param, denom, s)
+        ok = (vs.notna() & (vs > 0)).to_numpy()
+        v, wv = vs.to_numpy()[ok], w[ok]
+        o = np.argsort(v)
+        v, wv = v[o], wv[o]
         # Normalized to the FULL sample, so unmeasured events cost the curve height.
-        y = np.arange(1, len(v) + 1) / n_total
-        sat = len(v) / n_total
-        below = float(np.sum(v < TARGET)) / n_total
+        y = np.cumsum(wv) / w_total
+        sat = wv.sum() / w_total
+        below = float(wv[v < TARGET].sum()) / w_total
+        below_raw = float(np.sum(v < TARGET)) / n_total
         ax.step(v, y, where="post", color=COLOR[s], lw=1.9, zorder=3,
-                label=f"{LABEL[s]}   {below*100:4.1f}% < 10%   (max {sat*100:.0f}%)")
+                label=f"{LABEL[s]}   {below*100:4.1f}% < 10%   "
+                      f"(raw {below_raw*100:.1f}%, max {sat*100:.0f}%)")
+        ax.step(v, np.arange(1, len(v) + 1) / n_total, where="post", color=COLOR[s],
+                lw=0.9, ls=(0, (3, 2)), alpha=0.55, zorder=2)
         rows.append(dict(param=param, survey=s, n_sample=n_total, n_measured=len(v),
-                         frac_measured=sat, frac_below_10pct=below,
-                         p10=float(np.percentile(v, 10)) if len(v) else np.nan,
-                         median=float(np.median(v)) if len(v) else np.nan,
-                         p90=float(np.percentile(v, 90)) if len(v) else np.nan))
+                         n_eff=R.kish_neff(w), frac_measured=sat,
+                         frac_below_10pct=below, frac_below_10pct_unweighted=below_raw,
+                         p10=R.weighted_quantile(v, wv, 0.10),
+                         median=R.weighted_median(v, wv),
+                         p90=R.weighted_quantile(v, wv, 0.90),
+                         median_unweighted=float(np.median(v)) if len(v) else np.nan))
 
     ax.set_xscale("log")
     ax.set_xlim(*XLIM)
@@ -147,9 +165,10 @@ def draw_cdf(ax, df, param, denom, symbol, title, note, surveys):
     return rows
 
 
-def draw_invariant(ax, df, surveys):
+def draw_invariant(ax, df, w, surveys):
     """sigma_Ml/Ml, joint against each single survey. The 1:1 line is a physics bound."""
     ax.set_facecolor(SURFACE)
+    w = np.asarray(w, dtype=float)
     j = frac_precision(df, "Ml", None, "joint")
     lo, hi = 1e-3, 1e3
     ax.plot([lo, hi], [lo, hi], color="#b0b0b0", lw=1.0, ls="--", zorder=2)
@@ -163,15 +182,19 @@ def draw_invariant(ax, df, surveys):
         x = frac_precision(df, "Ml", None, s)
         m = j.notna() & x.notna()
         r = (j[m] / x[m])
+        wm = w[m.to_numpy()]
+        med = R.weighted_median(r.to_numpy(), wm)
         ax.scatter(x[m], j[m], s=3.5, alpha=0.28, linewidths=0, color=COLOR[s], zorder=3,
                    label=f"vs {LABEL[s]}   median "
                          + r"$\sigma_{\rm joint}/\sigma_{\rm single}$ = "
-                         + f"{r.median():.2f}   (n={int(m.sum())})")
+                         + f"{med:.2f}   (n={int(m.sum())})")
         nviol += int((r > 1.0 + 1e-9).sum())
         rows.append(dict(param="Ml", survey=s, n_sample=len(df), n_measured=int(m.sum()),
-                         frac_measured=np.nan, frac_below_10pct=np.nan,
-                         p10=np.nan, median=float(r.median()), p90=np.nan))
-        print(f"    Ml joint/{s}: median ratio {r.median():.3f}, "
+                         n_eff=R.kish_neff(wm), frac_measured=np.nan,
+                         frac_below_10pct=np.nan, frac_below_10pct_unweighted=np.nan,
+                         p10=np.nan, median=med, p90=np.nan,
+                         median_unweighted=float(r.median())))
+        print(f"    Ml joint/{s}: median ratio {med:.3f} weighted, {r.median():.3f} raw; "
               f"{int((r > 1.0 + 1e-9).sum())} above 1 (round-off, cond > 1e9)")
 
     ax.set_xscale("log"); ax.set_yscale("log")
@@ -194,24 +217,33 @@ def draw_invariant(ax, df, surveys):
     return rows
 
 
-def draw_condition(ax, df, surveys):
+def draw_condition(ax, df, w, surveys):
     """CDF of the normalized photometric matrix's condition number."""
     ax.set_facecolor(SURFACE)
+    w = np.asarray(w, dtype=float)
+    w_total = w.sum()
     ax.axvline(1e9, color="#b0b0b0", lw=0.9, ls=":", zorder=1)
     ax.text(1e9, 0.02, "  $10^{9}$", color=MUTED, fontsize=7, ha="left", va="bottom")
 
     rows = []
     for s in surveys:
-        c = df[f"condA_{R.SURVEYS[s]}"].astype(float)
-        c = np.sort(c[c > 0].to_numpy())
-        y = np.arange(1, len(c) + 1) / len(df)
-        good = float(np.sum(c < 1e9)) / len(df)
+        cs = df[f"condA_{R.SURVEYS[s]}"].astype(float)
+        ok = (cs > 0).to_numpy()
+        c, wc = cs.to_numpy()[ok], w[ok]
+        o = np.argsort(c)
+        c, wc = c[o], wc[o]
+        y = np.cumsum(wc) / w_total
+        good = float(wc[c < 1e9].sum()) / w_total
+        good_raw = float(np.sum(c < 1e9)) / len(df)
         ax.step(c, y, where="post", color=COLOR[s], lw=1.9, zorder=3,
-                label=f"{LABEL[s]}   {good*100:4.1f}% well-conditioned")
+                label=f"{LABEL[s]}   {good*100:4.1f}% well-conditioned (raw {good_raw*100:.1f}%)")
         rows.append(dict(param="condA", survey=s, n_sample=len(df), n_measured=len(c),
-                         frac_measured=len(c) / len(df), frac_below_10pct=good,
-                         p10=float(np.percentile(c, 10)), median=float(np.median(c)),
-                         p90=float(np.percentile(c, 90))))
+                         n_eff=R.kish_neff(w), frac_measured=wc.sum() / w_total,
+                         frac_below_10pct=good, frac_below_10pct_unweighted=good_raw,
+                         p10=R.weighted_quantile(c, wc, 0.10),
+                         median=R.weighted_median(c, wc),
+                         p90=R.weighted_quantile(c, wc, 0.90),
+                         median_unweighted=float(np.median(c))))
 
     ax.set_xscale("log")
     ax.set_xlim(1e2, 1e18)
@@ -248,6 +280,12 @@ def main():
     ap.add_argument("--scope", choices=("footprint", "all"), default="footprint",
                     help="footprint = events Roman observed (ndw_R>0); the only sample "
                          "where the Roman-alone curve means anything. Default footprint.")
+    ap.add_argument("--map", default=None,
+                    help="MapLMC5.dat -- needed for the event-rate weight (Deviation 41)")
+    ap.add_argument("--log", action="append", default=[],
+                    help="run log(s), for sightlines whose map rows a killed run lost")
+    ap.add_argument("--unweighted", action="store_true",
+                    help="deliberately report the raw sample, with no event-rate weight")
     args = ap.parse_args()
 
     # Read filtered, in chunks. Every panel here is over joint-detected events, which are
@@ -273,18 +311,24 @@ def main():
         scope_note = ("every joint-detected event; Roman never pointed at most of these, "
                       "so read the joint/Rubin pair and ignore the Roman curve")
     surveys = ("joint", "roman", "rubin")
-    print(f"  scope={args.scope}: {len(df)} events")
+    # Weight AFTER the scope cut: the weight is per event, and every fraction here is over
+    # whichever sample the scope selected.
+    w, wlabel = R.attach_weight(df, args.map, args.log, args.unweighted)
+    w = w.to_numpy()
+    print(f"  scope={args.scope}: {len(df)} events; weighting: {wlabel}")
 
     fig, axes = plt.subplots(2, 3, figsize=(16.2, 9.4), facecolor=SURFACE)
     rows = []
     for ax, (param, denom, symbol, title, note) in zip(axes.flat, PANELS):
-        rows += draw_cdf(ax, df, param, denom, symbol, title, note, surveys)
-    rows += draw_invariant(axes.flat[4], df, surveys)
-    rows += draw_condition(axes.flat[5], df, surveys)
+        rows += draw_cdf(ax, df, w, param, denom, symbol, title, note, surveys)
+    rows += draw_invariant(axes.flat[4], df, w, surveys)
+    rows += draw_condition(axes.flat[5], df, w, surveys)
 
     fig.suptitle("Fisher-matrix forecast precision, per survey partition",
                  color=INK, fontsize=13.5, x=0.035, ha="left", y=0.975)
-    fig.text(0.035, 0.945, f"{len(df):,} joint-detected events -- {scope_note}",
+    fig.text(0.035, 0.945,
+             f"{len(df):,} joint-detected events -- {scope_note}\n"
+             f"solid: {wlabel}    dashed: the raw sample, unweighted",
              color=MUTED, fontsize=9, va="top")
 
     fig.subplots_adjust(left=0.05, right=0.985, bottom=0.105, top=0.885,

@@ -19,7 +19,6 @@ loses its buffered tail (OPEN_ITEMS.md). The log prints `nsim` for every sightli
 
 import argparse
 import os
-import re
 import sys
 
 import numpy as np
@@ -32,20 +31,6 @@ import romanlib as R
 TE_EDGES = [10.0, 30.0, 100.0, 300.0, np.inf]
 TE_LABELS = ["10-30 d", "30-100 d", "100-300 d", ">300 d"]
 TARGET = 0.1
-
-
-def nsim_from_logs(paths):
-    """{(lon, lat): nsim} from the run log's own per-sightline report."""
-    out, lon, lat = {}, None, None
-    for p in paths:
-        with open(p, errors="replace") as fh:
-            for line in fh:
-                m = re.match(r"^longtitude:\s*(\S+)\s+latitude:\s*(\S+)", line)
-                if m:
-                    lon, lat = round(float(m.group(1)), 3), round(float(m.group(2)), 3)
-                elif line.startswith("nsim:") and lon is not None:
-                    out[(lon, lat)] = float(line.split()[1])
-    return out
 
 
 def wfrac(mask, w):
@@ -73,7 +58,7 @@ def main():
 
     df = R.load_events(a.events, keep=lambda c: c["detJ"] == 1, chunksize=a.chunksize)
     sl = R.load_sightlines(a.map)
-    over = nsim_from_logs(a.log) if a.log else None
+    over = R.nsim_from_logs(a.log)
 
     worst, n_checked = G.check_against_map(sl)
     print(f"density port vs map file: worst {worst:.3f} dex over {n_checked} sightlines "

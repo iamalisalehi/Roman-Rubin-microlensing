@@ -8,14 +8,20 @@
 - **Effect on v3.** F4's "better than 10%" fractions fall 2-6x (`tE` joint 20.4% -> 10.1%, `piE`
   15.9% -> 2.6%). The median `tE` of joint detections falls from 73 d to 23 d.
 - **What survives.** F2's short-`tE` gap-filling headline, 0.25 -> 0.26.
-- **Step W1 is done and committed:** `analysis/galaxy_model.py` (the `Disk_model` port),
-  `romanlib.event_weight()` / `kish_neff()`, and `analysis/w1_pooled_weight_check.py`, which
-  regenerates the numbers above. F1 on the v3 extract is byte-identical to
-  `figures/f1_results_table_v3.csv`, so nothing existing moved.
-- **Step W2 is the next decision and has not been done:** apply the weight inside F1-F4, report
-  `N_eff` beside each weighted number, regenerate the figures and update the whitepaper. **Until
-  then every pooled distribution, fraction or median in the whitepaper is unweighted.** Per-event
-  ratios and H3's pairs are unaffected either way.
+- **Steps W1 and W2 are both done and committed.** W1 built the weight
+  (`analysis/galaxy_model.py`, `romanlib.event_weight()`, the two `w1_*` check scripts); W2
+  applied it inside `f1`-`f4`, which now report `N_eff` and **refuse to run unweighted unless
+  told to** (`--map`, plus `--log`, or `--unweighted`). All v3 products in `figures/` were
+  regenerated and the whitepaper's pooled numbers updated -- Deviation 43.
+- **The headline numbers moved.** Footprint "better than 10%" (joint/Roman/Rubin): `tE`
+  10.1/6.0/2.1 (was 20.4/14.3/6.3), `piE` 2.6/1.8/0.5 (was 15.9/11.9/5.3), `tetE` 27.9/27.5/0.4,
+  `Ml` 1.4/1.1/0.004. **The gap-filling result survives** (short-`tE` in-gap 0.250 -> 0.261 in
+  `tE`, 0.433 -> 0.485 in `piE`) and the 30-100 d bin gains (0.924 -> 0.826).
+- **Two long-`tE` bins are now noise:** `N_eff` 33 and 66. The raw sample over-represented long
+  events ~10x. E1b (`tE` stratification) is the way to get those bins back, and is no longer
+  optional if the long-`tE` claims matter.
+- **Still unweighted, deliberately:** H3 (satellite parallax) and H5 (astrometric shift)
+  aggregates. `OPEN_ITEMS.md` has the entry; the whitepaper carries the caveat.
 - **Validated against OGLE-IV** (Deviation 41). Weighting all 6.07M draws gives an intrinsic mean
   `tE` of **24.0 d**, against Mroz et al. 2019's efficiency-corrected **22 d** in the central
   bins; unweighted it is 56.2 d. The weight is what brings the model onto the published value.

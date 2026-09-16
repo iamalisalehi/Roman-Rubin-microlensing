@@ -3042,3 +3042,74 @@ seven finished sightlines:
 are gone, and line 687 stays merged. `nsim` for those sightlines is recoverable from the run
 logs, and `romanlib.load_sightlines()` skips the malformed line (Deviation 41). Any analysis of
 v3 that needs per-sightline quantities must go through those two workarounds.
+
+---
+
+## 43. Step W2: the analysis layer now weights, and the headline numbers move (2026-09-16)
+
+**What the plan said.** Phase F specifies the products; it says nothing about weighting, because
+the plan did not know the sampler was not rate-distributed. Step E1's "teach me" asked for the
+importance weight but tied it to `tE` stratification, which was never implemented.
+
+**What was done.** Every pooled statistic in `f1`-`f4` is now weighted by `W` (Deviation 41).
+
+- **`romanlib`**: `weighted_median`, `weighted_quantile`, `weighted_fraction`, `nsim_from_logs`
+  and `attach_weight`, which is the plumbing all four scripts share.
+- **No silent fallback.** Each script takes `--map` (plus `--log` where a killed run cost the map
+  file rows) or an explicit `--unweighted`. Omitting both is an error, not a default: an
+  unweighted figure looks finished and is wrong by factors of up to six.
+- **Counts stay counts, fractions and medians are weighted.** A weighted count has no quotable
+  units, because `W`'s constants cancel only in a ratio. `N_eff = (sum W)^2 / sum W^2` is
+  reported beside every weighted number.
+- **Gating is on `N_eff`, not on the raw count** (`f2`'s per-bin minimum, `f3`'s per-cell
+  minimum). Under the weight a forty-event bin can carry the precision of eight.
+- **`f2` and `f4` keep the unweighted curve** as a dashed control, so the change is visible in
+  the figure rather than only in the text.
+
+**What moved, on v3** (footprint sample, N = 8,894, `N_eff` = 2,564):
+
+| fraction measured better than 10% | weighted (joint/Roman/Rubin) | unweighted |
+|---|---|---|
+| `tE` | 10.1 / 6.0 / 2.1 | 20.4 / 14.3 / 6.3 |
+| `piE` | 2.6 / 1.8 / 0.5 | 15.9 / 11.9 / 5.3 |
+| `tetE` | 27.9 / 27.5 / 0.4 | 33.2 / 32.8 / 0.7 |
+| `Ml` | 1.4 / 1.1 / 0.004 | 7.5 / 5.9 / 0.03 |
+
+Other numbers that changed: median `sigma(tetE)/tetE` 0.252 -> **0.317** (joint), 0.269 ->
+**0.345** (Roman), 1.93 -> **2.13** (Rubin); the paired `tetE` median ratio 0.983 -> **0.977**;
+Rubin's median fractional `Ml` error 15 -> **82**; the "joint measures the mass, neither alone
+does" counts stay 608/338/145 events but are **3.3% / 1.2% / 0.26%** of the weighted population
+against 6.8% / 3.8% / 1.6% raw.
+
+**The gap-filling result survives, and one bin improves.** In-gap median `sigma_tE` ratio in the
+10-30 d bin 0.250 -> **0.261**, `sigma_piE` 0.433 -> **0.485**. The 30-100 d bin moves the other
+way, 0.924 -> **0.826** in `tE` and 0.936 -> **0.863** in `piE`: Rubin's contribution there is
+about twice what the raw sample showed. The deep-gap short-bin medians (>45 d past an edge) go
+0.017 -> **0.007** in `tE` and 0.063 -> **0.044** in `piE`.
+
+**Honest limitation.** The two longest `tE` bins fall to `N_eff` 33 and 66, and their weighted
+medians are then consistent with the in-season control. The unweighted sample over-represented
+long events roughly tenfold, so what looked like a well-populated long-`tE` tail was a sampling
+artefact. Stratifying in `tE` (Step E1b, never implemented) would be the way to get those bins
+back.
+
+**Not weighted, and labelled as such.** The astrometric-shift (H5) and satellite-parallax (H3)
+sections still quote raw-sample medians and fractions. Their per-event pairing is unaffected, but
+each aggregate will move. Recorded in `OPEN_ITEMS.md` and as a bullet in the whitepaper's own
+open-items list.
+
+**Verification.** `F1` was regenerated from the v3 extract with `--unweighted` and compared
+column by column against the pre-W2 CSV (`e019f2d`), to separate the weighting from any other
+edit:
+- **All 21 shared count and label columns are identical**, and the new `med_ratio_tE_unw` /
+  `med_ratio_piE_unw` columns reproduce the old medians to `max |diff| = 0`.
+- `med_ratio_*`, `q25_*`, `q75_*` differ by up to **0.029** (14-18 rows of 24) **even unweighted**,
+  and that is a real, deliberate change of convention, not a rounding artefact: those columns now
+  come from `weighted_quantile`, which takes the step quantile (the value at which cumulative
+  weight crosses `q`), where `pandas.quantile` interpolates between neighbours. With every weight
+  equal to 1 the two still disagree on an even-sized sample, because interpolation invents a value
+  between the two middle events. The step convention is the one that generalises to weights, so
+  it is used for both columns; the quoted whitepaper medians move by this much and no more.
+- The four scripts byte-compile; all v3 products regenerated from the same extract into
+  `figures/`. The pre-W2 versions remain at commit `e019f2d`.
+- Every "unweighted" column in the tables above reproduces the previously published value.

@@ -1233,11 +1233,11 @@ by under a point; the dominant term is *within* each sightline. Draws are not ra
 lens mass or velocity, so the weight is
 `W = w_area * Nstart / nsim * sqrt(Ml) * Vt * Z(Ds)`. It halves-to-sixths the F4 "better than
 10%" fractions and moves the median `tE` of joint detections from 73 d to 23 d. The F2
-short-`tE` headline survives (0.25 -> 0.26). **Step W1 is done:** the weight is implemented as
-`romanlib.event_weight()` on top of `analysis/galaxy_model.py`, with
-`analysis/w1_pooled_weight_check.py` to regenerate the measurement. **This item stays open for
-Step W2** -- no analysis script applies the weight yet, so every pooled number in the whitepaper
-is still unweighted. Original text kept below.
+short-`tE` headline survives (0.25 -> 0.26). **RESOLVED 2026-09-16 (Steps W1 and W2,
+Deviations 41 and 43):** the weight is `romanlib.event_weight()` on top of
+`analysis/galaxy_model.py`, validated against OGLE-IV, and `f1`-`f4` now apply it, report `N_eff`
+and refuse to run unweighted unless told to. The whitepaper's pooled numbers were regenerated.
+**What is left is H3/H5, tracked as its own item below.** Original text kept below.
 
 **What is wrong.** The per-sightline loop stops on a *count* (Deviation 40): outside Roman's
 footprint almost every sightline contributes exactly 50 detections, inside it ~57-84. So a
@@ -1270,6 +1270,37 @@ maps to sky events (`nsim`, `Nstart`, `Gamma`, `w_area`). (2) Add it to `romanli
 `area_weight()`, joined on (`lon`, `lat`). (3) Re-run one headline pooled number both ways --
 the six-field "better than 10%" fractions are the cheapest -- and record the shift. Only then
 decide whether F1-F4 need regenerating.
+
+---
+
+## H3's and H5's aggregate numbers are not event-rate weighted
+
+**Status: open, found 2026-09-16 while doing Step W2 (Deviation 43).**
+
+**What is wrong.** `f1`-`f4` weight every pooled statistic by the event rate; `h3_*.py` and
+`h5_*.py` do not. So the satellite-parallax and astrometric-shift sections quote medians and
+fractions of the raw sample: the $0.9924$ median `sigma_piE` ratio over 528 events, the 74.1%
+of events reaching `u = sqrt(2)`, the 0.111 mas median shift, the 42.5% whose astrometric peak
+crosses a season edge.
+
+**Why it matters scientifically.** Each of those is an aggregate over events, and the raw sample
+over-represents long, slow, massive lenses about tenfold (Deviation 41), so each will move. The
+direction is not obvious: H3's gain concentrates in SHORT, high-magnification events, which the
+weight favours, so the satellite-parallax median could well improve rather than shrink.
+
+**What does NOT move:** the pairing itself. Every H3 and H5 comparison is the same event
+evaluated twice, and that per-event ratio carries no weight. The sign test and the bit-exact
+control are unaffected.
+
+**Why deferred.** W2 was already a large change to four scripts and the whitepaper, and H3/H5
+need their own decisions -- H3's bootstrap interval and sign test would have to become weighted
+versions, which is not a one-line substitution.
+
+**What the fix involves.** Give `h3_satellite_parallax.py` and the two `h5_*` scripts the same
+`--map`/`--log`/`--unweighted` plumbing via `romanlib.attach_weight()`, weight the medians and
+fractions, report `N_eff`, and replace the bootstrap with a weighted one. Then update the
+whitepaper's astrometric and satellite-parallax sections and remove the caveat bullet that now
+stands in its open-items list.
 
 ---
 

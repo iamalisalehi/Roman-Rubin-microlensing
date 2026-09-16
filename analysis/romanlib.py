@@ -25,8 +25,10 @@ Two indexing systems that look alike
 
 from __future__ import annotations
 
+import io
 import os
 import re
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -139,8 +141,31 @@ def load_sightlines(path):
     Note this file is opened in APPEND mode by the simulator, so a re-run without clearing
     it first silently concatenates two runs (OPEN_ITEMS.md). `nri`/`nde` restarting from
     zero part-way down the file is the signature.
+
+    Malformed lines are dropped with a warning rather than killing the read. The simulator
+    never flushes this stream, so a killed run loses its buffered tail and the next run's
+    first row lands on the fragment, leaving one line of the wrong width (OPEN_ITEMS.md, and
+    the v3 file has exactly that at line 687). Silently mis-parsing it would shift every
+    column; failing outright would make the whole file unreadable for one bad line.
     """
-    ncol = len(pd.read_csv(path, sep=r"\s+", header=None, nrows=1).columns)
+    with open(path) as fh:
+        lines = fh.readlines()
+    widths = {}
+    for i, line in enumerate(lines, start=1):
+        if line.strip():
+            widths.setdefault(len(line.split()), []).append(i)
+    if len(widths) > 1:
+        expected = max(widths, key=lambda w: len(widths[w]))
+        bad = sorted(i for w, ii in widths.items() if w != expected for i in ii)
+        warnings.warn(
+            f"{path}: dropping {len(bad)} malformed line(s) (line numbers {bad[:5]}"
+            f"{'...' if len(bad) > 5 else ''}); their sightlines are absent from the result. "
+            f"A killed run loses this file's buffered tail -- see OPEN_ITEMS.md.")
+        kept = [ln for ln in lines if ln.strip() and len(ln.split()) == expected]
+        path = io.StringIO("".join(kept))
+        ncol = expected
+    else:
+        ncol = len(pd.read_csv(path, sep=r"\s+", header=None, nrows=1).columns)
     if ncol == len(MAP_COLS) - 3:
         # Written before Step E1 added the per-sightline area weight. Positional file with
         # no header, so the only way to tell is the width -- and guessing wrong shifts every
@@ -263,6 +288,99 @@ def area_weight(df, prov=None):
     if prov and "area_per_sightline" in prov:
         return pd.Series(float(prov["area_per_sightline"]), index=df.index)
     return pd.Series(1.0, index=df.index)
+
+
+def event_weight(df, sightlines, nsim_override=None):
+    """Per-event importance weight for a POOLED statistic (Step W1, Deviation 41).
+
+    WHY A WEIGHT IS NEEDED AT ALL. A pooled fraction or median is only a statement about the sky
+    if the events it averages are distributed like real events. They are not. The simulator draws
+
+        Dl  with density proportional to rho(Dl) sqrt(Ds x(1-x)),  x = Dl/Ds
+        Ml  from the Kroupa IMF and remnant map -- NUMBER-weighted
+        v   from the component Gaussians -- unweighted
+        u0, t0 uniform
+
+    while the event rate carries a factor `R_E * v_t` on top of the population:
+
+        Gamma = int dDl dM d^2v  n(Dl) phi(M) f(v) * 2 u0m * R_E(M, Dl) * v_t
+
+    Dividing the rate by the sampling density cancels rho, phi, f and the distance factor and
+    leaves, per drawn event,
+
+        W = [w_area * Nstart / nsim] * sqrt(Ml) * Vt * Z(Ds)
+
+    The bracket converts one draw into sky events at that sightline (area, stars per deg^2, draws
+    taken); `sqrt(Ml) * Vt` is the rate weighting the sampler omits; `Z(Ds)` is the normaliser of
+    the lens-distance sampler (galaxy_model.lens_distance_norm). Constants -- 2 u0m, Tobs, the
+    Einstein-radius coefficient, the mean lens mass -- are identical for every event and cancel in
+    any weighted fraction, median or ratio, so they are not included: THIS IS NOT AN ABSOLUTE YIELD.
+
+    WHAT IT DOES NOT FIX. The exact source-star weight carries 1/<m> for the SOURCE's Galactic
+    component; the event table stores the lens's component only, so `Nstart` (the draw-average of
+    the same thing) is used instead. That is unbiased between sightlines and drops a within-
+    sightline factor of at most ~1.5.
+
+    WHEN NOT TO USE IT. Anything computed per event -- sigma_joint/sigma_single for one event,
+    H3's paired comparison -- is already weight-free. Weight only when pooling ACROSS events.
+    Quote the Kish effective sample size (sum w)^2 / sum(w^2) beside any weighted number: on the
+    v3 table the weight takes 8,894 footprint events to an effective 2,564.
+
+    df          : event table from load_events()
+    sightlines  : map table from load_sightlines(), for `nsim` and the (lon, lat) join
+    nsim_override : optional {(lon, lat) rounded to 3 dp: nsim}, for sightlines missing from a
+                    damaged map file. The run log prints `nsim` for every sightline.
+
+    Returns a float Series aligned to df. Raises if any event's sightline has no `nsim`.
+    """
+    import galaxy_model as G
+
+    if "w_area" not in df.columns:
+        raise ValueError("event table predates Step E1: no w_area column, so no pooled weight")
+
+    key = list(zip(df["lon"].round(3), df["lat"].round(3)))
+    nsim = {}
+    if sightlines is not None and "lon" in sightlines:
+        for lon, lat, n in zip(sightlines["lon"], sightlines["lat"], sightlines["nsim"]):
+            if np.isfinite(lon):
+                nsim[(round(float(lon), 3), round(float(lat), 3))] = float(n)
+    if nsim_override:
+        nsim.update({(round(k[0], 3), round(k[1], 3)): float(v)
+                     for k, v in nsim_override.items()})
+
+    missing = sorted({k for k in set(key) if k not in nsim})
+    if missing:
+        raise ValueError(
+            f"{len(missing)} sightline(s) in the event table have no nsim, e.g. {missing[:3]}. "
+            f"The map file is written without flushing and loses its tail when a run is killed "
+            f"(OPEN_ITEMS.md); recover nsim from the run log and pass nsim_override.")
+
+    # One density profile per sightline, not per event: ~9,500 grid points each.
+    n_draws = np.empty(len(df))
+    nstart = np.empty(len(df))
+    Z = np.empty(len(df))
+    Ds = df["Ds"].to_numpy()
+    order = pd.Series(np.arange(len(df))).groupby(pd.Series(key)).groups
+    for k, pos in order.items():
+        pos = np.asarray(pos)
+        prof = G.density_profile(*k)
+        n_draws[pos] = nsim[k]
+        nstart[pos] = prof.Nstart
+        Z[pos] = G.lens_distance_norm(prof, Ds[pos])
+
+    w = (df["w_area"].to_numpy() * nstart / n_draws
+         * np.sqrt(df["Ml"].to_numpy()) * df["Vt"].to_numpy() * Z)
+    return pd.Series(w, index=df.index)
+
+
+def kish_neff(w):
+    """Effective sample size of a weighted sample: (sum w)^2 / sum(w^2).
+
+    A weighted fraction over N events with a spread of weights carries the Poisson precision of
+    this many unweighted ones. Report it whenever you report a weighted number.
+    """
+    w = np.asarray(w, dtype=float)
+    return float(w.sum()**2 / np.square(w).sum()) if w.size else 0.0
 
 
 def is_stratified(prov):

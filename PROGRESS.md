@@ -1,5 +1,26 @@
 # PROGRESS.md — where this project stands
 
+**Last updated:** 2026-09-15 (later), when the pooled weight was derived and measured —
+**Deviation 41**. The premise was wrong in a way that matters more than expected.
+- **The weight.** Draws are rate-weighted in lens distance only, not in mass or velocity, so
+  every pooled statistic needs `W = w_area * Nstart / nsim * sqrt(Ml) * Vt * Z(Ds)`, not just a
+  per-sightline weight.
+- **Effect on v3.** F4's "better than 10%" fractions fall 2-6x (`tE` joint 20.4% -> 10.1%, `piE`
+  15.9% -> 2.6%). The median `tE` of joint detections falls from 73 d to 23 d.
+- **What survives.** F2's short-`tE` gap-filling headline, 0.25 -> 0.26.
+- **Step W1 is done and committed:** `analysis/galaxy_model.py` (the `Disk_model` port),
+  `romanlib.event_weight()` / `kish_neff()`, and `analysis/w1_pooled_weight_check.py`, which
+  regenerates the numbers above. F1 on the v3 extract is byte-identical to
+  `figures/f1_results_table_v3.csv`, so nothing existing moved.
+- **Step W2 is the next decision and has not been done:** apply the weight inside F1-F4, report
+  `N_eff` beside each weighted number, regenerate the figures and update the whitepaper. **Until
+  then every pooled distribution, fraction or median in the whitepaper is unweighted.** Per-event
+  ratios and H3's pairs are unaffected either way.
+- **Map file damaged.** `MapLMC5.dat` lost six chunk-1 rows (l 0.281, b -0.94..-0.14) and has one
+  merged line. The run logs have `nsim` for all 1,612 sightlines, and §"Chunk 2" below is wrong
+  to call the file undamaged. Measurement script (scratch, not committed): `pooled_weight.py`,
+  derivation reproduced in Deviation 41.
+
 **Last updated:** 2026-09-15, when **Step G2 was started** and the advisor's paper on the parent
 code (Sajadian & Makler, arXiv:2608.16448) was read against it — **§5i**. **G2 is deferred by
 the user**; the designed replacement ("Option A") is in `OPEN_ITEMS.md`. **Step E2 is done**

@@ -2846,3 +2846,133 @@ a v3-configuration run. Raising `--nerr` is now meaningful where before it was a
   the evidence that the branch is reachable.
 
 **Commit:** this step.
+
+---
+
+## 41. The pooled weight: the open item asked the wrong question -- the draws are not distributed like events (2026-09-15)
+
+**What was expected.** `OPEN_ITEMS.md` ("Pooled per-event statistics give every sightline the
+same number of events") framed the problem as *between* sightlines: the stopping rule gives each
+sightline ~50 events regardless of its event rate, so pooled statistics need a per-sightline
+weight, probably `w_area/nsim`, perhaps with `Nstart` or `Gamma`. The plan's E1 "teach me" asked
+for the importance-sampling weight expression.
+
+**What the code actually samples** (read from `Lensing.cpp`, not assumed). One draw is:
+- source distance `Ds` with density proportional to `Rostari` (stellar *mass* per shell), its
+  component by local density, its star uniformly from that component's CMD list;
+- lens distance `Dl` with density proportional to `rho(Dl) * sqrt(Ds x(1-x))`, `x = Dl/Ds`;
+- lens mass from the Kroupa initial-mass function then the remnant map -- **number**-weighted;
+- source and lens velocities from the component Gaussians -- **unweighted**;
+- `u0` uniform on [0.001, `u0m`], `t0` uniform over `Tobs`.
+
+**The physical event rate** for one source, for events with `u0 < u0m`, is
+`Gamma = integral dDl dM d^2v  n(Dl) phi(M) f(v) * 2 u0m R_E v_t`, with
+`R_E = k sqrt(M Ds x(1-x))`. Dividing by the sampling density, the `rho(Dl)`, `phi(M)`, `f(v)`
+and `sqrt(Ds x(1-x))` factors cancel and the importance weight per draw is
+
+    W_i = [w_area_j * Nstart_j / nsim_j] * sqrt(Ml_i) * Vt_i * Z_j(Ds_i)
+
+- `Z_j(Ds) = sum_k rho_tot(k step) sqrt((Ds - Dl_k) Dl_k / Ds) step` over `k = 1 .. nums-2`, the
+  normaliser of `func_lens`'s distance sampler for that source;
+- `Nstart_j / nsim_j` turns one draw into sources per square degree;
+- `w_area_j` is sky area.
+
+Constants (`2 u0m k Tobs / <M>`, `binary_fraction`) cancel in any pooled fraction or median.
+**The draws are rate-weighted in lens distance only.** Mass and velocity enter the rate as
+`sqrt(M) v_t` and the sampler omits both.
+
+The in-code `Gamma = 2/pi * tau * EFF / u0m`, whose `EFF` averages `efficiency/tE`, is a `1/tE`
+correction. That is the right correction for a sample drawn in proportion to optical depth
+(`propto M` in mass, `x(1-x)` in distance), which this sampler is not either.
+
+**Approximation not removable from the saved output.** The exact source weight carries
+`1/<m>_c` for the source's own component (0.31-0.45 Msun, a factor <= 1.47). The table stores
+the lens component only, so `Nstart_j` is used: it is the draw-average of `Rostart * bf/<m>_c`,
+so the sightline normalisation is unbiased, but the within-sightline source-component term is
+dropped.
+
+**Measured on v3** (82,888 detections).
+- `Z` from a Python port of `Disk_model`, which reproduces the map file's `log10 Rostart` and
+  `log10 Nstart` to 0.05 dex (the columns are written to one decimal).
+- `nsim` taken from the run logs, not the map file (see below). The logs agree with the map on
+  1,605/1,605 shared rows.
+- Unweighted, every published number reproduces exactly: F4 20.4/14.3/6.3, F2 0.250/0.924/0.975/0.990
+  and 0.433/0.936/0.978/0.991 with 818/1,148/635/193 events.
+
+F4 sample (joint-detected, `ndw_R > 0`, N = 8,894), fraction better than 10%, joint / Roman / Rubin:
+
+| weight | Kish N_eff | `tE` | `piE` | `tetE` |
+|---|---|---|---|---|
+| none (published) | 8,894 | 20.4 / 14.3 / 6.3 | 15.9 / 11.9 / 5.3 | 33.2 / 32.8 / 0.7 |
+| `w_area/nsim` | 8,744 | 20.5 / 14.6 / 6.1 | 16.0 / 12.1 / 5.1 | 34.0 / 33.6 / 0.7 |
+| `+ Nstart` | 8,631 | 20.5 / 14.7 / 6.0 | 16.0 / 12.2 / 5.0 | 34.6 / 34.2 / 0.7 |
+| **full `W`** | **2,564** | **10.1 / 6.0 / 2.1** | **2.6 / 1.8 / 0.5** | **27.9 / 27.5 / 0.4** |
+
+All 74,812 joint detections: median `tE` **72.7 d unweighted, 23.0 d weighted**; `tE > 200 d`
+**19.7% -> 1.7%**. 5-95% spread of `sqrt(Ml) Vt` is a factor 90, of `Z` 23, of `Nstart/nsim` 41,
+of `w_area` 4. The between-sightline terms the open item was about move pooled fractions by under
+a point; the within-sightline rate term moves them by factors of 2-6.
+
+F2 medians of `sigma_joint/sigma_Roman`, unweighted | weighted [N, N_eff]:
+
+| | 10-30 d | 30-100 d | 100-300 d | >300 d |
+|---|---|---|---|---|
+| `tE`, gap | 0.250 \| 0.261 [818, 372] | 0.924 \| **0.826** [1148, 348] | 0.975 \| 0.980 [635, 33] | 0.990 \| 0.985 [193, 66] |
+| `piE`, gap | 0.433 \| 0.485 [818, 372] | 0.936 \| **0.863** [1148, 348] | 0.978 \| 0.983 [635, 33] | 0.991 \| 0.988 [193, 66] |
+| `tE`, season | 0.984 \| 0.988 | 0.975 \| 0.987 | 0.977 \| 0.995 [461, 17] | 0.992 \| 0.981 |
+
+**Reading.**
+- **The short-`tE` gap-filling headline survives**, 0.25 -> 0.26.
+- **The 30-100 d gap bin gains**: Rubin's contribution roughly doubles, 0.924 -> 0.826.
+- The >= 100 d bins have effective samples of 17-66 under the weight. Their weighted medians are
+  noise, and that is a real cost: the unweighted sample over-represents long events ~10x, which
+  was a free importance sample toward long `tE` that nobody knew was one.
+- **Unaffected:** anything per event (a ratio for the same event, H3's pairs).
+- **Affected:** every distribution, fraction or median over events, including the whitepaper's
+  "74% below 110 d" sanity check (Deviation 22's verification), which was quoted from the
+  unweighted sample.
+
+**Uncertainty, flagged.** The weighted 23 d median is closer to what bulge surveys report than
+73 d is, but I have not checked it against a specific published efficiency-corrected
+distribution, and it is over *detected* events under this pipeline's detection test, so it is
+not directly comparable. That comparison is a validation still to do, not a claim.
+
+**Found on the way: the v3 map file is not undamaged.** PROGRESS §"Chunk 2" says `MapLMC5.dat`
+"survived" and "was never damaged". It has 1,606 lines for 1,612 aggregated sightlines.
+- **Six rows are missing**, all from chunk 1: l = 0.281, b = -0.94, -0.84, -0.74, -0.54, -0.34, -0.14.
+- **One line (687) is 122 fields**: a 52-field fragment with index 774's full row appended.
+
+`fil3` is an `std::ofstream` written without flushing, so when chunk 1 was killed its buffered
+tail never reached disk. The 2026-09-10 re-run of indices 0-773 was stopped the same way and its
+map ends in the same partial row, which is why the "686/686 byte-identical" check passed: both
+copies lost the same tail. `run.log` still prints `nsim` for all six, which is what the weight
+above used. The 388 events at those sightlines are intact in `test5.dat`.
+
+**What was changed (Step W1, approved 2026-09-15).** The weight is made available and
+reproducible; **no existing figure or number changes yet.**
+- `analysis/galaxy_model.py` (new): `Disk_model()` ported to NumPy, giving `Nstart` and the
+  lens-distance normaliser `Z(Ds)`. `check_against_map()` compares the recomputed column
+  densities against the map file's own and raises if the port drifts from the C++.
+- `analysis/romanlib.py`: `event_weight(df, sightlines, nsim_override=None)` returns `W` per
+  event, and `kish_neff(w)` the effective sample size. The docstring says what cancels (all
+  constants, so this is not an absolute yield), what is dropped (the source component's mean
+  mass), and when not to use it (anything per event). `load_sightlines()` now drops malformed
+  lines with a warning instead of failing: the v3 map file's merged line 687 made it unreadable.
+- `analysis/w1_pooled_weight_check.py` (new): regenerates the tables above, taking `nsim` from
+  the run logs for the sightlines the map file lost.
+
+**Verification.**
+- F1 regenerated on the v3 detected-event extract is **byte-identical** to the committed
+  `figures/f1_results_table_v3.csv`. The shared reader changed, so this is the guard that no
+  existing product moved. (Running `f1` against the *full* table instead gives different count
+  columns and identical precision columns -- the committed CSV was made from the extract, per
+  PROGRESS. Not a regression.)
+- The committed script reproduces the scratch measurement exactly, including every unweighted
+  control: F4 20.4/14.3/6.3, F2 0.250/0.924/0.975/0.990 and 0.433/0.936/0.978/0.991.
+- Density port: worst 0.050 dex over 1,605 sightlines, at the map file's one-decimal resolution.
+- `load_sightlines()` on the v3 map warns about line 687 and returns the other 1,605 rows.
+
+**Still to do (Step W2, a separate decision).** Apply the weight inside F1-F4, report `N_eff`
+beside every weighted number, and update the whitepaper's pooled numbers. Until that happens
+every pooled figure and fraction in the whitepaper is unweighted and reads as this entry's
+"unweighted" column.

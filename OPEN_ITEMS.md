@@ -1227,7 +1227,17 @@ single-field v5.1 number cannot distinguish a bug from a setup difference.
 
 ## Pooled per-event statistics give every sightline the same number of events, whatever its event rate
 
-**Status: open, found 2026-09-15 while preparing Step E2. Effect size not yet measured.**
+**Status: open, found 2026-09-15 while preparing Step E2. DERIVED AND MEASURED 2026-09-15 --
+Deviation 41. The framing below is superseded:** the per-sightline terms move pooled fractions
+by under a point; the dominant term is *within* each sightline. Draws are not rate-weighted in
+lens mass or velocity, so the weight is
+`W = w_area * Nstart / nsim * sqrt(Ml) * Vt * Z(Ds)`. It halves-to-sixths the F4 "better than
+10%" fractions and moves the median `tE` of joint detections from 73 d to 23 d. The F2
+short-`tE` headline survives (0.25 -> 0.26). **Step W1 is done:** the weight is implemented as
+`romanlib.event_weight()` on top of `analysis/galaxy_model.py`, with
+`analysis/w1_pooled_weight_check.py` to regenerate the measurement. **This item stays open for
+Step W2** -- no analysis script applies the weight yet, so every pooled number in the whitepaper
+is still unweighted. Original text kept below.
 
 **What is wrong.** The per-sightline loop stops on a *count* (Deviation 40): outside Roman's
 footprint almost every sightline contributes exactly 50 detections, inside it ~57-84. So a
@@ -1260,3 +1270,29 @@ maps to sky events (`nsim`, `Nstart`, `Gamma`, `w_area`). (2) Add it to `romanli
 `area_weight()`, joined on (`lon`, `lat`). (3) Re-run one headline pooled number both ways --
 the six-field "better than 10%" fractions are the cheapest -- and record the shift. Only then
 decide whether F1-F4 need regenerating.
+
+---
+
+## The map file's stream is never flushed, so a killed run loses its last sightline rows
+
+**Status: open, found 2026-09-15 (Deviation 41).**
+
+**What is wrong.** `fil3` (`MapLMC5.dat`) is an `std::ofstream` opened `ios::app` and written
+with `"\n"`, never flushed per row. Every production pause so far has been a kill, and a kill
+discards the buffer. The v3 map file lost six chunk-1 rows (l = 0.281, b = -0.94 .. -0.14) and
+carries one 122-field line: the lost buffer's 52-field fragment with the next run's first row
+appended. The 2026-09-10 re-run was stopped the same way and lost the same tail, so comparing
+the two copies could not catch it.
+
+**Why it matters.** The map file is the only on-disk source of per-sightline `nsim`, `Nstart` and
+`Gamma`, which the pooled weight needs. `test5.dat` is unaffected because it is opened, written
+and closed per event.
+
+**Why deferred.** It is a C++ change and outside the current step. The v3 data are recoverable:
+`run.log`/`run2.log` print `nsim` for every sightline, and `Nstart` is a deterministic function of
+(l, b).
+
+**What the fix involves.** Flush `fil3` after each row, one line, negligible cost at ~1 row per
+minutes of CPU. Any reader should also reject lines whose field count is not 70. For v3, either
+patch the six rows and split line 687 from the logs, or have the analysis read `nsim` from the
+logs.

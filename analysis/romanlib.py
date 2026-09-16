@@ -387,6 +387,72 @@ def event_weight(df, sightlines, nsim_override=None):
     return pd.Series(w, index=df.index)
 
 
+def nsim_from_logs(paths):
+    """{(lon, lat): nsim} from the run log's per-sightline report.
+
+    The map file is written unflushed, so a killed run loses its buffered tail and the
+    sightlines it finished last have no map row (Deviation 42). The log still has them.
+    """
+    out, lon, lat = {}, None, None
+    for p in paths or ():
+        with open(p, errors="replace") as fh:
+            for line in fh:
+                m = re.match(r"^longtitude:\s*(\S+)\s+latitude:\s*(\S+)", line)
+                if m:
+                    lon, lat = round(float(m.group(1)), 3), round(float(m.group(2)), 3)
+                elif line.startswith("nsim:") and lon is not None:
+                    out[(lon, lat)] = float(line.split()[1])
+    return out
+
+
+def attach_weight(df, map_path=None, log_paths=(), unweighted=False):
+    """Return (weights, label) for a pooled statistic over `df`.
+
+    The plumbing every figure script needs: read the sightline table, patch in `nsim` for
+    sightlines a killed run's map file lost, and build the per-event weight.
+
+    `unweighted=True` returns ones and says so in the label -- an explicit choice, which is
+    the point. A script must never fall back to unweighted silently: the unweighted sample
+    over-represents long-tE events roughly tenfold (Deviation 41), so a figure that quietly
+    dropped the weight would look finished and be wrong.
+    """
+    if unweighted:
+        return pd.Series(1.0, index=df.index), "unweighted"
+    if not map_path:
+        raise ValueError(
+            "pooled statistics need the event-rate weight (Deviation 41). Pass the map file "
+            "(--map), adding --log for a run whose map file lost rows, or pass --unweighted "
+            "to say deliberately that this figure is of the raw sample.")
+    sl = load_sightlines(map_path)
+    w = event_weight(df, sl, nsim_override=nsim_from_logs(log_paths))
+    return w, f"event-rate weighted, N_eff = {kish_neff(w):,.0f}"
+
+
+def weighted_quantile(values, weights, q):
+    """Quantile `q` of `values` under `weights`, by cumulative weight. NaN if empty."""
+    v = np.asarray(values, dtype=float)
+    w = np.asarray(weights, dtype=float)
+    ok = np.isfinite(v) & np.isfinite(w) & (w > 0)
+    v, w = v[ok], w[ok]
+    if v.size == 0:
+        return np.nan
+    o = np.argsort(v)
+    c = np.cumsum(w[o]) / w[o].sum()
+    return float(v[o][np.searchsorted(c, q)])
+
+
+def weighted_median(values, weights):
+    return weighted_quantile(values, weights, 0.5)
+
+
+def weighted_fraction(mask, weights):
+    """Weighted fraction of `mask` being true, over the whole weighted sample."""
+    m = np.asarray(mask.fillna(False) if hasattr(mask, "fillna") else mask, dtype=bool)
+    w = np.asarray(weights, dtype=float)
+    tot = w.sum()
+    return float(w[m].sum() / tot) if tot > 0 else np.nan
+
+
 def kish_neff(w):
     """Effective sample size of a weighted sample: (sum w)^2 / sum(w^2).
 

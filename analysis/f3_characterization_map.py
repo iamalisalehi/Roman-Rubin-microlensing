@@ -71,24 +71,37 @@ SURFACE = "#ffffff"
 KAPPA = 8.144             # mas / Msun
 
 
-def cell_stats(df, xedges, yedges, alone, min_n):
-    """Per-cell N, joint fraction, single-survey fraction, and their ratio."""
+def cell_stats(df, w, xedges, yedges, alone, min_n):
+    """Per-cell N, joint fraction, single-survey fraction, and their ratio.
+
+    The fractions are weighted by the event rate (Deviation 41), because a characterized
+    fraction is a statement about the events in that cell of the sky, not about the draws
+    that happened to land there. The cell is quoted only if its EFFECTIVE sample -- Kish's
+    (sum w)^2 / sum w^2 -- clears `min_n`, which is stricter than the raw count and is the
+    honest bar once the weights inside a cell vary.
+    """
     x = np.log10(df["tE"].to_numpy())
     y = np.log10(df["piE"].to_numpy())
+    w = np.asarray(w, dtype=float)
     cj = R.characterized(df, "joint").to_numpy()
     cs = R.characterized(df, alone).to_numpy()
 
-    n, _, _ = np.histogram2d(x, y, bins=[xedges, yedges])
-    nj, _, _ = np.histogram2d(x, y, bins=[xedges, yedges], weights=cj.astype(float))
-    ns, _, _ = np.histogram2d(x, y, bins=[xedges, yedges], weights=cs.astype(float))
+    bins = [xedges, yedges]
+    n, _, _ = np.histogram2d(x, y, bins=bins)
+    sw, _, _ = np.histogram2d(x, y, bins=bins, weights=w)
+    sw2, _, _ = np.histogram2d(x, y, bins=bins, weights=w * w)
+    nj, _, _ = np.histogram2d(x, y, bins=bins, weights=cj * w)
+    ns, _, _ = np.histogram2d(x, y, bins=bins, weights=cs * w)
 
     with np.errstate(invalid="ignore", divide="ignore"):
-        fj = np.where(n >= min_n, nj / n, np.nan)
-        fs = np.where(n >= min_n, ns / n, np.nan)
+        neff = np.where(sw2 > 0, sw * sw / sw2, 0.0)
+        enough = neff >= min_n
+        fj = np.where(enough, nj / sw, np.nan)
+        fs = np.where(enough, ns / sw, np.nan)
         ratio = np.where(fs > 0, fj / fs, np.nan)
 
     # Pure rescue: the single survey characterizes nothing here, the joint fit does.
-    rescue = (n >= min_n) & (ns == 0) & (nj > 0)
+    rescue = enough & (ns == 0) & (nj > 0)
     return n, fj, fs, ratio, rescue
 
 
@@ -155,14 +168,24 @@ def main():
     ap.add_argument("--provenance", default=None,
                     help="run_provenance.txt; found automatically if omitted")
     ap.add_argument("--min-n", type=int, default=12,
-                    help="cells with fewer events are greyed, not coloured (default 12)")
+                    help="cells whose EFFECTIVE sample is smaller are greyed, not coloured "
+                         "(default 12)")
+    ap.add_argument("--map", default=None,
+                    help="MapLMC5.dat -- needed for the event-rate weight (Deviation 41)")
+    ap.add_argument("--log", action="append", default=[],
+                    help="run log(s), for sightlines whose map rows a killed run lost")
+    ap.add_argument("--unweighted", action="store_true",
+                    help="deliberately report the raw sample, with no event-rate weight")
     ap.add_argument("--dex", type=float, default=0.5, help="cell size in dex (default 0.5)")
     ap.add_argument("--te-range", type=float, nargs=2, default=(-0.5, 3.5))
     ap.add_argument("--pie-range", type=float, nargs=2, default=(-2.5, 1.0))
     args = ap.parse_args()
 
     df = R.load_events(args.events)
+    w, wlabel = R.attach_weight(df, args.map, args.log, args.unweighted)
+    df["W"] = w
     print(R.describe(args.events, args.provenance))
+    print(f"  weighting: {wlabel}")
 
     bad = R.check_monotonicity(df)
     if bad:
@@ -191,7 +214,7 @@ def main():
     # same shade mean two different numbers.
     stats = []
     for alone, sub, title, subtitle in panels:
-        stats.append(cell_stats(sub, xedges, yedges, alone, args.min_n))
+        stats.append(cell_stats(sub, sub["W"].to_numpy(), xedges, yedges, alone, args.min_n))
     allr = np.concatenate([st[3][np.isfinite(st[3])] for st in stats])
     vmax = float(np.ceil(np.nanmax(allr) * 10.0) / 10.0) if allr.size else 1.5
     vmax = max(vmax, 1.1)

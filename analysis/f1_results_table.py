@@ -60,10 +60,20 @@ def assign_field(df, fields):
 
 
 def summarise(g):
-    """One output row from one (field, tE bin) group."""
+    """One output row from one (field, tE bin) group.
+
+    COUNTS ARE COUNTS; FRACTIONS AND MEDIANS ARE WEIGHTED. A count describes the sample that
+    was simulated, and weighting it would produce a number in no units anybody can quote (the
+    weight's constants cancel only in a ratio -- Deviation 41). Everything that pools events
+    into a fraction or a median is weighted, because those are statements about the sky, and
+    each carries `N_eff`: the weighted sample's Poisson precision, which on the v3 footprint
+    is about a third of its event count.
+    """
     detL, detR = R.detected(g, "rubin"), R.detected(g, "roman")
+    w = g["W"].to_numpy()
     out = {
         "N_events": len(g),
+        "N_eff": R.kish_neff(w),
         # ---- yield: who saw it ----
         "N_rubin_only": int((detL & ~detR).sum()),
         "N_roman_only": int((detR & ~detL).sum()),
@@ -76,25 +86,38 @@ def summarise(g):
     # because it never pointed there, which is a footprint fact, not a cadence one.
     gap = g[(g["t0zone"] == 1) & (g["ndw_R"] > 0)]
     out["N_gap_peaking"] = len(gap)
-    out["frac_gap_seen_by_rubin"] = float(R.detected(gap, "rubin").mean()) if len(gap) else np.nan
+    out["frac_gap_seen_by_rubin"] = (R.weighted_fraction(R.detected(gap, "rubin"),
+                                                         gap["W"].to_numpy())
+                                     if len(gap) else np.nan)
+    out["frac_gap_seen_by_rubin_unw"] = (float(R.detected(gap, "rubin").mean())
+                                         if len(gap) else np.nan)
 
     # ---- precision: per-event ratio first, then the median. Never a ratio of means. ----
+    # The ratio itself is per event and carries no weight; its MEDIAN over a set of events
+    # does, because which events the set holds is a sampling statement.
     for p in ("tE", "piE"):
-        r = R.ratio_joint_over(g, p, "roman").dropna()
-        out[f"N_ratio_{p}"] = len(r)
-        out[f"med_ratio_{p}"] = float(r.median()) if len(r) else np.nan
-        out[f"q25_ratio_{p}"] = float(r.quantile(0.25)) if len(r) else np.nan
-        out[f"q75_ratio_{p}"] = float(r.quantile(0.75)) if len(r) else np.nan
+        r = R.ratio_joint_over(g, p, "roman")
+        ok = r.notna()
+        rv, rw = r[ok].to_numpy(), w[ok.to_numpy()]
+        out[f"N_ratio_{p}"] = int(ok.sum())
+        out[f"Neff_ratio_{p}"] = R.kish_neff(rw)
+        out[f"med_ratio_{p}"] = R.weighted_median(rv, rw)
+        out[f"q25_ratio_{p}"] = R.weighted_quantile(rv, rw, 0.25)
+        out[f"q75_ratio_{p}"] = R.weighted_quantile(rv, rw, 0.75)
+        out[f"med_ratio_{p}_unw"] = float(np.median(rv)) if rv.size else np.nan
 
     # ---- characterisation gain ----
     cj, cr = R.characterized(g, "joint"), R.characterized(g, "roman")
     out["N_char_joint"] = int(cj.sum())
     out["N_char_roman"] = int(cr.sum())
     out["dN_char"] = int(cj.sum() - cr.sum())
+    out["frac_char_joint"] = R.weighted_fraction(cj, w)
+    out["frac_char_roman"] = R.weighted_fraction(cr, w)
 
     # ---- how often Rubin alone cannot be inverted at all ----
     det = g[R.detected(g, "joint")]
-    out["frac_rubin_singular"] = float((det["okA_L"] == 0).mean()) if len(det) else np.nan
+    out["frac_rubin_singular"] = (R.weighted_fraction(det["okA_L"] == 0, det["W"].to_numpy())
+                                  if len(det) else np.nan)
     return pd.Series(out)
 
 
@@ -108,9 +131,18 @@ def main():
                     help=f"comma-separated tE bin edges in days (default {DEFAULT_EDGES})")
     ap.add_argument("--fields-only", action="store_true",
                     help="drop the 'outside' row (Rubin-only sky)")
+    ap.add_argument("--map", default=None,
+                    help="MapLMC5.dat -- needed for the event-rate weight (Deviation 41)")
+    ap.add_argument("--log", action="append", default=[],
+                    help="run log(s), for sightlines whose map rows a killed run lost")
+    ap.add_argument("--unweighted", action="store_true",
+                    help="deliberately report the raw sample, with no event-rate weight")
     a = ap.parse_args()
 
     df = R.load_events(a.events)
+    w, wlabel = R.attach_weight(df, a.map, a.log, a.unweighted)
+    df["W"] = w
+    print(f"weighting: {wlabel}")
     edges = [float(x) for x in a.te_edges.split(",")]
     labels = [f"{edges[i]:g}-{edges[i+1]:g} d" for i in range(len(edges) - 1)]
     df["teBin"] = pd.cut(df["tE"], edges, labels=labels, right=False)

@@ -16,10 +16,15 @@
   `N_eff` beside each weighted number, regenerate the figures and update the whitepaper. **Until
   then every pooled distribution, fraction or median in the whitepaper is unweighted.** Per-event
   ratios and H3's pairs are unaffected either way.
-- **Map file damaged.** `MapLMC5.dat` lost six chunk-1 rows (l 0.281, b -0.94..-0.14) and has one
-  merged line. The run logs have `nsim` for all 1,612 sightlines, and §"Chunk 2" below is wrong
-  to call the file undamaged. Measurement script (scratch, not committed): `pooled_weight.py`,
-  derivation reproduced in Deviation 41.
+- **Validated against OGLE-IV** (Deviation 41). Weighting all 6.07M draws gives an intrinsic mean
+  `tE` of **24.0 d**, against Mroz et al. 2019's efficiency-corrected **22 d** in the central
+  bins; unweighted it is 56.2 d. The weight is what brings the model onto the published value.
+- **Map file damaged, and the cause is now fixed** (Deviation 42). `MapLMC5.dat` lost six chunk-1
+  rows (l 0.281, b -0.94..-0.14) and has one merged line; `EfLMC5`/`EfLMC5B` lost the same six
+  blocks. Cause: the per-sightline streams were never flushed and every pause has been a kill.
+  `Bulge_LSST.cpp` now flushes them, verified by killing a stub run under both binaries (0 rows
+  on disk before, 7 of 7 after). **The v3 files stay damaged**: take `nsim` from the run logs.
+  §"Chunk 2" below is wrong to call the map file undamaged.
 
 **Last updated:** 2026-09-15, when **Step G2 was started** and the advisor's paper on the parent
 code (Sajadian & Makler, arXiv:2608.16448) was read against it — **§5i**. **G2 is deferred by

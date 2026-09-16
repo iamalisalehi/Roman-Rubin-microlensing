@@ -1275,7 +1275,13 @@ decide whether F1-F4 need regenerating.
 
 ## The map file's stream is never flushed, so a killed run loses its last sightline rows
 
-**Status: open, found 2026-09-15 (Deviation 41).**
+**Status: the code is FIXED (2026-09-16, Deviation 42) -- `fil3`, `fil2` and `fil2b` now flush
+per sightline, verified by killing a stub run under both binaries. This entry stays open for the
+DATA: the v3 files are still short six map rows and six efficiency blocks and still carry the
+merged line 687. Any v3 analysis needing per-sightline quantities must take `nsim` from the run
+logs, and read the map through `romanlib.load_sightlines()`, which skips the bad line.**
+
+Original text, describing the code before the fix:
 
 **What is wrong.** `fil3` (`MapLMC5.dat`) is an `std::ofstream` opened `ios::app` and written
 with `"\n"`, never flushed per row. Every production pause so far has been a kill, and a kill

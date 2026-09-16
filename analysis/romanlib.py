@@ -85,7 +85,7 @@ MAP_COLS = ([f"{n}_{i}" for n in _MAP_PAIRS for i in (0, 1)]
                "w_area", "lon", "lat"])
 
 
-def load_events(path, keep=None, chunksize=None):
+def load_events(path, keep=None, chunksize=None, usecols=None):
     """Read the per-event table (test5.dat) written by the `filg_in <<` block.
 
     Column names come from the file's own `#` header, not from a list hardcoded here, so a
@@ -105,6 +105,12 @@ def load_events(path, keep=None, chunksize=None):
 
         The default (keep=None) reads the whole file in one pass, unchanged, so existing
         callers behave exactly as before.
+
+    usecols -- keep only these columns. The other lever on the same problem: a statistic over
+        ALL draws (the intrinsic tE distribution, Deviation 41) cannot discard 98.7% of the
+        rows, so it has to discard columns instead -- eight of ninety is ~380 MB rather than
+        ~4 GB. The `detCls`/`synClass`/`t0zone` label columns are only added if their source
+        column survives the selection.
     """
     with open(path) as fh:
         header = fh.readline()
@@ -116,6 +122,11 @@ def load_events(path, keep=None, chunksize=None):
     cols = header.lstrip("#").split()
 
     reader_kw = dict(sep=r"\s+", comment="#", header=None, names=cols)
+    if usecols is not None:
+        missing = [c for c in usecols if c not in cols]
+        if missing:
+            raise ValueError(f"{path}: no such column(s) {missing}")
+        reader_kw["usecols"] = list(usecols)
     if keep is None and chunksize is None:
         df = pd.read_csv(path, **reader_kw)
     else:
@@ -126,12 +137,15 @@ def load_events(path, keep=None, chunksize=None):
         df = (pd.concat(parts, ignore_index=True) if parts
               else pd.DataFrame(columns=cols))
 
-    if df.shape[1] != len(cols):
-        raise ValueError(f"{path}: header names {len(cols)} columns, data has {df.shape[1]}")
+    expected = len(reader_kw.get("usecols", cols))
+    if df.shape[1] != expected:
+        raise ValueError(f"{path}: expected {expected} columns, data has {df.shape[1]}")
 
-    df["detClsName"] = df["detCls"].map(DET_CLASS)
-    df["synClassName"] = df["synClass"].map(SYN_CLASS)
-    df["t0zoneName"] = df["t0zone"].map(T0_ZONE)
+    for src, dst, mapping in (("detCls", "detClsName", DET_CLASS),
+                              ("synClass", "synClassName", SYN_CLASS),
+                              ("t0zone", "t0zoneName", T0_ZONE)):
+        if src in df.columns:
+            df[dst] = df[src].map(mapping)
     return df
 
 

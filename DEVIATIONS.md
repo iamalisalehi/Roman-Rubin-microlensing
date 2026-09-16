@@ -2932,10 +2932,32 @@ F2 medians of `sigma_joint/sigma_Roman`, unweighted | weighted [N, N_eff]:
   "74% below 110 d" sanity check (Deviation 22's verification), which was quoted from the
   unweighted sample.
 
-**Uncertainty, flagged.** The weighted 23 d median is closer to what bulge surveys report than
-73 d is, but I have not checked it against a specific published efficiency-corrected
-distribution, and it is over *detected* events under this pipeline's detection test, so it is
-not directly comparable. That comparison is a validation still to do, not a claim.
+**Validated against OGLE-IV (2026-09-16).** The right comparison is not the detected sample but
+the *intrinsic* one: apply the weight to all 6,075,044 draws, detected or not, which is what an
+efficiency-corrected survey measurement estimates. Mroz et al. 2019 (ApJS 244, 29;
+arXiv:1906.02210), 8 yr of OGLE-IV over 121 bulge fields, corrects each event by 1/eff(tE) and
+reports the mean Einstein timescale as **shortest in the central bins, within ~3 deg of the
+Galactic centre, at 22 d, growing to 32 d at l ~ +8 deg and l ~ -6 deg**.
+
+This model, weighted:
+
+| sample | mean `tE` | median `tE` | > 100 d |
+|---|---|---|---|
+| all draws, **weighted** | **24.0 d** | 17.0 d | 2.0% |
+| all draws, unweighted | 56.2 d | 23.0 d | 12.7% |
+| weighted, \|b\| 1-2 | 23.7 d | 16.6 d | 1.9% |
+| weighted, l in [-2, +2), \|b\| 1-5 | 23.3 d | 16.0 d | 2.0% |
+| weighted, l in [+2, +5), \|b\| 1-5 | 24.9 d | 17.5 d | 2.2% |
+
+**The weighted mean lands on OGLE's central value (24.0 d against 22 d); the unweighted mean,
+56 d, is off by a factor 2.5.** The trend with longitude has the right sign and is weaker than
+OGLE's -- but this scan spans l -3.7 to +5.1, and OGLE's rise to 32 d is measured at l ~ 8 deg,
+outside it. This is the independent check the weight needed, and the sampler's `sqrt(M) v_t`
+omission is what the unweighted number was missing.
+
+**Still not identical, deliberately:** OGLE's mean is over its own detected events reweighted by
+its own efficiency, `u0 < 1`; this pipeline draws `u0 < 3` and has its own mass function. The
+agreement is of a population mean, not of a measurement.
 
 **Found on the way: the v3 map file is not undamaged.** PROGRESS §"Chunk 2" says `MapLMC5.dat`
 "survived" and "was never damaged". It has 1,606 lines for 1,612 aggregated sightlines.
@@ -2976,3 +2998,47 @@ reproducible; **no existing figure or number changes yet.**
 beside every weighted number, and update the whitepaper's pooled numbers. Until that happens
 every pooled figure and fraction in the whitepaper is unweighted and reads as this entry's
 "unweighted" column.
+
+---
+
+## 42. The per-sightline output streams were never flushed, so every killed run lost its tail (2026-09-16)
+
+**What the plan said.** Nothing: the plan does not discuss output buffering. Deviation 34 fixed
+the *truncation* half of the resume problem (`ios::app` for accumulating outputs) and recorded
+`MapLMC5.dat` as the file that "survived". Deviation 41 found it had not survived intact.
+
+**What was wrong.** `fil3` (`MapLMC5.dat`), `fil2` (`EfLMC5.dat`) and `fil2b` (`EfLMC5B.dat`)
+are written once per sightline and flushed only when the stream is destroyed -- i.e. on a clean
+exit. **Every production pause in this project has been a kill**, and a kill discards the
+buffer. The 2026-09-06 chunk-1 stop lost the map rows of six completed sightlines
+(l = 0.281, b = -0.94 .. -0.14) and left a partial seventh row, onto which the resuming run
+appended its first row, producing one 122-field line. The same stop cost `EfLMC5`/`EfLMC5B` the
+same six 101-row blocks: 162,206 rows = 101 x 1,606, where 1,612 sightlines were aggregated.
+The 2026-09-10 re-run of indices 0-773 was stopped the same way and lost the same tail, so the
+"686/686 byte-identical" check between the two copies could not have caught it: both were short
+by the same amount.
+
+`test5.dat` and `LpLMC5.dat` are unaffected -- they are opened, written and closed per event.
+
+**What was done.** Three `flush()` calls after the per-sightline writes in `Bulge_LSST.cpp`.
+A sightline costs minutes of CPU, so this is free, and what reaches disk is then what the log
+says finished.
+
+**Verification -- the failure was reproduced and then shown closed.** Two binaries, one built
+from `HEAD` (no flush) and one from the working tree, each run as
+`--stub --stride 2 --events 2 --lenses 1 --nerr 1 --maxdraws 500` in its own scratch directory
+with inputs symlinked and outputs private, then killed with `kill -9` once both had reported
+seven finished sightlines:
+
+| binary | sightlines finished per log | `MapLMC5.dat` rows on disk | `EfLMC5.dat` rows |
+|---|---|---|---|
+| `HEAD`, unflushed | 7 | **0** | 645 (partial) |
+| this change | 7 | **7** | **707 = 7 x 101** |
+
+- `g++ -std=c++17 -fsyntax-only Bulge_LSST.cpp`: pass.
+- The change is three flushes; it alters no computed value and no output content.
+
+**What this does NOT fix.** The v3 files stay damaged -- six map rows and six efficiency blocks
+are gone, and line 687 stays merged. `nsim` for those sightlines is recoverable from the run
+logs, and `romanlib.load_sightlines()` skips the malformed line (Deviation 41). Any analysis of
+v3 that needs per-sightline quantities must go through those two workarounds.

@@ -2233,7 +2233,20 @@ int main(int argc, char** argv) {
          << " " << std::setprecision(8) << wArea
          << " " << std::setprecision(6) << s->lon << " " << s->lat
          << "\n";
-   
+
+    // Flush the per-sightline outputs now rather than when the stream is destroyed. Every
+    // production pause so far has been a kill, and a kill discards whatever is still
+    // buffered: the 2026-09-06 chunk-1 stop lost the map rows of six completed sightlines
+    // and left a half-written seventh, onto which the resuming run's first row was then
+    // appended -- one 122-field line that made the whole file unreadable until the Python
+    // reader learned to skip it (Deviation 41). The same stop cost EfLMC5/EfLMC5B the same
+    // six blocks, which is why fil2/fil2b are flushed here too. A sightline costs minutes
+    // of CPU, so three flushes per sightline are free, and what reaches disk is then what
+    // the log says was finished.
+    fil3.flush();
+    fil2.flush();
+    fil2b.flush();
+
     cout << "nsim:  "  << nsim    << "\t Ndetected:  " << icon    << "\t Nlensing:  " << nlens << "\t NError:  " << nerr << endl;
     cout << "Detection classes:";
     for (int c = 0; c < NDETCLASS; ++c)

@@ -146,7 +146,7 @@ def style(ax):
 
 
 # ---------------------------------------------------------------------------- panels
-def panel_shift_cdf(ax, df, rows):
+def panel_shift_cdf(ax, df, w, rows):
     """(a) How big is the wobble, and is it above Roman's per-epoch precision?"""
     dmax = max_shift(df)
     fb = df["blend_F146"].to_numpy(dtype=float)
@@ -154,21 +154,27 @@ def panel_shift_cdf(ax, df, rows):
 
     prec = roman_ast_error(df["magb_F146"].to_numpy(dtype=float))
     n = len(df)
+    w_total = w.sum()
 
-    fb_med = float(np.median(fb))
+    fb_med = R.weighted_median(fb, w)
     for v, c, lab in ((dmax, ACCENT, "source centroid (what the Fisher matrix uses)"),
                       (dmax_bl, "#c026d3",
                        rf"$\times f_{{\rm b}}$ (blend-diluted; median $f_{{\rm b}}={fb_med:.2f}$)")):
-        v = np.sort(v[np.isfinite(v) & (v > 0)])
-        ax.step(v, np.arange(1, len(v) + 1) / n, where="post", color=c, lw=1.9, zorder=3,
+        ok = np.isfinite(v) & (v > 0)
+        vv, ww = v[ok], w[ok]
+        o = np.argsort(vv)
+        vv, ww = vv[o], ww[o]
+        ax.step(vv, np.cumsum(ww) / w_total, where="post", color=c, lw=1.9, zorder=3,
                 label=lab)
+        ax.step(vv, np.arange(1, len(vv) + 1) / n, where="post", color=c, lw=0.9,
+                ls=(0, (3, 2)), alpha=0.55, zorder=2)
 
     ax.axvline(ROMAN_AST_FLOOR, color="#b0b0b0", lw=0.9, ls=":", zorder=1)
     ax.text(ROMAN_AST_FLOOR, 0.02, "  1.1 mas\n  1-exposure floor", color=MUTED, fontsize=7,
             ha="left", va="bottom", zorder=1)
 
-    above = float(np.mean(dmax > prec))
-    above_bl = float(np.mean(dmax_bl > prec))
+    above = R.weighted_fraction(dmax > prec, w)
+    above_bl = R.weighted_fraction(dmax_bl > prec, w)
     ax.set_xscale("log")
     ax.set_xlabel(r"maximum centroid shift  $\delta\theta_{\rm max}$  [mas]", color=INK, fontsize=9)
     ax.set_ylabel("cumulative fraction of sample", color=INK, fontsize=9)
@@ -180,13 +186,18 @@ def panel_shift_cdf(ax, df, rows):
     ax.set_ylim(0, 1)
     rows.append(dict(panel="a", metric="frac_shift_above_per_exposure_precision", value=above))
     rows.append(dict(panel="a", metric="frac_blenddiluted_above_precision", value=above_bl))
-    rows.append(dict(panel="a", metric="median_max_shift_mas", value=float(np.median(dmax))))
+    rows.append(dict(panel="a", metric="median_max_shift_mas",
+                     value=R.weighted_median(dmax, w)))
     rows.append(dict(panel="a", metric="median_blend_F146", value=fb_med))
     rows.append(dict(panel="a", metric="median_roman_per_exposure_precision_mas",
-                     value=float(np.median(prec))))
+                     value=R.weighted_median(prec, w)))
+    rows.append(dict(panel="a", metric="median_max_shift_mas_unweighted",
+                     value=float(np.median(dmax))))
+    rows.append(dict(panel="a", metric="frac_shift_above_per_exposure_precision_unweighted",
+                     value=float(np.mean(dmax > prec))))
 
 
-def panel_u0(ax, df, rows):
+def panel_u0(ax, df, w, rows):
     """(b) How the wobble compares with what Roman can measure -- per exposure and stacked.
 
     The previous version of this panel plotted delta_theta_max/theta_E against u0, which is a
@@ -206,15 +217,15 @@ def panel_u0(ax, df, rows):
     cb.set_label(r"$\log_{10}(\theta_{\rm E}/{\rm mas})$", color=INK, fontsize=8)
     cb.ax.tick_params(colors=MUTED, labelsize=7)
 
-    per_exp = float(np.median(prec))
-    stacked = float(np.median(prec / np.sqrt(np.maximum(nR, 1.0))))
+    per_exp = R.weighted_median(prec, w)
+    stacked = R.weighted_median(prec / np.sqrt(np.maximum(nR, 1.0)), w)
     ax.axhline(per_exp, color="#8a8a8a", lw=1.1, ls=":", zorder=2,
                label=f"single exposure ({per_exp:.1f} mas)")
     ax.axhline(stacked, color=COLOR["roman"], lw=1.1, ls="--", zorder=2,
                label=rf"stacked over $N_{{\rm epoch}}$ ({stacked*1e3:.0f} $\mu$as)")
     ax.legend(frameon=False, fontsize=7.5, loc="lower right", labelcolor=INK)
 
-    reach = float(np.mean(df["u0"].to_numpy(dtype=float) <= U_AST_PEAK))
+    reach = R.weighted_fraction(df["u0"].to_numpy(dtype=float) <= U_AST_PEAK, w)
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlabel(r"$t_{\rm E}$  [d]", color=INK, fontsize=9)
@@ -226,10 +237,12 @@ def panel_u0(ax, df, rows):
     rows.append(dict(panel="b", metric="frac_reaching_theta_over_sqrt8", value=reach))
     rows.append(dict(panel="b", metric="median_stacked_precision_mas", value=stacked))
     rows.append(dict(panel="b", metric="median_shift_over_stacked_precision",
-                     value=float(np.median(dmax)) / stacked if stacked > 0 else np.nan))
+                     value=R.weighted_median(dmax, w) / stacked if stacked > 0 else np.nan))
+    rows.append(dict(panel="b", metric="frac_reaching_theta_over_sqrt8_unweighted",
+                     value=float(np.mean(df["u0"].to_numpy(dtype=float) <= U_AST_PEAK))))
 
 
-def panel_season(ax, df, rows):
+def panel_season(ax, df, w, rows):
     """(c) The astrometric peak is displaced from t0 -- across a season edge, sometimes."""
     off = ast_peak_offset(df)
     dt_edge = df["dt_edge"].to_numpy(dtype=float)
@@ -248,8 +261,9 @@ def panel_season(ax, df, rows):
     lim = np.array([1.0, 3.0e3])
     ax.plot(lim, lim, color=INK, lw=1.1, ls="--", zorder=4, label="astrometric peak on the edge")
 
-    f_cross = float(np.mean(crosses))
-    f_cross_in = float(np.mean(crosses[in_season])) if in_season.any() else np.nan
+    f_cross = R.weighted_fraction(crosses, w)
+    f_cross_in = (R.weighted_fraction(crosses[in_season], w[in_season])
+                  if in_season.any() else np.nan)
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlim(*lim)
@@ -262,20 +276,31 @@ def panel_season(ax, df, rows):
     ax.legend(frameon=False, fontsize=7.5, loc="lower right", labelcolor=INK)
     rows.append(dict(panel="c", metric="frac_ast_peak_crosses_season_edge", value=f_cross))
     rows.append(dict(panel="c", metric="frac_crossing_given_t0_in_season", value=f_cross_in))
+    rows.append(dict(panel="c", metric="frac_ast_peak_crosses_season_edge_unweighted",
+                     value=float(np.mean(crosses))))
 
 
-def panel_tetE_cdf(ax, df, surveys, rows):
+def panel_tetE_cdf(ax, df, w, surveys, rows):
     """(d) The forecast on theta_E, per survey -- F4's panel (c), kept for context."""
     n = len(df)
+    w_total = w.sum()
     ax.axvline(0.1, color="#b0b0b0", lw=0.9, ls=":", zorder=1)
     ax.text(0.1, 0.02, " 10%", color=MUTED, fontsize=7, ha="left", va="bottom")
     for s in surveys:
-        v = (R.sigma(df, "tetE", s) / df["tetE"]).dropna().to_numpy()
-        v = np.sort(v[v > 0])
-        below = float(np.sum(v < 0.1)) / n
-        ax.step(v, np.arange(1, len(v) + 1) / n, where="post", color=COLOR[s], lw=1.9,
-                zorder=3, label=f"{LABEL[s]}   {below*100:4.1f}% < 10%")
+        vs = R.sigma(df, "tetE", s) / df["tetE"]
+        ok = (vs.notna() & (vs > 0)).to_numpy()
+        v, wv = vs.to_numpy()[ok], w[ok]
+        o = np.argsort(v)
+        v, wv = v[o], wv[o]
+        below = float(wv[v < 0.1].sum()) / w_total
+        below_raw = float(np.sum(v < 0.1)) / n
+        ax.step(v, np.cumsum(wv) / w_total, where="post", color=COLOR[s], lw=1.9,
+                zorder=3, label=f"{LABEL[s]}   {below*100:4.1f}% < 10% (raw {below_raw*100:.1f}%)")
+        ax.step(v, np.arange(1, len(v) + 1) / n, where="post", color=COLOR[s], lw=0.9,
+                ls=(0, (3, 2)), alpha=0.55, zorder=2)
         rows.append(dict(panel="d", metric=f"frac_sigtetE_below_10pct_{s}", value=below))
+        rows.append(dict(panel="d", metric=f"frac_sigtetE_below_10pct_{s}_unweighted",
+                         value=below_raw))
     ax.set_xscale("log")
     ax.set_xlim(1e-3, 1e3)
     ax.set_ylim(0, 1)
@@ -287,7 +312,7 @@ def panel_tetE_cdf(ax, df, surveys, rows):
     ax.legend(frameon=False, fontsize=7.5, loc="lower right", labelcolor=INK)
 
 
-def panel_invariant(ax, df, rows):
+def panel_invariant(ax, df, w, rows):
     """(e) sigma_joint <= sigma_single on theta_E. A physics invariant, so a bug detector."""
     for s in ("roman", "rubin"):
         x = R.sigma(df, "tetE", s) / df["tetE"]
@@ -297,6 +322,8 @@ def panel_invariant(ax, df, rows):
                    label=f"joint vs {LABEL[s]}")
         r = (y[m] / x[m]).to_numpy()
         rows.append(dict(panel="e", metric=f"median_ratio_tetE_joint_over_{s}",
+                         value=R.weighted_median(r, w[m.to_numpy()]) if len(r) else np.nan))
+        rows.append(dict(panel="e", metric=f"median_ratio_tetE_joint_over_{s}_unweighted",
                          value=float(np.median(r)) if len(r) else np.nan))
         rows.append(dict(panel="e", metric=f"n_above_unity_{s}",
                          value=float(np.sum(r > 1.0 + 1e-9))))
@@ -312,7 +339,7 @@ def panel_invariant(ax, df, rows):
     ax.legend(frameon=False, fontsize=7.5, loc="upper left", labelcolor=INK)
 
 
-def panel_mass_plane(ax, df, rows):
+def panel_mass_plane(ax, df, w, rows):
     """(f) The mass solution needs BOTH matrices: Ml = theta_E / (kappa piE)."""
     piE = df["piE"].to_numpy(dtype=float)
     teE = df["tetE"].to_numpy(dtype=float)
@@ -336,7 +363,8 @@ def panel_mass_plane(ax, df, rows):
                  r"$M_{\rm L}=\theta_{\rm E}/(\kappa\pi_{\rm E})$, "
                  r"$\kappa=8.144$ mas/$M_\odot$",
                  color=INK, fontsize=10, loc="left", pad=7, linespacing=1.5)
-    rows.append(dict(panel="f", metric="median_Ml_msun", value=float(np.median(ml))))
+    rows.append(dict(panel="f", metric="median_Ml_msun", value=R.weighted_median(ml, w[ok])))
+    rows.append(dict(panel="f", metric="median_Ml_msun_unweighted", value=float(np.median(ml))))
 
 
 def main():
@@ -347,6 +375,12 @@ def main():
     ap.add_argument("--provenance", default=None)
     ap.add_argument("--chunksize", type=int, default=500_000)
     ap.add_argument("--scope", choices=("footprint", "all"), default="footprint")
+    ap.add_argument("--map", default=None,
+                    help="MapLMC5.dat -- needed for the event-rate weight (Deviation 41)")
+    ap.add_argument("--log", action="append", default=[],
+                    help="run log(s), for sightlines whose map rows a killed run lost")
+    ap.add_argument("--unweighted", action="store_true",
+                    help="deliberately report the raw sample, with no event-rate weight")
     args = ap.parse_args()
 
     # Filtered chunked read: joint detections are 1.3% of the table and reading the rest
@@ -375,20 +409,28 @@ def main():
         print("  nothing in scope -- no figure written")
         return
 
+    # Weight AFTER every cut: the weight is per event, and each panel's fractions and medians
+    # are over whatever sample survived them (Deviation 41).
+    w, wlabel = R.attach_weight(df, args.map, args.log, args.unweighted)
+    w = w.to_numpy()
+    print(f"  weighting: {wlabel}")
+
     fig, axes = plt.subplots(2, 3, figsize=(16.2, 9.4), facecolor=SURFACE)
     rows = []
-    panel_shift_cdf(axes.flat[0], df, rows)
-    panel_u0(axes.flat[1], df, rows)
-    panel_season(axes.flat[2], df, rows)
-    panel_tetE_cdf(axes.flat[3], df, ("joint", "roman", "rubin"), rows)
-    panel_invariant(axes.flat[4], df, rows)
-    panel_mass_plane(axes.flat[5], df, rows)
+    panel_shift_cdf(axes.flat[0], df, w, rows)
+    panel_u0(axes.flat[1], df, w, rows)
+    panel_season(axes.flat[2], df, w, rows)
+    panel_tetE_cdf(axes.flat[3], df, w, ("joint", "roman", "rubin"), rows)
+    panel_invariant(axes.flat[4], df, w, rows)
+    panel_mass_plane(axes.flat[5], df, w, rows)
     for ax in axes.flat:
         style(ax)
 
     fig.suptitle("The astrometric microlensing signal, and what it is worth",
                  color=INK, fontsize=13.5, x=0.035, ha="left", y=0.975)
-    fig.text(0.035, 0.945, f"{len(df):,} joint-detected events -- {scope_note}",
+    fig.text(0.035, 0.945,
+             f"{len(df):,} joint-detected events -- {scope_note}\n"
+             f"solid: {wlabel}    dashed: the raw sample, unweighted",
              color=MUTED, fontsize=9, va="top")
 
     fig.subplots_adjust(left=0.05, right=0.985, bottom=0.115, top=0.885,

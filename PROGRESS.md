@@ -20,8 +20,15 @@
 - **Two long-`tE` bins are now noise:** `N_eff` 33 and 66. The raw sample over-represented long
   events ~10x. E1b (`tE` stratification) is the way to get those bins back, and is no longer
   optional if the long-`tE` claims matter.
-- **Still unweighted, deliberately:** H3 (satellite parallax) and H5 (astrometric shift)
-  aggregates. `OPEN_ITEMS.md` has the entry; the whitepaper carries the caveat.
+- **Step W3 (2026-09-17) weighted H5 and unblocked H3** -- Deviation 44. H5's numbers moved:
+  median shift 0.111 -> **0.120 mas**, the fraction reaching `u = sqrt(2)` 74.1 -> **81.0%**,
+  above one exposure 0.11 -> **0.020%**, season-edge crossings 42.5 -> **40.9%**. Both H5 figures
+  regenerated; whitepaper updated.
+- **H3 cannot be weighted from the data that exist.** Its paired file has no `Ml`/`Dl`/`Ds`/`Vt`,
+  those cannot be reconstructed from `tetE` and `piE`, and its events do not match v3's (0 of
+  2,673 -- it ran from `--start-index 518` on a different stretch of the RNG stream).
+  `Bulge_LSST.cpp` now writes the four columns, so **a new `--pair-satellite` run is all that is
+  missing**; the script refuses a legacy file unless given `--unweighted`.
 - **Validated against OGLE-IV** (Deviation 41). Weighting all 6.07M draws gives an intrinsic mean
   `tE` of **24.0 d**, against Mroz et al. 2019's efficiency-corrected **22 d** in the central
   bins; unweighted it is 56.2 d. The weight is what brings the model onto the published value.

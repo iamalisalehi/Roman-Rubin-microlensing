@@ -3096,7 +3096,9 @@ back.
 **Not weighted, and labelled as such.** The astrometric-shift (H5) and satellite-parallax (H3)
 sections still quote raw-sample medians and fractions. Their per-event pairing is unaffected, but
 each aggregate will move. Recorded in `OPEN_ITEMS.md` and as a bullet in the whitepaper's own
-open-items list.
+open-items list. **Closed for H5, and for H3 as far as the data allow, by entry 44.**
+
+**Step W3 (2026-09-17) finished the job for H5 and enabled it for H3.** See entry 44.
 
 **Verification.** `F1` was regenerated from the v3 extract with `--unweighted` and compared
 column by column against the pre-W2 CSV (`e019f2d`), to separate the weighting from any other
@@ -3113,3 +3115,65 @@ edit:
 - The four scripts byte-compile; all v3 products regenerated from the same extract into
   `figures/`. The pre-W2 versions remain at commit `e019f2d`.
 - Every "unweighted" column in the tables above reproduces the previously published value.
+
+---
+
+## 44. Step W3: H5 is weighted, and H3 is unblocked but cannot be weighted from its own data (2026-09-17)
+
+**Why this is separate from W2.** W2 weighted the Phase F products and left Phase H's aggregates
+raw, labelled as such. This entry closes that for H5 and establishes that H3 cannot be closed
+without a new production run -- a conclusion that had to be measured, not assumed.
+
+**H5: weighted, and the numbers moved.** `h5_astrometric_shift.py` and `h5_astrometry_summary.py`
+take the same `--map`/`--log`/`--unweighted` plumbing as `f1`-`f4`; every fraction, median and CDF
+they pool is weighted, with the raw curve kept as a dashed control.
+
+| H5 quantity | weighted | raw |
+|---|---|---|
+| median maximum centroid shift | **0.120 mas** | 0.111 mas |
+| events reaching `u = sqrt(2)` | **81.0%** | 74.1% |
+| shift above one exposure's precision | **0.020%** | 0.11% |
+| astrometric peak crosses a season edge | **40.9%** | 42.5% |
+| `sigma(tetE)/tetE < 10%`, joint / Roman / Rubin | **27.9 / 27.5 / 0.44%** | 33.2 / 32.8 / 0.73% |
+| paired median `sigma(tetE)` joint/Roman | **0.977** | 0.983 |
+| median lens mass | **0.361 Msun** | 0.167 Msun |
+
+The direction is physical: the weight favours short, fast, low-mass lenses, which have smaller
+`tetE` but pass through `u = sqrt(2)` more often. The median lens mass doubling is the same
+statement seen from the mass axis, and it is a useful check that the weight does what the
+derivation says.
+
+The extract recipe in `h5_crosscheck.py` gained `Vt`, `lon` and `lat`, without which
+`h5_astrometry_summary.py` cannot weight; it now refuses such an extract unless `--unweighted`
+is passed.
+
+**H3: blocked by its data, and the block was measured.**
+- `h3_pair.dat` carries `tetE` and `piE` but no distances. `Ml` follows from `tetE/(kappa piE)`
+  and `murel` from `tetE/tE`, but `pirel = 1/Dl - 1/Ds` is **one equation in two unknowns**, so
+  `Vt` and `Z(Ds)` -- two of the three factors in the rate weight -- cannot be reconstructed.
+- Joining the paired file to the v3 event table fails: **0 of 2,673 paired events match any v3
+  event** on `(lon, lat, tE, u0)`, because the paired run used `--start-index 518` and so
+  consumed a different stretch of the RNG stream (PROGRESS says so; this measures it). Only the
+  134 sightlines coincide.
+
+**What was done instead.** `Bulge_LSST.cpp` now appends `Ml Dl Ds Vt` to the `h3_pair.dat` header
+and row -- appended, not inserted, so the 30-column files still parse by position.
+`h3_satellite_parallax.py` reads either layout, weights every median and fraction when the
+columns are present, and **refuses a legacy file unless `--unweighted` is given**, naming why.
+Its `validate()` gates stay unweighted deliberately: they test per-event invariants (the control
+ratio must be exactly 1 for each event), not population statistics. The bootstrap interval and
+the sign test are still raw-sample and are labelled so.
+
+**Verification.**
+- `g++ -std=c++17 -fsyntax-only Bulge_LSST.cpp`: pass. The change is four appended columns; no
+  computed value moves.
+- Legacy file **without** flags: refused, with the reconstruction argument in the message.
+  **With `--unweighted`**: runs, prints `weighting: unweighted`, and reproduces the published
+  numbers exactly -- control median 1.000000 over 2,114 events, covered median 0.9923 over 528,
+  36.7% improving by >1%.
+- Both H5 figures regenerated from the v3 extract; whitepaper rebuilt clean, no undefined
+  citations or references.
+- Every H5 CSV row now carries its `_unweighted` twin, and each reproduces the pre-W3 value.
+
+**What remains.** One `--pair-satellite` run on a binary built from today or later makes H3
+weightable; nothing else is missing. `OPEN_ITEMS.md` carries it.

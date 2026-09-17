@@ -45,12 +45,16 @@ respect: the header line begins with a lone '#', so a data row's awk index = hea
 (verified empirically, PROGRESS.md). Produce the extract with:
 
     awk '/^#/ {next} ($38==1 || $39==1 || $40==1) {
-      print $3,$5,$6,$8,$9,$11,$12,$36,$37,$38,$39,$40,$41,$42,$43,$47,$48,$49,$50,$51,$52,
-            $78,$79,$80,$81,$82,$83,$84,$85,$86,$89,$91,$92 }' test5.dat
+      print $3,$5,$6,$8,$9,$11,$12,$7,$60,$61,$36,$37,$38,$39,$40,$41,$42,$43,$47,$48,$49,
+            $50,$51,$52,$78,$79,$80,$81,$82,$83,$84,$85,$86,$89,$91,$92 }' test5.dat
+
+Vt ($7), lon ($60) and lat ($61) are in the list because the event-rate weight needs them
+(Deviation 41): W = w_area * Nstart/nsim * sqrt(Ml) * Vt * Z(Ds), and Nstart/nsim are looked
+up per sightline. An extract without them can only be analysed --unweighted.
 
 with this header prepended:
 
-    tE piE tetE u0 Ml Dl Ds ndwL ndwR detL detR detJ okA_J okA_L okA_R sigpiE_J sigpiE_L
+    tE piE tetE u0 Ml Dl Ds Vt lon lat ndwL ndwR detL detR detJ okA_J okA_L okA_R sigpiE_J sigpiE_L
     sigpiE_R sigtetE_J sigtetE_L sigtetE_R relMl_J relMl_L relMl_R okB_J okB_L okB_R condB_J
     condB_L condB_R w_area nepL_pk nepR_pk magb_F146
 

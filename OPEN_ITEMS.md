@@ -1273,15 +1273,21 @@ decide whether F1-F4 need regenerating.
 
 ---
 
-## H3's and H5's aggregate numbers are not event-rate weighted
+## H3's satellite-parallax numbers are not event-rate weighted, and its existing data cannot be
 
-**Status: open, found 2026-09-16 while doing Step W2 (Deviation 43).**
+**Status: H5 is DONE (2026-09-17, Deviation 44). H3 stays open until a new paired run.**
 
-**What is wrong.** `f1`-`f4` weight every pooled statistic by the event rate; `h3_*.py` and
-`h5_*.py` do not. So the satellite-parallax and astrometric-shift sections quote medians and
-fractions of the raw sample: the $0.9924$ median `sigma_piE` ratio over 528 events, the 74.1%
-of events reaching `u = sqrt(2)`, the 0.111 mas median shift, the 42.5% whose astrometric peak
-crosses a season edge.
+**What is wrong.** `h3_satellite_parallax.py` now weights everything it pools, but the only
+paired file that exists (`2026-09-11_h3_footprint/h3_pair.dat`, 2,673 events) was written before
+the simulator recorded `Ml`, `Dl`, `Ds` and `Vt` in that row. The weight needs
+`sqrt(Ml) * Vt * Z(Ds)` and **none of it is recoverable**: `tetE` and `piE` give `Ml`, and
+`tetE/tE` gives `murel`, but `pirel = 1/Dl - 1/Ds` is one equation in two unknowns, so neither
+`Vt` nor `Z(Ds)` can be had. Joining to the v3 event table does not work either -- the paired run
+used `--start-index 518` and consumed a different stretch of the RNG stream, so **0 of its 2,673
+events match any v3 event** (measured, on `lon, lat, tE, u0`); only the 134 sightlines coincide.
+
+So the satellite-parallax section still quotes raw-sample statistics: the 0.9924 median
+`sigma_piE` ratio over 528 Roman-covered events, and the 36.7% improving by more than 1%.
 
 **Why it matters scientifically.** Each of those is an aggregate over events, and the raw sample
 over-represents long, slow, massive lenses about tenfold (Deviation 41), so each will move. The
@@ -1292,15 +1298,15 @@ weight favours, so the satellite-parallax median could well improve rather than 
 evaluated twice, and that per-event ratio carries no weight. The sign test and the bit-exact
 control are unaffected.
 
-**Why deferred.** W2 was already a large change to four scripts and the whitepaper, and H3/H5
-need their own decisions -- H3's bootstrap interval and sign test would have to become weighted
-versions, which is not a one-line substitution.
+**Why deferred.** It needs a production run, not an analysis change. The simulator now writes the
+four columns (Deviation 44), so the work is already done on the code side.
 
-**What the fix involves.** Give `h3_satellite_parallax.py` and the two `h5_*` scripts the same
-`--map`/`--log`/`--unweighted` plumbing via `romanlib.attach_weight()`, weight the medians and
-fractions, report `N_eff`, and replace the bootstrap with a weighted one. Then update the
-whitepaper's astrometric and satellite-parallax sections and remove the caveat bullet that now
-stands in its open-items list.
+**What the fix involves.** Re-run `--pair-satellite --events 60 --lenses 20 --nerr 2
+--stride-roman 5 --start-index 518` on a binary built from 2026-09-17 or later, then run
+`h3_satellite_parallax.py` with `--map` and `--log` pointing at that run. The script refuses a
+legacy file unless `--unweighted` is passed, so it cannot silently report raw medians. The
+bootstrap interval and the sign test still need weighted versions -- both are currently computed
+on the raw sample and are labelled as such in the script's output.
 
 ---
 

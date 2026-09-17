@@ -513,12 +513,48 @@ def find_provenance(explicit=None, near=None):
     return None
 
 
+def population(prov):
+    """Which lens population produced a run, from its provenance.
+
+    Runs made before 2026-09-17 have no `population` line because there was only one: the
+    Kroupa-plus-remnants bulge population, then selected at compile time. Reporting them as
+    "bulge (implied)" is accurate -- that is what they are -- while still distinguishing them
+    from a run that says so itself.
+    """
+    if not prov:
+        return "unknown"
+    return prov.get("population", "bulge (implied)")
+
+
+def assert_same_population(provs, what="this figure"):
+    """Refuse to pool runs from different lens populations.
+
+    The event-rate weight carries a sqrt(Ml) factor that is only correct for the mass function
+    actually sampled (Deviation 45). Two populations in one pooled statistic is therefore not a
+    presentation choice but a wrong number, and it is an easy mistake to make once the files
+    are named testbh.dat and testns.dat and differ by two characters.
+
+    Comparing them side by side -- one curve per population -- is fine and is the point of the
+    population figures; that is not pooling, and does not come through here.
+    """
+    names = {population(p) for p in provs if p}
+    if len(names) > 1:
+        raise ValueError(
+            f"{what} mixes lens populations {sorted(names)}. Each population has its own mass "
+            f"function, and the pooled weight is only valid for the one that was sampled. "
+            f"Plot them as separate series instead of pooling them.")
+    return names.pop() if names else "unknown"
+
+
 def describe(path_events, path_prov=None):
     """One-line provenance summary to print at the top of every figure-producing script."""
     parts = [f"events={os.path.basename(path_events)}"]
     path_prov = find_provenance(path_prov, near=path_events)
     if path_prov and os.path.exists(path_prov):
         prov = load_provenance(path_prov)
+        # First, because it is the thing that makes two otherwise identical tables mean
+        # different things.
+        parts.append(f"population={population(prov)}")
         for k in ("git_commit", "stride", "events_target", "sightlines_aggregated"):
             if k in prov:
                 parts.append(f"{k}={prov[k]}")

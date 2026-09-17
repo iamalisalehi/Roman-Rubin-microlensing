@@ -156,7 +156,11 @@ const char* eventTableHeader()
         "magb_u magb_g magb_r magb_i magb_z magb_y magb_F146 "
         "blend_u blend_g blend_r blend_i blend_z blend_y blend_F146 "
         "relMl_J relMl_L relMl_R okB_J okB_L okB_R condB_J condB_L condB_R "
-        "dt_edge t0zone w_area du_sat nepL_pk nepR_pk";
+        "dt_edge t0zone w_area du_sat nepL_pk nepR_pk "
+        // Step R1. Epoch counts at which the two lensing-induced images were separately
+        // detectable AND separated by more than the bar named in the suffix; dsep_max is the
+        // largest separation reached at such an epoch, -1 if there was none.
+        "nres5_L nres20_L nresPSF_L dsep_max_L nres5_R nres20_R nresPSF_R dsep_max_R";
 }
 
 struct RunConfig {
@@ -621,6 +625,11 @@ int main(int argc, char** argv) {
     int    giR,      sqR, nddR; // Roman-side cursor/count, parallel to gi/sq/ndd
     int    flag_det; // nml = 0;
     int    ndw_L, ndw_R;           // per-instrument epoch counts (ndw stays the joint/shared total)
+    // Step R1. Per-event, per-survey tallies of epochs at which the two images were both
+    // detectable and far enough apart. Reset with ndw_L/ndw_R below -- a counter that leaks
+    // across events is the same bug the `ndw` note above guards against.
+    long   nres5_L, nres20_L, nresPSF_L, nres5_R, nres20_R, nresPSF_R;
+    double dsepMax_L, dsepMax_R;   // largest separation while both were detectable [mas]
     int    flag_det_L, flag_det_R; // per-instrument run-test result (flag_det stays the joint one)
     int    detL, detR, detJ;       // per-instrument / joint detection booleans; FFG[0] = detL or detR or detJ
     int    flagf,  fi; // datf1, datf2;
@@ -1305,6 +1314,8 @@ int main(int argc, char** argv) {
 
                 ndw     = 0;   flag_det = 0;
                 ndw_L   = 0;   ndw_R    = 0;
+                nres5_L = 0; nres20_L = 0; nresPSF_L = 0; dsepMax_L = -1.0;
+                nres5_R = 0; nres20_R = 0; nresPSF_R = 0; dsepMax_R = -1.0;
                 flag_det_L = 0; flag_det_R = 0;
                 flag0   = 0.0; flag1    = 0.0; flag2 = 0.0;
                 flag0_L = 0.0; flag1_L  = 0.0; flag2_L = 0.0;
@@ -1413,7 +1424,22 @@ int main(int argc, char** argv) {
                             if (magni[fi] >= satu[fi] and magni[fi] <= thre[fi]) {
                                 errg = errlsstM(magni[fi], int(fi), double(ls->sig5[sq])); //[mag]
                                 errs = errlsstA(*ls, magniRubinRef); ///[mas]
-    
+
+                                // Step R1. Could Rubin have told the two images apart at THIS
+                                // epoch? Inside the magnitude gate on purpose: the paper's
+                                // criterion counts recorded data points, and an epoch the
+                                // survey never recorded is not one.
+                                {
+                                    const ImagePair ip = imagePair(s->ut, l->tetE, s->magb[fi],
+                                                                   s->blend[fi], thre[fi], satu[fi]);
+                                    if (ip.bothDetectable) {
+                                        if (ip.sep >= RESOLVE_D_FAINT  * errs)          nres5_L   += 1;
+                                        if (ip.sep >= RESOLVE_D_BRIGHT * errs)          nres20_L  += 1;
+                                        if (ip.sep >= FWHM[fi] * ARCSEC_TO_MAS)         nresPSF_L += 1;
+                                        if (ip.sep >  dsepMax_L)                        dsepMax_L  = ip.sep;
+                                    }
+                                }
+
                                 deltaA = std::fabs(std::pow(10.0, -0.4 * errg) - 1.0) * (s->blend[fi] * s->Astar + 1.0 - s->blend[fi]);
                                 magnio = magni[fi] + RandN(errg, 3.0);
     
@@ -1540,6 +1566,21 @@ int main(int argc, char** argv) {
                                 // no reason to be right). Constants and sources in Bulge.h; the model
                                 // is per EXPOSURE, which is what one row of RomanBaseline.dat is.
                                 errsR = errRomanA(magni[fiR]); //[mas]
+
+                                // Step R1, Roman side. s->ut is Roman's OWN impact parameter
+                                // here: lightcurve(..., 1) rebuilt the trajectory in the L2
+                                // frame above, so this is not the Rubin value reused.
+                                {
+                                    const ImagePair ip = imagePair(s->ut, l->tetE, s->magb[fiR],
+                                                                   s->blend[fiR], thre[fiR], satu[fiR]);
+                                    if (ip.bothDetectable) {
+                                        if (ip.sep >= RESOLVE_D_FAINT  * errsR)         nres5_R   += 1;
+                                        if (ip.sep >= RESOLVE_D_BRIGHT * errsR)         nres20_R  += 1;
+                                        if (ip.sep >= FWHM[fiR] * ARCSEC_TO_MAS)        nresPSF_R += 1;
+                                        if (ip.sep >  dsepMax_R)                        dsepMax_R  = ip.sep;
+                                    }
+                                }
+
                                 silR  = RandN(errsR * std::sqrt(2.0), 3.0);
                                 sil2R = RandN(errsR, 3.0);
                                 chi1a += std::fabs((trajp + silR - trajp) * (trajp + silR - trajp) / (errsR * errsR * 2.0));
@@ -1922,7 +1963,9 @@ int main(int argc, char** argv) {
                 co->relMl[SJOINT], co->relMl[SRUBIN], co->relMl[SROMAN],
                 co->okB[SJOINT], co->okB[SRUBIN], co->okB[SROMAN],
                 co->condB[SJOINT], co->condB[SRUBIN], co->condB[SROMAN],
-                sched.dtToSeasonEdge(l->t0), sched.zone(l->t0)
+                sched.dtToSeasonEdge(l->t0), sched.zone(l->t0),
+                nres5_L, nres20_L, nresPSF_L, nres5_R, nres20_R, nresPSF_R,
+                dsepMax_L, dsepMax_R
             });
    
             // ------------------------------------------------------------------------------
@@ -2005,7 +2048,12 @@ int main(int argc, char** argv) {
                     // and then any statistic pooled over sightlines must weight by it.
                     << wArea << " "
                     // Step H2: the satellite-parallax observable and contemporaneous coverage.
-                    << duSat << " " << nepLpk << " " << nepRpk << "\n";
+                    << duSat << " " << nepLpk << " " << nepRpk << " "
+                    // Step R1: resolving the two images. Counts of qualifying epochs per
+                    // survey, then the largest separation reached while both were detectable
+                    // (-1 = never). The three bars differ only in what counts as "resolved".
+                    << nres5_L << " " << nres20_L << " " << nresPSF_L << " " << dsepMax_L << " "
+                    << nres5_R << " " << nres20_R << " " << nresPSF_R << " " << dsepMax_R << "\n";
             filg_in.close();
 
             // Step H3. One row per DETECTED event, carrying both forecasts for that same

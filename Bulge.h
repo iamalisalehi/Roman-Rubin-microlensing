@@ -319,6 +319,87 @@ constexpr double LSST_AST_FLOOR       = 10.0;      //mas per visit per coordinat
 constexpr double LSST_AST_TABLE_FLOOR = 0.3739576; //mas, the bright-star floor as shipped
 constexpr double LSST_AST_RENORM      = LSST_AST_FLOOR / LSST_AST_TABLE_FLOOR; //26.74
 // ---------------------------------------------------------------------------------------
+// Step R1. Resolving the two lensing-induced images.
+//
+// A point lens makes TWO images of the source, at
+//     theta_pm = 0.5 * (u +- sqrt(u^2+4)) * theta_E,
+// so their angular separation is
+//     Delta_theta(u) = theta_E * sqrt(u^2 + 4).
+// Ordinarily we never see them apart: for a bulge event with a stellar lens theta_E ~ 0.3 mas
+// and 2*theta_E is far below any of our resolutions, so what reaches the detector is the sum
+// of the two fluxes -- the magnification A -- and their flux-weighted centroid, which is the
+// astrometric shift of Step H5. A BLACK-HOLE lens is the interesting case, because
+// theta_E scales as sqrt(Ml): at 1000 Msun it is ~30x the stellar value.
+//
+// TWO THINGS FIGHT EACH OTHER, which is the whole reason this needs counting per epoch rather
+// than once per event. The separation is SMALLEST at closest approach, sqrt(u0^2+4)*theta_E,
+// and grows without bound as the source moves away. But the minor image's magnification,
+//     A_minus = (u^2+2) / (2 u sqrt(u^2+4)) - 1/2,
+// collapses toward zero on the same motion. So the images are least separated exactly when
+// both are bright, and are well separated only once one of them has faded. A criterion applied
+// at peak would be far too optimistic, and one applied at maximum separation would be
+// meaningless. Sajadian & Makler (arXiv:2608.16448, their sec. 3) resolve this by counting
+// DATA POINTS that satisfy both conditions at once, and calling the images resolvable if at
+// least three do. That count cannot be reconstructed from a per-event summary row, which is
+// why it is accumulated here inside the epoch loop.
+//
+// THE RESOLUTION THRESHOLD. That paper takes the Rubin criterion as Delta_theta >= sigma_r
+// with sigma_r = D * sigma_a, where sigma_a is the per-visit astrometric precision and D runs
+// over [5, 100] with the source's signal-to-noise: ~5 at the faint limit (SNR 5), ~20 at
+// SNR 100 for two stars of similar brightness, and higher still -- by 40% for a 2-3 mag
+// difference, 3x beyond that -- when one image is much fainter than the other (Ivezic, priv.
+// comm. quoted therein). We record the count at BOTH anchors rather than picking one, because
+// the answer depends strongly on D and a single number would hide that.
+//
+// We add a third, independent criterion the paper does not need: Delta_theta >= the PSF FWHM.
+// Their target is Rubin alone, where the empirical D*sigma_a captures seeing-limited reality.
+// Roman is diffraction limited at 0.105 arcsec in F146, and for a space telescope the PSF
+// width is the honest physical bar -- D*sigma_a on Roman's 1.1 mas floor would claim a
+// resolution of a few mas, which no 2.4 m telescope delivers. Quoting all three makes the
+// assumption visible instead of buried.
+// ---------------------------------------------------------------------------------------
+constexpr double RESOLVE_D_FAINT  = 5.0;   //D at the faint detection limit, SNR ~ 5
+constexpr double RESOLVE_D_BRIGHT = 20.0;  //D at SNR ~ 100, images of similar brightness
+constexpr double ARCSEC_TO_MAS    = 1000.0;
+
+// The two images of one source at impact parameter u, with their own (unblended) magnitudes.
+// `magBase`/`blendFrac` are the BLENDED baseline magnitude and the source's flux share in the
+// filter being observed, i.e. s.magb[i] and s.blend[i] -- per FILTER, not per telescope.
+struct ImagePair {
+    double sep;            //angular separation of the two images [mas]; -1 if undefined
+    double magPlus;        //apparent magnitude of the major image [mag]
+    double magMinus;       //apparent magnitude of the minor image [mag]
+    bool   bothDetectable; //both within [saturation, single-visit depth] in this filter
+};
+
+inline ImagePair imagePair(double u, double tetE, double magBase, double blendFrac,
+                           double thrMag, double satMag)
+{
+    ImagePair ip{-1.0, 99.0, 99.0, false};
+    if (!(u > 0.0) or !(tetE > 0.0) or !(blendFrac > 0.0)) return ip;
+
+    const double root = std::sqrt(u * u + 4.0);
+    ip.sep = tetE * root;                                   //[mas]
+
+    const double Aplus  = (u * u + 2.0) / (2.0 * u * root) + 0.5;
+    const double Aminus = (u * u + 2.0) / (2.0 * u * root) - 0.5;
+    if (!(Aminus > 0.0) or !(Aplus > 0.0)) return ip;       //minor image formally extinguished
+
+    // The SOURCE's own magnitude, recovered from the blended baseline: blendFrac is the
+    // source's share of the aperture flux, so m_source = m_base - 2.5 log10(blendFrac) and is
+    // always the FAINTER of the two (blendFrac <= 1). Each image then carries its own
+    // magnification. The blend light is deliberately NOT added back: an image that is resolved
+    // from its twin is resolved from the neighbours too, and re-adding the full blend would
+    // make a faint minor image look detectable on light that is not its own.
+    const double magSource = magBase - 2.5 * std::log10(blendFrac);
+    ip.magPlus  = magSource - 2.5 * std::log10(Aplus);
+    ip.magMinus = magSource - 2.5 * std::log10(Aminus);
+
+    ip.bothDetectable = (ip.magPlus  <= thrMag and ip.magPlus  >= satMag and
+                         ip.magMinus <= thrMag and ip.magMinus >= satMag);
+    return ip;
+}
+// ---------------------------------------------------------------------------------------
 // Step H7. The detection threshold.
 //
 // A microlensing detection is declared when the lensing model beats a flat-baseline model by
@@ -1144,6 +1225,19 @@ struct EventRecord {
     double dtEdge;              //signed days from t0 to the nearest Roman season edge;
                                 //NEGATIVE means t0 fell inside a season. See RomanSchedule.
     int    t0zone;              //T0Zone: 0 in-season, 1 mid-mission gap, 2 off-mission
+
+    // ---- Step R1: resolving the two images, counted per RECORDED EPOCH ----
+    // Number of that survey's epochs at which both images were within the filter's
+    // [saturation, single-visit depth] AND separated by more than the stated bar. Counts, not
+    // fractions: the paper's criterion is "at least three such epochs", which only a count can
+    // answer. nres5/nres20 use D*sigma_a at the paper's two anchors; nresPSF uses the filter's
+    // PSF FWHM. See the Step R1 block above for why all three are kept.
+    long   nres5_L, nres20_L, nresPSF_L;
+    long   nres5_R, nres20_R, nresPSF_R;
+    // Largest separation reached at an epoch where both images were detectable [mas].
+    // -1 means that never happened -- a SENTINEL, never a measurement. It must not enter a
+    // mean or a histogram, exactly like every other -1 in this row.
+    double dsepMax_L, dsepMax_R;
 };
 ///===================== FUNCTION ===========================================//
 int    Funcu0(lens & l);

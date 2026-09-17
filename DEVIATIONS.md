@@ -3361,3 +3361,62 @@ runs of 77, 27 and 23 draws. That proves the code paths, the weighting, the mask
 layout; it proves nothing about whether the binning, the ranges or the panel choices suit real
 data. Judging that needs the production runs (P6), and the figures should be expected to need
 another pass afterwards.
+
+---
+
+## 48. Step R1: whether the two images can be resolved, counted per epoch (2026-09-17)
+
+**What the plan said.** Nothing. This is a new observable, requested for the black-hole and
+neutron-star production runs, and modelled on Sajadian & Makler (arXiv:2608.16448) -- the same
+paper Deviation 39 read against the parent code.
+
+**Why it could not be done in the analysis layer, which is the whole point of the entry.** A
+point lens makes two images separated by `Delta_theta(u) = theta_E * sqrt(u^2 + 4)`. The obvious
+per-event summary -- the separation at closest approach, `theta_E * sqrt(u0^2 + 4)` -- is the
+**wrong** statistic, and wrong in a direction that flatters the result. The separation is
+*smallest* at peak and grows as the source departs, while the minor image's magnification,
+`A_minus = (u^2+2)/(2u sqrt(u^2+4)) - 1/2`, collapses toward zero on the same motion. The images
+are least separated exactly when both are bright. So the question "can they be told apart" is
+only answerable epoch by epoch, against that epoch's filter, depth and astrometric precision.
+That paper's criterion counts qualifying **data points** and calls the pair resolvable at
+`N >= 3`. Nothing in the per-event table can reconstruct that count: the epoch list, the
+per-epoch `u`, and the per-epoch error are all consumed inside the light-curve loop and never
+written. Adding the columns after the runs would have meant re-running them.
+
+**What was added.** `imagePair()` in `Bulge.h` returns the two images' separation and their own
+unblended magnitudes; the epoch loop tallies, per survey, the epochs at which both images sit
+within `[saturation, single-visit depth]` **and** are separated by more than a stated bar. Eight
+columns: `nres5_{L,R}`, `nres20_{L,R}`, `nresPSF_{L,R}`, `dsep_max_{L,R}`.
+
+**Three bars, not one, and this is a judgement call worth seeing.** The paper's Rubin criterion
+is `Delta_theta >= D * sigma_a` with `D` running over [5, 100] with signal-to-noise -- ~5 at the
+faint limit, ~20 at SNR 100 for images of similar brightness, higher when they differ (Ivezic,
+priv. comm. quoted therein). `D` is not a detail: it moves the answer by a factor of four, so
+both anchors are recorded rather than one being chosen. The third bar, `Delta_theta >= PSF
+FWHM`, is ours and is not in the paper, which needs only Rubin. Roman is diffraction limited at
+0.105 arcsec, and `D * sigma_a` on its 1.1 mas floor would claim a few-mas resolution that no
+2.4 m telescope delivers. Quoting all three makes the assumption visible instead of buried in a
+constant.
+
+**One modelling choice recorded because it is arguable.** Each image's magnitude is computed
+from the *source's* flux alone (`m_source = m_base - 2.5 log10(fb)`), with the blend light not
+added back. An image resolved from its twin is resolved from the neighbours too, and re-adding
+the full blend would let a faint minor image look detectable on light that is not its own. This
+is the conservative direction: it makes the minor image fainter and resolution rarer.
+
+**Verification.** Syntax-clean; `make` produces only the six pre-existing unused-variable
+warnings, none from this change. `./fishertest` PASSES (the fixture drops `main()`, so the epoch
+loop is not in that build, but the shared translation unit still compiles and every assertion
+holds). A 27-row `--population bh` stub gives header and data both at 100 fields, matching the
+`head -1 | wc -w` check the header comment prescribes. **The physics was checked against the
+data, not assumed:** `sqrt(u^2+4) >= 2` forces `dsep_max >= 2*tetE` for every epoch that
+qualified, and that held on all 21 qualifying rows with zero violations. The values are also
+consistent in the direction that matters -- `dsep_max` reached 17.6 mas while the largest `tetE`
+in the stub was 53.5 mas, i.e. the widest-separating event never had both images detectable at
+once, which is the tension described above rather than a null result.
+
+**Cost.** Two extra `imagePair()` calls per recorded epoch, each a handful of flops and two
+`log10`s, inside a loop already doing a Fisher-matrix build. Not measurable against the stub's
+runtime.
+
+**Commit:** this step.

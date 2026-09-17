@@ -26,9 +26,25 @@ the pipeline can be run for a black-hole and a neutron-star population — Devia
   survey, σ(M_L)/M_L vs mass, `tE` by population, joint-vs-single gain vs mass). **Inspecting the
   rendered images found four defects a file-written check could not**, including one conceptual
   mislabel — see Deviation 47.
-- **P6 ⬜ The production runs** — one per population, then a second pass over the figures. **The
-  figure set has only been exercised on stub runs of 77/27/23 draws**: that proves the code paths
-  and the layout, not that the binning or ranges suit real data.
+- **R1 ✅ Resolving the two images** — Deviation 48. Eight per-event columns counting the epochs
+  at which both lensing-induced images were separately detectable **and** far enough apart, after
+  Sajadian & Makler (arXiv:2608.16448). **It had to go in before P6, not after**: the criterion
+  counts data points, and the per-epoch `u` and error never leave the light-curve loop, so it
+  cannot be reconstructed from a finished table. Three bars are recorded per survey
+  (`D=5`, `D=20`, PSF FWHM) because the answer moves by ~4x across the paper's own range of `D`.
+- **P6 🔄 The production runs** — one per population, launched 2026-09-17 into
+  `runs/prod_bh_20260917/` and `runs/prod_ns_20260917/`, each an isolated directory with the
+  inputs symlinked, the outputs real, and the binary **copied in** so a later `make` cannot
+  change what is running. Flags mirror v3 (`--events 300 --lenses 50 --stride-roman 5`) plus
+  `--pair-satellite`, so each population's satellite-parallax comparison comes out of the same
+  run instead of needing a second one. Control them with `runs/runctl.sh
+  {start|status|pause|resume|stop|continue} <dir>`: **pause/resume is SIGSTOP/SIGCONT and loses
+  nothing**; **stop/continue survives a reboot** and trims the interrupted sightline's partial
+  rows before redoing it whole (`runs/resume_truncate.py`), which is the step that was done by
+  hand at the v3 chunk boundary and is the one most likely to be forgotten.
+  Still to do afterwards: **a second pass over the figures**. **The figure set has only been
+  exercised on stub runs of 77/27/23 draws**: that proves the code paths and the layout, not that
+  the binning or ranges suit real data.
 
 **Two decisions on the record** (they change every number): populations are run **separately**,
 and the log-uniform mass function is the **assumed truth**, which is what keeps the pooled weight

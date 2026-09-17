@@ -16,14 +16,19 @@ the pipeline can be run for a black-hole and a neutron-star population — Devia
   ever written ended in two `-nan` columns**. All seven now work, at no measurable cost (48 s vs
   50 s on the same stub). **v3's own `EfLMC5.dat` cannot be repaired without re-running** — those
   columns are zeros in the existing production data.
-- **P4 ⬜ Analysis-side population awareness.** `romanlib` should read the population from
-  provenance and refuse to pool two populations into one figure; the weight's `sqrt(Ml)` factor is
-  only valid for the mass function actually sampled.
-- **P5 ⬜ Publication-ready plotting layer.** A shared `analysis/plotstyle.py` (vector PDF, embedded
-  fonts, single-column sizing, colourblind-safe, no baked-in titles) plus the population figures:
-  mass function drawn vs assumed, efficiency vs mass per survey, σ(M_L)/M_L vs mass, `tE` by
-  population, and the joint-vs-single gain across the mass range.
-- **P6 ⬜ Verification, then the production runs** — one per population.
+- **P4 ✅ Analysis-side population awareness** — Deviation 47. `romanlib.population()`,
+  `assert_same_population()` (pooling two populations is a wrong number, not a style choice, since
+  the weight's `sqrt(Ml)` is valid only for the mass function sampled), and `describe()` now names
+  the population in every figure stamp.
+- **P5 ✅ Publication-ready plotting layer** — `analysis/plotstyle.py` (journal column widths,
+  embedded fonts, vector PDF + PNG, colourblind-safe palette, no titles inside the figure) and
+  `analysis/p5_population_figures.py` (mass function drawn vs assumed, efficiency vs mass per
+  survey, σ(M_L)/M_L vs mass, `tE` by population, joint-vs-single gain vs mass). **Inspecting the
+  rendered images found four defects a file-written check could not**, including one conceptual
+  mislabel — see Deviation 47.
+- **P6 ⬜ The production runs** — one per population, then a second pass over the figures. **The
+  figure set has only been exercised on stub runs of 77/27/23 draws**: that proves the code paths
+  and the layout, not that the binning or ranges suit real data.
 
 **Two decisions on the record** (they change every number): populations are run **separately**,
 and the log-uniform mass function is the **assumed truth**, which is what keeps the pooled weight

@@ -3303,3 +3303,61 @@ source). Both divisions gained the `+ eps` every other column had.
 **Honest limitation.** The stub's last row reports 11.1% halo lenses and 0% self-lensing, which is
 one halo lens out of nine detections in a 0.1x0.1 deg corner patch. Those are small-number
 artefacts of the stub, not results; the production runs will populate them properly.
+
+---
+
+## 47. Steps P4 and P5: the analysis layer learns about populations, and gets a figure style (2026-09-17)
+
+**P4: nothing may pool two populations.** `romanlib` gained `population(prov)` and
+`assert_same_population()`, and `describe()` now names the population first, so it appears in every
+script's stamp. Runs made before `--population` existed report "bulge (implied)", which is what
+they are.
+
+This is a guard, not bookkeeping. The event-rate weight carries `sqrt(Ml)` (Deviation 41) and is
+only correct for the mass function actually sampled, so a pooled black-hole-plus-bulge number is
+not a presentation choice but a wrong number -- and an easy mistake to make when the inputs are
+`testbh.dat` and `test5.dat`. Drawing them as separate series is fine and is the point of the
+population figures; that path does not go through the guard.
+
+**P5: a publication figure style, and the population figures.**
+- `analysis/plotstyle.py`: one palette (the survey colours F4 already used, plus a population
+  palette distinct in both hue and lightness so greyscale printing still separates them), real
+  journal column widths (3.5 in single, 7.2 in double, so text sized here is text as printed),
+  embedded TrueType fonts (`pdf.fonttype = 42`), vector PDF **and** PNG from one call, and no
+  titles inside the figure -- in a paper the caption does that, and a baked-in title is duplicated
+  text nobody can edit at proof stage. Panels get `(a)`/`(b)` tags instead.
+- `analysis/p5_population_figures.py`: five figures -- drawn vs assumed mass function, detection
+  efficiency vs lens mass per survey, `sigma(Ml)/Ml` vs mass, the `tE` distribution, and the
+  joint-over-single gain vs mass. Each population is a separate series, weighted with **its own**
+  map file, and every panel reports `N_eff`.
+
+**Four defects found by LOOKING at the rendered figures, none of which a "did it write a file"
+check would have caught.**
+1. **A conceptual mislabel, the worst of the four.** The mass-function panel plotted the
+   *event-rate weighted* histogram against the *assumed* mass function and invited the reader to
+   compare them. They answer different questions: `W` carries `sqrt(Ml)`, so a perfectly
+   flat-in-log black-hole sample is tilted by half a decade per decade once weighted, and the
+   figure implied the sampler disagreed with its own mass function when it did not. The sampler
+   check now uses the raw draws; the weighted curve is drawn thin and labelled as a different
+   thing.
+2. **Zero on a log axis.** Empty histogram bins and bins where a survey detected nothing plotted
+   as zero, which on a log axis is minus infinity: spikes to the bottom of the frame, and a
+   y-range stretched to `1e-12`. Both are masked now -- "no detections in 30 draws" is an upper
+   limit, not a measurement of zero.
+3. **Tick labels colliding into mush**, because matplotlib labels log *minor* ticks on axes
+   spanning under a decade.
+4. **An axis with no numbers on it**: fixing (3) with decade-only majors left the neutron-star
+   panel (1.1-2.2 Msun, containing no power of ten) completely unlabelled. Sub-decade ranges now
+   get explicit ticks with a plain-number formatter.
+
+**Verification.** Both modules byte-compile; the figure set renders all five figures as PDF and
+PNG from the three stub runs; each panel was inspected as an image, which is how all four defects
+above were found. `plotstyle.legend()` no-ops when a panel has no labelled series, since that is
+the normal state for a thin bin and a warning that fires on normal data teaches readers to ignore
+warnings.
+
+**Honest limitation, and it is the important one.** These figures have been exercised only on stub
+runs of 77, 27 and 23 draws. That proves the code paths, the weighting, the masking and the
+layout; it proves nothing about whether the binning, the ranges or the panel choices suit real
+data. Judging that needs the production runs (P6), and the figures should be expected to need
+another pass afterwards.

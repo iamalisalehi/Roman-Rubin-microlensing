@@ -30,12 +30,16 @@ satellite cannot act on them and their ratio must be 1. They are kept deliberate
 as a control; if they ever drift from 1, the measurement is wrong.
 """
 import argparse
+import os
 import sys
 import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import romanlib as R
 
 # Temporal-baseline gain for H3c: median sigma_joint/sigma_Roman for piE on in-gap events
 # (t0zone == 1, Roman-covered), recomputed from Step F2 on the post-H7 v3 table. A DIFFERENT
@@ -51,13 +55,20 @@ BG = "#fcfcfb"
 # a lone '#', so pandas is told comment="#" and the names are supplied here instead. Get this
 # list out of step with Bulge_LSST.cpp and every column silently shifts by one -- which has
 # already happened once in this project and cost a debugging session (PROGRESS.md traps).
-COLS = ("lon lat tE u0 piE tetE du_sat "
-        "okA_sat okA_nosat okB_sat okB_nosat "
-        "sigtE_sat sigtE_nosat sigpiE_sat sigpiE_nosat "
-        "sigpiER_sat sigpiER_nosat sigtetE_sat sigtetE_nosat "
-        "sigpiEb_sat sigpiEb_nosat relMl_sat relMl_nosat "
-        "condA_sat condA_nosat condB_sat condB_nosat "
-        "nepL_pk nepR_pk w_area").split()
+COLS_LEGACY = ("lon lat tE u0 piE tetE du_sat "
+               "okA_sat okA_nosat okB_sat okB_nosat "
+               "sigtE_sat sigtE_nosat sigpiE_sat sigpiE_nosat "
+               "sigpiER_sat sigpiER_nosat sigtetE_sat sigtetE_nosat "
+               "sigpiEb_sat sigpiEb_nosat relMl_sat relMl_nosat "
+               "condA_sat condA_nosat condB_sat condB_nosat "
+               "nepL_pk nepR_pk w_area").split()
+
+# Ml, Dl, Ds and Vt were appended on 2026-09-17 so a paired file can carry the event-rate
+# weight (Deviation 41): W needs sqrt(Ml)*Vt*Z(Ds), and none of it can be reconstructed from
+# the legacy columns -- theta_E and pi_E give Ml and theta_E/tE gives mu_rel, but
+# pi_rel = 1/Dl - 1/Ds is one equation in two unknowns. A legacy file is therefore readable
+# but NOT weightable, and this script says so rather than quietly reporting raw medians.
+COLS = COLS_LEGACY + ["Ml", "Dl", "Ds", "Vt"]
 
 # The superseded layout, recognised only so it can be refused by name.
 COLS_OLD_15 = 15
@@ -74,13 +85,18 @@ def load(path):
             "every forecast in it is corrupted on the no-satellite side. Refusing to read it\n"
             "rather than reporting numbers from it. Re-run with --pair-satellite on a binary\n"
             "built from 3a88180 or later.")
-    if n != len(COLS):
-        sys.exit(f"{path} has {n} columns; this script expects {len(COLS)}. "
+    if n == len(COLS):
+        names, weightable = COLS, True
+    elif n == len(COLS_LEGACY):
+        names, weightable = COLS_LEGACY, False
+    else:
+        sys.exit(f"{path} has {n} columns; this script expects {len(COLS)} (or "
+                 f"{len(COLS_LEGACY)} for a pre-2026-09-17 file). "
                  "If Bulge_LSST.cpp changed the row, update COLS to match it.")
-    df = pd.read_csv(path, sep=r"\s+", comment="#", names=COLS, engine="python")
-    for c in COLS:
+    df = pd.read_csv(path, sep=r"\s+", comment="#", names=names, engine="python")
+    for c in names:
         df[c] = pd.to_numeric(df[c], errors="coerce")
-    return df.dropna()
+    return df.dropna(), weightable
 
 
 def main():
@@ -88,10 +104,32 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("pairs", help="h3_pair.dat from a --pair-satellite run")
     ap.add_argument("--out-prefix", default="figures/h3")
+    ap.add_argument("--map", default=None,
+                    help="MapLMC5.dat FROM THE PAIRED RUN -- needed for the event-rate weight")
+    ap.add_argument("--log", action="append", default=[],
+                    help="the paired run's log(s), for sightlines its map file lost")
+    ap.add_argument("--unweighted", action="store_true",
+                    help="deliberately report raw-sample medians, with no event-rate weight")
     a = ap.parse_args()
 
-    df = load(a.pairs)
+    df, weightable = load(a.pairs)
     print(f"== {len(df):,} detected events in {a.pairs}")
+
+    if not weightable and not a.unweighted:
+        sys.exit(
+            f"{a.pairs} is a pre-2026-09-17 paired file: it has no Ml/Dl/Ds/Vt columns, so the\n"
+            "event-rate weight cannot be computed from it and every median below would be a\n"
+            "statistic of the raw sample (Deviation 41: that sample over-represents long, slow,\n"
+            "massive lenses roughly tenfold).\n"
+            "Either re-run --pair-satellite with a binary built from 2026-09-17 or later, which\n"
+            "writes the four columns, or pass --unweighted to say deliberately that you want the\n"
+            "raw-sample numbers.")
+
+    # Weights are attached to the FULL frame before any subsetting, so `covered`, `blind` and
+    # every later selection carry their own weights with them.
+    w, wlabel = R.attach_weight(df, a.map, a.log, a.unweighted or not weightable)
+    df = df.assign(W=w)
+    print(f"   weighting: {wlabel}")
 
     ok = (df.okA_sat == 1) & (df.okA_nosat == 1) & \
          (df.sigpiE_sat > 0) & (df.sigpiE_nosat > 0) & \
@@ -113,9 +151,12 @@ def main():
     print("\n== CONTROL: events with no Roman epochs near the peak (nepR_pk == 0)")
     print("   the satellite cannot act on these, so the ratio must be 1")
     if len(blind):
-        print(f"   n = {len(blind):,}   median sigma_piE ratio = {blind.ratio.median():.6f}")
-        print(f"                       median sigma_tE  ratio = {blind.ratio_tE.median():.6f}")
-        print(f"   fraction within 1% of unity: {(blind.ratio.between(0.99,1.01)).mean():.1%}")
+        print(f"   n = {len(blind):,}   median sigma_piE ratio = "
+              f"{R.weighted_median(blind.ratio, blind.W):.6f}")
+        print(f"                       median sigma_tE  ratio = "
+              f"{R.weighted_median(blind.ratio_tE, blind.W):.6f}")
+        print(f"   fraction within 1% of unity: "
+              f"{R.weighted_fraction(blind.ratio.between(0.99, 1.01), blind.W):.1%}")
     else:
         print("   none in this sample")
 
@@ -123,14 +164,17 @@ def main():
     print(f"   n = {len(covered):,}")
     if len(covered) == 0:
         sys.exit("no Roman-covered events")
-    q = covered.ratio.quantile([0.05, 0.25, 0.5, 0.75, 0.95])
-    print(f"   sigma_piE ratio  median {covered.ratio.median():.4f}"
+    q = {p: R.weighted_quantile(covered.ratio, covered.W, p)
+         for p in (0.05, 0.25, 0.5, 0.75, 0.95)}
+    print(f"   N_eff {R.kish_neff(covered.W):,.0f}")
+    print(f"   sigma_piE ratio  median {q[0.5]:.4f}"
           f"   quartiles {q[0.25]:.4f} / {q[0.75]:.4f}"
           f"   5-95% {q[0.05]:.4f} / {q[0.95]:.4f}")
-    print(f"   sigma_tE  ratio  median {covered.ratio_tE.median():.4f}   (not a control here:")
+    print(f"   sigma_tE  ratio  median "
+          f"{R.weighted_median(covered.ratio_tE, covered.W):.4f}   (not a control here:")
     print("                     tE and piE are correlated, so the geometry moves both)")
-    better = (covered.ratio < 0.99).mean()
-    big = (covered.ratio < 0.5).mean()
+    better = R.weighted_fraction(covered.ratio < 0.99, covered.W)
+    big = R.weighted_fraction(covered.ratio < 0.5, covered.W)
     print(f"   improved by >1%  : {better:.1%}")
     print(f"   improved by >2x  : {big:.1%}")
 
@@ -170,18 +214,22 @@ def astrometry(df, covered, blind):
             print(f"   {lab}: none")
             continue
         r = (sel.sigtetE_sat / sel.sigtetE_nosat)
-        print(f"   {lab}: n = {len(sel):,}   median sigma(theta_E) ratio = {r.median():.6f}")
+        print(f"   {lab}: n = {len(sel):,}   median sigma(theta_E) ratio = "
+              f"{R.weighted_median(r, sel.W):.6f}")
 
     m = (df.relMl_sat > 0) & (df.relMl_nosat > 0) & (df.nepR_pk > 0)
     if m.sum():
         rm = (df.loc[m, "relMl_sat"] / df.loc[m, "relMl_nosat"])
-        print(f"   lens mass: n = {int(m.sum()):,}   median relMl ratio = {rm.median():.6f}")
-        print(f"              improved by >1%: {(rm < 0.99).mean():.1%}")
+        wm = df.loc[m, "W"]
+        print(f"   lens mass: n = {int(m.sum()):,}   median relMl ratio = "
+              f"{R.weighted_median(rm, wm):.6f}")
+        print(f"              improved by >1%: {R.weighted_fraction(rm < 0.99, wm):.1%}")
 
     mr = (covered.sigpiER_sat > 0) & (covered.sigpiER_nosat > 0)
     if mr.sum():
         rr = covered.loc[mr, "sigpiER_sat"] / covered.loc[mr, "sigpiER_nosat"]
-        print(f"   Roman ALONE, sigma(piE): n = {int(mr.sum()):,}   median ratio = {rr.median():.6f}")
+        print(f"   Roman ALONE, sigma(piE): n = {int(mr.sum()):,}   median ratio = "
+              f"{R.weighted_median(rr, covered.loc[mr, 'W']):.6f}")
         print("              the L2 offset is Roman's geometry, so an effect must show here first")
 
 
@@ -200,11 +248,13 @@ def conditioning(covered):
         if not m.sum():
             print(f"   {lab}: no valid pairs")
             continue
-        ca, cb = covered.loc[m, a], covered.loc[m, b]
+        ca, cb, cw = covered.loc[m, a], covered.loc[m, b], covered.loc[m, "W"]
         print(f"   {lab}: n = {int(m.sum()):,}")
-        print(f"      satellite    median {ca.median():.4g}   95th {ca.quantile(0.95):.4g}")
-        print(f"      no-satellite median {cb.median():.4g}   95th {cb.quantile(0.95):.4g}")
-        print(f"      median ratio no-sat/sat = {(cb/ca).median():.4f}"
+        print(f"      satellite    median {R.weighted_median(ca, cw):.4g}   "
+              f"95th {R.weighted_quantile(ca, cw, 0.95):.4g}")
+        print(f"      no-satellite median {R.weighted_median(cb, cw):.4g}   "
+              f"95th {R.weighted_quantile(cb, cw, 0.95):.4g}")
+        print(f"      median ratio no-sat/sat = {R.weighted_median(cb/ca, cw):.4f}"
               "   (far from 1 would mean the two geometries are not equally conditioned)")
 
 

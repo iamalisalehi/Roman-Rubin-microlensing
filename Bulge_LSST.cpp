@@ -765,7 +765,13 @@ int main(int argc, char** argv) {
               << "sigpiER_sat sigpiER_nosat sigtetE_sat sigtetE_nosat "
               << "sigpiEb_sat sigpiEb_nosat relMl_sat relMl_nosat "
               << "condA_sat condA_nosat condB_sat condB_nosat "
-              << "nepL_pk nepR_pk w_area\n";
+            // Ml, Dl, Ds and Vt are appended (not inserted) so the 30-column files written
+            // before 2026-09-17 still parse by position. They are here because the pooled
+            // event-rate weight needs sqrt(Ml)*Vt*Z(Ds) per event (Deviation 41) and none of
+            // it is recoverable from the columns above: theta_E and pi_E give Ml, and
+            // theta_E/tE gives mu_rel, but pi_rel = 1/Dl - 1/Ds is one equation in two
+            // unknowns, so a paired file without these cannot be weighted at all.
+              << "nepL_pk nepR_pk w_area Ml Dl Ds Vt\n";
         }
     }
 
@@ -1930,7 +1936,8 @@ int main(int argc, char** argv) {
                       << co->relMl[SJOINT] << " " << relMl_ns << " "
                       << co->condA[SJOINT] << " " << condA_ns << " "
                       << co->condB[SJOINT] << " " << condB_ns << " "
-                      << nepLpk << " " << nepRpk << " " << wArea << "\n";
+                      << nepLpk << " " << nepRpk << " " << wArea << " "
+                      << l->Ml << " " << l->Dl << " " << s->Ds << " " << l->Vt << "\n";
                 fpair.close();
             }
 //          

@@ -232,7 +232,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
 void func_lens(lens & l, source & s){
 
-    double f, test, tt, Am, DD;
+    double test, tt, Am, DD;
     double mmin = Ml_min;
     double mmax = Ml_max;
     l.rhomaxl = 0.0;
@@ -275,73 +275,17 @@ void func_lens(lens & l, source & s){
     }
      //cout<<"Dl:  "<<l.Dl<<"\t struc_lens :  "<<l.struc<<endl;
 
-    if (IMnum == 1) {
-        l.Ml = RandR(mmin , mmax);
-    } //[in solar mass]
+    // Which mass function this draws from is a property of the population selected by
+    // --population (POPULATIONS in Bulge.h), not of the build. Every branch that used to
+    // live here -- uniform, three power laws, Kroupa+remnants -- now lives in drawLensMass()
+    // beside the two new ones, so a population is one table entry rather than an `if` here
+    // plus a constant there plus a filename suffix somewhere else.
+    l.Ml = drawLensMass();
 
-    if (IMnum == 2) {
-        l.Ml = -1.0;
-        do {
-            l.Ml = RandR(mmin, mmax); //[3,5000]in solar mass]
-            test = RandR(std::pow(mmax, -0.5) * 100.0, std::pow(mmin, -0.5) * 100.0); //[1.4, 58]
-            f = std::pow(l.Ml, -0.5) * 100.0;
-
-            CHECK(f >= 1.4);
-            CHECK(f <= 58.0);
-            CHECK(test >= 1.4);
-            CHECK(test <= 58.0);
-            CHECK(l.Ml >= 3.0);
-            CHECK(l.Ml <= 5000.0);
-       
-        } while(test > f);
-    }
-
-    if (IMnum == 3) {
-        l.Ml = -1.0;
-        do {
-           l.Ml = RandR(mmin, mmax); //[3,5000]in solar mass]
-           test = RandR(std::pow(mmax, -1.0) * 1000.0, std::pow(mmin, -1.0) * 1000.0); //[0.2, 334]
-           f = std::pow(l.Ml, -1.0) * 1000.0;
-           CHECK(f >= 0.19);
-           CHECK(f <= 334.0);
-           CHECK(test >= 0.19);
-           CHECK(test <= 334.0);
-           CHECK(l.Ml >= 3.0);
-           CHECK(l.Ml <= 5000.0);
-        
-        } while(test > f);
-    }
-
-    if (IMnum == 5) {
-        // Kroupa IMF + remnants: draw what the star was BORN as, then ask what is left of
-        // it. Doing it in that order is the point -- the mass function is a statement about
-        // formation, while the lens is whatever survives, and collapsing the two loses the
-        // black holes that make the long-tE regime exist at all.
-        const double Mi = drawKroupaInitialMass();
-        l.Ml = remnantMass(Mi);
-
-        // Ml_min/Ml_max bracket the PRESENT-DAY masses and also set the Mls efficiency
-        // grid, so a draw outside them would silently land outside every efficiency bin.
-        CHECK(l.Ml >= Ml_min);
-        CHECK(l.Ml <= Ml_max);
-    }
-
-    if (IMnum == 4) {
-       l.Ml = -1.0;
-       do {
-           l.Ml = RandR(mmin, mmax);//[3,5000]in solar mass]
-           test = RandR(std::pow(mmax, -2.0) * 10000.0, std::pow(mmin, -2.0) * 10000.0); //[0.0004, 1112]
-           f = std::pow(l.Ml, -2.0) * 10000.0;
-         
-           CHECK(f >= 0.00039);
-           CHECK(f <= 1112.0);
-           CHECK(test >= 0.00039);
-           CHECK(test <= 1112.0);
-           CHECK(l.Ml >= 3.0);
-           CHECK(l.Ml <= 5000.0);
-
-       } while(test > f);
-    }
+    // The bounds bracket the masses the population can produce and also set the Mls
+    // efficiency grid, so a draw outside them would land outside every efficiency bin.
+    CHECK(l.Ml >= mmin * 0.999);
+    CHECK(l.Ml <= mmax * 1.001);
 
     l.xls    = l.Dl / s.Ds;
     l.RE     = std::sqrt(4.0 * G * l.Ml * Msun * s.Ds * KP) / velocity;

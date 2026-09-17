@@ -71,7 +71,10 @@ int FuncMl(lens & l) {
 
    CHECK(gg >= 0);
    CHECK(gg <= GG);
-   CHECK(l.Ml >= 3.0);
+   // Was CHECK(l.Ml >= 3.0) -- the low edge of the MACHO range this code was adapted from,
+   // left behind when the bulge population (0.01 Msun and up) replaced it. It would throw on
+   // any dwarf lens, and only went unnoticed because both call sites are commented out.
+   CHECK(l.Ml >= mlMin() * 0.999);
 
    return(gg);
 }
@@ -768,4 +771,96 @@ double remnantMass(double initialMass)
     // crudest step in the chain -- black hole remnant masses depend on metallicity and
     // mass loss in ways no single slope captures -- and is flagged in OPEN_ITEMS.md.
     return BH_MI_SLOPE * Mi;
+}
+
+
+// Flat in log M over [lo, hi]. The standard choice for a black-hole lens population, and it
+// is a statement about ignorance rather than about stars: no mass function is measured over
+// 3-1000 Msun, so weighting every decade equally is the prior that does not invent structure.
+//
+// Note what this does to a sample: half the draws land above sqrt(lo*hi) = 55 Msun, where
+// tE ~ sqrt(Ml) makes events long. That is the regime Roman's season gaps bite hardest, and
+// it is why this population is worth simulating separately rather than as the tail of a
+// bulge run, where such lenses are a fraction of a per cent of the draws.
+double drawLogUniformMass(double lo, double hi)
+{
+    CHECK(lo > 0.0);
+    CHECK(hi > lo);
+    const double x = RandR(std::log(lo), std::log(hi));
+    const double M = std::exp(x);
+    CHECK(M >= lo * 0.999);
+    CHECK(M <= hi * 1.001);
+    return M;
+}
+
+
+// A measured neutron-star mass distribution: Gaussian, truncated to the range in which
+// neutron stars actually exist (Ozel & Freire 2016; constants in Bulge.h).
+//
+// Redraw rather than clamp. Clamping to an edge piles probability onto 1.10 and 2.20 exactly
+// -- a spike at the boundary that no physical population has, and one that would show up in
+// every tE histogram as two spurious lines, since tE ~ sqrt(Ml).
+double drawNeutronStarMass()
+{
+    for (int guard = 0; guard < 1000; ++guard) {
+        const double M = NS_MEAN_MASS + RandN(NS_MASS_SIG, 4.0);
+        if (M >= NS_MASS_LO and M <= NS_MASS_HI) return M;
+    }
+    // Unreachable in practice: the truncation is +/-1.7 sigma at the tighter end, so a
+    // single draw succeeds ~91% of the time and 1000 failures has probability ~1e-1000.
+    // Kept so a future edit to the constants cannot produce a silent infinite loop.
+    throw std::runtime_error("drawNeutronStarMass: no draw inside [NS_MASS_LO, NS_MASS_HI]");
+}
+
+
+// The one entry point func_lens uses. Which mass function runs is a property of the
+// population selected by --population, not of the build.
+double drawLensMass()
+{
+    switch (gPop->mf) {
+    case MassFunction::KROUPA_REMNANTS: {
+        // Draw what the star was BORN as, then ask what is left of it. The order matters:
+        // the mass function describes formation, the lens is whatever survived, and
+        // collapsing the two loses the black holes that make the long-tE regime exist.
+        const double Mi = drawKroupaInitialMass();
+        return remnantMass(Mi);
+    }
+    case MassFunction::LOG_UNIFORM:
+        return drawLogUniformMass(mlMin(), mlMax());
+    case MassFunction::NEUTRON_STAR:
+        return drawNeutronStarMass();
+    case MassFunction::UNIFORM:
+        return RandR(mlMin(), mlMax());
+    case MassFunction::POWER_LAW_05:
+        return drawPowerLawMass(mlMin(), mlMax(), 0.5);
+    case MassFunction::POWER_LAW_10:
+        return drawPowerLawMass(mlMin(), mlMax(), 1.0);
+    case MassFunction::POWER_LAW_20:
+        return drawPowerLawMass(mlMin(), mlMax(), 2.0);
+    }
+    throw std::runtime_error("drawLensMass: unhandled mass function");
+}
+
+
+// dN/dM ~ M^-alpha on [lo, hi], by inverse CDF.
+//
+// The legacy code sampled these by rejection against a bounding box, which is correct but
+// wasteful and, more to the point, consumes a variable number of RNG draws per event -- so
+// two runs differing only in mass function diverge in their random streams for reasons that
+// have nothing to do with the physics. Inverse CDF takes exactly one draw, always.
+double drawPowerLawMass(double lo, double hi, double alpha)
+{
+    CHECK(lo > 0.0);
+    CHECK(hi > lo);
+    const double v = RandR(0.0, 1.0);
+
+    // alpha == 1 is not a corner case to guard against, it is one of the legacy populations
+    // (macho-m1, dN/dM ~ 1/M). There the (1-alpha) exponent form divides by zero, and the
+    // CDF is logarithmic instead: M = lo * (hi/lo)^v, which is exactly log-uniform.
+    if (std::fabs(1.0 - alpha) < 1e-9)
+        return lo * std::pow(hi / lo, v);
+
+    const double p = 1.0 - alpha;
+    const double lop = std::pow(lo, p);
+    return std::pow(lop + v * (std::pow(hi, p) - lop), 1.0 / p);
 }

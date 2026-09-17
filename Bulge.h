@@ -60,15 +60,64 @@ using std::cin;
     } while (0)
 
 
-// Which lens mass function func_lens draws from. ALSO the output-file suffix
-// (test<IMnum>.dat, LpLMC<IMnum>.dat, ...), so switching it keeps two populations'
-// results side by side instead of overwriting one with the other.
-//   1  uniform in [Ml_min, Ml_max]
-//   2  M^-0.5     )
-//   3  M^-1       ) legacy MACHO-search options inherited from the LMC simulation:
-//   4  M^-2       ) a 3-5000 Msun range, appropriate to a dark-matter lens search
-//   5  Kroupa IMF + stellar remnants -- the Galactic bulge population
-constexpr int    IMnum = 5;
+// ======================= WHICH LENS POPULATION IS BEING SIMULATED =======================
+//
+// This was a compile-time constant (`IMnum`), which meant a second population needed a
+// rebuild and silently reused the first one's output filenames if you forgot to change it.
+// It is now a runtime object chosen by `--population`, because the whole point of a
+// population study is to run several and compare them.
+//
+// A population owns FOUR things, and they must travel together or a run is mislabelled:
+//   the mass function it draws from, the mass range that function is defined on, the grid
+//   spacing the mass-efficiency histogram uses, and the tag every output file carries.
+//
+// THE TAG IS THE SAFETY CATCH. `test<tag>.dat`, `MapLMC<tag>.dat` and the rest are named
+// from it, so two populations cannot overwrite each other, and a table always says which
+// population produced it. The default keeps tag "5", so existing filenames and every
+// analysis command that names them are unchanged.
+enum class MassFunction {
+    KROUPA_REMNANTS,   // Kroupa IMF, then the initial-final mass relation: the bulge today
+    LOG_UNIFORM,       // flat in log M -- the honest prior when the mass function is unknown
+    NEUTRON_STAR,      // a measured NS mass distribution (Ozel & Freire 2016)
+    UNIFORM,           // legacy MACHO-search options, inherited from the LMC simulation
+    POWER_LAW_05,      //   dN/dM ~ M^-0.5
+    POWER_LAW_10,      //   dN/dM ~ M^-1
+    POWER_LAW_20       //   dN/dM ~ M^-2
+};
+
+struct LensPopulation {
+    const char*  name;      // what --population takes
+    const char*  tag;       // output-file suffix
+    MassFunction mf;
+    double       mlMin;     // Msun; also the low edge of the Mls efficiency grid
+    double       mlMax;
+    bool         logGrid;   // log-spaced mass bins: mandatory once the range spans decades
+    int          legacyId;  // the old IMnum, for the two IMnum==1 debug dumps
+    const char*  note;
+};
+
+// The bulge entry is first and is the default: it reproduces the pre-2026-09-17 behaviour
+// exactly, tag included.
+inline constexpr LensPopulation POPULATIONS[] = {
+    {"bulge", "5", MassFunction::KROUPA_REMNANTS, 0.01, 30.0, false, 5,
+     "Kroupa IMF + remnants; the present-day bulge population"},
+    {"bh",    "bh", MassFunction::LOG_UNIFORM,     3.0, 1000.0, true, 0,
+     "black holes, flat in log M over 3-1000 Msun"},
+    {"ns",    "ns", MassFunction::NEUTRON_STAR,    1.0,    2.5, false, 0,
+     "neutron stars, Gaussian about 1.35 Msun (Ozel & Freire 2016)"},
+    {"macho-uniform", "1", MassFunction::UNIFORM,      3.0, 5000.0, true, 1, "legacy MACHO search"},
+    {"macho-m05",     "2", MassFunction::POWER_LAW_05, 3.0, 5000.0, true, 2, "legacy MACHO search"},
+    {"macho-m1",      "3", MassFunction::POWER_LAW_10, 3.0, 5000.0, true, 3, "legacy MACHO search"},
+    {"macho-m2",      "4", MassFunction::POWER_LAW_20, 3.0, 5000.0, true, 4, "legacy MACHO search"},
+};
+
+// Set once, from --population, before any `lens` is constructed -- the mass-efficiency grid
+// is built in that constructor from the bounds below.
+inline const LensPopulation* gPop = &POPULATIONS[0];
+
+inline double mlMin() { return gPop->mlMin; }
+inline double mlMax() { return gPop->mlMax; }
+
 constexpr double u0m   = 3.0;
 
 
@@ -336,22 +385,14 @@ constexpr std::array<double, 2> sig2 = {+0.5 ,+1.0};
 constexpr int GG = 100;
 constexpr double tE_min  = 0.0;///days
 constexpr double tE_max  = 50.0*year;//days
-// Lens mass range, in solar masses. Two very different populations live here, so the
-// bounds follow IMnum rather than being one compromise that fits neither:
+// Lens mass range: now a property of the selected population (see POPULATIONS above), not a
+// constant, because a bulge population and a black-hole population share no sensible bounds.
+// The same numbers set the Mls grid the mass-efficiency histogram is binned on, so they must
+// bracket the masses actually drawn or that output collapses into one bin.
 //
-//   IMnum 1-4  3 - 5000 Msun. A MACHO search range, inherited from the LMC simulation
-//              this code was adapted from. Toward the bulge it is unphysical: it gives a
-//              median lens of ~390 Msun and, since tE scales as sqrt(Ml), a median tE of
-//              ~950 days against the ~20-30 days OGLE and MOA actually measure.
-//   IMnum 5    0.01 - 30 Msun, the PRESENT-DAY mass range of a bulge population: brown
-//              dwarfs and M dwarfs at the bottom, white dwarfs and neutron stars in the
-//              middle, stellar-mass black holes at the top. Initial masses run higher
-//              (see KROUPA_MI_MAX); what is bounded here is what still exists today.
-//
-// These bounds also set the Mls grid the detection efficiency is binned on, so they must
-// bracket the masses actually drawn or the efficiency-vs-mass output collapses into one bin.
-constexpr double Ml_min  = (IMnum == 5) ?  0.01 :    3.0;
-constexpr double Ml_max  = (IMnum == 5) ? 30.00 : 5000.0;
+// Kept as names because the rest of the code reads them as names; they are now functions.
+#define Ml_min (mlMin())
+#define Ml_max (mlMax())
 
 // ---- Kroupa (2001) initial mass function, dN/dM ~ M^-alpha, with the standard breaks ----
 // Coefficients enforcing continuity at the breaks are derived in drawKroupaInitialMass();
@@ -369,6 +410,23 @@ constexpr double KROUPA_ALPHA3 = 2.3;    //0.50 - 120   (Salpeter-like)
 // Which remnant it left is set by its INITIAL mass, and that is what makes the long-tE tail
 // this project cares about: a black hole lens is heavy, so tE ~ sqrt(Ml) is long, and a long
 // event is exactly the one that spans Roman's season gaps.
+// ---- Neutron star masses, for the NEUTRON_STAR population ----
+// The observed distribution is narrow and well measured. Ozel & Freire (2016) review the
+// measured sample: double neutron stars cluster at 1.33 +/- 0.09 Msun, slow pulsars sit
+// slightly higher and recycled ones spread wider, and the population as a whole is often
+// summarised as a Gaussian near 1.35 Msun with a ~0.15 Msun spread. The truncation is
+// physics, not tidiness: below ~1.1 Msun no supernova is known to leave a neutron star, and
+// above ~2.2 Msun the equation of state gives a black hole instead.
+//
+// UNCERTAINTY, STATED: the real distribution is arguably bimodal (a recycled population
+// above the canonical peak), and a single Gaussian will understate the high-mass tail. The
+// alternative is one line in drawNeutronStarMass(); this is the simpler model, chosen
+// deliberately and recorded rather than presented as settled.
+constexpr double NS_MEAN_MASS = 1.35;  //Msun
+constexpr double NS_MASS_SIG  = 0.15;  //Msun
+constexpr double NS_MASS_LO   = 1.10;  //Msun, below which no NS is expected to form
+constexpr double NS_MASS_HI   = 2.20;  //Msun, near the maximum the equation of state allows
+
 constexpr double MS_TURNOFF   = 1.0;   //Msun; below this the star is still on the main sequence
 constexpr double WD_MI_MAX    = 8.0;   //Mi 1-8   -> white dwarf
 constexpr double NS_MI_MAX    = 20.0;  //Mi 8-20  -> neutron star; above -> black hole
@@ -428,6 +486,23 @@ static std::vector<double> make_grid(double min, double max)
     for (int i = 0; i <= GG; ++i)
     {
         v[i] = min + (max - min) * static_cast<double>(i) / GG;
+    }
+
+    return v;
+}
+
+// Geometric spacing, for a quantity whose range spans decades. A linear grid over 3-1000
+// Msun would put every black hole below 13 Msun -- most of a log-uniform population -- into
+// the first bin and report one number for the entire low-mass end, which is where the
+// interesting behaviour is. Only used where the population asks for it.
+static std::vector<double> make_grid_log(double min, double max)
+{
+    std::vector<double> v(GG + 1);
+    const double lo = std::log(min), hi = std::log(max);
+
+    for (int i = 0; i <= GG; ++i)
+    {
+        v[i] = std::exp(lo + (hi - lo) * static_cast<double>(i) / GG);
     }
 
     return v;
@@ -536,7 +611,7 @@ struct lens {
           tele(coun),
 
           tEs(make_grid(tE_min, tE_max)),
-          Mls(make_grid(Ml_min, Ml_max)),
+          Mls(gPop->logGrid ? make_grid_log(Ml_min, Ml_max) : make_grid(Ml_min, Ml_max)),
           pis(make_grid(pi_min, pi_max)),
           u0s(make_grid(u0_min, u0_max)),
           mbs(make_grid(mb_min, mb_max)),
@@ -1135,5 +1210,9 @@ double RandR(double , double);
 int    RandPois(double);
 double drawKroupaInitialMass();
 double remnantMass(double initialMass);
+double drawLogUniformMass(double lo, double hi);
+double drawNeutronStarMass();
+double drawPowerLawMass(double lo, double hi, double alpha);
+double drawLensMass();
 
 #endif // LMC_H

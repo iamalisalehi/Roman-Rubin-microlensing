@@ -3177,3 +3177,78 @@ the sign test are still raw-sample and are labelled so.
 
 **What remains.** One `--pair-satellite` run on a binary built from today or later makes H3
 weightable; nothing else is missing. `OPEN_ITEMS.md` carries it.
+
+---
+
+## 45. The lens population becomes a runtime object, and two new populations are added (2026-09-17)
+
+**What the plan said.** Nothing: the refactor plan assumes one population. This is new work,
+requested directly -- run the pipeline for a black-hole population (3-1000 Msun, flat in log M)
+and a neutron-star population (a measured mass distribution).
+
+**What was wrong with the old arrangement.** `IMnum` was a `constexpr int` that chose the mass
+function AND named every output file. So a second population meant a rebuild, and if you forgot
+to change the constant the new run appended into the old population's tables -- silently, because
+nothing recorded which population produced a row. `Ml_min`/`Ml_max` were `constexpr` expressions
+of `IMnum`, and they set both the sampler bounds and the mass-efficiency grid.
+
+**Two decisions, taken by the user and recorded here because every number depends on them.**
+1. **One run per population**, not a mixed run. Each gets full statistics and its own files, and
+   the BH:NS ratio stays a free parameter that can be applied at analysis time without re-running.
+2. **The log-uniform mass function is the assumed truth**, not an importance-sampling device.
+   That is the usual convention in black-hole microlensing forecasts, where no mass function is
+   measured over this range and flat-in-log is the prior that invents no structure. **This is
+   what keeps the pooled weight unchanged:** `W ∝ sqrt(Ml) * Vt * Z(Ds)` (Deviation 41) is correct
+   only when the sampled mass function IS the assumed one. Were the log-uniform ever reinterpreted
+   as a sampling device for some other mass function, every pooled number would additionally need
+   `p_physical(M)/p_loguniform(M)`, and `event_weight()` would have to take a mass-function
+   argument.
+
+**What was done.**
+- `Bulge.h`: a `LensPopulation` table -- name, output tag, mass function, mass range, grid
+  spacing, legacy id -- and a runtime `gPop` selected by `--population`. `Ml_min`/`Ml_max` became
+  accessors. Seven populations: `bulge` (the default, tag `5`, byte-identical to before), `bh`,
+  `ns`, and the four legacy MACHO options, which keep tags `1`-`4`.
+- **The tag is the safety catch:** `test<tag>.dat`, `MapLMC<tag>.dat`, `EfLMC<tag>.dat`,
+  `LpLMC<tag>.dat`. Two populations cannot overwrite each other, and `run_provenance.txt` now
+  records the population, its mass range and its grid type.
+- `make_grid_log()`: the mass-efficiency grid is geometric when the range spans decades. A linear
+  grid over 3-1000 Msun would put every black hole below 13 Msun -- most of a log-uniform
+  population -- in the first bin.
+- `drawLensMass()` in `helper.cpp` holds every mass function in one place, including the two new
+  ones: `drawLogUniformMass()` and `drawNeutronStarMass()` (Gaussian, mean 1.35, sigma 0.15,
+  truncated to 1.10-2.20 Msun, after Ozel & Freire 2016; **redrawn, not clamped**, because
+  clamping would pile probability onto the two edges and print as spurious lines in every `tE`
+  histogram).
+- The legacy power laws moved from rejection sampling to inverse CDF -- one RNG draw instead of a
+  variable number, so two populations no longer diverge in their random streams for reasons
+  unrelated to the physics. **`alpha == 1` is one of the legacy populations, not a corner case**,
+  and takes the logarithmic branch.
+
+**Two latent bugs found and fixed on the way.**
+1. `FuncMl()` still asserted `CHECK(l.Ml >= 3.0)` -- the low edge of the MACHO range, left behind
+   when the bulge population replaced it. It would throw on any dwarf lens; it went unnoticed only
+   because **both call sites are commented out** (`Bulge_LSST.cpp:1796-97`), which means the
+   per-mass detection efficiency has never been computed. Assertion fixed; the dead call sites are
+   an `OPEN_ITEMS.md` entry, since re-enabling them is a behaviour change, not a fix.
+2. `LpLMC<tag>.dat` was opened as an **input** whose absence was fatal, though it is only ever
+   written to (append mode, per characterised event). A population whose tag had never been run
+   could therefore not start at all: `--population bh` aborted with "Cannot open one or more
+   files!" before drawing a star. It is now created if missing.
+
+**Verification.**
+- **`fishertest` byte-identical** to a binary built from `HEAD`'s own sources -- the refactor
+  changes no forecast.
+- **Samplers, 200,000 draws each:** `bh` median 54.88 against the geometric mean 54.77 with
+  exactly 50.0% below it, which is the signature of flat-in-log; `ns` mean 1.365, sd 0.135, range
+  [1.10, 1.95] (the mean sits above 1.35 because the lower truncation bites at 1.7 sigma and the
+  upper at 5.7); `macho-m1` median 121.2 against its geometric mean 122.5, confirming the
+  `alpha == 1` branch; every population inside its own bounds.
+- **Stub runs of all three populations**, each started from an EMPTY output directory, so they
+  also test the `LpLMC` fix: all exited 0, wrote only their own tag's files, and recorded the
+  population in provenance. Detected events: `bulge` Ml 0.0104-0.969, median `tE` 15 d; `bh` Ml
+  3.42-976, median `tE` **332 d**; `ns` Ml 1.13-1.60, median `tE` 64 d. The black-hole population
+  lands in exactly the long-`tE` regime Roman's season gaps bite hardest, which is why it is worth
+  simulating separately rather than as the thin tail of a bulge run.
+- `--population nope` exits 2 and lists all seven with their output filenames.
+- No new compiler warnings (the six in `Bulge_LSST.cpp` are pre-existing and recorded).

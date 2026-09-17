@@ -1,5 +1,38 @@
 # PROGRESS.md — where this project stands
 
+**Last updated:** 2026-09-17 (later still), when **lens populations became a runtime choice** so
+the pipeline can be run for a black-hole and a neutron-star population — Deviation 45.
+
+**The plan this is part of, in order. P1 and P2 are done; P3–P6 are not.**
+- **P1 ✅ Population framework.** `--population` selects a `LensPopulation` (mass function, mass
+  range, grid spacing, output tag). Every output file is named from the tag, so populations cannot
+  overwrite each other, and `run_provenance.txt` records which one ran. Default `bulge` is
+  byte-identical to before.
+- **P2 ✅ The two new mass functions.** `bh` = flat in log M over 3–1000 M☉; `ns` = Gaussian about
+  1.35 M☉ (σ 0.15) truncated to 1.10–2.20, after Özel & Freire (2016).
+- **P3 ⬜ The mass-efficiency histograms**, which have never been computed: `FuncMl`/`FuncPi` are
+  called only from commented-out lines, so those `EfLMC` columns are zeros. Efficiency versus lens
+  mass is the headline plot for a black-hole study. `OPEN_ITEMS.md` has the entry.
+- **P4 ⬜ Analysis-side population awareness.** `romanlib` should read the population from
+  provenance and refuse to pool two populations into one figure; the weight's `sqrt(Ml)` factor is
+  only valid for the mass function actually sampled.
+- **P5 ⬜ Publication-ready plotting layer.** A shared `analysis/plotstyle.py` (vector PDF, embedded
+  fonts, single-column sizing, colourblind-safe, no baked-in titles) plus the population figures:
+  mass function drawn vs assumed, efficiency vs mass per survey, σ(M_L)/M_L vs mass, `tE` by
+  population, and the joint-vs-single gain across the mass range.
+- **P6 ⬜ Verification, then the production runs** — one per population.
+
+**Two decisions on the record** (they change every number): populations are run **separately**,
+and the log-uniform mass function is the **assumed truth**, which is what keeps the pooled weight
+`W ∝ sqrt(Ml)·Vt·Z(Ds)` valid without an extra mass-function ratio.
+
+**Verified at P1/P2:** `fishertest` byte-identical to `HEAD`; 200k-draw sampler checks
+(`bh` exactly 50.0% below its geometric mean; `ns` mean 1.365, sd 0.135); stub runs of all three
+populations from an empty output directory, giving median `tE` of 15 d (bulge), **332 d (bh)** and
+64 d (ns). Two latent bugs fixed on the way: `FuncMl`'s stale `CHECK(l.Ml >= 3.0)`, and
+`LpLMC<tag>.dat` being opened as a fatal *input* when it is only ever written — which made any new
+population unable to start.
+
 **Last updated:** 2026-09-15 (later), when the pooled weight was derived and measured —
 **Deviation 41**. The premise was wrong in a way that matters more than expected.
 - **The weight.** Draws are rate-weighted in lens distance only, not in mass or velocity, so

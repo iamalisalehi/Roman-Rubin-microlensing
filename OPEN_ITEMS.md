@@ -1273,6 +1273,33 @@ decide whether F1-F4 need regenerating.
 
 ---
 
+## The per-mass and per-parallax detection efficiencies have never been computed
+
+**Status: open, found 2026-09-17 while adding lens populations (Deviation 45).**
+
+**What is wrong.** `FuncMl()` and `FuncPi()` bin an event into a lens-mass or parallax bin so the
+detection efficiency can be reported against those axes, exactly as `FunctE()` does for `tE`.
+**Both call sites are commented out** (`Bulge_LSST.cpp:1796-97`), so `NsMl`/`NdMl` and
+`Nspi`/`Ndpi` stay at zero and the corresponding columns of `EfLMC<tag>.dat` are columns of
+zeros. `FunctE` is called and its `tE` efficiency is real; the other two are not.
+
+**Why it matters scientifically.** Detection efficiency versus lens mass is *the* plot for a
+black-hole population study -- it is how a yield becomes a statement about which masses a survey
+can find. Right now that curve cannot be made from the simulator's own output; it would have to be
+reconstructed in the analysis layer from the per-event table, which is possible but is a different
+estimator with different sampling noise.
+
+**Why deferred.** Re-enabling them changes what a run computes and costs CPU per draw, so it is a
+behaviour change that belongs in its own step with its own before/after numbers -- not a silent
+fix folded into the population work.
+
+**What the fix involves.** Uncomment the two calls, confirm the histogram accumulators are
+incremented on both the simulated and detected sides (the `tE` pair is the model), and check the
+cost per draw. `FuncMl`'s stale `CHECK(l.Ml >= 3.0)` was already corrected to the population's own
+lower bound, so the assertion no longer blocks it.
+
+---
+
 ## H3's satellite-parallax numbers are not event-rate weighted, and its existing data cannot be
 
 **Status: H5 is DONE (2026-09-17, Deviation 44). H3 stays open until a new paired run.**

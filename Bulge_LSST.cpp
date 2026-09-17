@@ -287,6 +287,14 @@ static void printUsage(const char* prog) {
         << "  --nerr X       per-sightline Fisher-error target (default 2.0)\n"
         << "  --maxdraws X   per-sightline cap on drawn stars (default 5e4)\n"
         << "  --stub         scan the old 0.1x0.1 deg patch instead of the full region\n"
+        << "  --population N which lens population to simulate (default 'bulge').\n"
+        << "                 Every output file is named from the population's tag, so two\n"
+        << "                 populations never overwrite each other: 'bulge' writes\n"
+        << "                 test5.dat as before, 'bh' writes testbh.dat, 'ns' testns.dat.\n"
+        << "                 bulge = Kroupa IMF + remnants, 0.01-30 Msun\n"
+        << "                 bh    = flat in log M, 3-1000 Msun\n"
+        << "                 ns    = neutron stars, Gaussian about 1.35 Msun\n"
+        << "                 macho-uniform/-m05/-m1/-m2 = the legacy 3-5000 Msun options\n"
         << "  --dry-run      build the sightline grid, report the strata and the sky-area\n"
         << "                 weights, then exit without drawing any stars\n"
         << "  --no-satellite-parallax   put Roman at the centre of the Earth, removing the\n"
@@ -324,6 +332,21 @@ int main(int argc, char** argv) {
         else if (arg == "--dry-run") cfg.dryRun      = true;
         else if (arg == "--no-satellite-parallax") cfg.noSatPar = true;
         else if (arg == "--pair-satellite") cfg.pairSat = true;
+        else if (arg == "--population") {
+            const std::string want = need("--population");
+            const LensPopulation* found = nullptr;
+            for (const auto& p : POPULATIONS)
+                if (want == p.name) { found = &p; break; }
+            if (!found) {
+                std::cerr << "ERROR: unknown population '" << want << "'. Known:\n";
+                for (const auto& p : POPULATIONS)
+                    std::cerr << "   " << std::left << std::setw(16) << p.name
+                              << p.mlMin << " - " << p.mlMax << " Msun   -> "
+                              << "test" << p.tag << ".dat   (" << p.note << ")\n";
+                std::exit(2);
+            }
+            gPop = found;
+        }
         else if (arg == "--help")  { printUsage(argv[0]); return 0; }
         else {
             std::cerr << "ERROR: unknown option '" << arg << "'\n";
@@ -645,7 +668,7 @@ int main(int argc, char** argv) {
     // Cleared only when the scan STARTS. On a continuation this file, like every other
     // output, holds the earlier chunks' rows and must not be cleared. (cfg.startIndex is
     // read directly here because `resuming` is declared with the other opens below.)
-    if (IMnum == 1 and cfg.startIndex == 0) {
+    if (gPop->legacyId == 1 and cfg.startIndex == 0) {
         std::string filnam0 = "./files/MONTLMC/files/BHLSSTMONTS.dat";
         std::ofstream(filnam0).close(); // create/clear file
     }
@@ -654,11 +677,15 @@ int main(int argc, char** argv) {
 //    std::string filnam0 = "./files/MONTLMC/files/BHLSSTMONTS.dat"; // now visible outside the if
     std::string filnam1 = "./files/MONTLMC/files/magC"   + std::to_string(save)  +  ".dat";
     std::string filnam2 = "./files/MONTLMC/files/datC"   + std::to_string(save)  +  ".dat";
-    std::string fnLDt   = "./files/MONTLMC/files/LpLMC"  + std::to_string(IMnum) +  ".dat";
-    std::string fnEff   = "./files/MONTLMC/files/EfLMC"  + std::to_string(IMnum) +  ".dat";
-    std::string fnEffB  = "./files/MONTLMC/files/EfLMC"  + std::to_string(IMnum) + "B.dat";
-    std::string fnGam   = "./files/MONTLMC/files/MapLMC" + std::to_string(IMnum) +  ".dat";
-    std::string testf   = "./test"                       + std::to_string(IMnum) +  ".dat";
+    // Named from the population's tag, so a black-hole run cannot append to the bulge run's
+    // table. The default population's tag is "5", which is what these files were called
+    // before --population existed.
+    const std::string tag(gPop->tag);
+    std::string fnLDt   = "./files/MONTLMC/files/LpLMC"  + tag +  ".dat";
+    std::string fnEff   = "./files/MONTLMC/files/EfLMC"  + tag +  ".dat";
+    std::string fnEffB  = "./files/MONTLMC/files/EfLMC"  + tag + "B.dat";
+    std::string fnGam   = "./files/MONTLMC/files/MapLMC" + tag +  ".dat";
+    std::string testf   = "./test"                       + tag +  ".dat";
     std::string fnPair  = "./h3_pair.dat";   //Step H3, written only under --pair-satellite
 
     // Open files.
@@ -680,7 +707,16 @@ int main(int argc, char** argv) {
     const std::ios::openmode accumulate =
         std::ios::out | (resuming ? std::ios::app : std::ios::trunc);
 
-    std::ifstream fil0(fnLDt);
+    // LpLMC<tag>.dat is an APPEND-MODE OUTPUT -- the per-characterised-event dump inside the
+    // sightline loop opens it with ios::app for every row. It was ALSO opened here as an
+    // input, and its absence made the startup check below fatal, so a population whose tag
+    // had never been run before could not start at all: `--population bh` would abort with
+    // "Cannot open one or more files!" before drawing a single star. (The same trap cost a
+    // scratch stub run during the Step W3 flush test, where the file had to be copied in by
+    // hand.) Create it if it is missing and let the appends do the rest; on a resume it
+    // already exists and is left untouched, which is the append-only behaviour recorded in
+    // OPEN_ITEMS.md and not changed here.
+    { std::ofstream ensureLp(fnLDt, std::ios::app); }
 //    std::ifstream fil1(filnam0);
     std::ofstream fil2(fnEff,   accumulate);
     std::ofstream fil2b(fnEffB, accumulate);
@@ -778,7 +814,7 @@ int main(int argc, char** argv) {
     std::ofstream filg_in; //opened in append mode per event -- see above
 
     // Check all
-    if (!fil0 || !fil2 || !fil2b || !fil3 || !fil4 || !fil5) {
+    if (!fil2 || !fil2b || !fil3 || !fil4 || !fil5) {
         std::cerr << "Cannot open one or more files!" << std::endl;
         return 1;
     }
@@ -998,6 +1034,13 @@ int main(int argc, char** argv) {
         prov << "# Roman+Rubin microlensing forecast -- run provenance\n"
              << "# git_commit          " << GIT_COMMIT << "\n"
              << "# built               " << __DATE__ << " " << __TIME__ << "\n"
+             // Which lens population produced this table. The analysis layer reads it: the
+             // pooled event-rate weight carries a sqrt(Ml) factor that is only correct for
+             // the mass function actually sampled, so a figure must know which one that was.
+             << "# population          " << gPop->name << "   # " << gPop->note << "\n"
+             << "# population_tag      " << gPop->tag << "\n"
+             << "# lens_mass_range     " << gPop->mlMin << " " << gPop->mlMax << "   # Msun\n"
+             << "# lens_mass_grid      " << (gPop->logGrid ? "log" : "linear") << "\n"
              << "# stride              " << cfg.stride << "\n"
              << "# grid_step_deg       " << gridStep << "\n"
              << "# stratified          " << (kSub > 1 ? 1 : 0)
@@ -1285,7 +1328,7 @@ int main(int argc, char** argv) {
                     flagf = 1;
                     test  = RandR(0.0, 100.0);
     
-                    if (test < 1.0 && save < 0 && IMnum == 1) {
+                    if (test < 1.0 && save < 0 && gPop->legacyId == 1) {
                         initial = 20.0 * year;
                         save += 1;
                         flagm = 1;
@@ -1943,7 +1986,7 @@ int main(int argc, char** argv) {
 //          
 
 
-            if (flagm > 0 && IMnum == 1) {
+            if (flagm > 0 && gPop->legacyId == 1) {
                 std::ofstream fil1_append("./files/MONTLMC/files/BHLSSTMONTS.dat", std::ios::app);
 
                 fil1_append << save            << " " << std::fixed << std::setprecision(5)

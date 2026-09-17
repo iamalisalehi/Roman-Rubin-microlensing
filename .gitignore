@@ -1,0 +1,102 @@
+# Ignore everything by default
+*
+
+# -------------------------
+# Keep all directories
+# -------------------------
+!*/
+
+# Keep .gitkeep files anywhere
+!**/.gitkeep
+
+# -------------------------
+# Allow source files anywhere
+# -------------------------
+!**/*.py
+!**/*.cpp
+!**/*.h
+!**/Makefile
+!**/*.tex
+!**/*.bib
+!**/*.md
+!**/*.sh
+!LICENSE
+
+# -------------------------
+# Ignore Python environments
+# -------------------------
+.roman/
+.venv/
+venv/
+env/
+
+# -------------------------
+# Ignore Python cache
+# -------------------------
+__pycache__/
+*.py[cod]
+
+# -------------------------
+# Ignore local claude files
+# -------------------------
+.claude/
+CLAUDE.md
+
+# -------------------------
+# Ignore compiled files
+# -------------------------
+*.o
+*.out
+*.exe
+*.so
+*.a
+
+# -------------------------
+# Ignore build directories
+# -------------------------
+build/
+bin/
+
+# -------------------------
+# Ignore plots/images
+# -------------------------
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.pdf
+pics/**
+!pics/**/.gitkeep
+
+# -------------------------
+# Ignore data files everywhere
+# -------------------------
+**/*.dat
+**/*.fits
+**/*.fit
+**/*.txt
+**/*.csv
+**/*.h5
+**/*.hdf5
+**/*.npy
+**/*.npz
+**/*.LSST
+**/*.Roman
+
+# -------------------------
+# Temporary files
+# -------------------------
+*.log
+*.tmp
+*.bak
+Whitepaper/*.bbl
+Whitepaper/*.blg
+Whitepaper/*.log
+Whitepaper/*.out
+Whitepaper/*.aux
+Whitepaper/*.gz
+*~
+
+# -------------------------
+# Local scratch report (not part of the record)
+# -------------------------
+STATUS_REPORT.md

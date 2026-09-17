@@ -1275,7 +1275,14 @@ decide whether F1-F4 need regenerating.
 
 ## The per-mass and per-parallax detection efficiencies have never been computed
 
-**Status: open, found 2026-09-17 while adding lens populations (Deviation 45).**
+**Status: RESOLVED 2026-09-17 the same day it was found -- Deviation 46.** All six missing
+curves are now computed (measured: their `EfLMC` columns went from summing to exactly 0 to being
+populated, at no measurable cost), and the `Nhalo`/`Nself` columns no longer print `-nan`. The
+original text is kept below because it explains why the efficiency-versus-mass curve could not be
+drawn from any run before this date -- including the v3 production run, whose `EfLMC5.dat` still
+has those columns as zeros and cannot be repaired without re-running.
+
+Original text:
 
 **What is wrong.** `FuncMl()` and `FuncPi()` bin an event into a lens-mass or parallax bin so the
 detection efficiency can be reported against those axes, exactly as `FunctE()` does for `tE`.

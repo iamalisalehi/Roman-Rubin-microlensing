@@ -10,9 +10,12 @@ the pipeline can be run for a black-hole and a neutron-star population — Devia
   byte-identical to before.
 - **P2 ✅ The two new mass functions.** `bh` = flat in log M over 3–1000 M☉; `ns` = Gaussian about
   1.35 M☉ (σ 0.15) truncated to 1.10–2.20, after Özel & Freire (2016).
-- **P3 ⬜ The mass-efficiency histograms**, which have never been computed: `FuncMl`/`FuncPi` are
-  called only from commented-out lines, so those `EfLMC` columns are zeros. Efficiency versus lens
-  mass is the headline plot for a black-hole study. `OPEN_ITEMS.md` has the entry.
+- **P3 ✅ The efficiency histograms** — Deviation 46. It was not just the mass axis: **six of the
+  seven** curves had never been computed (Ml, piE, u0, mbase, fb, murel all summed to exactly zero
+  in v3), and `Nhalo`/`Nself` were divided without counting, so **every row of every `EfLMC` file
+  ever written ended in two `-nan` columns**. All seven now work, at no measurable cost (48 s vs
+  50 s on the same stub). **v3's own `EfLMC5.dat` cannot be repaired without re-running** — those
+  columns are zeros in the existing production data.
 - **P4 ⬜ Analysis-side population awareness.** `romanlib` should read the population from
   provenance and refuse to pool two populations into one figure; the weight's `sqrt(Ml)` factor is
   only valid for the mass function actually sampled.

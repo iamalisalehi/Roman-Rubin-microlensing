@@ -3252,3 +3252,54 @@ of `IMnum`, and they set both the sampler bounds and the mass-efficiency grid.
   simulating separately rather than as the thin tail of a bulge run.
 - `--population nope` exits 2 and lists all seven with their output filenames.
 - No new compiler warnings (the six in `Bulge_LSST.cpp` are pre-existing and recorded).
+
+---
+
+## 46. Six of the seven detection-efficiency curves had never been computed, and two columns were NaN (2026-09-17)
+
+**What the plan said.** Phase F treats the efficiency curves as existing output. They did not
+exist, except for `tE`.
+
+**What was wrong.** `EfLMC<tag>.dat` reports detection efficiency against seven axes: `tE`, lens
+mass, relative parallax, `u0`, baseline magnitude, blend fraction and relative proper motion. Only
+the `tE` pair was ever incremented. The other six accumulators -- `NsMl/NdMl`, `Nspi/Ndpi`,
+`Nsu0/Ndu0`, `Nsmb/Ndmb`, `Nsfb/Ndfb`, `Nsmu/Ndmu` -- appeared exactly three times each in the
+source: declared, written out, and **never `+=` anywhere**. Their bin indices were computed by six
+helpers (`FuncMl`, `FuncPi`, `Funcu0`, `FuncMu`, `FuncMb`, `FuncFb`) whose only call site was a
+block of commented-out lines, with the variables they assign to commented out of their declaration
+to match.
+
+Measured on the v3 production file before the fix: efficiency columns for Ml, piE, u0, mbase, fb
+and murel **sum to exactly 0 over the whole file**, while the `tE` column sums to 6.69e5.
+
+Worse, `Nhalo` and `Nself` were declared, divided, and never counted, and their divisions were the
+only two in the writer without the `+ eps` guard. So **every row of every `EfLMC` file this project
+has ever produced ends in two `-nan` columns** -- 909 of 909 rows in the stub, and the same in v3.
+
+**Why it mattered now.** Detection efficiency versus lens mass is *the* plot for a black-hole
+population study: it is what turns a yield into a statement about which masses a survey can find.
+The population work (Deviation 45) would have produced runs whose central figure could not be
+drawn from their own output.
+
+**What was done.** The six bin indices are computed in the draw loop beside `tE`'s -- before the
+detection test, because the denominator must count every simulated event -- and the numerators are
+incremented in the detection branch under the same joint-detection definition `tE` uses, so all
+seven curves describe the same thing. `Nhalo` and `Nself` are now counted, with the definitions
+stated rather than guessed: `Nhalo[1]/Nhalo[0]` is the fraction of detections whose **lens** is a
+halo star, and `Nself[1]/Nself[0]` the fraction that are bulge self-lensing (bulge lens AND bulge
+source). Both divisions gained the `+ eps` every other column had.
+
+**Verification.**
+- `fishertest` **byte-identical** to a binary built from `c2b4729`: every edit is inside `main()`,
+  which the fixture build excludes by `-DFISHER_FIXTURE_BUILD`.
+- Same stub, both binaries, identical flags. Efficiency column sums, before -> after:
+  Ml `0 -> 748.4`, piE `0 -> 1424`, u0 `0 -> 3992`, mbase `0 -> 3850`, fb `0 -> 2016`,
+  murel `0 -> 1249`. Rows containing `-nan`: **909/909 -> 0/909**.
+- **Cost: none measurable.** 48 s against the baseline's 50 s on the same stub -- six extra bin
+  lookups per draw are nothing against the per-draw light-curve work. This was measured rather
+  than assumed because the production runs take hours.
+- No new compiler warnings.
+
+**Honest limitation.** The stub's last row reports 11.1% halo lenses and 0% self-lensing, which is
+one halo lens out of nine detections in a 0.1x0.1 deg corner patch. Those are small-number
+artefacts of the stub, not results; the production runs will populate them properly.

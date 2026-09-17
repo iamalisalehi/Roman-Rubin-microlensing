@@ -599,7 +599,10 @@ int main(int argc, char** argv) {
     std::cout << "******* read_cmd was done ************" << std::endl;
 
     int    dclsEvent = DET_NONE;
-    int    save = 0, flagm, flagL, gg = -1; //ss, qq, ww, vv, zz, pp, counter,
+    // Bin indices for the seven detection-efficiency axes. gg (tE) was the only one ever
+    // computed; the other six were commented out here and at their call site, which is why
+    // every efficiency column but tE has been a column of zeros (Deviation 46).
+    int    save = 0, flagm, flagL, gg = -1, ss = 0, qq = 0, ww = 0, vv = 0, zz = 0, pp = 0;
     int    nri = -1, nde = -1, icon;
     int    nlens;// hh; // nde1, nri1,
     std::array<int, NDETCLASS> nDetClass{}; // per-field detection-taxonomy counts (DetClass, Bulge.h)
@@ -1244,6 +1247,29 @@ int main(int argc, char** argv) {
                 l->nstE[gg] += 1.0;
                 nSimTot += 1;
 
+                // The other six efficiency axes, on the same principle as tE: the DENOMINATOR
+                // has to count everything simulated, so the bin is computed here, before the
+                // detection test, and the numerator is incremented in the detection branch
+                // using these same indices. Every input is already set for this draw --
+                // func_source filled s->Map and s->blend, func_lens filled u0, pirel and
+                // murel -- so this is six array lookups and no new physics.
+                //
+                // Unlike the tE pair there is no per-sightline lowercase pair for these; the
+                // N* arrays accumulate over the whole run, which is what the EfLMC writer
+                // reports and why nothing resets them per sightline.
+                ss = FuncMl(*l);                    // lens mass
+                qq = FuncPi(*l);                    // log10 relative parallax
+                ww = Funcu0(*l);                    // impact parameter
+                vv = FuncMu(*l);                    // relative proper motion
+                zz = FuncMb(*l, s->Map[2]);         // source baseline magnitude, r band
+                pp = FuncFb(*l, s->blend[2]);       // blend fraction, r band
+                l->NsMl[ss] += 1.0;
+                l->Nspi[qq] += 1.0;
+                l->Nsu0[ww] += 1.0;
+                l->Nsmu[vv] += 1.0;
+                l->Nsmb[zz] += 1.0;
+                l->Nsfb[pp] += 1.0;
+
                 s->nssim[s->nums] += 1.0;
                 flagf   = 0;
                 flagm   = 0;
@@ -1836,12 +1862,35 @@ int main(int argc, char** argv) {
                     // before the detection test, so nstE (the denominator) counts all draws
                     // and this counts the numerator -- which is what makes EFF an efficiency.
                     if (detJ) l->ndtE[gg] += 1.0;
-                    //ss = int(FuncMl(*l));
-                    //qq = int(FuncPi(*l));
-                    //ww = int(Funcu0(*l));
-                    //vv = int(FuncMu(*l));
-                    //zz = int(FuncMb(*l, s->Map[2]));
-                    //pp = int(FuncFb(*l, s->blend[2]));
+
+                    // The numerators for the other six axes, using the bin indices computed
+                    // for this draw before the detection test. Same definition of "detected"
+                    // as the tE curve -- the joint test -- so all seven efficiencies describe
+                    // the same thing and can be read side by side.
+                    if (detJ) {
+                        l->NdMl[ss] += 1.0;
+                        l->Ndpi[qq] += 1.0;
+                        l->Ndu0[ww] += 1.0;
+                        l->Ndmu[vv] += 1.0;
+                        l->Ndmb[zz] += 1.0;
+                        l->Ndfb[pp] += 1.0;
+
+                        // Nhalo and Nself were declared, written out, and never counted, so
+                        // the EfLMC writer divided 0 by 0 and every row of every EfLMC file
+                        // ever produced ends in two "-nan" columns. Counted here, with the
+                        // definitions stated rather than guessed:
+                        //   Nhalo[1]/Nhalo[0]  fraction of detections whose LENS is a halo
+                        //                      star -- the population a MACHO search cares
+                        //                      about, and negligible toward the bulge.
+                        //   Nself[1]/Nself[0]  fraction that are bulge self-lensing: bulge
+                        //                      lens AND bulge source, the dominant channel
+                        //                      here and the one whose kinematics set tE.
+                        l->Nhalo[0] += 1.0;
+                        l->Nself[0] += 1.0;
+                        if (l->struc == GalacticComponent::HALO) l->Nhalo[1] += 1.0;
+                        if (l->struc == GalacticComponent::BULGE and
+                            s->struc == GalacticComponent::BULGE) l->Nself[1] += 1.0;
+                    }
                 }
 //            CHECK(gg >= 0);
 
@@ -2077,8 +2126,10 @@ int main(int argc, char** argv) {
                      << double(l->Ndfb[i]  * 100.0 / (l->Nsfb[i] + eps)) << " "
                      << l->mus[i]  << " "
                      << double(l->Ndmu[i]  * 100.0 / (l->Nsmu[i] + eps)) << " "
-                     << double(l->Nhalo[1] * 100.0 /  l->Nhalo[0])       << " "
-                     << double(l->Nself[1] * 100.0 /  l->Nself[0])       << "\n";
+                     // The + eps every other column has, and these two lacked: before the
+                     // counters above existed this was 0/0 and printed "-nan" on every row.
+                     << double(l->Nhalo[1] * 100.0 / (l->Nhalo[0] + eps)) << " "
+                     << double(l->Nself[1] * 100.0 / (l->Nself[0] + eps)) << "\n";
 
                 fil2b << std::fixed  << std::setprecision(1)
                       << l->NdtE[i]  << " " << l->NstE[i]  << " "

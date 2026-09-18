@@ -362,12 +362,49 @@ def event_weight(df, sightlines, nsim_override=None):
         nsim.update({(round(k[0], 3), round(k[1], 3)): float(v)
                      for k, v in nsim_override.items()})
 
+    # ---------------------------------------------------------------------------------------
+    # Sightlines with no draw count.
+    #
+    # TWO CAUSES, and they must not be treated alike.
+    #
+    #   BARREN. A sightline that drew stars but ended with no characterised event takes the
+    #   barren branch in Bulge_LSST.cpp, which `continue`s past BOTH the map-row write and the
+    #   `nsim:` print. Its rows are in the table with nothing to normalise them by. At the
+    #   scan's western edge such a sightline runs to the full --maxdraws cap, so these are not
+    #   rare: the 2026-09-17 neutron-star run has 77 of them carrying 3,850,000 rows, 77% of
+    #   the table. They contain no detection and no characterisation, so they are weightless in
+    #   the exact sense -- weight 0 changes no weighted statistic and no count.
+    #
+    #   A KILLED RUN. The map stream was unflushed before Deviation 42, so an interrupted run
+    #   lost its buffered tail and REAL sightlines went missing from the map. Those rows do
+    #   carry detections, and weighting them at 0 would silently delete part of the sky.
+    #
+    # So: verify, then decide. Weight 0 only for rows that demonstrably contribute nothing;
+    # raise, as before, the moment one of them carries something countable.
     missing = sorted({k for k in set(key) if k not in nsim})
+    zero_weight = np.zeros(len(df), dtype=bool)
     if missing:
-        raise ValueError(
-            f"{len(missing)} sightline(s) in the event table have no nsim, e.g. {missing[:3]}. "
-            f"The map file is written without flushing and loses its tail when a run is killed "
-            f"(OPEN_ITEMS.md); recover nsim from the run log and pass nsim_override.")
+        miss = set(missing)
+        zero_weight = np.array([k in miss for k in key], dtype=bool)
+        countable = [c for c in ("detL", "detR", "detJ", "okA_J", "okB_J") if c in df.columns]
+        if countable:
+            carried = int((df.loc[zero_weight, countable] == 1).any(axis=1).sum())
+        else:
+            # No detection columns to check -- a paired-satellite file, whose every row IS a
+            # detection. Nothing can be shown to be empty, so nothing may be dropped.
+            carried = int(zero_weight.sum())
+        if carried:
+            raise ValueError(
+                f"{len(missing)} sightline(s) in the event table have no nsim, e.g. "
+                f"{missing[:3]}, and {carried:,} of their rows carry a detection or a "
+                f"characterisation. That is the signature of a killed run whose map file lost "
+                f"its buffered tail (OPEN_ITEMS.md), NOT of barren sightlines; weighting them "
+                f"at zero would delete part of the sky. Recover nsim from the run log and pass "
+                f"nsim_override.")
+        print(f"  note: {zero_weight.sum():,} rows from {len(missing)} barren sightline(s) "
+              f"carry no detection and get weight 0 (they have no nsim to normalise by)")
+        for k in missing:
+            nsim[k] = 1.0      # placeholder; these rows are zeroed at the end regardless
 
     # One density profile per sightline, not per event: ~9,500 grid points each.
     n_draws = np.empty(len(df))
@@ -384,7 +421,41 @@ def event_weight(df, sightlines, nsim_override=None):
 
     w = (df["w_area"].to_numpy() * nstart / n_draws
          * np.sqrt(df["Ml"].to_numpy()) * df["Vt"].to_numpy() * Z)
+    # The barren rows, zeroed here rather than where the placeholder was set, so there is
+    # exactly one place in this function where a weight becomes 0 and it is after the formula.
+    w[zero_weight] = 0.0
     return pd.Series(w, index=df.index)
+
+
+def keep_weightable(map_path=None, log_paths=()):
+    """A `keep` predicate for load_events that drops rows no statistic can use.
+
+    WHY THIS IS A MEMORY FIX AND NOT A CUT. A barren sightline -- one that drew stars but
+    characterised nothing -- writes its rows and then `continue`s past both the map row and the
+    `nsim:` print, so those rows have no draw count, get weight 0 (see event_weight), and carry
+    no detection. They are already contributing nothing; the only thing they consume is RAM.
+    And they are not a trickle: at the scan's western edge a barren sightline runs to the full
+    --maxdraws cap, which in the 2026-09-17 neutron-star run is 3,850,000 rows, 77% of the
+    table. Reading them is what turns a 1.2M-row analysis into a 5M-row OOM kill.
+
+    Returns None when there is nothing to filter against, so a caller can pass the result
+    straight through to load_events(keep=...) unconditionally.
+    """
+    known = set()
+    if map_path and os.path.exists(map_path):
+        sl = load_sightlines(map_path)
+        if "lon" in sl:
+            known |= {(round(float(a), 3), round(float(b), 3))
+                      for a, b in zip(sl["lon"], sl["lat"]) if np.isfinite(a)}
+    known |= set(nsim_from_logs(log_paths).keys())
+    if not known:
+        return None
+
+    def keep(chunk):
+        k = zip(chunk["lon"].round(3), chunk["lat"].round(3))
+        return pd.Series([p in known for p in k], index=chunk.index)
+
+    return keep
 
 
 def nsim_from_logs(paths):

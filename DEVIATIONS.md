@@ -3494,4 +3494,31 @@ with its real map and log; all four figures render as PDF and PNG; every panel i
 image. Numbers quoted above are from that slice and are **provisional** -- both runs were still
 in flight when it was taken.
 
+**Commit:** `f0c12e4`.
+
+### Addendum (2026-09-18, after the neutron-star run finished): the whole analysis layer was
+### unable to read the new tables
+
+Running `f1` on the finished `ns` table failed the same way P6 had: 77 barren sightlines with no
+`nsim`. So did every other script, since they all reach `attach_weight`. Two fixes, both in
+`romanlib` so they apply once:
+
+**1. Barren rows get weight 0 rather than aborting the run.** `event_weight` now separates the
+two causes of a missing `nsim`. Barren sightlines contribute nothing -- no detection, no
+characterisation -- so weighting them at 0 changes no weighted statistic and no count; a killed
+run's lost map tail is a *different* thing, whose rows DO carry detections, and weighting those
+at 0 would silently delete part of the sky. So the rows are checked, and the original hard
+failure is kept for the case that matters. Weight 0 rather than dropping the rows keeps the
+returned weights index-aligned with the caller's frame, so no script's signature changes.
+
+**2. `keep_weightable()` + streaming, because reading the table OOM-killed the machine.**
+`f1` called `load_events()` with no `keep` and no `chunksize`, so it materialised 5.01M rows x
+100 float64 columns -- about 4 GB -- on a 7 GB machine with a production run still going. It was
+killed by the OOM killer. **The first attempt looked like success**: empty stdout, no traceback,
+no CSV -- exactly the silent failure `load_events`' own docstring warns about. `f1` now streams
+in chunks and drops barren rows as it reads, which for this run is 5.01M rows down to 1.16M.
+
+Both fixes are lossless by construction, and the numbers confirm it: the `ns` table's 3,850,000
+barren rows are exactly 77 sightlines x the 50,000 `--maxdraws` cap, and carry zero detections.
+
 **Commit:** this step.

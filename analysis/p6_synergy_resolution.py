@@ -576,6 +576,7 @@ def fig_resolution(runs, out):
     ps.legend(ax1, loc="upper right")
 
     # ---- (b) vs lens mass, most permissive bar ----
+    xspan = [np.inf, -np.inf]
     for r in runs:
         d = r.df
         for suf, skey in surveys:
@@ -609,10 +610,15 @@ def fig_resolution(runs, out):
                          "-o" if suf == "L" else "--s",
                          color=r.colour, lw=1.4, ms=2.5,
                          label=f"{r.name}: {ps.SURVEY_LABEL[skey].split()[0]}")
+                xspan[0] = min(xspan[0], cen[vis].min())
+                xspan[1] = max(xspan[1], cen[vis].max())
     ax2.set_xscale("log")
     ax2.set_yscale("log")
     ax2.set_xlabel(r"lens mass $M_{\rm L}$ [$M_\odot$]")
     ax2.set_ylabel(r"$P(N_{\Delta\theta}\geq 3)$ at $D=5$ [%]")
+    # With a single narrow-mass population on the axis (neutron stars span 0.3 decades) the log
+    # MINOR ticks get labelled and collide into mush. Same treatment as the astrometry panel.
+    plain_log_ticks(ax2, xspan[0], xspan[1], "x")
     ps.panel_label(ax2, "(b)", loc="lower right")
     ps.legend(ax2, loc="upper left")
 
@@ -620,6 +626,79 @@ def fig_resolution(runs, out):
              + "   |   resolvable = both images detectable AND separated by >= the bar, at >= 3"
                " epochs; bars: D=5 and D=20 are D*sigma_a, PSF is the filter's FWHM")
     return ps.save_figure(fig, f"{out}_resolution")
+
+
+def summary(runs):
+    """Print the numbers the figures are made of.
+
+    A figure is for seeing a shape; a number is for quoting in a paper. Every value here is the
+    weighted one, over the same cuts the corresponding panel uses, so the two cannot drift apart.
+    """
+    for r in runs:
+        d = r.df
+        det = ((d.detL == 1) | (d.detR == 1) | (d.detJ == 1)).to_numpy()
+        w = d["W"].to_numpy(float)
+        wd = w[det]
+        print(f"\n=== {r.name}  ({r.population}) ===")
+        print(f"  draws {len(d):,} | detected {int(det.sum()):,} | N_eff {r.neff:,.0f}"
+              f" | dropped barren {r.n_barren:,}")
+
+        # --- who detects what ---
+        dl = (d.detL == 1).to_numpy()[det]
+        dr = (d.detR == 1).to_numpy()[det]
+        print(f"  detection share:  Rubin only {100*wfrac(dl & ~dr, wd):6.2f}%"
+              f"   Roman only {100*wfrac(dr & ~dl, wd):6.2f}%"
+              f"   both {100*wfrac(dl & dr, wd):6.2f}%")
+
+        # --- joint gain, on events BOTH surveys characterised ---
+        both = ((d.okA_L == 1) & (d.okA_R == 1)).to_numpy()
+        print(f"  characterised by both surveys: {int(both.sum()):,}")
+        if both.sum() >= 50:
+            wb = w[both]
+            for p in ("tE", "piE", "tetE"):
+                num = d[f"sig{p}_J"].to_numpy(float)[both]
+                out = []
+                for other, lab in (("L", "Rubin"), ("R", "Roman")):
+                    den = d[f"sig{p}_{other}"].to_numpy(float)[both]
+                    g = (num > 0) & (den > 0)
+                    out.append(f"vs {lab} {R.weighted_median(num[g]/den[g], wb[g]):.3f}"
+                               if g.sum() >= 20 else f"vs {lab}   n/a")
+                print(f"    median sigma({p:4s}) joint/single:  " + "   ".join(out))
+
+        # --- astrometric shift ---
+        shift = max_centroid_shift(d)[det]
+        fb = np.clip(d["fb1"].to_numpy(float)[det], 0.0, 1.0)
+        ok = np.isfinite(shift) & (shift > 0)
+        if ok.sum():
+            print(f"  max centroid shift [mas]: median {R.weighted_median(shift[ok], wd[ok]):.4f}"
+                  f"   95th {R.weighted_quantile(shift[ok], wd[ok], 0.95):.4f}"
+                  f"   above Roman floor {100*wfrac(shift[ok] > ROMAN_AST_FLOOR, wd[ok]):.2f}%"
+                  f"   (blend-diluted {100*wfrac(shift[ok]*fb[ok] > ROMAN_AST_FLOOR, wd[ok]):.2f}%)")
+
+        # --- resolving the two images ---
+        for suf, name in (("L", "Rubin"), ("R", "Roman")):
+            m = (d[f"det{suf}"] == 1).to_numpy()
+            if m.sum() == 0:
+                continue
+            wm = w[m]
+            vals = [100 * wfrac(d[f"{bar}_{suf}"].to_numpy(float)[m] >= RESOLVE_MIN_EPOCHS, wm)
+                    for bar in ("nres5", "nres20", "nresPSF")]
+            print(f"  P(resolvable) {name:5s}:  D=5 {vals[0]:7.4f}%   D=20 {vals[1]:7.4f}%"
+                  f"   PSF {vals[2]:7.4f}%   (of {int(m.sum()):,} detections)")
+
+        # --- satellite parallax ---
+        if r.pair is not None and "Ml" in r.pair.columns:
+            p = r.pair
+            ok = ((p.okA_sat == 1) & (p.okA_nosat == 1)
+                  & (p.sigpiE_sat > 0) & (p.sigpiE_nosat > 0)).to_numpy()
+            if ok.sum() >= 20:
+                g = (p.sigpiE_nosat.to_numpy(float)[ok] / p.sigpiE_sat.to_numpy(float)[ok])
+                wp = p["W"].to_numpy(float)[ok]
+                f2 = np.isfinite(g) & (g > 0)
+                print(f"  satellite parallax: median gain {R.weighted_median(g[f2], wp[f2]):.4f}"
+                      f"   >1.1x {100*wfrac(g[f2] > 1.1, wp[f2]):.3f}%"
+                      f"   >2x {100*wfrac(g[f2] > 2.0, wp[f2]):.3f}%"
+                      f"   (of {int(ok.sum()):,} paired)")
 
 
 def main():
@@ -644,6 +723,8 @@ def main():
             sys.exit(f"--run wants NAME=DIR, got '{spec}'")
         name, directory = spec.split("=", 1)
         runs.append(Run(name, directory, a.chunksize, a.unweighted))
+
+    summary(runs)
 
     written = []
     written += fig_synergy(runs, a.out)

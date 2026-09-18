@@ -32,7 +32,33 @@ the pipeline can be run for a black-hole and a neutron-star population — Devia
   counts data points, and the per-epoch `u` and error never leave the light-curve loop, so it
   cannot be reconstructed from a finished table. Three bars are recorded per survey
   (`D=5`, `D=20`, PSF FWHM) because the answer moves by ~4x across the paper's own range of `D`.
-- **P6 🔄 The production runs** — one per population, launched 2026-09-17 into
+- **P6 ✅ DONE — both production runs finished 2026-09-18.** `ns` at 13:13, `bh` at 16:03,
+  each **1829 sightlines: 1612 aggregated, 140 no-coverage, 77 barren, 77 capped**, ~13.5 h CPU.
+  Tables `runs/prod_{bh,ns}_20260917/test{bh,ns}.dat` (2.19 / 2.34 GB, 4.68M / 5.01M rows) with
+  paired-satellite side files. **77% of each table is barren rows** — 77 sightlines x the 50,000
+  draw cap, carrying zero detections — so the weightable samples are 829k (`bh`) and 1.16M (`ns`).
+  Figures and tables in `figures/prod_20260918/`. **Headline numbers, event-rate weighted:**
+
+  | | `bh` (3–1000 M☉, log-uniform) | `ns` (1.35±0.15 M☉) |
+  |---|---|---|
+  | detections / N_eff | 110,144 / 143,499 | 93,685 / 296,562 |
+  | detection share Rubin-only / Roman-only / both | 89.4 / 5.3 / 5.2% | 90.0 / 6.3 / 3.6% |
+  | median σ(tE) joint / Rubin-alone | **0.165** | **0.116** |
+  | median σ(tE) joint / Roman-alone | 0.733 | 0.742 |
+  | median σ(θE) joint / Roman-alone | 0.979 | 0.975 |
+  | median max centroid shift | **3.61 mas** | 0.265 mas |
+  | shift above Roman's 1.1 mas floor | **90.2%** | 0.57% |
+  | P(resolve) Roman, D=5 / D=20 / PSF | **41.6 / 14.0 / 0.87%** | 6.13 / 0.17 / 0.0001% |
+  | P(resolve) Rubin, D=5 | 16.7% | 0.0015% |
+  | satellite parallax, share gaining >1.1x | 0.003% | 0.20% |
+
+  **Three things to carry forward.** θE is where the surveys are *least* complementary
+  (0.975–0.979 vs Roman alone): it comes from astrometry and Roman is the only astrometric
+  instrument here, so Rubin adds almost nothing to it. **Satellite parallax buys essentially
+  nothing** for either population — these events are long enough that annual parallax is already
+  sampled. And the resolved-image probability is **dominated by the choice of `D`**: Roman's
+  41.6% at `D=5` becomes 14.0% at `D=20` and 0.87% at the PSF bar.
+- **P6 (run record) — one per population, launched 2026-09-17 into**
   `runs/prod_bh_20260917/` and `runs/prod_ns_20260917/`, each an isolated directory with the
   inputs symlinked, the outputs real, and the binary **copied in** so a later `make` cannot
   change what is running. Flags mirror v3 (`--events 300 --lenses 50 --stride-roman 5`) plus

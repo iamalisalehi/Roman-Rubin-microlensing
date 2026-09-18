@@ -268,27 +268,8 @@ def mass_bin_count(lo, hi):
 
 
 def plain_log_ticks(ax, lo, hi, axis="y"):
-    """Plain numbers on a log axis that spans only a decade or two.
-
-    Matplotlib labels log MINOR ticks on short ranges, which at column width collides into
-    mush ("6x10^0 4x10^0 3x10^0 ..."); but simply suppressing the minor labels can leave a
-    sub-decade axis with no numbers at all. Explicit ticks with a plain formatter is the only
-    option that avoids both.
-
-    The range is passed in from the DATA rather than read off the axes: at the point this is
-    called matplotlib has not autoscaled yet, so get_ylim() returns provisional limits and the
-    span test silently takes the wrong branch. That is why the first attempt at this changed
-    nothing.
-    """
-    import matplotlib.ticker as mt
-    a = ax.yaxis if axis == "y" else ax.xaxis
-    if not (lo > 0 and hi > lo) or np.log10(hi / lo) > 2.2:
-        return
-    ticks = np.geomspace(lo, hi, 5)
-    a.set_major_locator(mt.FixedLocator(ticks))
-    a.set_minor_locator(mt.NullLocator())
-    a.set_major_formatter(mt.FuncFormatter(
-        lambda v, _: f"{v:.2f}".rstrip("0").rstrip(".") if v < 10 else f"{v:.0f}"))
+    """Delegates to plotstyle, which owns the one implementation (p7 needs it too)."""
+    return ps.plain_log_ticks(ax, lo, hi, axis)
 
 
 def max_centroid_shift(df):

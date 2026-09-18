@@ -172,6 +172,32 @@ def stamp(fig, text):
     fig.text(0.0, -0.015, text, color=MUTED, fontsize=5.5, ha="left", va="top")
 
 
+def plain_log_ticks(ax, lo, hi, axis="y"):
+    """Plain numbers on a log axis that spans only a decade or two.
+
+    Matplotlib labels log MINOR ticks on short ranges, which at column width collides into
+    mush ("6x10^0 4x10^0 3x10^0 ..."); but simply suppressing the minor labels can leave a
+    sub-decade axis with no numbers at all. Explicit ticks with a plain formatter is the only
+    option that avoids both. Above ~2.2 decades the default decade ticks are fine and this
+    does nothing.
+
+    The range is passed IN, from the data, rather than read off the axes: at the point a
+    figure function calls this, matplotlib has not autoscaled yet, so get_ylim() returns
+    provisional limits and the span test silently takes the wrong branch. That mistake makes
+    this function look correct while changing nothing.
+    """
+    import numpy as np
+    import matplotlib.ticker as mt
+    a = ax.yaxis if axis == "y" else ax.xaxis
+    if not (lo > 0 and hi > lo) or np.log10(hi / lo) > 2.2:
+        return
+    ticks = np.geomspace(lo, hi, 5)
+    a.set_major_locator(mt.FixedLocator(ticks))
+    a.set_minor_locator(mt.NullLocator())
+    a.set_major_formatter(mt.FuncFormatter(
+        lambda v, _: f"{v:.2f}".rstrip("0").rstrip(".") if v < 10 else f"{v:.0f}"))
+
+
 def save_figure(fig, path_without_extension, dpi=300, formats=("pdf", "png")):
     """Write the figure once per format. Returns the paths written."""
     written = []

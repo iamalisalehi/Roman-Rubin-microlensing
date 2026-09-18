@@ -90,7 +90,12 @@ class Run:
         self.logs = [os.path.join(directory, f) for f in ("run.log", "run2.log")
                      if os.path.exists(os.path.join(directory, f))]
 
-        self.df = R.load_events(self.table, usecols=COLS, chunksize=chunksize)
+        # Stream, and drop the barren sightlines' rows as they are read rather than after.
+        # usecols alone is not enough on a 5M-row table: 43 columns x 5M x 8 bytes is ~1.7 GB
+        # per population, and this script holds two at once. The dropped rows have no nsim,
+        # hence weight 0, and carry no detection -- see romanlib.keep_weightable.
+        self.df = R.load_events(self.table, usecols=COLS, chunksize=chunksize,
+                                keep=None if unweighted else R.keep_weightable(self.map, self.logs))
         self.n_barren = self._drop_unweightable(unweighted)
         w, self.wlabel = R.attach_weight(self.df, None if unweighted else self.map,
                                          self.logs, unweighted=unweighted)
@@ -619,8 +624,11 @@ def fig_resolution(runs, out):
     # With a single narrow-mass population on the axis (neutron stars span 0.3 decades) the log
     # MINOR ticks get labelled and collide into mush. Same treatment as the astrometry panel.
     plain_log_ticks(ax2, xspan[0], xspan[1], "x")
-    ps.panel_label(ax2, "(b)", loc="lower right")
-    ps.legend(ax2, loc="upper left")
+    # Legend low-right, label top-left: the curves rise left-to-right, so that corner pair is
+    # the one both populations leave empty. Upper left put the legend on top of the black-hole
+    # curves.
+    ps.panel_label(ax2, "(b)", loc="upper left")
+    ps.legend(ax2, loc="lower right")
 
     ps.stamp(fig, stamp_for(runs)
              + "   |   resolvable = both images detectable AND separated by >= the bar, at >= 3"

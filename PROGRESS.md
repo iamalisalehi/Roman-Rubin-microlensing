@@ -1388,3 +1388,26 @@ and to anchor the `rubin_sim` run by reproducing a Table 6 row first).
   `t = 0`, which is what makes `u0` and `t0` mean what they mean. When two observers exist they
   must share one origin — referencing each to its own `t = 0` cancels exactly the offset that
   *is* the satellite parallax, silently. `PHASE_H_PLAN.md` Step H1.
+
+---
+
+## Report on the compact-object runs (2026-09-18)
+
+`Report/populations_report.tex` — a 7-page summary of the black-hole and neutron-star
+production runs, built with `cd Report && latexmk -pdf populations_report.tex`. It pulls its
+figures straight from `figures/prod_20260918/` rather than from copies, so the document cannot
+drift from the analysis that produced them. Four tables (run outcome, detection provenance and
+joint gain, the 10% precision fractions, astrometry/parallax/resolution) and eight figures.
+
+**The three results it leads with**, all event-rate weighted: the joint fit improves `tE` by
+6-9x over Rubin alone but only ~1.35x over Roman alone, and improves `tetE` by essentially
+nothing (0.975-0.979) because that is an astrometric quantity and Roman is the only astrometric
+instrument here; the centroid shift clears Roman's 1.1 mas floor for 90.2% of black-hole events
+and 0.57% of neutron-star ones; and satellite parallax from L2 is a null result for both
+populations (<0.2% of events gain even 10%), because these events are far too long for a
+0.01 au baseline to matter.
+
+**Read the 10% table down a column, never across.** Each entry has its own denominator: Roman
+characterises only inside its footprint where coverage is good, so its 81.4% for `tetE` against
+the joint fit's 43.9% is a difference of samples, not evidence that adding Rubin hurts. The
+controlled comparison is the paired one in Table 2.

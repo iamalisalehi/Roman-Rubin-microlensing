@@ -1,0 +1,356 @@
+% Short report on the black-hole and neutron-star production runs of 2026-09-17/18.
+%
+% Build:  cd Report && latexmk -pdf populations_report.tex
+% Figures are pulled from ../figures/prod_20260918/ via \graphicspath below; they are the
+% exact files the analysis scripts wrote, not copies, so this document cannot drift from them.
+\documentclass[english,10pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{graphicx}
+\graphicspath{{./}{../figures/prod_20260918/}}
+\usepackage{mathtools}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,allcolors=blue]{hyperref}
+\usepackage{caption}
+
+\newcommand{\tE}{t_{\rm E}}
+\newcommand{\piE}{\pi_{\rm E}}
+\newcommand{\tetE}{\theta_{\rm E}}
+\newcommand{\Ml}{M_{\rm L}}
+\newcommand{\Msun}{M_\odot}
+\newcommand{\Neff}{N_{\rm eff}}
+
+\title{Compact objects in the Roman--Rubin joint microlensing forecast:\\
+       black holes and neutron stars}
+\author{Ali Salehi}
+\date{18 September 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We report two production runs of the joint Roman\,+\,Rubin Galactic-bulge microlensing
+simulation, one for a population of isolated black holes with a log-uniform mass function over
+$3$--$1000\,\Msun$, and one for neutron stars drawn from a Gaussian at $1.35\pm0.15\,\Msun$
+truncated to $1.10$--$2.20\,\Msun$. Each run scans 1829 sightlines over $\sim\!68\,\mathrm{deg}^2$
+and characterises every detected event three times -- with Rubin alone, with Roman alone, and
+with the two combined -- through independent Fisher matrices. All pooled quantities are
+event-rate weighted and quoted with the Kish effective sample size. We find that the joint fit
+improves the timescale by a factor $6$--$9$ over Rubin alone but only $\sim\!1.35$ over Roman
+alone, and that it barely improves $\tetE$ at all, which is set by astrometry and therefore by
+Roman. The centroid shift exceeds Roman's per-exposure astrometric floor for $90\%$ of
+black-hole events and $0.6\%$ of neutron-star events. Satellite parallax from L2 is found to be
+almost worthless for both populations. Following Sajadian \& Makler (2026), we compute the
+probability that the two lensing-induced images are separately resolvable, and find it to be
+dominated by the assumed resolution criterion rather than by the lens population.
+\end{abstract}
+
+\section{Simulation and runs}
+
+The simulator draws source stars and lenses along each sightline from Besan\c{c}on/CMD
+population models with three-dimensional dust extinction, generates per-band light curves
+against the real Rubin visit list and the published Roman GBTDS cadence, applies a Monte Carlo
+detection test, and forecasts parameter precision with a Fisher matrix. The photometric matrix
+has nine parameters $(u_0,\tE,f_{b,0},\piE,\xi,t_0,m_{b,0},f_{b,1},m_{b,1})$ and the astrometric
+matrix four $(\tetE,\mu_{s,1},\mu_{s,2},\piE)$; which parameters are free is decided per event
+from the epochs each survey actually contributed. Crucially there is one such pair of matrices
+\emph{per survey partition} -- Rubin-only, Roman-only, and joint -- so that ``what the
+combination adds'' is measured rather than assumed.
+
+Both runs used identical configuration apart from the lens mass function
+(\texttt{--events 300 --lenses 50 --stride-roman 5 --pair-satellite}), a fixed detection
+threshold $\Delta\chi^2 \ge 500$, and the same RNG seed. The stratified grid places sightlines
+every $0.1^\circ$ inside Roman's footprint and every $0.2^\circ$ outside it, which oversamples
+the footprint by design; the per-sightline sky area $w_{\rm area}$ undoes that in every pooled
+statistic. Table~\ref{tab:runs} summarises the outcome.
+
+\begin{table}[h]
+\centering
+\caption{Run configuration and outcome. ``Barren'' sightlines drew stars but characterised
+nothing; they run to the full draw cap and so dominate the raw row count while contributing no
+detections whatsoever. The weightable sample is the one every number in this report is computed
+from.}
+\label{tab:runs}
+\begin{tabular}{lrr}
+\toprule
+ & black holes & neutron stars \\
+\midrule
+mass function            & log-uniform          & Gaussian (\"Ozel \& Freire 2016) \\
+mass range [$\Msun$]     & $3$--$1000$          & $1.10$--$2.20$ \\
+sightlines scanned       & 1829                 & 1829 \\
+\quad aggregated         & 1612                 & 1612 \\
+\quad no coverage        & 140                  & 140 \\
+\quad barren             & 77                   & 77 \\
+\quad hit draw cap       & 77                   & 77 \\
+rows written             & 4\,679\,203          & 5\,012\,349 \\
+weightable draws         & 829\,202             & 1\,162\,348 \\
+detected events          & 110\,144             & 93\,685 \\
+$\Neff$ (weighted)       & 143\,499             & 296\,562 \\
+CPU time                 & $\sim\!13.5$\,h      & $\sim\!13.5$\,h \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Weighting.} The Monte Carlo draws the lens \emph{distance} in proportion to the event
+rate but the lens \emph{mass} from the number density and the velocities from plain Gaussians,
+so it is missing the rate's $\sqrt{\Ml}\,v_t$ factor. Every pooled fraction, median or ratio in
+this report therefore carries the per-event weight
+$W \propto w_{\rm area}\,N_\star/n_{\rm sim}\,\sqrt{\Ml}\,v_t\,Z(D_s)$, and every weighted number
+is quoted with $\Neff = (\sum w)^2/\sum w^2$, because the weight costs precision. Validation:
+weighting all draws of an earlier bulge run reproduces the OGLE-IV efficiency-corrected mean
+timescale of $22$\,d (we obtain $24.0$\,d; unweighted the same sample gives $56.2$\,d).
+
+\section{What each survey contributes}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{p6_synergy.pdf}
+\caption{(a) Weighted share of detected events found by each survey. (b) Median ratio of the
+joint to the single-survey timescale error, \emph{restricted to events that both surveys
+characterised independently}. That restriction is essential: Roman contributes epochs to only a
+few per cent of draws, so pooled over all characterised events the ``joint'' fit is literally the
+Rubin fit for the great majority and the ratio is $1.000$ by construction.}
+\label{fig:synergy}
+\end{figure}
+
+Rubin finds the overwhelming majority of events in both populations -- it covers the whole
+$68\,\mathrm{deg}^2$ scan, while Roman's footprint is $\sim\!2\%$ of it -- but the events the two
+share are the ones that are well measured. Table~\ref{tab:synergy} gives the paired comparison.
+
+\begin{table}[h]
+\centering
+\caption{Detection provenance and the joint-fit gain. The $\sigma$ ratios are weighted medians
+over events characterised independently by \emph{both} surveys (15\,849 black-hole and 12\,569
+neutron-star events); values below unity mean the joint fit is better.}
+\label{tab:synergy}
+\begin{tabular}{lrrrr}
+\toprule
+ & \multicolumn{2}{c}{black holes} & \multicolumn{2}{c}{neutron stars} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+ & vs.\ Rubin & vs.\ Roman & vs.\ Rubin & vs.\ Roman \\
+\midrule
+detected by Rubin only [\%] & \multicolumn{2}{c}{89.4} & \multicolumn{2}{c}{90.0} \\
+detected by Roman only [\%] & \multicolumn{2}{c}{5.3}  & \multicolumn{2}{c}{6.3} \\
+detected by both [\%]       & \multicolumn{2}{c}{5.2}  & \multicolumn{2}{c}{3.6} \\
+\midrule
+median $\sigma(\tE)$ ratio    & 0.165 & 0.733 & 0.116 & 0.742 \\
+median $\sigma(\piE)$ ratio   & 0.108 & 0.826 & 0.114 & 0.798 \\
+median $\sigma(\tetE)$ ratio  & 0.187 & 0.979 & 0.152 & 0.975 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The asymmetry is the result. Roman's dense cadence sharpens what Rubin alone could do on the
+timescale by a factor $6$--$9$ and on the parallax by $\sim\!9$. Rubin's decade-long baseline
+sharpens Roman by a more modest $\sim\!1.25$--$1.35$. But for $\tetE$ the ratio against Roman
+alone is $0.975$--$0.979$: Rubin adds essentially nothing, because $\tetE$ is an astrometric
+quantity and Roman is the only astrometric instrument in this pairing. Any science case resting
+on $\tetE$ -- which includes the lens mass, through $\Ml = \tetE/(\kappa\piE)$ -- is a Roman
+case, not a joint one.
+
+\section{Fisher forecast precision}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{p7_precision.pdf}
+\caption{Weighted cumulative distribution of the fractional parameter error, per survey and
+population. \textbf{Each curve is over its own characterised set}, not a common one: Roman
+characterises only inside its footprint, where coverage is good, while the joint curve also
+contains every Rubin-only event. That is why Roman's $\tetE$ curve lies above the joint curve in
+panel (c), which is a difference of samples and not a violation of
+$\sigma_{\rm joint}\le\sigma_{\rm single}$.}
+\label{fig:precision}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Weighted fraction of characterised events measured to better than $10\%$. Read down a
+column, not across: each entry has its own denominator (see Fig.~\ref{fig:precision}).}
+\label{tab:tenpercent}
+\begin{tabular}{lrrrrrr}
+\toprule
+ & \multicolumn{3}{c}{black holes [\%]} & \multicolumn{3}{c}{neutron stars [\%]} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+ & joint & Rubin & Roman & joint & Rubin & Roman \\
+\midrule
+$\tE$   & 19.77 & 17.66 & 18.61 & 7.71 & 6.12 & 10.51 \\
+$\piE$  &  3.13 &  2.14 &  7.71 & 1.50 & 1.08 &  2.91 \\
+$\tetE$ & 43.87 & 41.11 & 81.41 & 6.03 & 0.37 & 42.28 \\
+$\Ml$   &  1.50 &  0.44 &  7.07 & 0.34 & 0.01 &  1.85 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The lens mass is the hardest quantity in the table, as expected: it needs both $\tetE$ and
+$\piE$, and $\piE$ is the weaker of the two. Within Roman's footprint, where the paired
+comparison is meaningful, the median $\sigma(\Ml)/\Ml$ improves by a factor $0.121$ (black
+holes) and $0.138$ (neutron stars) relative to Rubin alone, but only to $0.862$ and $0.806$
+relative to Roman alone -- the same asymmetry as $\tetE$, and for the same reason. Note the
+footprint sample is much smaller than the full scan: $\Neff = 5471$ and $5372$ respectively, so
+these are the least precise numbers in this report.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{p7_precision_te.pdf}
+\caption{Median fractional error against the event timescale. The two surveys fail at opposite
+ends: Rubin's $\sim\!3$-day cadence under-resolves short events, while Roman's $72$-day seasons
+cannot contain long ones, which is where Rubin's decade of coverage matters.}
+\label{fig:precision_te}
+\end{figure}
+
+\section{Astrometric microlensing}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{p6_astrometry.pdf}
+\caption{(a) Weighted distribution of the maximum centroid shift reached by each event. (b) The
+blend-diluted shift against lens mass, with the weighted interquartile band; the dotted line is
+Roman's $1.1$\,mas per-exposure astrometric floor.}
+\label{fig:astrometry}
+\end{figure}
+
+The centroid of the unresolved image pair is displaced by
+$\delta\theta(u) = \tetE\,u/(u^2+2)$, which peaks at $u=\sqrt{2}$ and \emph{not} at closest
+approach; an event whose trajectory crosses $u=\sqrt{2}$ therefore reaches $\tetE/\sqrt{8}$.
+Because $\tetE \propto \sqrt{\Ml}$, this is the channel where the two populations diverge most
+sharply (Table~\ref{tab:ast}): black holes cross Roman's per-exposure floor at
+$\Ml \approx 20\,\Msun$ and $90\%$ of their detections exceed it, while neutron stars sit an
+order of magnitude below it. Blending is a small correction here -- the Roman-band source flux
+fraction averages $0.95$ -- but it is included rather than assumed negligible.
+
+\begin{table}[h]
+\centering
+\caption{Astrometric shift, satellite parallax, and image resolvability. The resolution
+probability is the weighted fraction of that survey's detections having at least three epochs at
+which both images are separately detectable and separated by more than the stated bar.}
+\label{tab:ast}
+\begin{tabular}{lrr}
+\toprule
+ & black holes & neutron stars \\
+\midrule
+median max.\ centroid shift [mas]      & 3.61  & 0.265 \\
+95th percentile [mas]                  & 9.75  & 0.610 \\
+fraction above $1.1$\,mas floor [\%]   & 90.2  & 0.57 \\
+\midrule
+satellite parallax, median gain        & 1.000 & 1.000 \\
+\quad fraction gaining $>1.1\times$ [\%] & 0.003 & 0.200 \\
+\quad fraction gaining $>2\times$ [\%]   & 0.000 & 0.064 \\
+\midrule
+$P(\text{resolve})$ Rubin, $\mathcal{D}=5$ [\%]  & 16.71  & 0.0015 \\
+$P(\text{resolve})$ Roman, $\mathcal{D}=5$ [\%]  & 41.63  & 6.13 \\
+$P(\text{resolve})$ Roman, $\mathcal{D}=20$ [\%] & 14.02  & 0.171 \\
+$P(\text{resolve})$ Roman, PSF FWHM [\%]         &  0.875 & 0.0001 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Satellite parallax}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{p6_parallax.pdf}
+\caption{Survival function of the gain from placing Roman at L2 rather than at Earth, for the
+parallax (a) and the lens mass (b). The same event is characterised twice, differing only in the
+observer's position, so this is a genuinely controlled comparison. Note the logarithmic vertical
+axis: the median gain is exactly $1$, and the entire effect lives in a tail of order $0.1\%$.}
+\label{fig:parallax}
+\end{figure}
+
+This is a null result and worth stating plainly. The $0.01$\,au displacement of L2 gives a
+parallax baseline that is negligible against the Earth's own annual motion for events lasting
+months to years, which is what both of these populations produce. Fewer than $0.2\%$ of events
+gain even a $10\%$ improvement in $\sigma(\piE)$. Satellite parallax is a technique for
+\emph{short} events, and these are not short.
+
+\section{Resolving the two images}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{p6_resolution.pdf}
+\caption{(a) Probability that the two lensing-induced images are resolvable, for three
+resolution criteria. (b) The same probability at the most permissive criterion, against lens
+mass.}
+\label{fig:resolution}
+\end{figure}
+
+A point lens forms two images separated by $\Delta\theta(u) = \tetE\sqrt{u^2+4}$. Following
+Sajadian \& Makler (2026) we count \emph{epochs} at which both images are individually above the
+single-visit depth and their separation exceeds a stated bar, and call the pair resolvable when
+at least three epochs qualify. Counting epochs rather than evaluating the separation once per
+event is not a refinement but a necessity: the separation is \emph{smallest} at closest approach
+and grows as the source departs, while the minor image's magnification
+$A_- = (u^2+2)/(2u\sqrt{u^2+4}) - 1/2$ collapses on the same motion, so the images are least
+separated exactly when both are bright.
+
+The result is dominated by the choice of criterion. With $\sigma_r = \mathcal{D}\sigma_a$ and
+$\mathcal{D}=5$ -- the faint-limit value -- Roman resolves $41.6\%$ of its black-hole detections;
+at $\mathcal{D}=20$ this falls to $14.0\%$, and at the diffraction-limited PSF FWHM to $0.87\%$.
+Any single number here is a choice of convention presented as a result, which is why all three
+are reported. Roman outperforms Rubin by roughly $2.5\times$ at a common $\mathcal{D}$ and by
+three orders of magnitude at the PSF bar, reflecting its $105$\,mas F146 PSF against Rubin's
+arcsecond seeing disc.
+
+\section{Where the measurable lenses are}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{p7_mass_distance.pdf}
+\caption{Weighted fraction of detected events whose lens mass is measured to better than $10\%$,
+in the mass--distance plane. Measurability concentrates on \emph{nearby, massive} lenses, as
+$\tetE = \sqrt{\kappa \Ml \pi_{\rm rel}}$ requires.}
+\label{fig:massdist}
+\end{figure}
+
+A mass precision quoted without saying which lenses it applies to is a statement about a sample
+rather than about the Galaxy. Across all detections the mass is measured to $10\%$ for $1.50\%$
+of black-hole events (median lens distance $5.15$\,kpc) and $0.34\%$ of neutron-star events
+(median $3.66$\,kpc), and Fig.~\ref{fig:massdist} shows those events are drawn overwhelmingly
+from lenses within a few kpc.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{p7_sky.pdf}
+\caption{(a) Relative weighted event yield across the scanned region, for the black-hole run.
+(b) Weighted fraction of detections with $\sigma(\tE)/\tE < 0.1$ from the joint fit. The yield
+concentrates toward the inner bulge; the precision is set by Rubin's visit density and is
+comparatively flat.}
+\label{fig:sky}
+\end{figure}
+
+\section{Caveats}
+
+\begin{itemize}
+\item \textbf{The populations are run separately and must not be pooled.} The event-rate weight
+      contains $\sqrt{\Ml}$, which is valid only for the mass function actually sampled. Any
+      combined black-hole plus neutron-star statement requires an assumed relative abundance,
+      applied after the fact.
+\item \textbf{The log-uniform black-hole mass function is an assumption, not a measurement.} It
+      is taken as the truth here rather than as an importance-sampling device.
+\item \textbf{No absolute yield is quoted.} The weight determines fractions, medians and ratios;
+      the normalising constants cancel and are not tracked, so nothing here predicts an event
+      count for either survey.
+\item \textbf{The footprint sample is small.} Every Roman-versus-joint comparison rests on
+      $\Neff \approx 5400$, against $\Neff \approx 1.4$--$3.0\times10^5$ for the full scan.
+\item \textbf{$\sigma_{\rm joint} \le \sigma_{\rm single}$ is violated on six events} by a factor
+      $1.0003$, consistent with round-off in the $9\times9$ matrix inversion on ill-conditioned
+      events rather than with an error in the information sum.
+\item \textbf{Rubin's astrometric error model is the weakest input.} The delivered per-visit
+      floor is taken as $10$\,mas; published estimates range from $3$ to $7$\,mas, which would
+      make Rubin better than assumed here and would raise its $\tetE$ column specifically.
+\end{itemize}
+
+\section*{Reproducing this report}
+
+\begin{verbatim}
+.roman/bin/python analysis/p6_synergy_resolution.py \
+    --run bh=runs/prod_bh_20260917 --run ns=runs/prod_ns_20260917 \
+    -o figures/prod_20260918/p6
+.roman/bin/python analysis/p7_forecast_figures.py \
+    --run bh=runs/prod_bh_20260917 --run ns=runs/prod_ns_20260917 \
+    -o figures/prod_20260918/p7
+cd Report && latexmk -pdf populations_report.tex
+\end{verbatim}
+
+\end{document}

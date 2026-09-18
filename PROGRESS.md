@@ -42,6 +42,14 @@ the pipeline can be run for a black-hole and a neutron-star population — Devia
   nothing**; **stop/continue survives a reboot** and trims the interrupted sightline's partial
   rows before redoing it whole (`runs/resume_truncate.py`), which is the step that was done by
   hand at the v3 chunk boundary and is the one most likely to be forgotten.
+- **P7 ✅ The synergy / astrometry / parallax / resolution figures** — Deviation 49.
+  `analysis/p6_synergy_resolution.py` draws four: who detects what and what the joint fit buys
+  **in both directions**; the centroid shift and its scaling with lens mass; what Roman at L2
+  buys over Roman at Earth; and the probability of resolving the two images. **One panel was
+  measuring a tautology** and the fix changes the headline: pooled over all characterised
+  events the joint gain is 1.000, because Roman has epochs for only 6.8% of draws and for the
+  rest the "joint" fit *is* the Rubin fit. Restricted to events both surveys characterised, the
+  median `sigma(tE)` ratio is **0.144 vs Rubin alone** and **0.809 vs Roman alone**.
   Still to do afterwards: **a second pass over the figures**. **The figure set has only been
   exercised on stub runs of 77/27/23 draws**: that proves the code paths and the layout, not that
   the binning or ranges suit real data.

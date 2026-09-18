@@ -3419,4 +3419,79 @@ once, which is the tension described above rather than a null result.
 `log10`s, inside a loop already doing a Fisher-matrix build. Not measurable against the stub's
 runtime.
 
+**Commit:** `64a7577`.
+
+---
+
+## 49. Step P6's analysis layer, and a joint-gain figure that was measuring a tautology (2026-09-18)
+
+**What the plan said.** Nothing specific. The figures requested are: how Rubin and Roman help
+each other, what the astrometric shift and the satellite parallax buy, and the probability of
+resolving the two images. `analysis/p6_synergy_resolution.py` draws four.
+
+### The bug worth recording: a ratio that was 1.000 by construction
+
+The joint-gain panel plots `sigma_joint / sigma_single` against `tE`. The first version selected
+every event with `okA_J == 1` and a positive single-survey sigma, and got a weighted median of
+**1.000** across almost the whole `tE` range -- a flat line saying the joint fit buys nothing.
+
+That number was real and meaningless. **Roman has epochs for only 6.8% of draws** (its footprint
+is ~2% of the scanned area), so for the other 93% the "joint" partition contains Rubin's epochs
+and nothing else -- the joint fit IS the Rubin fit, and the ratio is exactly 1 because it is the
+same matrix. Pooling those in buries the measurement under a tautology.
+
+Restricted to the events **both surveys characterised independently** (`okA_L == 1 and
+okA_R == 1`, 12,777 of them in the test slice), the real result appears:
+
+| median ratio | vs Rubin alone | vs Roman alone |
+|---|---|---|
+| `sigma(tE)` | **0.144** | 0.809 |
+| `sigma(piE)` | **0.110** | 0.850 |
+
+So the help runs both ways and is strongly asymmetric: Roman's cadence improves what Rubin alone
+could do on `tE` by ~7x, while Rubin's decade-long baseline improves Roman alone by ~1.2x. The
+panel now draws both directions, and the restriction is stated in the code where it is applied.
+
+This is the same family as the `-1` sentinel traps: a quantity that looks like a measurement but
+is a definition. The guard against it is to ask what the number would be if the effect were
+absent -- here, exactly 1.000, which is what was plotted.
+
+### Barren sightlines cannot be weighted, and now they are dropped deliberately
+
+A sightline that draws stars but ends with no characterised event takes the barren branch, which
+`continue`s past **both** the map-row write and the `nsim:` print. Its rows are in the table with
+no draw count to normalise them by, so `event_weight` refuses the whole table -- correctly, since
+a missing `nsim` is indistinguishable from a map file truncated by a kill (Deviation 42).
+
+At the scan's western edge such a sightline runs to the full `--maxdraws` cap, so a handful of
+them is a large number of rows: in the `bh` run's first four sightlines, **200,000 rows carrying
+zero detections and zero characterisations** (verified, not assumed -- `detL`, `detR`, `detJ`,
+`okA_J`, `okB_J` all zero across all of them). They are now dropped explicitly, after that check;
+if any dropped row ever carries a detection the script **exits** rather than biasing the pooled
+numbers. A run still in flight has one further sightline part-written, which is recognised from
+the log and dropped as incomplete -- an incomplete sightline must not be weighted as though it
+stood for its full sky area.
+
+This is pre-existing, not new: v3 had 77 barren sightlines. These runs have 18 each so far.
+
+### Figure defects found only by looking (again)
+
+1. **A CDF that hid the entire result.** Satellite parallax changes nothing for most events, so
+   the CDF of the gain is a vertical line at 1. Replaced with the survival function on a log
+   axis, which shows the tail that matters: L2 improves `sigma(piE)` by >1.1x for 0.01% of `bh`
+   events and 0.36% of `ns` events.
+2. **Colliding tick labels**, "Rubin PSF FWHM" against "Roman PSF FWHM" at column width.
+3. **Zero bars on a log axis**, drawn as spikes to the bottom of the frame; now masked.
+4. **A two-point curve diving off the left edge**, from slicing the neutron stars' 0.3-decade
+   mass range into nine bins. Bin counts now follow the range's span in decades.
+5. **`plain_log_ticks` silently doing nothing** on its first attempt, because it read
+   `get_ylim()` before matplotlib had autoscaled and so took the wrong branch. The data range is
+   now passed in explicitly. Worth recording because the function LOOKED right and the figure
+   was unchanged.
+
+**Verification.** Byte-compiles; runs against a 500,000-row slice of each live production table
+with its real map and log; all four figures render as PDF and PNG; every panel inspected as an
+image. Numbers quoted above are from that slice and are **provisional** -- both runs were still
+in flight when it was taken.
+
 **Commit:** this step.

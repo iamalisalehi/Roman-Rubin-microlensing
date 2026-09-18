@@ -80,7 +80,13 @@ class Run:
         logs = [os.path.join(directory, f) for f in ("run.log", "run2.log")]
         self.logs = [f for f in logs if os.path.exists(f)]
 
-        self.df = R.load_events(self.table, usecols=COLS, chunksize=chunksize)
+        # usecols alone is not enough on a production table: even 20 columns x 5M rows is
+        # ~800 MB, and this script holds one frame per population at once. Barren sightlines'
+        # rows are dropped as they are read -- they have no nsim, hence weight 0, and carry no
+        # detection, so every panel here is unchanged. 5.01M rows down to 1.16M for the
+        # 2026-09-17 neutron-star run.
+        self.df = R.load_events(self.table, usecols=COLS, chunksize=chunksize,
+                                keep=R.keep_weightable(self.map, self.logs))
         w, self.wlabel = R.attach_weight(self.df, self.map, self.logs)
         self.df["W"] = w
         self.mass_range = self._mass_range()

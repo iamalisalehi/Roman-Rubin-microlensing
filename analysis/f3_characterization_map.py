@@ -174,6 +174,8 @@ def main():
                     help="MapLMC5.dat -- needed for the event-rate weight (Deviation 41)")
     ap.add_argument("--log", action="append", default=[],
                     help="run log(s), for sightlines whose map rows a killed run lost")
+    ap.add_argument("--chunksize", type=int, default=500_000,
+                    help="rows per read chunk; holds peak memory to one chunk plus survivors")
     ap.add_argument("--unweighted", action="store_true",
                     help="deliberately report the raw sample, with no event-rate weight")
     ap.add_argument("--dex", type=float, default=0.5, help="cell size in dex (default 0.5)")
@@ -181,7 +183,11 @@ def main():
     ap.add_argument("--pie-range", type=float, nargs=2, default=(-2.5, 1.0))
     args = ap.parse_args()
 
-    df = R.load_events(args.events)
+    # Streamed, with the barren sightlines' rows dropped as they are read -- see f2 for why
+    # (silent OOM kill on the full table; those rows have weight 0 and no detection anyway).
+    # Undetected events are kept: the characterised FRACTION needs them as its denominator.
+    df = R.load_events(args.events, keep=R.keep_weightable(args.map, args.log),
+                       chunksize=args.chunksize)
     w, wlabel = R.attach_weight(df, args.map, args.log, args.unweighted)
     df["W"] = w
     print(R.describe(args.events, args.provenance))

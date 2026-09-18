@@ -112,11 +112,19 @@ def main():
                     help="MapLMC5.dat -- needed for the event-rate weight (Deviation 41)")
     ap.add_argument("--log", action="append", default=[],
                     help="run log(s), for sightlines whose map rows a killed run lost")
+    ap.add_argument("--chunksize", type=int, default=500_000,
+                    help="rows per read chunk; holds peak memory to one chunk plus survivors")
     ap.add_argument("--unweighted", action="store_true",
                     help="deliberately report the raw sample, with no event-rate weight")
     a = ap.parse_args()
 
-    df = R.load_events(a.events)
+    # Stream, dropping barren sightlines' rows as they are read. Reading a production table
+    # whole is ~4 GB resident and an OOM kill on this machine -- and the kill is SILENT, exit
+    # status 0 with empty stdout, indistinguishable from a script that did nothing. The dropped
+    # rows have no nsim, hence weight 0, and carry no detection, so no statistic here changes:
+    # for the 2026-09-17 runs it is 5.01M rows down to 1.16M. Undetected events are KEPT,
+    # because this figure's denominator is every event in the tE bin, not just the found ones.
+    df = R.load_events(a.events, keep=R.keep_weightable(a.map, a.log), chunksize=a.chunksize)
     w, wlabel = R.attach_weight(df, a.map, a.log, a.unweighted)
     df["W"] = w
     print(f"weighting: {wlabel}")

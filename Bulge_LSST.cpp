@@ -238,6 +238,11 @@ struct RunConfig {
     // populations differ by more than the effect (DEVIATIONS.md 35).
     bool   pairSat     = false;
 
+    // Step S1. Path to a sample-event dump spec, or empty for "do not dump". The dump is
+    // off by default and consumes no RNG when on, so a run with it is event-for-event the
+    // same run as one without -- see the block above main().
+    std::string dumpSpec;
+
     // Build the sightline grid, write the provenance block, report the strata, and stop
     // before drawing a single star. The point of stratifying (Step E1) is to decide how to
     // spend wall clock, and that decision needs the sightline counts BEFORE committing to a
@@ -304,7 +309,338 @@ static void printUsage(const char* prog) {
         << "  --no-satellite-parallax   put Roman at the centre of the Earth, removing the\n"
         << "                 Earth-L2 spatial baseline while leaving the timing alone. The\n"
         << "                 'off' run of the satellite-parallax experiment (PHASE_H_PLAN H3)\n"
+        << "  --dump-samples F  write full light curves and astrometric tracks for a few\n"
+        << "                 illustrative events, as described by spec file F. Off by\n"
+        << "                 default. Consumes no RNG, so the set of simulated events is\n"
+        << "                 identical with and without it. See the spec-file format in\n"
+        << "                 the Step S1 block of Bulge_LSST.cpp.\n"
         << "  --help         this message\n";
+}
+
+
+// ---------------------------------------------------------------------------
+// Step S1. Sample-event light-curve and astrometry dump.
+//
+// The per-event table is one row per event. The per-epoch light curve and the
+// astrometric track exist only inside the Monte Carlo's time loop and are
+// overwritten by the next draw. That is enough for every pooled statistic this
+// project reports, and not enough to DRAW one event -- which is what an
+// illustrative figure in a paper needs.
+//
+// Two rules this dump obeys. Both are load-bearing.
+//
+//  1. IT CONSUMES NO RNG. Every value written is one the simulation had already
+//     computed, including the noisy magnitude `magnio`, which the detection
+//     chi-square has already drawn. The mt19937_64 stream is therefore identical
+//     with and without --dump-samples, so turning the dump on cannot change WHICH
+//     events get simulated. The legacy magC0/datC0 dump this supersedes called
+//     RandN() inline and did not have that property. PROGRESS.md records what
+//     stream divergence cost once already: the H3 run, started mid-stream, matched
+//     0 of 2,673 v3 events.
+//
+//  2. IT BUFFERS, THEN COMMITS. Whether an event is "Rubin-only" or "both" is not
+//     known until the time loop has ended and FisherM has run. So epochs are
+//     accumulated in memory for EVERY draw and written only for the few that fill a
+//     requested sample class. One event's buffer is a few thousand records.
+// ---------------------------------------------------------------------------
+
+// One recorded observation, in whichever observer frame the telescope that took it
+// lives in: Rubin's values come from lightcurve(..., 0) (geocentric), Roman's from
+// lightcurve(..., 1) (L2, ~0.01 AU further out). Keeping the two frames distinct is
+// the point rather than an inconvenience -- the two observers see different impact
+// parameters at the same instant, and that difference IS the satellite parallax.
+struct DumpEpoch {
+    double t;             //time [days]; day 0 = the first Rubin bulge visit
+    int    tele;          //0 = Rubin, 1 = Roman. The same tag as lens::tele[]
+    int    filt;          //0-5 = LSST ugrizy, 6 = Roman F146. ONE filter per visit
+    double magObs;        //the simulated measurement: model + Gaussian noise [mag]
+    double magMod;        //model magnitude, blended, WITH microlensing parallax [mag]
+    double magMod0;       //the same model WITHOUT the parallax term [mag]
+    double errMag;        //1-sigma photometric error from the instrument model [mag]
+    double u;             //lens-source separation WITH parallax [Einstein radii]
+    double u0;            //lens-source separation WITHOUT parallax [Einstein radii]
+    double A;             //source magnification from u  [dimensionless, >= 1]
+    double A0;            //source magnification from u0 [dimensionless, >= 1]
+    double def1c, def2c;  //centroid deflection WITH parallax [mas]
+    double def1a, def2a;  //centroid deflection WITHOUT parallax [mas]
+    double pos1b, pos2b;  //unlensed source position: proper motion + its own parallax [mas]
+    double pos1c, pos2c;  //observed lensed centroid, = pos*b + def*c [mas]
+    double lens1, lens2;  //lens position: its proper motion + its own parallax [mas]
+    double errAst;        //1-sigma astrometric error from the instrument model [mas]
+};
+
+// A(u) = (u^2 + 2) / (u * sqrt(u^2 + 4)), the point-source point-lens magnification.
+// Written in exactly the form the two call sites inside the time loop use, so the
+// dumped magnification is what the simulation computed and not an algebraically
+// equal rearrangement that could round differently.
+static inline double magnifOf(double u)
+{
+    return double(u * u + 2.0) / std::sqrt(u * u * (u * u + 4.0));
+}
+
+// One requested sample class: a named predicate over a FINISHED event, plus how many
+// of them to keep. The numeric cuts live here rather than in the predicate so that one
+// spec file can ask for two different tE windows without a recompile.
+struct SampleClass {
+    std::string name;
+    int    quota    = 0;
+    int    kept     = 0;
+    double teMin    = -1.0;   //days; negative = no cut
+    double teMax    = -1.0;   //days; negative = no cut
+    double shiftMin = -1.0;   //mas;  negative = no cut
+};
+
+struct SampleSpec {
+    bool        on       = false;
+    std::string dir      = "samples";
+    // Dense model-curve sampling. stepTE is a FRACTION OF tE, not a number of days,
+    // because the sampling density that draws one event well is set by that event's own
+    // timescale: 0.2 d steps are wasteful for a 900 d black-hole event and too coarse for
+    // a 5 d one. This keeps the peak window at a fixed ~2*spanTE/stepTE points whatever
+    // the event, so the file size cannot blow up on the long-tE population.
+    double      stepTE   = 0.01;  //peak-window step, in units of tE
+    double      spanTE   = 3.0;   //peak-window half-width, in units of tE
+    double      dtCoarse = 2.0;   //step over the rest of the mission [days]
+    std::vector<SampleClass> classes;
+};
+
+// Everything a selector is allowed to look at. All of it is already in the per-event
+// table, so a class can be checked against a FINISHED run's table before spending a
+// run on it -- which is how you find out a cut is empty without waiting for the run.
+struct SampleFacts {
+    int    detL, detR, detJ;  //per-survey and joint detection booleans
+    double tE;                //Einstein crossing time [days]
+    int    t0zone;            //0 = t0 in a Roman season, 1 = mid-mission gap, 2 = off-mission
+    int    nepLpk, nepRpk;    //epochs within +-2 tE of t0, per survey
+    int    ndwL, ndwR;        //epochs over the WHOLE mission, per survey. ndwR == 0 means
+                              //Roman never observed this sightline at all: it lies outside
+                              //the GBTDS footprint
+    int    okBRoman;          //did Roman's ASTROMETRIC Fisher matrix invert?
+    double maxShift;          //largest |centroid deflection| at any recorded epoch [mas]
+};
+
+static bool knownSampleClass(const std::string& n)
+{
+    return n == "any" or n == "ns_typical" or n == "bh_short" or n == "bh_long"
+        or n == "both" or n == "rubin_only" or n == "roman_only"
+        or n == "gap_filler" or n == "astrometric";
+}
+
+// Does this finished event belong to class `c`?
+//
+// Note that `any`, `ns_typical`, `bh_short` and `bh_long` are THE SAME predicate --
+// "the joint fit detected it" -- separated only by the tE cuts the spec file gives
+// them. The lens population is chosen by --population, not by the class name, so
+// naming one of them `bh_long` does not make it a black hole; running it under
+// --population bh does. The names exist so the output files are self-labelling.
+//
+// The two "only" classes carry the coverage condition that makes them MEAN something.
+// nepR_pk > 0 says Roman had epochs within +-2 tE of the peak, i.e. while the source
+// was actually magnified. Without that condition, "Rubin-only" is satisfied by every
+// event outside Roman's footprint or falling in a season gap, which says nothing about
+// the two telescopes' relative capability and everything about where they pointed.
+static bool sampleMatch(const SampleClass& c, const SampleFacts& f)
+{
+    if (c.teMin    > 0.0 and f.tE       < c.teMin)    return false;
+    if (c.teMax    > 0.0 and f.tE       > c.teMax)    return false;
+    if (c.shiftMin > 0.0 and f.maxShift < c.shiftMin) return false;
+
+    // The physics classes are drawn to show what BOTH telescopes see of one kind of
+    // event, so both must have looked at the field. Without this, a sightline outside
+    // Roman's footprint -- 97% of the scan area -- supplies most of them, and the Roman
+    // panel of the figure is empty.
+    if (c.name == "any" or c.name == "ns_typical"
+        or c.name == "bh_short" or c.name == "bh_long")
+        return f.detJ == 1 and f.ndwL > 0 and f.ndwR > 0;
+    if (c.name == "both")        return f.detL == 1 and f.detR == 1;
+    if (c.name == "rubin_only")  return f.detL == 1 and f.detR == 0 and f.nepRpk > 0;
+    if (c.name == "roman_only")  return f.detR == 1 and f.detL == 0 and f.nepLpk > 0;
+    // Gap filling, the thesis's second novelty claim, made drawable: the peak fell in a
+    // MID-MISSION Roman gap (zone 1, never zone 2 -- before launch or after the mission
+    // ends is not a gap Rubin is filling) and Rubin alone caught it.
+    //
+    // ndwR > 0 is what makes that a GAP. t0zone comes from the mission-wide season
+    // schedule, which knows nothing about pointing: it reads 1 for a sightline Roman
+    // never visits exactly as it does for one Roman observes in every season. Only the
+    // second is Rubin filling a hole in Roman's coverage. The first is Rubin observing
+    // somewhere Roman does not look, which is the out-of-footprint case this selector
+    // exists to exclude. (Found by the S1 acceptance run: all three gap_filler events
+    // it wrote had ndw_R = 0.)
+    if (c.name == "gap_filler")
+        return f.detL == 1 and f.detR == 0 and f.t0zone == 1 and f.ndwR > 0;
+    // An event whose astrometric matrix actually inverted for Roman, i.e. one where the
+    // centroid ellipse is a measurement and not just a curve we can draw.
+    if (c.name == "astrometric") return f.detJ == 1 and f.okBRoman == 1;
+    return false;
+}
+
+// Reads the spec file. One directive per line; '#' starts a comment; blank lines ignored.
+//
+//     dir        samples/bh     # where the per-event files go
+//     step_te    0.01           # peak-window step, as a FRACTION of this event's tE
+//     span_te    3.0            # peak-window half-width, in units of tE
+//     dt_coarse  2.0            # step over the rest of the mission [days]
+//     class  <name>  <quota>  [te_min=X] [te_max=X] [shift_min=X]
+//
+// An unknown class name or key is a hard error, not a warning. A typo that silently
+// produced no samples would announce itself only after the run had finished.
+static bool parseSampleSpec(const std::string& path, SampleSpec& spec)
+{
+    std::ifstream in(path);
+    if (!in) { std::cerr << "ERROR: cannot open sample spec '" << path << "'\n"; return false; }
+
+    std::string line;
+    int lineNo = 0;
+    while (std::getline(in, line)) {
+        ++lineNo;
+        const std::size_t hash = line.find('#');
+        if (hash != std::string::npos) line.erase(hash);
+        std::istringstream ls(line);
+        std::string key;
+        if (!(ls >> key)) continue;
+
+        if (key == "dir")            { ls >> spec.dir;      continue; }
+        if (key == "step_te")        { ls >> spec.stepTE;   continue; }
+        if (key == "span_te")        { ls >> spec.spanTE;   continue; }
+        if (key == "dt_coarse")      { ls >> spec.dtCoarse; continue; }
+        if (key != "class") {
+            std::cerr << "ERROR: " << path << ":" << lineNo << ": unknown directive '"
+                      << key << "'\n";
+            return false;
+        }
+        SampleClass c;
+        if (!(ls >> c.name >> c.quota)) {
+            std::cerr << "ERROR: " << path << ":" << lineNo << ": 'class' needs a name "
+                      << "and a quota\n";
+            return false;
+        }
+        if (!knownSampleClass(c.name)) {
+            std::cerr << "ERROR: " << path << ":" << lineNo << ": unknown class '"
+                      << c.name << "'. Known: any ns_typical bh_short bh_long both "
+                      << "rubin_only roman_only gap_filler astrometric\n";
+            return false;
+        }
+        std::string kv;
+        while (ls >> kv) {
+            const std::size_t eq = kv.find('=');
+            if (eq == std::string::npos) {
+                std::cerr << "ERROR: " << path << ":" << lineNo << ": expected key=value, got '"
+                          << kv << "'\n";
+                return false;
+            }
+            const std::string k = kv.substr(0, eq);
+            const double      v = std::atof(kv.substr(eq + 1).c_str());
+            if      (k == "te_min")    c.teMin    = v;
+            else if (k == "te_max")    c.teMax    = v;
+            else if (k == "shift_min") c.shiftMin = v;
+            else {
+                std::cerr << "ERROR: " << path << ":" << lineNo << ": unknown key '" << k
+                          << "'. Known: te_min te_max shift_min\n";
+                return false;
+            }
+        }
+        spec.classes.push_back(c);
+    }
+    if (spec.classes.empty()) {
+        std::cerr << "ERROR: " << path << " requested no classes\n";
+        return false;
+    }
+    if (!(spec.stepTE > 0.0) or !(spec.spanTE > 0.0) or !(spec.dtCoarse > 0.0)) {
+        std::cerr << "ERROR: " << path << ": step_te, span_te and dt_coarse must be > 0\n";
+        return false;
+    }
+    spec.on = true;
+    return true;
+}
+
+// Writes the three files that describe one sample event:
+//
+//   <class>_<id>_epochs.dat  what the two surveys actually recorded, one row per visit
+//   <class>_<id>_model.dat   a dense noise-free model curve, in BOTH observer frames
+//   <class>_<id>_params.dat  the event's true parameters and its forecast sigmas
+//
+// The dense curve is regenerated here rather than sampled from the time loop, for one
+// reason: the loop's step `dt` is ADAPTIVE, tuned to spend compute where the detection
+// test needs it, and it goes coarse in the wings. A figure needs the opposite -- a
+// smooth peak AND a readable baseline. Regenerating costs one lightcurve() call per grid
+// point, consumes no RNG, and leaves the simulation's own sampling alone.
+static void writeSampleEvent(const SampleSpec& spec, const std::string& cls,
+                             const std::string& id, const std::vector<DumpEpoch>& buf,
+                             const std::string& params,
+                             source& s, lens& l, astromet& as)
+{
+    const std::string stem = spec.dir + "/" + cls + "_" + id;
+
+    {
+        std::ofstream fp(stem + "_params.dat");
+        fp << params;
+    }
+
+    {
+        std::ofstream fe(stem + "_epochs.dat");
+        fe << "# Recorded observations. tele: 0 = Rubin, 1 = Roman. filt: 0-5 = ugrizy, "
+              "6 = F146.\n"
+           << "# mag_obs is the simulated measurement the detection test used; mag_mod and\n"
+           << "# mag_mod_noplx are the blended model with and without microlensing parallax.\n"
+           << "# Positions and deflections are in mas, in the frame of the telescope that\n"
+           << "# took the epoch (Roman's is the L2 frame).\n"
+           << "# t tele filt mag_obs mag_mod mag_mod_noplx err_mag u u_noplx A A_noplx "
+              "def1c def2c def1a def2a pos1b pos2b pos1c pos2c lens1 lens2 err_ast\n";
+        fe << std::setprecision(8);
+        for (const DumpEpoch& e : buf)
+            fe << e.t     << " " << e.tele  << " " << e.filt  << " "
+               << e.magObs<< " " << e.magMod<< " " << e.magMod0 << " " << e.errMag << " "
+               << e.u     << " " << e.u0    << " " << e.A      << " " << e.A0     << " "
+               << e.def1c << " " << e.def2c << " " << e.def1a  << " " << e.def2a  << " "
+               << e.pos1b << " " << e.pos2b << " " << e.pos1c  << " " << e.pos2c  << " "
+               << e.lens1 << " " << e.lens2 << " " << e.errAst << "\n";
+    }
+
+    // The dense grid. Two tiers on purpose. The magnification peak needs fine sampling to
+    // be drawn at all, while the PARALLAX signature is a year-scale wobble out in the
+    // wings that a peak-only window would crop off entirely -- and the wings are exactly
+    // where Rubin's decade of coverage does its work. A single grid fine enough for the
+    // peak, run over the whole decade, would be ~18,000 points per frame for no gain at
+    // either end.
+    std::vector<double> grid;
+    const double tStart = 0.0  * year - 100.0;
+    const double tEnd   = 10.0 * year + 100.0;
+    for (double t = tStart; t <= tEnd; t += spec.dtCoarse) grid.push_back(t);
+    const double half = spec.spanTE * l.tE;
+    const double fine = spec.stepTE * l.tE;
+    for (double t = l.t0 - half; t <= l.t0 + half; t += fine)
+        if (t >= tStart and t <= tEnd) grid.push_back(t);
+    std::sort(grid.begin(), grid.end());
+
+    std::ofstream fm(stem + "_model.dat");
+    fm << "# Dense noise-free model curve. frame: 0 = geocentric (Rubin), 1 = L2 (Roman).\n"
+       << "# Both frames are written for the WHOLE grid, so the satellite-parallax\n"
+       << "# difference can be read off directly as frame 1 minus frame 0 at equal t.\n"
+       << "# mag_* are blended model magnitudes per FILTER (u g r i z y F146); mag0_* are\n"
+       << "# the same without the microlensing parallax term. Positions in mas.\n"
+       << "# t frame u u_noplx A A_noplx mag_u..mag_F146 mag0_u..mag0_F146 "
+          "def1c def2c def1a def2a pos1b pos2b pos1c pos2c lens1 lens2\n";
+    fm << std::setprecision(8);
+    for (int frame = 0; frame < 2; ++frame) {
+        for (double t : grid) {
+            lightcurve(s, l, as, t, frame);
+            const double A  = magnifOf(s.ut);
+            const double A0 = magnifOf(s.ut0);
+            fm << t << " " << frame << " "
+               << s.ut << " " << s.ut0 << " " << A << " " << A0;
+            // Safe to write all M filters here, unlike in the per-epoch dump: lightcurve()
+            // has just been called for THIS frame and these magnitudes are built from A
+            // directly, not read out of the time loop's magni[]/magni0[] scratch arrays --
+            // which, at a Roman epoch, still hold Rubin-frame values in slots 0-5.
+            for (int i = 0; i < M; ++i)
+                fm << " " << s.magb[i] - 2.5 * std::log10(A  * s.blend[i] + 1.0 - s.blend[i]);
+            for (int i = 0; i < M; ++i)
+                fm << " " << s.magb[i] - 2.5 * std::log10(A0 * s.blend[i] + 1.0 - s.blend[i]);
+            fm << " " << s.def1c << " " << s.def2c << " " << s.def1a << " " << s.def2a
+               << " " << s.pos1b << " " << s.pos2b << " " << s.pos1c << " " << s.pos2c
+               << " " << l.pos1  << " " << l.pos2  << "\n";
+        }
+    }
 }
 
 int main(int argc, char** argv) {
@@ -336,6 +672,7 @@ int main(int argc, char** argv) {
         else if (arg == "--dry-run") cfg.dryRun      = true;
         else if (arg == "--no-satellite-parallax") cfg.noSatPar = true;
         else if (arg == "--pair-satellite") cfg.pairSat = true;
+        else if (arg == "--dump-samples") cfg.dumpSpec = need("--dump-samples");
         else if (arg == "--population") {
             const std::string want = need("--population");
             const LensPopulation* found = nullptr;
@@ -825,6 +1162,27 @@ int main(int argc, char** argv) {
 
     std::ofstream filg_in; //opened in append mode per event -- see above
 
+    // Step S1 state. `dumpBuf` holds the CURRENT draw's recorded epochs and is cleared at
+    // the top of every draw; `dumpSeq` numbers the events actually written out.
+    SampleSpec            dumpSpec;
+    std::vector<DumpEpoch> dumpBuf;
+    long                  dumpSeq = 0;
+    if (!cfg.dumpSpec.empty()) {
+        if (!parseSampleSpec(cfg.dumpSpec, dumpSpec)) return 2;
+        std::error_code ec;
+        std::filesystem::create_directories(dumpSpec.dir, ec);
+        if (ec) {
+            std::cerr << "ERROR: cannot create sample directory '" << dumpSpec.dir
+                      << "': " << ec.message() << "\n";
+            return 2;
+        }
+        std::cout << "  Sample dump ON -> " << dumpSpec.dir << "/  (";
+        for (std::size_t i = 0; i < dumpSpec.classes.size(); ++i)
+            std::cout << (i ? ", " : "") << dumpSpec.classes[i].name << " x"
+                      << dumpSpec.classes[i].quota;
+        std::cout << ")" << std::endl;
+    }
+
     // Check all
     if (!fil2 || !fil2b || !fil3 || !fil4 || !fil5) {
         std::cerr << "Cannot open one or more files!" << std::endl;
@@ -1097,6 +1455,8 @@ int main(int argc, char** argv) {
              << "# satellite_parallax  " << (cfg.noSatPar ? 0 : 1)
              << "   # 0 = Roman forced to Earth's position\n"
              << "# L2_offset_AU        " << (cfg.noSatPar ? 0.0 : L2_OFFSET_AU) << "\n"
+             << "# dump_samples        " << (cfg.dumpSpec.empty() ? std::string("none")
+                                                                    : cfg.dumpSpec) << "\n"
              << "# pair_satellite      " << (cfg.pairSat ? 1 : 0)
              << "   # Step H3: every detection characterised at L2 AND at Earth\n"
              << "# dchi_det            " << cfg.dchiDet
@@ -1282,6 +1642,7 @@ int main(int argc, char** argv) {
                 s->nssim[s->nums] += 1.0;
                 flagf   = 0;
                 flagm   = 0;
+                dumpBuf.clear(); //Step S1: this draw's epoch buffer. See the note on `ndw`.
                 dclsEvent = DET_NONE; //DetClass for this draw; stays NONE if no light curve
                 initial = 0.0;
                 // (Step B2: the old single `test = RandR(0.0,1.0)` draw consumed here by
@@ -1468,6 +1829,18 @@ int main(int argc, char** argv) {
                                 l->souy[ndw] = s->pos2c;
                                 l->erra[ndw] = errs;
                                 l->tele[ndw] = 0; // 0 = LSST
+
+                                // Step S1. Everything here was computed above for the
+                                // detection test; nothing new is drawn. magnio in
+                                // particular is the noisy datum chi1/chi2/chi3 just used.
+                                if (dumpSpec.on)
+                                    dumpBuf.push_back(DumpEpoch{
+                                        tim, 0, int(fi),
+                                        magnio, magni[fi], magni0[fi], errg,
+                                        s->ut, s->ut0, s->Astar, Astar0,
+                                        s->def1c, s->def2c, s->def1a, s->def2a,
+                                        s->pos1b, s->pos2b, s->pos1c, s->pos2c,
+                                        l->pos1,  l->pos2,  errs});
     
                                 flag2 = 0.0;
                                 if (std::fabs(magnio - s->magb[fi]) > std::fabs(3.0 * errg))    flag2 = 1.0;
@@ -1614,6 +1987,20 @@ int main(int argc, char** argv) {
                                 // own per-exposure error is both used and stored.
                                 l->erra[ndw] = errsR;
                                 l->tele[ndw] = 1; // 1 = Roman/F146
+
+                                // Step S1, Roman side. s->ut, s->def* and s->pos* are the
+                                // L2-frame values lightcurve(..., 1) rebuilt above, not the
+                                // Rubin ones from earlier in this timestep. Astar0 is
+                                // recomputed from s->ut0 because the Roman branch's own
+                                // Astar0R went out of scope before the magnitude gate.
+                                if (dumpSpec.on)
+                                    dumpBuf.push_back(DumpEpoch{
+                                        tim, 1, fiR,
+                                        magnioR, magni[fiR], magni0[fiR], errgR,
+                                        s->ut, s->ut0, s->Astar, magnifOf(s->ut0),
+                                        s->def1c, s->def2c, s->def1a, s->def2a,
+                                        s->pos1b, s->pos2b, s->pos1c, s->pos2c,
+                                        l->pos1,  l->pos2,  errsR});
 
                                 CHECK(sqR >= 0);
                                 CHECK(sqR <= int(NlRoman - 1));
@@ -2055,6 +2442,103 @@ int main(int argc, char** argv) {
                     << nres5_L << " " << nres20_L << " " << nresPSF_L << " " << dsepMax_L << " "
                     << nres5_R << " " << nres20_R << " " << nresPSF_R << " " << dsepMax_R << "\n";
             filg_in.close();
+
+            // ------------------------------------------------------------------------------
+            // Step S1. Commit this draw's buffered light curve if it fills a requested
+            // sample class. Here, and not in the time loop, because detL/detR/detJ and the
+            // Fisher sigmas -- which is what the classes are defined in terms of -- do not
+            // exist until now.
+            //
+            // First match wins: an event is written once, under the first class in the spec
+            // file whose quota is still open. Otherwise a `both` event would also land in
+            // `any` and the same light curve would be drawn twice in one figure.
+            // ------------------------------------------------------------------------------
+            if (dumpSpec.on and not dumpBuf.empty()) {
+                double maxShift = 0.0;
+                for (const DumpEpoch& e : dumpBuf)
+                    maxShift = std::max(maxShift,
+                                        std::sqrt(e.def1c * e.def1c + e.def2c * e.def2c));
+
+                const SampleFacts facts{detL, detR, detJ, l->tE, sched.zone(l->t0),
+                                        nepLpk, nepRpk, ndw_L, ndw_R,
+                                        co->okB[SROMAN], maxShift};
+
+                for (SampleClass& c : dumpSpec.classes) {
+                    if (c.kept >= c.quota)        continue;
+                    if (!sampleMatch(c, facts))   continue;
+
+                    std::ostringstream pr;
+                    pr << std::setprecision(10)
+                       << "# Sample event for class '" << c.name << "'.\n"
+                       << "# One key per line. Angles in deg, times in days, masses in Msun,\n"
+                       << "# distances in kpc, angular scales in mas. A sigma of -1 means the\n"
+                       << "# parameter was NOT measured by that survey (inactive or no epochs),\n"
+                       << "# never that it was measured to be -1.\n"
+                       << "class "        << c.name        << "\n"
+                       << "population "   << gPop->name    << "\n"
+                       << "lon "          << s->lon        << "\n"
+                       << "lat "          << s->lat        << "\n"
+                       << "tE "           << l->tE         << "\n"
+                       << "t0 "           << l->t0         << "\n"
+                       << "u0 "           << l->u0         << "\n"
+                       << "xi "           << s->xi         << "\n"
+                       << "piE "          << l->piE        << "\n"
+                       << "tetE "         << l->tetE       << "\n"
+                       << "Ml "           << l->Ml         << "\n"
+                       << "Dl "           << l->Dl         << "\n"
+                       << "Ds "           << s->Ds         << "\n"
+                       << "Vt "           << l->Vt         << "\n"
+                       << "murel_yr "     << l->murel * year << "\n"
+                       << "mus1 "         << s->mus1       << "\n"
+                       << "mus2 "         << s->mus2       << "\n"
+                       << "mul1 "         << l->mul1       << "\n"
+                       << "mul2 "         << l->mul2       << "\n"
+                       << "lens_struc "   << int(l->struc) << "\n"
+                       << "mbs0 "         << s->mbs[0]     << "\n"
+                       << "fb0 "          << s->fb[0]      << "\n"
+                       << "mbs1 "         << s->mbs[1]     << "\n"
+                       << "fb1 "          << s->fb[1]      << "\n";
+                    pr << "magb";  for (int i = 0; i < M; ++i) pr << " " << s->magb[i];
+                    pr << "\nblend"; for (int i = 0; i < M; ++i) pr << " " << s->blend[i];
+                    pr << "\n"
+                       << "ndw_L "        << ndw_L         << "\n"
+                       << "ndw_R "        << ndw_R         << "\n"
+                       << "nep_pk_L "     << nepLpk        << "\n"
+                       << "nep_pk_R "     << nepRpk        << "\n"
+                       << "detL "         << detL          << "\n"
+                       << "detR "         << detR          << "\n"
+                       << "detJ "         << detJ          << "\n"
+                       << "dt_edge "      << sched.dtToSeasonEdge(l->t0) << "\n"
+                       << "t0zone "       << sched.zone(l->t0)           << "\n"
+                       << "du_sat "       << duSat         << "\n"
+                       << "max_shift "    << maxShift      << "\n"
+                       << "dsep_max_L "   << dsepMax_L     << "\n"
+                       << "dsep_max_R "   << dsepMax_R     << "\n"
+                       << "okA_J "  << co->okA[SJOINT] << " okA_L " << co->okA[SRUBIN]
+                       << " okA_R " << co->okA[SROMAN] << "\n"
+                       << "okB_J "  << co->okB[SJOINT] << " okB_L " << co->okB[SRUBIN]
+                       << " okB_R " << co->okB[SROMAN] << "\n"
+                       << "sigtE_J "   << co->Era[SJOINT][1] << " sigtE_L " << co->Era[SRUBIN][1]
+                       << " sigtE_R "  << co->Era[SROMAN][1] << "\n"
+                       << "sigpiE_J "  << co->Era[SJOINT][3] << " sigpiE_L " << co->Era[SRUBIN][3]
+                       << " sigpiE_R " << co->Era[SROMAN][3] << "\n"
+                       << "sigtetE_J "  << co->Erb[SJOINT][0] << " sigtetE_L " << co->Erb[SRUBIN][0]
+                       << " sigtetE_R " << co->Erb[SROMAN][0] << "\n"
+                       << "relMl_J "  << co->relMl[SJOINT] << " relMl_L " << co->relMl[SRUBIN]
+                       << " relMl_R " << co->relMl[SROMAN] << "\n";
+
+                    std::ostringstream idss;
+                    idss << std::setw(3) << std::setfill('0') << (++dumpSeq);
+                    writeSampleEvent(dumpSpec, c.name, idss.str(), dumpBuf, pr.str(),
+                                     *s, *l, *as);
+                    c.kept += 1;
+                    std::cout << "  [sample] " << c.name << " " << idss.str()
+                              << "  tE=" << l->tE << "d  Ml=" << l->Ml << "Msun"
+                              << "  ndw_L=" << ndw_L << " ndw_R=" << ndw_R
+                              << "  (" << c.kept << "/" << c.quota << ")" << std::endl;
+                    break;
+                }
+            }
 
             // Step H3. One row per DETECTED event, carrying both forecasts for that same
             // event. Written here rather than beside the Fisher call because duSat and the

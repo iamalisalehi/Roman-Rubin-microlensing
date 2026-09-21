@@ -20,6 +20,9 @@
 !**/*.bib
 !**/*.md
 !**/*.sh
+# Sample-event dump specs (Step S1): which illustrative events ./roman should write
+# full light curves for. Source, not data -- the .dat files they produce stay ignored.
+!**/*.spec
 !LICENSE
 
 # -------------------------

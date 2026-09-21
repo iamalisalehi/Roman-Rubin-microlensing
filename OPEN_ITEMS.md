@@ -1373,3 +1373,55 @@ and closed per event.
 minutes of CPU. Any reader should also reject lines whose field count is not 70. For v3, either
 patch the six rows and split line 687 from the logs, or have the analysis read `nsim` from the
 logs.
+
+## Roman's photometric error model is a flagged placeholder, and every Roman error bar inherits it
+
+**What is wrong.** `errRomanM()` (`Bulge_LSST.cpp`, just above `main`) carries
+`TODO(Ali): PLACEHOLDER`. It is a **nearest-neighbour** lookup of magnitude in
+`files/sigma_roman.txt` -- no interpolation -- and the comment above it says outright that what
+that file encodes has not been confirmed: whether a flat mag-vs-error curve with no per-visit
+depth term is right for Roman, and whether the file's magnitude sampling is fine enough for
+nearest-neighbour to be acceptable. Rubin's counterpart, `errlsstM()`, uses each visit's own
+5-sigma depth and is not affected.
+
+**Why it matters scientifically.** It sets `errgR`, the F146 photometric error on every Roman
+epoch. That feeds Roman's detection chi-square, every Roman photometric Fisher matrix, and --
+from Step S1 on -- the Roman error bars drawn in every sample light-curve figure. A coarse file
+sampled nearest-neighbour makes the error a step function of magnitude, so a figure of a
+brightening source would show the error bars jumping in discrete steps rather than shrinking
+smoothly.
+
+**Why deferred.** Found while designing Step S1, which is a dump of existing values and must not
+change them: fixing the model changes every Roman forecast, which is a result-moving change to be
+made deliberately and re-verified with `fishertest`, not slipped in beside a plotting step.
+
+**What the fix involves.** Establish what `sigma_roman.txt` is (its provenance, and whether it is
+per exposure -- which is what one row of `RomanBaseline.dat` is), then replace the lookup with
+linear interpolation in magnitude, and confirm with `fishertest` and a stub run how far Roman's
+sigmas move. Until then, a figure caption quoting Roman error bars should say they come from a
+tabulated per-exposure model.
+
+## The legacy magC0.dat / datC0.dat demo dump is dead code
+
+**What is wrong.** Inherited from the LMC code. `fil4` (`magC0.dat`, a dense model curve) and
+`fil5` (`datC0.dat`, noisy sampled epochs) are written only when `flagm > 0`. `flagm` is set only
+inside `if (test < 1.0 && save < 0 && gPop->legacyId == 1)`, `save` is initialised to 0, and its
+only increment is inside that block. The condition can never be true, so both files are always
+0 bytes (confirmed in the repo and in `runs/prod_bh_20260917/`). The `BHLSSTMONTS.dat` write,
+gated on the same `flagm`, is dead with it. `fil4`/`fil5` are still opened, truncated and
+checked on every run.
+
+**Why it matters.** Mostly it does not -- except as a trap. The obvious "fix" of making the gate
+reachable would silently change the run, because the `fil5` block calls `RandN()` inline and
+consumes the RNG stream, which changes every subsequent event. It is also superseded: Step S1's
+`--dump-samples` does the same job for both telescopes, in both frames, for any population,
+without touching the RNG (Deviation 50).
+
+**Why deferred.** Removing it is a cleanup with no scientific effect, and it touches the file
+setup that `runctl.sh`'s resume logic depends on (DEVIATIONS.md's output-file table lists
+`magC0.dat` and `datC0.dat` as truncated on start and appended on resume).
+
+**What the fix involves.** Delete the `flagm` gate's three write blocks, the `fil4`/`fil5`
+streams, `save`, and `initial` (which only exists to widen that dead block's time range); update
+the output-file table in DEVIATIONS.md; confirm a stub run is byte-identical before and after.
+Do **not** instead make the gate reachable.

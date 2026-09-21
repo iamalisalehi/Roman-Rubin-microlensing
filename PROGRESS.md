@@ -1,5 +1,23 @@
 # PROGRESS.md — where this project stands
 
+**Newest (2026-09-21): Step series S -- sample light curves for illustrative figures.**
+Requested: per-band light curves and astrometric tracks, with and without parallax, with
+instrument error bars, both telescopes, across physics and detection classes (after
+Sajadian & Makler). Three steps, each approved before it starts:
+- **S1 ✅ `--dump-samples <spec>`** -- Deviation 50. Buffers every recorded epoch (per FILTER,
+  both observer frames) and writes `<class>_<id>_{epochs,model,params}.dat` for events that
+  fill a class in the spec (`samples/{bulge,bh,ns}.spec`). **Consumes no RNG: verified
+  byte-identical** on all five science outputs against a run without it. Classes: `astrometric`,
+  `roman_only`, `both`, `gap_filler`, `rubin_only`, `any`/`ns_typical`/`bh_short`/`bh_long`.
+  Testing found and fixed a selector defect: `t0zone` is calendar-only, so `gap_filler` was
+  picking sightlines Roman never observes; it now requires `ndw_R > 0`.
+- **S2 next: the plotter**, `analysis/s2_sample_lightcurves.py` on `plotstyle.py`.
+- **S3 after: short runs** under `runctl.sh` (pausable), one per population, with a timing
+  estimate first. **Carry forward:** `rubin_only` filled 0/2 and `gap_filler` 1/3 at the stub's
+  footprint sightline, where Roman (~50,000 epochs) sees everything Rubin does -- S3 needs
+  footprint sightlines with thinner or season-edge Roman coverage. Epoch files are ~11 MB per
+  event at a footprint sightline (one row per Roman exposure): budget ~150-200 MB per population.
+
 **Last updated:** 2026-09-17 (later still), when **lens populations became a runtime choice** so
 the pipeline can be run for a black-hole and a neutron-star population — Deviation 45.
 

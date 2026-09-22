@@ -11,7 +11,15 @@ Sajadian & Makler). Three steps, each approved before it starts:
   `roman_only`, `both`, `gap_filler`, `rubin_only`, `any`/`ns_typical`/`bh_short`/`bh_long`.
   Testing found and fixed a selector defect: `t0zone` is calendar-only, so `gap_filler` was
   picking sightlines Roman never observes; it now requires `ndw_R > 0`.
-- **S2 next: the plotter**, `analysis/s2_sample_lightcurves.py` on `plotstyle.py`.
+- **S2 ✅ the plotter** -- Deviation 51. `analysis/s2_sample_lightcurves.py`, one 5x2 figure
+  per event, rows 1-2 in the layout of Sajadian & Makler's Figure 2 (magnification and sky
+  trajectories, with and without parallax), rows 3-5 diagnostics; a point is drawn only if its
+  sigma < signal/3; test renders in `figures/samples/s2_acceptance/`. **Its no-parallax
+  curve is the geocentric one (Gould 2004), not the simulation's**: `lightcurve()` references
+  parallax to Earth at t = 0, so the simulation's own no-parallax line is offset by pi_E x (up to
+  ~2 AU) and would overstate the parallax signal ~7x on the first event drawn. **New open item:**
+  the table's `t0` is not the observed peak (median shift ~0.12 tE on ten events), and
+  `t0zone`/`dt_edge` -- F2's gap-filling axes -- are computed from it.
 - **S3 after: short runs** under `runctl.sh` (pausable), one per population, with a timing
   estimate first. **Carry forward:** `rubin_only` filled 0/2 and `gap_filler` 1/3 at the stub's
   footprint sightline, where Roman (~50,000 epochs) sees everything Rubin does -- S3 needs

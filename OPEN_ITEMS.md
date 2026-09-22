@@ -1425,3 +1425,51 @@ setup that `runctl.sh`'s resume logic depends on (DEVIATIONS.md's output-file ta
 streams, `save`, and `initial` (which only exists to widen that dead block's time range); update
 the output-file table in DEVIATIONS.md; confirm a stub run is byte-identical before and after.
 Do **not** instead make the gate reachable.
+
+## The table's t0 is not the observed peak, and t0zone / dt_edge / nep_pk are all computed from it
+
+**What is wrong.** `lightcurve()` measures the observer's displacement from Earth's position at
+**t = 0** (the start of the simulation), so `u0` and `t0` are the closest approach and its time
+for the straight line in THAT gauge -- in effect, as seen by an observer parked at Earth's t = 0
+position. The event an Earth observer actually sees is the parallax-bent trajectory, whose
+closest approach is at a different time and a different separation. Found while drawing the
+Step S2 sample figures (Deviation 51). On the ten S1 acceptance-test events (bulge, unweighted,
+so indicative only):
+
+| event | tE [d] | observed peak - t0 [d] | as a fraction of tE | u0 (table) | u_min (observed) |
+|---|---:|---:|---:|---:|---:|
+| both_003 | 82.4 | +14.0 | 0.17 | 0.514 | 0.249 |
+| both_006 | 27.0 | +5.9 | 0.22 | 0.738 | 1.969 |
+| any_004 | 134 | +3.6 | 0.03 | 0.857 | 0.229 |
+| gap_filler_010 | 6.37 | -2.7 | 0.42 | 0.318 | 0.123 |
+| astrometric_001 | 1142 | +351 | 0.31 | 0.355 | 0.122 |
+
+Median |shift| over the ten is ~0.12 tE. `both_003` is the sharp case: the table says its `t0`
+fell **in a mid-mission gap**; its observed peak is **inside a high-cadence Roman season**, and
+Roman recorded it.
+
+**Why it matters scientifically.** Three table columns are computed from the parameter `t0`
+rather than from the observed peak: `t0zone` and `dt_edge` (the gap-filling axes -- F2's
+headline plots against `dt_edge` and splits on `t0zone`), and `nepL_pk`/`nepR_pk` (the
++-2 tE coverage window, which the S1 sample selectors also use). An event near a season edge
+can be put on the wrong side of it. For short events the shift is a sizeable fraction of tE,
+which is exactly the regime where the gap-filling result is claimed. The direction of any bias
+is not obvious -- the shift is symmetric-looking in the sample -- so it needs measuring, not
+guessing.
+
+**What it does NOT affect.** The Fisher forecasts: the marginalised sigma(pi_E) is invariant
+under the reparametrisation (it redefines u0, t0, tE as functions of pi_E, not pi_E itself),
+and the photometric model and its derivatives are self-consistent in the t = 0 gauge. The
+simulation's no-parallax chi-square (`dchiP`) is in the same gauge and so overstates the
+parallax signal, but it feeds only the dead `BHLSSTMONTS.dat` write (see the magC0/datC0 item).
+Nor the detection test, which compares the true light curve to a flat baseline.
+
+**Why deferred.** It is a question about F2's classification, discovered in a plotting step.
+Changing what `t0zone` means changes a headline number and must be done deliberately.
+
+**What the fix involves.** Measure first: compute the observed peak time per event (the minimum
+of `u(t)` in the geocentric frame -- the S2 plotter's `Geocentric.tref` does this from a dense
+curve; the C++ could do it cheaply in the time loop), re-derive `t0zone`/`dt_edge` from it on a
+stub run, and count how many events change zone, split by tE. If it is material, add
+`t_peak`, `u_min`, `t0zone_pk`, `dt_edge_pk` as appended columns, leave the old ones, and rerun
+F2 against both.

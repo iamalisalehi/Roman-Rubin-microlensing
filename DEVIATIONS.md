@@ -3616,4 +3616,109 @@ brief estimated:** the brief's ~1 MB per event was the model file (1.4-1.5 MB, a
 epoch file is ~11 MB at a footprint sightline, because it has one row per Roman exposure. 12
 events came to 117 MB.
 
+**Commit:** `b277f90`.
+
+---
+
+## 51. Step S2: the sample-event plotter, and why its "without parallax" is not the simulation's (2026-09-21)
+
+**What the plan said.** Nothing; second step of the S series (Deviation 50).
+
+**What was done.** `analysis/s2_sample_lightcurves.py` draws one double-column figure per
+sample event from S1's three files: (a) the decade and (b) the peak as dm = m - m_base in all
+seven filters, (c) data minus the no-parallax model with the parallax signal drawn over it,
+(d) |centroid shift| vs time, (e) the astrometric ellipse, (f) the sky tracks with the linear
+proper motion removed. Choices agreed before writing: **dm** (bands overlay; chromatic blending
+visible), **binned astrometry** (inverse-variance, sigma/sqrt(N)), **one figure per event**, a
+gallery later. Not weighted, deliberately -- one event pools nothing; the `-1` sentinel is the
+romanlib rule that applies, and is printed as "n/m".
+
+**A departure from the approved brief, and the reason: the no-parallax model.** The brief said
+the dashed curves would be the simulation's own no-parallax model (`mag0_*`, `def*a`). The first
+render showed that is the wrong curve to publish. `lightcurve()` references the observer's
+displacement to Earth's position at **t = 0**, so its no-parallax line is offset from the true
+trajectory by pi_E times the Earth's displacement since the start of the simulation: for
+`both_003`, |du| = 0.358 = pi_E x 1.75 AU at t0, so the event really peaks at u = 0.249, 14 d
+after t0, while the "no-parallax" curve peaks at u0 = 0.514 at t0. Drawn as the parallax signal
+that gives **0.7 mag**; almost all of it is the constant and linear part of the Earth's motion,
+which any fit absorbs into u0, t0, tE and the direction of motion. The plotter's default is the
+standard geocentric frame (Gould 2004): the straight line matching the true trajectory's
+position and velocity at its own peak, per observer frame. The residual is then the observer's
+acceleration -- zero at the peak by construction, **0.1 mag** for `both_003` -- which is the part
+a fit can measure. The trajectory vector is recovered exactly from the dump as
+`u_vec = def_c (u^2 + 2) / thetaE` (checked against `u`: max relative error 5.6e-8).
+`--noplx simulation` keeps the old curve, for comparison only.
+
+The finding has a consequence outside the figure -- the table's `t0` is not the observed peak,
+and `t0zone`/`dt_edge`/`nep_pk` are computed from it. Recorded in OPEN_ITEMS.md, not fixed.
+
+**Three other departures from the brief, found by looking at renders.**
+1. **Astrometric bins are adaptive**, not fixed at 1 d / 10 d: at the fixed widths Roman's
+   binned sigma (~0.5 mas) still swamped a 0.15 mas shift. Width is now chosen per event so a
+   bin's error is ~1/4 of the peak shift, capped at tE/3 and 30 d; bins with fewer than 3
+   exposures are dropped (a one-exposure season-edge bin was drawing +-5 mas crosses). The width
+   is printed in the legend. The ellipse panel omits bins whose error exceeds the peak shift and
+   says how many; panel (d) keeps them. Rubin's bins are drawn only when their error is below
+   the peak shift, otherwise the legend states their size.
+2. **Seasons are shaded by cadence**, dark for high, light for low. The baseline has ten
+   windows, the middle four at low cadence (Deviations 15-16); the first render drew them alike.
+3. **Panels are referenced to the observed peak**, `t - t_peak`, and the header gives both the
+   observed peak's season and the table's `t0zone`, since they can disagree.
+
+**Physics checks the script asserts, not just draws.** (1) the epoch file's model magnitude
+matches the dense model at the same instant, frame and filter: worst 2.9e-4 mag over the ten
+events (interpolation error; limit 1e-2); (2) no centroid shift exceeds the point-lens maximum
+thetaE/(2 sqrt 2) -- several events sit exactly on it, as every event with u0 < sqrt(2) must;
+the first tolerance (1e-9) was tighter than the dump's 8-digit write precision and was wrong,
+now 1e-6; (3) the parallax gauge: |u - u_noplx| = 0 exactly at t = 0 in the Earth frame, and
+~1e-3 in the L2 frame (7.5e-4, 1.4e-3, 3.9e-4 ... -- the satellite offset, as it must be).
+
+**What the ten test figures show, since they are the first single events drawn.**
+`astrometric_001` (tE = 1142 d, mu_rel = 0.38 mas/yr, pi_E = 0.21) is parallax-DOMINATED: the
+relative track loops every year and the light curve has a bump every year for a decade; joint
+sigma(pi_E) 0.36%. `gap_filler_010` (tE = 6.4 d) peaks outside every Roman season at a field
+Roman observes 49,982 times: zero Roman epochs on it, Rubin catches it with about a dozen
+points, and joint sigma(tE) is 74% -- detected, barely characterised. `roman_only_005` peaks in a
+LOW-cadence season, 8 Roman epochs on it; Rubin's 49 miss it because the source carries only
+~1-15% of the light in Rubin's blended bands against 82% in F146.
+
+**Verification.** All ten events render; all three checks pass on all ten; every PNG was
+inspected, over four render passes, and each pass found defects a file-written check could not
+(off-panel label inflating the bounding box by half the page, error bars swamping panels,
+clipped sky tracks, legend over data, the gauge itself).
+
+**Revised after the user's review (2026-09-22), before commit.** The first version drew
+light curves as dm per band and had no sky-trajectory panel. The user asked for the layout of
+Figure 2 of Sajadian & Makler: magnification with and without parallax on one axis, and the
+source (deflected and undeflected), the lens (with and without parallax), the relative track and
+the deflection on the sky -- keeping the diagnostic panels, and not showing error bars that carry
+no information. The figure is now 5 x 2:
+(a)/(c) magnification over the decade / at the peak, every filter deblended onto one curve pair
+via `mag_to_A` (A is achromatic for a point lens; the error grows as 1/fb); (b)/(d) the sky
+trajectories over the decade / at the closest approach; (e) dm per band, kept for the chromatic
+blending; (f) the parallax signal; (g) |shift| vs time; (h) the ellipse; (i) the proper-motion-
+removed tracks; (j) the trajectory key.
+
+Four decisions in the revision:
+1. **The zoom (d) is its own panel, not an inset**, and is set by the ANGULAR scale,
+   +-max(1.5 thetaE, 3 x peak shift) about the closest approach. Figure 2's events have
+   thetaE = 70-80 mas; ours are 0.1 to a few mas against 10-20 mas of proper motion over the
+   decade, so on (b) the deflected and undeflected source coincide. A time window (+-1.5 tE)
+   was tried first and is the whole decade for a slow event.
+2. **The lens without parallax** is its straight proper-motion line through the CENTRE of its
+   parallax ellipse, found by a least-squares fit of c + a cos(wt) + b sin(wt) to
+   pos - mu (t - t0): the code's circular orbit makes the parallax term a pure first harmonic,
+   so the fit is exact where a plain mean over 10.3 years is not.
+3. **One information rule for every panel:** a point or bin is drawn only if its 1 sigma is
+   below 1/3 of the signal in that panel (amplitude, parallax signal, peak shift), so each
+   point shown distinguishes it at 3 sigma alone; each panel states how many it left out. The
+   first attempt (sigma < signal) let through bars nearly as large as the event.
+4. **At most 60 Roman astrometric bins across the window.** A bright source reaches the error
+   target in ~2 d and the individually informative crosses overplotted into a block; widening
+   merges information rather than hiding it.
+
+Line style is consistent within the figure (solid = with parallax, dashed = without); Figure 2
+uses the opposite on its light curves. The L2-frame magnification is drawn separately only when
+it differs from the Earth frame by more than 1% (4 of the 10 test events, up to 1.6%).
+
 **Commit:** pending.

@@ -590,10 +590,15 @@ double CCM89_b(double lambda_um)
     throw std::runtime_error("CCM89 wavelength out of supported range");
 }
 
+// A_lambda / A_V from Cardelli, Clayton & Mathis (1989). CCM89_a/b take a WAVELENGTH in
+// micron and form x = 1/lambda themselves, so lambda is passed straight through. Until
+// Deviation 53 this function inverted it first, evaluating the law at 1/lambda: A_lambda/A_V
+// then ROSE toward the red (u 0.07, F146 0.75 at R_V = 2.5 against the true 1.69 and 0.20),
+// and every run from 9919917 on had optical sources too bright and F146 sources too faint.
+// tests/extinction_test.cpp pins the corrected values.
 double AlAv(double lambda_um, double Rv)
 {
-    double x = 1.0 / lambda_um;
-    return CCM89_a(x) + CCM89_b(x) / Rv;
+    return CCM89_a(lambda_um) + CCM89_b(lambda_um) / Rv;
 }
 
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH

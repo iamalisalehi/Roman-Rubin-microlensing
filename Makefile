@@ -59,6 +59,18 @@ $(FIXTURE_TARGET): tests/fisher_fixture.cpp Bulge_LSST.cpp Lensing.cpp helper.cp
 fishertest-run: $(FIXTURE_TARGET)
 	./$(FIXTURE_TARGET)
 
+# ---------------------------------------------------------------------------
+# CCM89 extinction-law unit test (tests/extinction_test.cpp, Deviation 53)
+#
+# Pins A_V/A_V = 1 at V, a monotone fall from u to F146, and A_lambda/A_V at the seven
+# survey bands. Needs no data files. Added after the law ran inverted for two months.
+#     make extinctiontest && ./extinctiontest
+# ---------------------------------------------------------------------------
+EXT_TARGET = extinctiontest
+
+$(EXT_TARGET): tests/extinction_test.cpp helper.cpp Bulge.h
+	$(CXX) $(CXXFLAGS) -I. -o $@ tests/extinction_test.cpp helper.cpp $(LDLIBS)
+
 # Clean
 clean:
-	rm -f $(OBJS) $(TARGET) $(FIXTURE_TARGET)
+	rm -f $(OBJS) $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET)

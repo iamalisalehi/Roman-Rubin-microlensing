@@ -1473,3 +1473,123 @@ curve; the C++ could do it cheaply in the time loop), re-derive `t0zone`/`dt_edg
 stub run, and count how many events change zone, split by tE. If it is material, add
 `t_peak`, `u_min`, `t0zone_pk`, `dt_edge_pk` as appended columns, leave the old ones, and rerun
 F2 against both.
+
+## **CRITICAL.** The extinction law is inverted: `AlAv()` takes 1/lambda twice
+
+**Status 2026-09-22: FIXED IN CODE (Step E1, Deviation 53), NOT YET IN THE DATA.** Every
+existing production table, figure, the report and the whitepaper still carry the inverted law.
+This item closes when `bulge`, `bh` and `ns` are re-run and their products regenerated.
+
+**Found 2026-09-22 while choosing sightlines for Step S3. Not fixed -- awaiting the user's
+decision, because the fix moves every result in the project.**
+
+**What is wrong.** `helper.cpp`:
+
+```cpp
+double AlAv(double lambda_um, double Rv) {
+    double x = 1.0 / lambda_um;             // wavelength -> wavenumber
+    return CCM89_a(x) + CCM89_b(x) / Rv;    // but CCM89_a/b take a WAVELENGTH and do 1/x again
+}
+```
+
+so CCM89 is evaluated at wavenumber = lambda. The law comes out **inverted**: extinction rises
+from blue to red instead of falling. `A_lambda / A_V` at the bulge's R_V = 2.5:
+
+| band | code | correct CCM89 | code / correct |
+|---|---:|---:|---:|
+| u | 0.072 | 1.694 | 0.04 |
+| g | 0.112 | 1.216 | 0.09 |
+| r | 0.169 | 0.854 | 0.20 |
+| i | 0.231 | 0.627 | 0.37 |
+| z | 0.290 | 0.460 | 0.63 |
+| y | 0.346 | 0.381 | 0.91 |
+| F146 | 0.751 | 0.197 | 3.8 |
+
+"Correct" was computed two independent ways: the code's own `CCM89_a/b` called with the
+wavelength, and a from-scratch Python transcription of Cardelli, Clayton & Mathis (1989), which
+also returns A_V/A_V = 0.999 at 0.55 um. The maps really are A_V (`maps.py`: `av = rv * ebv`),
+so the error is entirely here. Introduced in `9919917` (2026-07-26, "fixed some roman values"),
+before the refactor began, so **every production run carries it**: v3 (`test5.dat`), `bh`,
+`ns`, and every number in `Report/populations_report.tex` and the whitepaper.
+
+**How it showed up.** Profiling the best `rubin_only` sightline (l = -0.619, b = -1.04) in the
+`bh` table: source baselines averaged r ~ 19.5 and F146 ~ 28.1-29.3. A reddened bulge star
+must be BRIGHTER in the near-infrared than in r; the CMD files themselves are right (first
+bulge row, a 0.61 Msun K dwarf: absolute r 7.83, F146 6.79).
+
+**Why it matters scientifically -- in the direction of every headline.** Toward the low-latitude
+bulge A_V is ~5-20 mag. With the inverted law, the optical bands see a small fraction of the
+true extinction and F146 sees several times too much: Rubin's sources are several magnitudes
+too bright and Roman's too faint. Rubin's detections, blending and precision are overstated;
+Roman's understated. The "Rubin-only ~89% of detections" split, the joint-vs-single gains, the
+gap-filling result and the astrometric numbers all move, and the direction favours Rubin.
+
+**Measured size (2026-09-22).**
+- *Survey-wide*, from the `bh` table's applied r-band extinction `Ai_r` (A_V = Ai_r / 0.169,
+  approximate for disk sources, which have R_V = 3.1): over 110,144 detections, A_V has median
+  **3.8** (16-84%: 2.3-8.9, max 21.0); 38% have A_V > 5, 12% > 10. The mean correction is
+  **r +3.7 mag fainter, F146 3.0 mag brighter** -- a 6.7 mag swing in the Rubin-Roman comparison
+  for the typical detected event. (Indicative only: the detected set was itself selected under
+  the bug.)
+- *At the best "Rubin-only" sightline* (l = -0.619, b = -1.04): mean A_V **12.6**, so F146 was
+  made 7.0 mag too faint and r 8.6 mag too bright. Its Rubin-only events -- the densest in the
+  survey -- are **largely an artifact of the bug**: Roman "missed" sources the law hid from it.
+- *Stub (the S1 acceptance flags, scratch build with the one-line fix)*: a lightly extincted
+  patch (A_V ~ 2.3). Blended r baseline 17.75 -> 19.35, F146 21.39 -> 20.53; the source's own
+  r - F146 goes from -0.7 to +1.7 (IR-bright, as it must be). Roman-only detections 31 -> 41,
+  both 18 -> 15, Rubin-only 42 -> 42, over ~90 detections -- small numbers, and the RNG stream
+  diverges once any magnitude changes a detection, so this is not a like-for-like comparison.
+
+**Why deferred.** It is a one-line fix, but it invalidates every production data product and
+means re-running `bh`, `ns` and `bulge` (~13.5 h CPU each) and regenerating every figure, the
+report and the whitepaper numbers. That is the user's call, not a side effect of a plotting step.
+It also blocks Step S3: sample figures drawn now would illustrate the wrong photometry.
+
+**What the fix involves.** `return CCM89_a(lambda_um) + CCM89_b(lambda_um) / Rv;` -- and a unit
+test pinning A_V/A_V = 1 at 0.55 um and the table above, since nothing caught this for two
+months. Then: `fishertest` (unaffected -- it uses no photometry), a stub comparison, the three
+production runs, and every downstream product.
+
+## No absolute yield exists: the "detected events" counts are Monte Carlo sample sizes, and the rate has no compact-object abundance
+
+**Raised 2026-09-22 by the user:** the `bh`/`ns` detection counts (110,144 / 93,685 in the report's
+table) looked ~4 orders of magnitude above the literature -- Sajadian & Sahu 2023 (AJ 165, 96):
+Roman detects 56-77 isolated stellar-mass BHs (2-50 Msun); Sajadian & Makler (arXiv:2608.16448):
+Rubin detects ~2 (LMC) and ~0.3 (SMC) IBH events for a BH mass fraction F = 5e-3.
+
+**What those counts are.** The number of Monte Carlo draws that passed detection. It is set by the
+compute budget (`--events 300 --lenses 50`, capped at 50,000 draws per sightline), not by the sky,
+and every draw's lens IS a BH (or NS). It is not a yield and must not be read as one. The report
+says so in its caveats ("No absolute yield is quoted") but its Table 1 row is labelled "detected
+events", which invites exactly that reading.
+
+**What the code's own legacy rate implies** (`Neven = nstart * Gamma * 10`, deg^-2 per 10 yr, in
+MapLMC column 49 as log10; summed as Neven x w_area over the 1612 aggregated sightlines, 59.3
+deg^2, split per sightline by the unweighted detL/detR fractions):
+
+| | joint | Rubin | Roman | both |
+|---|---|---|---|---|
+| `bh` | 7,111 | 6,747 | 738 | 379 |
+| `ns` | 20,660 | 19,620 | 1,814 | 808 |
+
+**These assume ALL Galactic mass is in the chosen population**: `s.opt` (the optical depth that
+feeds `Gamma`) is computed from the full stellar mass density in `optical_depth()`, and nothing
+multiplies it by the population's mass fraction F. With F = 5e-3 (Sajadian & Makler's value) the
+`bh` numbers become Roman ~3.7, Rubin ~34 over 10 yr -- i.e. Roman is ~15-20x BELOW Sajadian &
+Sahu, not 10^4 above. Candidate reasons, none yet measured: the inverted extinction law (makes
+F146 ~3 mag too faint, so it suppresses Roman specifically), the 3-1000 Msun range (<M^-1/2> is
+1.9x smaller than for 2-50 Msun at fixed tau), `--stride-roman 5`, a different F, and the legacy
+formula's own unweighted averages of tau and 1/tE (the Deviation 41 bias, never checked here).
+Rubin toward the bulge vs the Magellanic Clouds is not like for like (source density and tau are
+each ~10-100x higher toward the bulge).
+
+**Why deferred.** Every published number in the report is a fraction, median or ratio, which a
+global F cancels out of. An absolute yield is a new deliverable, not a fix; it needs the user's
+choice of F per population and a validation of the legacy `Neven` against a known rate (OGLE-IV /
+KMTNet for the `bulge` population) before any number is quoted.
+
+**What doing it would involve.** Multiply the rate by F_pop (a per-population constant in
+`LensPopulation`), recompute Neven with the event-rate weight rather than unweighted draw
+averages, validate on `bulge` against OGLE-IV/KMTNet rates and Roman's Penny et al. 2019 yield,
+then compare `bh` against Sajadian & Sahu on Roman's footprint with their mass range. Meanwhile,
+relabel the report's "detected events" row as the Monte Carlo sample size.

@@ -3721,4 +3721,67 @@ Line style is consistent within the figure (solid = with parallax, dashed = with
 uses the opposite on its light curves. The L2-frame magnification is drawn separately only when
 it differs from the Earth frame by more than 1% (4 of the 10 test events, up to 1.6%).
 
-**Commit:** pending.
+**Commit:** `76e3da8`.
+
+---
+
+## 52. A pre-existing bug: the extinction law is inverted, in every run since 2026-07-26 (2026-09-22)
+
+**What the plan said.** Nothing; the extinction model is upstream of the refactor. Recorded
+here because the policy is that every pre-existing bug found gets an entry; the full account,
+the measured size, and the fix are in the OPEN_ITEMS.md item "CRITICAL. The extinction law is
+inverted". **Not fixed** -- the fix invalidates every production data product, so it is the
+user's decision.
+
+**The bug.** `AlAv()` computes `x = 1/lambda` and passes x to `CCM89_a/b`, which take a
+wavelength and invert it again: CCM89 is evaluated at wavenumber = lambda. A_lambda/A_V comes
+out rising from 0.07 (u) to 0.75 (F146) instead of falling from 1.69 to 0.20 (R_V = 2.5).
+Verified two independent ways (the code's own `CCM89_a/b` called correctly; a from-scratch
+transcription of Cardelli et al. 1989, which returns 0.999 at V). Introduced in `9919917`.
+
+**How it was found.** Choosing sightlines for Step S3 by counting sample classes in the
+production tables pointed to one sightline (l = -0.619, b = -1.04) as the richest in Rubin-only
+events. Profiling it showed source F146 baselines of ~28-29 mag against r ~ 19.5 -- a reddened
+bulge star must be brighter in the near-IR. The CMD files are correct, so the error is in the
+extinction applied.
+
+**Measured size.** Median A_V 3.8 among `bh` detections; mean correction r +3.7 mag fainter,
+F146 3.0 mag brighter. At the Rubin-only-rich sightline A_V = 12.6: the class is there largely
+BECAUSE of the bug. Every yield split, joint gain, gap-filling number and astrometric fraction
+in PROGRESS.md, the report and the whitepaper is affected, in Rubin's favour.
+
+**Effect on the S steps.** S1 and S2 are unaffected as code -- they dump and draw whatever the
+simulation computes. But any sample figure made before the fix illustrates the wrong photometry,
+and S3's sightline choice was made from the affected tables. S3 is paused.
+
+**Commit:** none (nothing changed in the code).
+
+## 53. Step E1: the extinction law fixed, with a unit test (2026-09-22)
+
+**What the plan said.** Nothing (see 52). Approved by the user as its own step, ahead of the
+production re-runs and of Step S3.
+
+**What was done.** `AlAv()` now passes the wavelength straight to `CCM89_a/b`, which form
+x = 1/lambda themselves: `return CCM89_a(lambda_um) + CCM89_b(lambda_um) / Rv;`. New
+`tests/extinction_test.cpp` (`make extinctiontest`, no data files) pins A_V/A_V = 1 at V for
+R_V = 2.5 and 3.1, a monotone fall u -> F146, and the seven survey-band values at R_V = 2.5
+against an independent Python evaluation of CCM89 to 5e-3.
+
+**Verification.**
+- `extinctiontest`: 16/16 checks hold on the fixed code; against the pre-fix `helper.cpp` it
+  FAILS (e.g. F146 0.751 vs 0.197; "falls from y to F146" violated) -- so the test does detect
+  the bug it was written for.
+- `fishertest`: byte-identical before and after (it uses no photometry), exit 0.
+- Stub run (`--stub --events 10 --lenses 2 --nerr 0.05 --maxdraws 500`, 36 sightlines, 2 min
+  11 s): `test5.dat` byte-identical to the scratch build of the same fix made during the 52
+  investigation. Against the pre-fix stub: joint detections 93 -> 98, Rubin-only 42 -> 42,
+  Roman-only 31 -> 41, both 18 -> 15; legacy map yield (sum Neven x w_area) 3.09 -> 3.73. The
+  RNG stream diverges once a magnitude changes a detection, so this is direction, not size. The
+  patch is lightly extincted (A_V ~ 2.3); survey-wide the shift will be larger (median A_V 3.8).
+
+**What is NOT done.** Every existing data product -- v3 `test5.dat`, `runs/prod_{bh,ns}_20260917/`,
+the figures, the report and the whitepaper numbers -- was produced with the inverted law and
+stays wrong until re-run. The re-runs wait for Step Y (absolute yield, OPEN_ITEMS), so that
+anything the yield needs from the C++ is in place before ~40 h of CPU are spent.
+
+**Commit:** see git log (Step E1).

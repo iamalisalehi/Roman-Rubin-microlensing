@@ -20,6 +20,20 @@ Sajadian & Makler). Three steps, each approved before it starts:
   ~2 AU) and would overstate the parallax signal ~7x on the first event drawn. **New open item:**
   the table's `t0` is not the observed peak (median shift ~0.12 tE on ten events), and
   `t0zone`/`dt_edge` -- F2's gap-filling axes -- are computed from it.
+- **⚠ S3 PAUSED (2026-09-22): the extinction law was inverted in every run** -- Deviation 52,
+  OPEN_ITEMS "CRITICAL". `AlAv()` inverted lambda twice: optical extinction ~5-25x too small,
+  F146 3.8x too large. Median A_V 3.8 among `bh` detections -> r 3.7 mag too bright, F146 3.0
+  mag too faint on average. **Every production number is affected, in Rubin's favour.**
+- **E1 ✅ the fix** -- Deviation 53. One line in `AlAv()`, plus `make extinctiontest`
+  (`tests/extinction_test.cpp`, no data files). `fishertest` byte-identical. **Code only: every
+  existing table, figure, report and whitepaper number is still pre-fix** until the re-runs.
+- **Next: Step Y, the absolute yield**, agreed 2026-09-22, BEFORE the re-runs. The user read the
+  report's 110,144 / 93,685 "detected events" as yields (~10^4 above Sajadian & Sahu's 56-77 for
+  Roman); they are Monte Carlo sample sizes. The code's legacy `Neven` has no compact-object
+  mass fraction F. Deliverable: the yield for several realistic F, with the formulae and what the
+  raw numbers mean, for both the old (pre-fix) and new runs' reports. **Keep `bh` at 3-1000
+  Msun** (user's decision). OPEN_ITEMS "No absolute yield exists" has the numbers so far.
+- **Then: re-run `bulge`, `bh`, `ns`** (~13.5 h CPU each) with the fixed law, and S3.
 - **S3 after: short runs** under `runctl.sh` (pausable), one per population, with a timing
   estimate first. **Carry forward:** `rubin_only` filled 0/2 and `gap_filler` 1/3 at the stub's
   footprint sightline, where Roman (~50,000 epochs) sees everything Rubin does -- S3 needs

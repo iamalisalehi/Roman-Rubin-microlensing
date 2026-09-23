@@ -1510,7 +1510,7 @@ wavelength, and a from-scratch Python transcription of Cardelli, Clayton & Mathi
 also returns A_V/A_V = 0.999 at 0.55 um. The maps really are A_V (`maps.py`: `av = rv * ebv`),
 so the error is entirely here. Introduced in `9919917` (2026-07-26, "fixed some roman values"),
 before the refactor began, so **every production run carries it**: v3 (`test5.dat`), `bh`,
-`ns`, and every number in `Report/populations_report.tex` and the whitepaper.
+`ns`, and every number in `Report/populations/populations_report.tex` and the whitepaper.
 
 **How it showed up.** Profiling the best `rubin_only` sightline (l = -0.619, b = -1.04) in the
 `bh` table: source baselines averaged r ~ 19.5 and F146 ~ 28.1-29.3. A reddened bulge star

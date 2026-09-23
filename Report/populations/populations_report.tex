@@ -1,19 +1,21 @@
 % Short report on the black-hole and neutron-star production runs of 2026-09-17/18.
 %
-% Build:  cd Report && latexmk -pdf populations_report.tex
-% Figures are pulled from ../figures/prod_20260918/ via \graphicspath below; they are the
+% Build:  cd Report/populations && latexmk -pdf populations_report.tex
+% Figures are pulled from ../../figures/prod_20260918/ via \graphicspath below; they are the
 % exact files the analysis scripts wrote, not copies, so this document cannot drift from them.
 \documentclass[english,10pt,a4paper]{article}
 \usepackage[T1]{fontenc}
 \usepackage[margin=2.4cm]{geometry}
 \usepackage{graphicx}
-\graphicspath{{./}{../figures/prod_20260918/}}
+\graphicspath{{./}{../../figures/prod_20260918/}{../../figures/yield_prefix_20260922/y3/}}
 \usepackage{mathtools}
 \usepackage{amssymb}
 \usepackage{booktabs}
 \usepackage{xcolor}
 \usepackage[colorlinks=true,allcolors=blue]{hyperref}
 \usepackage{caption}
+\usepackage[authoryear,round]{natbib}
+\usepackage[section]{placeins}
 
 \newcommand{\tE}{t_{\rm E}}
 \newcommand{\piE}{\pi_{\rm E}}
@@ -37,19 +39,20 @@ $3$--$1000\,\Msun$, and one for neutron stars drawn from a Gaussian at $1.35\pm0
 truncated to $1.10$--$2.20\,\Msun$. Each run scans 1829 sightlines over $\sim\!68\,\mathrm{deg}^2$
 and characterises every detected event three times -- with Rubin alone, with Roman alone, and
 with the two combined -- through independent Fisher matrices. All pooled quantities are
-event-rate weighted and quoted with the Kish effective sample size. We find that the joint fit
+event-rate weighted and quoted with the \citet{Kish1965} effective sample size. We find that the joint fit
 improves the timescale by a factor $6$--$9$ over Rubin alone and $\sim\!1.35$ over Roman
 alone, and that it barely improves $\tetE$ at all, which is set by astrometry and therefore by
 Roman. The centroid shift exceeds Roman's per-exposure astrometric floor for $90\%$ of
 black-hole events and $0.6\%$ of neutron-star events. Satellite parallax from L2 is found to be
-almost worthless for both populations. Following Sajadian \& Makler (2026), we compute the
+almost worthless for both populations. Following \citet{SajadianMakler2026}, we compute the
 probability that the two lensing-induced images are separately resolvable, and find it to be
 dominated by the assumed resolution criterion rather than by the lens population. Attaching the
 event rate and an assumed abundance $F$ to each draw, we also convert the Monte Carlo sample sizes
 into absolute yields: for $F_{\rm BH}=0.01$ Roman sees $\sim\!49$ black-hole events over a decade,
-of which $\sim\!4$ have their mass measured to $10\%$. The normalisation is validated against the
-code's own optical depth to $0.1\%$, against OGLE-IV, and against Penny et al.\ (2019). Matched to
-the mass function and abundance of Sajadian \& Sahu (2023), we detect $\sim\!2.3\times$ more
+of which $\sim\!4$ have their mass measured to $10\%$. Because the yield is exactly linear in $F$, we also give the yield per unit
+abundance for every selection, and the recipe that produces it, so that any $F$ can be used. The normalisation is validated against the
+code's own optical depth to $0.1\%$, against OGLE-IV, and against \citet{Penny2019}. Matched to
+the mass function and abundance of \citet{SajadianSahu2023}, we detect $\sim\!2.3\times$ more
 black holes per unit area and season than they do --- consistent with the final survey design
 filling the $2.3$-year season gap their forecast was built around --- but characterise a smaller
 fraction of them, a deficit concentrated on the parallax rather than on the astrometry.
@@ -57,7 +60,7 @@ fraction of them, a deficit concentrated on the parallax rather than on the astr
 
 \section{Simulation and runs}
 
-The simulator draws source stars and lenses along each sightline from Besan\c{c}on/CMD
+The simulator draws source stars and lenses along each sightline from Besan\c{c}on \citep{Robin2003}/CMD
 population models with three-dimensional dust extinction, generates per-band light curves
 against the real Rubin visit list and the published Roman GBTDS cadence, applies a Monte Carlo
 detection test, and forecasts parameter precision with a Fisher matrix. The photometric matrix
@@ -68,7 +71,7 @@ from the epochs each survey actually contributed. Crucially there is one such pa
 combination adds'' is measured rather than assumed.
 
 Both runs used identical configuration apart from the lens mass function
-(\texttt{--events 300 --lenses 50 --stride-roman 5 --pair-satellite}), a fixed detection
+(\verb|--events 300 --lenses 50 --stride-roman 5 --pair-satellite|), a fixed detection
 threshold $\Delta\chi^2 \ge 500$, and the same RNG seed. The stratified grid places sightlines
 every $0.1^\circ$ inside Roman's footprint and every $0.2^\circ$ outside it, which oversamples
 the footprint by design; the per-sightline sky area $w_{\rm area}$ undoes that in every pooled
@@ -87,7 +90,7 @@ conversion to an absolute yield.}
 \toprule
  & black holes & neutron stars \\
 \midrule
-mass function            & log-uniform          & Gaussian (\"Ozel \& Freire 2016) \\
+mass function            & log-uniform          & Gaussian \citep{OzelFreire2016} \\
 mass range [$\Msun$]     & $3$--$1000$          & $1.10$--$2.20$ \\
 sightlines scanned       & 1829                 & 1829 \\
 \quad aggregated         & 1612                 & 1612 \\
@@ -286,7 +289,7 @@ mass.}
 \end{figure}
 
 A point lens forms two images separated by $\Delta\theta(u) = \tetE\sqrt{u^2+4}$. Following
-Sajadian \& Makler (2026) we count \emph{epochs} at which both images are individually above the
+\citet{SajadianMakler2026} we count \emph{epochs} at which both images are individually above the
 single-visit depth and their separation exceeds a stated bar, and call the pair resolvable when
 at least three epochs qualify. Counting epochs rather than evaluating the separation once per
 event is not a refinement but a necessity: the separation is \emph{smallest} at closest approach
@@ -383,17 +386,17 @@ a few per cent of the stellar mass contributes a few tenths of a per cent of the
 
 \paragraph{Two counting conventions.} The simulator keeps a drawn source with probability equal to
 its blend fraction, which counts events \emph{per resolved object} --- the legacy convention of
-Sajadian \& Makler and of Sajadian \& Sahu (2023). Re-weighting by $1/P(\text{kept})$ instead
+\citet{SajadianMakler2026} and of \citet{SajadianSahu2023}. Re-weighting by $1/P(\text{kept})$ instead
 counts events on \emph{every} star, blended or not. Both are reported below; they differ by
 $3$--$8\%$ here, because most detected sources are only mildly blended. Comparisons with the
 literature use the per-object convention.
 
-\paragraph{The abundance $F$.} No single value is established, so a grid is quoted. Sajadian \&
-Makler adopt $F_{\rm BH} = 4$--$5\times10^{-3}$. Population syntheses are an order of magnitude
-above that: Olejak et al.\ (2020) give $1.2\times10^{8}$ black holes at $\sim\!14\,\Msun$ and
-Lam et al.\ (2020) $2\times10^{8}$ at $5$--$16\,\Msun$, both implying $F_{\rm BH}\approx0.03$;
-Sweeney et al.\ (2022) place neutron stars and black holes together at $\sim\!1\%$ of the stellar
-mass. The bulge census of Gould (2000), with a mass ratio MS:WD:NS:BH of $69\!:\!22\!:\!6\!:\!3$,
+\paragraph{The abundance $F$.} No single value is established, so a grid is quoted. \citet{SajadianMakler2026}
+adopt $F_{\rm BH} = 4$--$5\times10^{-3}$. Population syntheses are an order of magnitude
+above that: \citet{Olejak2020} give $1.2\times10^{8}$ black holes at $\sim\!14\,\Msun$ and
+\citet{Lam2020} $2\times10^{8}$ at $5$--$16\,\Msun$, both implying $F_{\rm BH}\approx0.03$;
+\citet{Sweeney2022} place neutron stars and black holes together at $\sim\!1\%$ of the stellar
+mass. The bulge census of \citet{Gould2000}, with a mass ratio MS:WD:NS:BH of $69\!:\!22\!:\!6\!:\!3$,
 gives $F_{\rm BH}=0.03$ and $F_{\rm NS}=0.06$. We therefore tabulate
 $F_{\rm BH}\in\{0.005,0.01,0.03\}$ and $F_{\rm NS}\in\{0.005,0.01,0.03,0.06\}$.
 
@@ -404,13 +407,13 @@ The rate constants in Eq.~(\ref{eq:gamma}) are checked three ways before being u
 from these constants, $\tau = (\pi/2u_{0,\max})\langle\gamma \tE\rangle$, is compared against the
 optical depth the C++ computes independently for every sightline, and agrees to $0.1\%$ in the
 pooled sum. The second is external: the event rate and optical depth for OGLE-like sources
-($I<21$, $u_0<1$) are compared against Mr\'oz et al.\ (2019). The third fixes the Roman
-normalisation against Penny et al.\ (2019).
+($I<21$, $u_0<1$) are compared against \citet{Mroz2019}. The third fixes the Roman
+normalisation against \citet{Penny2019}.
 
 \begin{table}[h]
 \centering
 \caption{Validation of the absolute normalisation. The OGLE comparison is against the southern
-fields of Mr\'oz et al.\ (2019), $\Gamma = 14.3\times10^{-6}\exp[0.52(3-|b|)]$ per star per year.
+fields of \citet{Mroz2019}, $\Gamma = 14.3\times10^{-6}\exp[0.52(3-|b|)]$ per star per year.
 The Roman comparison is per unit area and per day of observing coverage, because Penny's survey
 runs $6\times72 = 432$ days while ours runs $10$ seasons totalling $693$ days (counted directly
 from the visit list by clustering epochs on gaps $>20$\,d).}
@@ -426,7 +429,7 @@ internal, $\tau$   & rebuilt $/$ C++ \texttt{opt\_1e6}, bulge run & 0.9985 \\
 OGLE-IV, $\Gamma$  & model $/$ observed at $b = -1.5^\circ$      & 0.97 \\
                    & model $/$ observed at $b = -5.1^\circ$      & 1.47 \\
 \midrule
-Penny (2019)       & events deg$^{-2}$ d$^{-1}$, $|u_0|<1$       & 31.9 \\
+\citet{Penny2019} & events deg$^{-2}$ d$^{-1}$, $|u_0|<1$       & 31.9 \\
                    & \textbf{this work}, $u_0<3$, $\Delta\chi^2\ge500$ & \textbf{40.4} \\
                    & events deg$^{-2}$ d$^{-1}$, $|u_0|<3$       & 63.8 \\
 \bottomrule
@@ -455,7 +458,7 @@ Monte Carlo only and do not include the systematic budget discussed above.
 \caption{Black-hole yields over the ten-year window, per-object convention. The upper block is the
 $3$--$1000\,\Msun$ population actually simulated. The lower block re-weights the same draws to a
 log-uniform $3$--$50\,\Msun$ function --- \emph{not} the population run, but the range adopted by
-Sajadian \& Sahu (2023), included so that the comparison is like for like. ``Roman'' rows are
+\citet{SajadianSahu2023}, included so that the comparison is like for like. ``Roman'' rows are
 necessarily confined to the $1.47\,\mathrm{deg}^2$ footprint.}
 \label{tab:yieldbh}
 \begin{tabular}{lrrr}
@@ -497,10 +500,167 @@ Roman, $\sigma(\Ml)/\Ml<5\%$          & 1.56 & 3.12 & 9.35 & 18.7  \\
 \end{tabular}
 \end{table}
 
-\subsection{Comparison with Sajadian \& Sahu (2023)}
+\subsection{The yield at any abundance}
+\label{sec:yieldF}
+
+Tables~\ref{tab:yieldbh} and~\ref{tab:yieldns} are samples of a single straight line. $F$ enters
+Eq.~(\ref{eq:yield}) only through the prefactor $F/\langle\Ml\rangle$, and $\langle\Ml\rangle$ is
+fixed by the mass function rather than by how much of it there is, so every selection has
+\emph{one} coefficient, its yield at $F=1$, and
+\begin{equation}
+N(F) \;=\; F\,N_1 .
+\label{eq:linear}
+\end{equation}
+$N_1$ is the Monte Carlo count of Table~\ref{tab:runs} turned into a number of events. It is not a
+forecast by itself, since no population makes up all the stellar mass, but it is the one number
+a reader needs to use any $F$ they prefer. Table~\ref{tab:n1} lists it for every selection the
+analysis produces, in both counting conventions, and Fig.~\ref{fig:yieldF} draws
+Eq.~(\ref{eq:linear}) with the literature abundances marked. The script checks that the ratio
+$N/F$ is the same, to machine precision, at every grid value it was written at.
+
+\begin{table}[h]
+\centering
+\caption{Yield per unit abundance: expected events over the ten-year window at $F=1$, inside
+Roman's $1.47\,\mathrm{deg}^2$ footprint unless stated. Multiply by $F$ for a yield. Errors are
+Monte Carlo only. The last column is the ordinary-lens run, in which every lens is drawn from
+the full stellar population, so $F=1$ \emph{by definition} and its entries are yields as they
+stand; its mass-precision rows are omitted because that run predates changes to the Fisher
+derivatives (its detection logic is unchanged). $\eta$ is the ratio of a population's $N_1$ to
+the ordinary-lens yield for the same selection: the fraction of all events that population
+supplies per unit mass fraction.}
+\label{tab:n1}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+ & \multicolumn{2}{c}{black holes, $N_1$} & \multicolumn{2}{c}{neutron stars, $N_1$} & ordinary \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+selection & per object & all stars & per object & all stars & lenses \\
+\midrule
+either survey detects        & $5340\pm70$  & 5760 & $38\,300\pm500$ & 40\,100 & 57\,000 \\
+Roman detects                & $4920\pm70$  & 5310 & $28\,100\pm400$ & 29\,600 & 41\,200 \\
+Rubin detects                & $2820\pm50$  & 2940 & $19\,700\pm400$ & 20\,100 & 26\,700 \\
+both detect                  & $2430\pm50$  & 2530 & $10\,200\pm300$ & 10\,400 & 12\,100 \\
+Roman only                   & $2490\pm50$  & 2790 & $17\,900\pm400$ & 19\,200 & 29\,100 \\
+Rubin only                   & $393\pm16$   & 417  & $9480\pm260$    & 9710    & 14\,700 \\
+Roman, $\sigma(\Ml)/\Ml<1\%$  & $25.6\pm5.0$ & 25.8 & $11.5\pm2.7$    & 11.5    & --- \\
+Roman, $\sigma(\Ml)/\Ml<5\%$  & $198\pm13$   & 201  & $312\pm29$      & 315     & --- \\
+Roman, $\sigma(\Ml)/\Ml<10\%$ & $377\pm18$   & 388  & $708\pm47$      & 720     & --- \\
+joint, $\sigma(\Ml)/\Ml<10\%$ & $520\pm21$   & 533  & $957\pm59$      & 976     & --- \\
+\midrule
+Rubin detects, full $59\,\mathrm{deg}^2$ & $44\,100\pm300$ & 46\,700 & $268\,000\pm2000$ & 276\,000 & 351\,000 \\
+\midrule
+$\eta$, Roman detects        & \multicolumn{2}{c}{0.119} & \multicolumn{2}{c}{0.683} & \\
+$\eta$, Rubin detects (full scan) & \multicolumn{2}{c}{0.126} & \multicolumn{2}{c}{0.763} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{y3_yield_vs_F.png}
+\caption{Expected events over the ten-year window inside Roman's footprint against the assumed
+abundance, Eq.~(\ref{eq:linear}); the shaded bands are the Monte Carlo $1\sigma$ and are barely
+wider than the lines. Dotted verticals mark the literature abundances of
+Section~\ref{sec:yield}: SM26 \citet{SajadianMakler2026}; SS23 \citet{SajadianSahu2023}, their
+$F_1$; O20, L20, G00 \citet{Olejak2020}, \citet{Lam2020} and \citet{Gould2000}; S22
+\citet{Sweeney2022}, for neutron stars and black holes together; G00 \citet{Gould2000}. The
+horizontal line is one event. Black holes over $3$--$1000\,\Msun$ as simulated; per-object
+convention.}
+\label{fig:yieldF}
+\end{figure}
+
+\paragraph{Reading the figure.} Roman detects black holes at a rate of $\sim\!49$ per per cent
+of stellar mass, so the literature range $F_{\rm BH}=0.0045$--$0.03$ maps to $22$--$150$ events;
+to expect even one black hole with its mass measured to $10\%$ needs $F_{\rm BH}\gtrsim0.002$ with
+the joint fit, or $0.003$ with Roman alone. Neutron
+stars are $\sim\!6\times$ more productive per unit $F$ ($28\,100$ against $4920$), which is
+the $\langle\sqrt{\Ml}\rangle/\langle\Ml\rangle$ argument again: $0.85$ for neutron stars against
+$0.060$ for black holes. The advantage shrinks to $\sim\!2\times$ for mass measurements, because
+the larger $\tetE$ of a black hole is what makes its mass measurable.
+
+\paragraph{The ratio $\eta$ closes the loop on Section~\ref{sec:yield}.} There we argued that
+$\langle\sqrt{\Ml}\rangle/\langle\Ml\rangle$ suppresses black holes by a factor $33$ relative to
+ordinary lenses at equal mass fraction, and that detection efficiency hands back about $4\times$.
+The product predicts $\eta\approx4/33=0.12$; the two independent runs give $0.119$. For neutron
+stars the same argument gives $0.85/1.97=0.43$ before efficiency, so $\eta=0.68$ implies a
+detection efficiency $1.6\times$ that of ordinary lenses: the same direction as for black holes
+and a smaller factor, as expected for lenses only $\sim\!6\times$ heavier than the typical star. For small $F$ a population supplies a fraction $\approx\eta F$
+of all events: $0.12\%$ of Roman's detections are black holes at $F_{\rm BH}=0.01$.
+
+\subsection{How to compute a yield}
+\label{sec:recipe}
+
+Everything above is computed by two scripts from the per-event output table, and none of it
+requires a new simulation unless the population itself changes. The procedure, with the
+choices it makes explicit:
+
+\begin{enumerate}
+\item \textbf{Simulate the population.} Run the simulator with every lens drawn from the population
+  under test, e.g.\ \verb|./roman --population bh --events 300 --lenses 50 --stride-roman 5|,
+  and archive its output tree as a run directory. The table must keep the \emph{undetected}
+  draws: $\langle\Ml\rangle$ is taken over all draws of a lens component, and the detected ones
+  are biased heavy.
+\item \textbf{Attach a rate to each draw.} For draw $i$ on sightline $k$,
+  \begin{equation*}
+  y_i \;=\; T\;\frac{w_{{\rm area},k}\,N_{\star,k}}{n_{{\rm sim},k}}\;
+            \frac{2u_{0,\max}\,\kappa}{\langle\Ml\rangle}\;Z(D_{s,i})\,\sqrt{M_{{\rm L},i}}\,v_{t,i},
+  \end{equation*}
+  with $T$ the window over which $t_0$ is drawn ($10\,\mathrm{yr}-4\,\mathrm{d}$), $w_{\rm area}$ the
+  sightline's sky area (which undoes the finer grid inside Roman's footprint), $N_\star$ its
+  source-star count, $n_{\rm sim}$ the number of draws it made, $u_{0,\max}=3$, and
+  $\kappa=\sqrt{4G/c^2}$. $y_i$ is the expected number of events draw $i$ stands for, at $F=1$,
+  per resolved object.
+\item \textbf{Choose the convention.} Keep $y_i$ to count per resolved object, as the Sajadian
+  papers do, or divide by the probability the simulator kept the draw,
+  $P = 1-(1-f_{b,r}\,[\text{Rubin could see it}])(1-f_{b,\rm F146}\,[\text{Roman could}])$, to count
+  on every star.
+\item \textbf{Select and sum.} $N_1=\sum_i y_i\,s_i$, where $s_i\in\{0,1\}$ is whatever selection is
+  wanted: detected by Roman, by both, mass to $10\%$, inside the footprint. The Monte Carlo error
+  is $(\sum_i y_i^2 s_i)^{1/2}$.
+\item \textbf{Multiply by $F$}, Eq.~(\ref{eq:linear}).
+\item \textbf{Check the normalisation.} Before trusting $N_1$, rebuild the optical depth from the
+  same constants, $\tau=(\pi/2u_{0,\max})\langle\gamma\,\tE\rangle$, and compare it with the
+  optical depth the simulator computes independently for each sightline. A factor error in any
+  constant, unit or in $Z$ shows up here; ours agree to $0.1\%$.
+\end{enumerate}
+
+Steps 2--6 are \texttt{analysis/y1\_absolute\_yield.py}, which writes the tables of this section
+and a CSV; \texttt{analysis/y3\_yield\_vs\_F.py} reads that CSV, extracts $N_1$, and draws
+Fig.~\ref{fig:yieldF}:
+
+\begin{verbatim}
+.roman/bin/python analysis/y1_absolute_yield.py \
+    --run bh=runs/prod_bh_20260917 --run ns=runs/prod_ns_20260917 \
+    --run bulge=../roman_runs/2026-09-06_v3_h7 \
+    --F bh=0.005,0.01,0.03 --F ns=0.005,0.01,0.03,0.06 \
+    -o figures/yield_prefix_20260922
+.roman/bin/python analysis/y3_yield_vs_F.py \
+    figures/yield_prefix_20260922/y1_yields.csv -o figures/yield_prefix_20260922/y3
+\end{verbatim}
+
+\paragraph{Other windows, areas and mass functions.}
+\begin{itemize}
+\item \emph{A different window or area.} Both are selections in step~4, on $t_0$ or on sightline.
+  Do not rescale by $T$: the detection efficiency depends on where $t_0$ falls relative to the
+  seasons, so a yield is not proportional to the window length. Per-$\mathrm{deg}^2$ figures do
+  follow by division.
+\item \emph{A different mass function}, without re-running. Re-weight each draw by the ratio of
+  the new to the sampled mass density, $p_{\rm new}(M_i)/p_{\rm old}(M_i)$, and replace
+  $\langle\Ml\rangle$ by the new mean. The $3$--$50\,\Msun$ rows of Table~\ref{tab:yieldbh} are the
+  simplest case: a narrower log-uniform range keeps only the draws inside it and scales them by
+  $[\ln(1000/3)/\ln(50/3)]\times\langle\Ml\rangle_{3-1000}/\langle\Ml\rangle_{3-50}$. This is
+  exact only where the sampled function covers the new one, and it costs precision in proportion
+  to how unevenly the new weights fall (the Kish $\Neff$ of the re-weighted sample says how much).
+\item \emph{Black holes and neutron stars together.} The two runs are separate simulations, so
+  their yields add: $N = F_{\rm BH}N_{1,\rm BH} + F_{\rm NS}N_{1,\rm NS}$. What must not be done is
+  to pool their draws in one weighted statistic, because each weight carries the $\sqrt{\Ml}$ of
+  its own mass function.
+\end{itemize}
+
+\subsection{Comparison with \texorpdfstring{\citet{SajadianSahu2023}}{Sajadian \& Sahu (2023)}}
 
 Their method is not ours and the two must be aligned before any number is compared. They take
-Roman's \emph{total} event count $N_{e,\rm tot}=27{,}000$ from Penny et al.\ (2019) as given, and
+Roman's \emph{total} event count $N_{e,\rm tot}=27{,}000$ from \citet{Penny2019} as given, and
 multiply it by two factors: $F_1 = 0.019$, the fraction of stellar mass in black holes, obtained
 from the Besan\c{c}on disc initial mass function by converting every star born above $20\,\Msun$
 into a remnant; and $F_2$, the ratio of $\langle\epsilon(\tE)/\tE\rangle$ for black holes to the
@@ -520,7 +680,7 @@ by a factor $\sim\!2.3$:
 \toprule
  & detections & deg$^2$ $\times$ seasons & per deg$^2$ per season \\
 \midrule
-Sajadian \& Sahu (2023), $\alpha=1$, $F_1=0.019$ & 86  & $1.96\times6$  & 7.2 \\
+\citet{SajadianSahu2023}, $\alpha=1$, $F_1=0.019$ & 86  & $1.96\times6$  & 7.2 \\
 this work, $3$--$50\,\Msun$, $F=0.019$           & 245 & $1.47\times10$ & 16.7 \\
 \bottomrule
 \end{tabular}
@@ -529,13 +689,13 @@ this work, $3$--$50\,\Msun$, $F=0.019$           & 245 & $1.47\times10$ & 16.7 \
 Part of the excess is a difference in the detection cut: they require
 $\Delta\chi^2 > 800$ \emph{and} at least three points $4\sigma_m$ above baseline, against our
 $\Delta\chi^2 \ge 500$, so their bar is the higher one. The rest is most likely the survey design
-itself, and that is a point about vintage rather than about either calculation. Penny et al.\ (2019) describe the Cycle~7 architecture --
+itself, and that is a point about vintage rather than about either calculation. \citet{Penny2019} describe the Cycle~7 architecture --
 $1.96\,\mathrm{deg}^2$ observed in $6\times72$ days -- and Sajadian \& Sahu adopt that observing
 strategy wholesale. Its defining feature, for them, is a $\sim\!2.3$-year gap between the first
 three and the last three seasons, which they identify as the main thing suppressing black-hole
 characterisation, and which they patch by hand with one hour of observing every ten days. That
 patch alone raises their $F_2$ from $0.11$ to $0.15$, a $36\%$ gain in detections from
-approximately one day of extra telescope time. The design this simulator follows (ROTAC 2025)
+approximately one day of extra telescope time. The design this simulator follows \citep{ROTAC2025}
 \emph{fills that gap as a matter of course}, with four low-cadence seasons between the six
 high-cadence ones. We therefore expect to detect more long events than they do, which is exactly
 what the factor $2.3$ is. Neither their number nor Penny's should be read as a forecast for the
@@ -588,7 +748,7 @@ it, so it does not explain the deficit either. We record the parallax shortfall 
 question rather than claim a cause for it.
 
 \paragraph{These yields precede the extinction correction.} Every number in this report was
-produced with an inverted Cardelli, Clayton \& Mathis (1989) reddening law, which evaluated the
+produced with an inverted \citet{Cardelli1989} reddening law, which evaluated the
 extinction at $1/\lambda$ rather than at $\lambda$ (Deviation 53). The error runs in
 \emph{opposite directions for the two telescopes}: in the optical it gave $A_u/A_V = 0.07$ against
 the correct $1.694$, making Rubin's sources far too bright, while in the infrared it gave
@@ -637,7 +797,10 @@ unchanged at $42$. The corrected production runs are reported separately.
 %.roman/bin/python analysis/p7_forecast_figures.py \
 %    --run bh=runs/prod_bh_20260917 --run ns=runs/prod_ns_20260917 \
 %    -o figures/prod_20260918/p7
-%cd Report && latexmk -pdf populations_report.tex
+%cd Report/populations && latexmk -pdf populations_report.tex
 %\end{verbatim}
+
+\bibliographystyle{plainnat}
+\bibliography{../refs}
 
 \end{document}

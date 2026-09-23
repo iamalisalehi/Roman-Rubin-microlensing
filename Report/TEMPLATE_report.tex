@@ -1,0 +1,183 @@
+% =================================================================================================
+% TEMPLATE for a results report on one or more production runs.  UNFINISHED BY DESIGN.
+%
+% Read Report/README.md first. It says when to write a report, where every number must come from,
+% and the checklist to clear before the PDF goes to anyone. The reference example of a finished
+% report is Report/populations/populations_report.tex -- when in doubt, do what it does.
+%
+% Each report lives in its own directory, Report/<topic>/, with its build products beside it.
+% The template, the shared refs.bib and the README stay in Report/ itself. To start a report:
+%     mkdir Report/<topic> && cp Report/TEMPLATE_report.tex Report/<topic>/<topic>_report.tex
+%     edit the \graphicspath line, fill every \TODO, delete sections that do not apply
+%     cd Report/<topic> && latexmk -pdf <topic>_report.tex
+%     grep -c '^TODO:' <topic>_report.log     # must be 0 before the report is shared
+% The paths below (../../figures, ../refs) assume exactly that depth.
+%
+% Every \TODO prints in red in the PDF AND writes a line to the .log, so an unfinished report
+% cannot be mistaken for a finished one. The %% comments are instructions; delete them as you go.
+% =================================================================================================
+\documentclass[english,10pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{graphicx}
+%% Point at the directories the analysis scripts WROTE the figures to. Never copy figures into
+%% Report/: a copy drifts from the script that made it, the original cannot.
+\graphicspath{{./}{../../figures/TODO_run_dir/}}
+\usepackage{mathtools}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,allcolors=blue]{hyperref}
+\usepackage{caption}
+\usepackage[authoryear,round]{natbib}
+%% Keeps floats inside their own section; without it tables land pages after their text.
+\usepackage[section]{placeins}
+
+\newcommand{\tE}{t_{\rm E}}
+\newcommand{\piE}{\pi_{\rm E}}
+\newcommand{\tetE}{\theta_{\rm E}}
+\newcommand{\Ml}{M_{\rm L}}
+\newcommand{\Msun}{M_\odot}
+\newcommand{\Neff}{N_{\rm eff}}
+
+%% Placeholder: red in the PDF, and logged so `grep '^TODO:' *.log` finds every one left.
+\newcommand{\TODO}[1]{\textcolor{red}{\textbf{[TODO: #1]}}\typeout{TODO: #1}}
+
+\title{\TODO{title: what was run, and the one question it answers}}
+\author{Ali Salehi}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+%% 6-10 sentences, written LAST. State: which runs (population, mass function, area), the
+%% headline result per survey partition (Rubin / Roman / joint), and every caveat that changes
+%% how a number should be read -- above all whether the runs predate a known bug (the
+%% extinction law before e5ecb54 is the current example). Absolute yields only with their F.
+\TODO{abstract}
+\end{abstract}
+
+% -------------------------------------------------------------------------------------------------
+\section{Simulation and runs}
+%% What the simulator does, in one paragraph (reuse populations_report.tex §1 almost verbatim),
+%% then the runs. The table below is not optional: a reader must be able to tell a Monte Carlo
+%% sample size from a yield, and the runs' commits from the code's current state.
+
+\TODO{one paragraph on the simulator; the exact command line of each run}
+
+\begin{table}[h]
+\centering
+\caption{Run configuration and outcome. ``Detected draws'' is a Monte Carlo \emph{sample size},
+set by \texttt{-{}-events}/\texttt{-{}-lenses}, not a forecast; Section~\ref{sec:yield} converts it
+to a yield.}
+\label{tab:runs}
+\begin{tabular}{lr}
+\toprule
+ & \TODO{run name} \\
+\midrule
+git commit of the run (\texttt{run\_provenance.txt}) & \TODO{} \\
+population and mass function                          & \TODO{} \\
+sightlines scanned / aggregated / barren              & \TODO{} \\
+weightable draws                                      & \TODO{} \\
+detected draws (MC)                                   & \TODO{} \\
+$\Neff$ (weighted)                                    & \TODO{} \\
+CPU time                                              & \TODO{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Weighting.}
+%% Keep this paragraph in every report. The Monte Carlo lacks the rate's sqrt(M) v_t factor
+%% (DEVIATIONS 41), so every pooled number is weighted and quoted with N_eff. An unweighted
+%% number describes the sample, not the sky; say so explicitly if you ever show one.
+Every pooled fraction, median or ratio carries the per-event weight
+$W \propto w_{\rm area}\,N_\star/n_{\rm sim}\,\sqrt{\Ml}\,v_t\,Z(D_s)$ and is quoted with the
+\citet{Kish1965} effective sample size $\Neff = (\sum w)^2/\sum w^2$.
+
+% -------------------------------------------------------------------------------------------------
+\section{\TODO{results section}}
+%% One section per question. For each: figure, then a table of the numbers the figure shows,
+%% then prose that says what the numbers MEAN (not what they are -- the table did that).
+%% Rules the analysis layer enforces and the prose must respect:
+%%   * -1.0 is the "not measured" sentinel; it never enters a sum, mean, ratio or histogram.
+%%   * okA/okB (matrix inverted) is not "every parameter measured": check activePhotParams.
+%%   * Rubin-only / Roman-only / joint curves each have their OWN denominator; say which.
+%%   * sigma_joint <= sigma_single is a physical invariant; a violation is a bug, not a result.
+
+\begin{figure}[h]
+\centering
+%% \includegraphics[width=\textwidth]{<figure>.png}
+\TODO{figure}
+\caption{\TODO{caption: what is plotted, over which sample, with what weighting}}
+\label{fig:TODO}
+\end{figure}
+
+\TODO{what the figure shows and why}
+
+% -------------------------------------------------------------------------------------------------
+\section{Absolute event yields}
+\label{sec:yield}
+%% Include whenever a COUNT of events is quoted. Recompute with:
+%%   .roman/bin/python analysis/y1_absolute_yield.py --run <name>=<run dir> ... -o <out>
+%%   .roman/bin/python analysis/y3_yield_vs_F.py <out>/y1_yields.csv -o <out>/y3
+%% and cite Report/populations/populations_report.tex §8 for the derivation rather than repeating it in full.
+%% Always: (i) the F grid with its literature sources; (ii) which counting convention (per
+%% resolved object, as the Sajadian papers use, or all stars); (iii) the tau check ratio,
+%% which must be ~1 before any yield is trusted; (iv) N_1, the yield per unit F, so readers
+%% can use their own F.
+
+The expected number of events is $N(F) = F\,N_1$, with $N_1$ the yield at $F=1$
+(derivation and validation in the compact-object report). Normalisation check, $\tau$ rebuilt
+from the rate constants over the C++ optical depth: \TODO{pooled ratio per run}.
+
+\begin{table}[h]
+\centering
+\caption{Yield per unit abundance, $N_1$, over the ten-year window, per-object convention.
+\TODO{scope: whole scan or Roman footprint}}
+\label{tab:n1}
+\begin{tabular}{lr}
+\toprule
+selection & $N_1$ \\
+\midrule
+Roman detects                 & \TODO{} \\
+Rubin detects                 & \TODO{} \\
+both detect                   & \TODO{} \\
+Roman, $\sigma(\Ml)/\Ml<10\%$ & \TODO{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% -------------------------------------------------------------------------------------------------
+\section{Comparison with the literature}
+%% Before comparing with any paper: align mass function, abundance, area, season count and
+%% detection cut, and use THEIR denominator (detections vs characterised events). The first
+%% SS23 comparison got two of these wrong and flattered the agreement (DEVIATIONS 54a).
+\TODO{like-for-like comparison, or delete this section}
+
+% -------------------------------------------------------------------------------------------------
+\section{Caveats}
+%% Copy the standing ones from OPEN_ITEMS.md that bear on these numbers; do not invent new
+%% reassurance. At the time of writing the standing ones are: populations must not be pooled;
+%% the model's latitude gradient is too shallow vs OGLE-IV; the footprint sample is small;
+%% Rubin's astrometric error model is the weakest input; the parallax shortfall vs SS23.
+\begin{itemize}
+\item \TODO{does any number here predate a known bug fix? say which, and in which direction it biases}
+\item \TODO{standing caveats from OPEN\_ITEMS.md}
+\end{itemize}
+
+% -------------------------------------------------------------------------------------------------
+%% Reproduction block: the exact commands that made every figure and table. Keep it (commented
+%% out if the reader does not need it) -- it is how the next session regenerates the report.
+%\section*{Reproducing this report}
+%\begin{verbatim}
+%<analysis commands, one per figure/table>
+%cd Report/<topic> && latexmk -pdf <topic>_report.tex
+%\end{verbatim}
+
+%% Shared bibliography. Add an entry to refs.bib only for a paper actually cited, and check its
+%% journal reference against arXiv or the publisher -- never from memory.
+\bibliographystyle{plainnat}
+\bibliography{../refs}
+
+\end{document}

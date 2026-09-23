@@ -3910,3 +3910,38 @@ sightlines, 0.04 on 1420 outside, 0.02/0.03 on 42 partially-overlapped coarse ce
 NOT inflate Roman's yield; it buys Monte Carlo precision inside the footprint and nothing else.
 
 **Commit:** see git log (Step Y).
+
+## 54b. Step Y3: the yield as a function of F, and a recipe (2026-09-23)
+
+**What the plan said.** Nothing; this extends Step Y (54) at the user's request, for the report.
+
+**What was done.** `analysis/y3_yield_vs_F.py`, reading only `y1_yields.csv` -- no new data. F
+enters the yield only through F / <M>, and <M> is set by the mass function, so N(F) = F * N_1
+exactly. The script recovers N_1 per (run, scope, selection), **refuses to proceed if N/F is not
+constant across the F grid** (it is, to machine precision), writes the coefficients with
+eta = N_1 / N(bulge, same selection), and draws N(F) with the literature F values marked.
+
+**Numbers (Roman footprint, per object, 10 yr, PRE-extinction-fix).** N_1, Roman detects: bh
+4916 +- 70, ns 28,120 +- 450, ordinary lenses (bulge run, F = 1 by definition) 41,170. eta, Roman
+detects: 0.119 (bh), 0.683 (ns); Rubin detects over the full scan: 0.126, 0.763. Mass to 10%:
+N_1 = 377 (bh, Roman) / 520 (bh, joint), so one such black hole needs F >~ 0.003 / 0.002.
+
+**An independent check that came for free.** The report argued that <sqrt M>/<M> suppresses
+black holes 33x relative to ordinary lenses at equal mass fraction and that detection efficiency
+returns ~4x. That predicts eta ~ 4/33 = 0.12; two separate runs give 0.119.
+
+**A caveat on eta.** The bulge run is commit f959c8c, the bh/ns runs 354ba93. The C++ commits in
+between touch the Fisher derivatives and bookkeeping, not the detection test, so eta is quoted
+for DETECTION rows only; the bulge run's mass-precision rows are not comparable and are not
+shown in the report.
+
+**Report.** New §8.3 (N_1 table, figure) and §8.4 (the six-step recipe, the commands, how to
+re-weight to another mass function and combine populations -- and that a shorter window must be
+a selection on t0, NOT a rescaling by T, because efficiency depends on where t0 falls relative
+to the seasons). Citations turned into natbib against a new `Report/refs.bib`: 13 entries, each
+checked against arXiv or the publisher. One correction on the way: Sajadian & Sahu (2023) is
+AJ 165, 119. Two pre-existing typesetting errors fixed: `--flags` inside `\texttt` rendered as
+en-dashes.
+
+**Commit:** see git log (Step Y3).
+

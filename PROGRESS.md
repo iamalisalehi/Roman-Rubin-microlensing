@@ -77,9 +77,25 @@ Sajadian & Makler). Three steps, each approved before it starts:
   - **Roman baseline verified from the visit list:** 10 seasons, 693.0 d total coverage
     (clustering epochs on >20 d gaps), 50,401 unique epoch times. Not the ~705 d estimated from
     the generator constants.
-  - Report `Report/populations_report.tex` gained a yield section (formulae, F grid,
+  - Report `Report/populations/populations_report.tex` gained a yield section (formulae, F grid,
     validation, both telescopes, pre-fix warning). **User's decision: the pre-fix numbers stay
     in THIS report; the post-fix re-run gets a NEW report with the new sample plots.**
+- **Y3 ✅ yield per unit F + report bibliography (2026-09-23)** -- Deviation 54b. N is exactly
+  linear in F, so every yield is one coefficient N_1 (the yield at F = 1) times F.
+  `analysis/y3_yield_vs_F.py` reads `y1_yields.csv`, checks the linearity, and writes
+  `figures/yield_prefix_20260922/y3/{y3_coefficients.{md,csv},y3_yield_vs_F.{pdf,png}}`.
+  Roman footprint, per object: N_1 = 4920 (bh, Roman detects), 28,100 (ns), against 41,200 for
+  ordinary lenses; eta = N_1/N_bulge = 0.119 (bh) and 0.683 (ns). The bh value confirms the
+  report's "<sqrt M>/<M> suppresses 33x, efficiency returns 4x" argument independently (4/33 =
+  0.12). The report gained §8.3 (N_1 table, figure), §8.4 (step-by-step recipe, commands,
+  re-weighting to another mass function, combining populations) and a real natbib bibliography
+  (`Report/refs.bib`, 13 entries, checked against arXiv/publishers; SS23 is AJ 165, 119).
+  PDF rebuilt: 15 pages, no undefined references. **Not committed yet.**
+  **Report template:** `Report/TEMPLATE_report.tex` (builds as is; red `\TODO`s that are also
+  logged) + `Report/README.md` (where every number comes from, pre-share checklist). The
+  post-extinction-fix re-runs' report should start from it. **Layout (user's decision,
+  2026-09-23): one directory per report, `Report/<topic>/`; template, `refs.bib`, README in
+  `Report/`.** The populations report moved to `Report/populations/`.
 - **Then: re-run `bulge`, `bh`, `ns`** (~13.5 h CPU each) with the fixed law, and S3.
 - **S3 after: short runs** under `runctl.sh` (pausable), one per population, with a timing
   estimate first. **Carry forward:** `rubin_only` filled 0/2 and `gap_filler` 1/3 at the stub's
@@ -1480,8 +1496,8 @@ and to anchor the `rubin_sim` run by reproducing a Table 6 row first).
 
 ## Report on the compact-object runs (2026-09-18)
 
-`Report/populations_report.tex` — a 7-page summary of the black-hole and neutron-star
-production runs, built with `cd Report && latexmk -pdf populations_report.tex`. It pulls its
+`Report/populations/populations_report.tex` — a 7-page summary of the black-hole and neutron-star
+production runs, built with `cd Report/populations && latexmk -pdf populations_report.tex`. It pulls its
 figures straight from `figures/prod_20260918/` rather than from copies, so the document cannot
 drift from the analysis that produced them. Four tables (run outcome, detection provenance and
 joint gain, the 10% precision fractions, astrometry/parallax/resolution) and eight figures.

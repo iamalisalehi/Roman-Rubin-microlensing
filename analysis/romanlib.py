@@ -499,6 +499,110 @@ def attach_weight(df, map_path=None, log_paths=(), unweighted=False):
     return w, f"event-rate weighted, N_eff = {kish_neff(w):,.0f}"
 
 
+# ---------------------------------------------------------------------------------------------
+# Absolute yields (Step Y, Deviation 54)
+# ---------------------------------------------------------------------------------------------
+#
+# event_weight() above is the event rate with every factor that is common to all events
+# stripped out, because a fraction does not need them. An absolute yield does. Restoring them:
+#
+#   one draw's rate per source star  gamma_i = (F / <M>) * 2 u0m * kappa * Z(Ds) * sqrt(M) * v_t
+#   expected detected events         N = T * sum_k Omega_k Nstar_k / nsim_k * sum_i gamma_i det_i
+#                                      = T * 2 u0m * kappa * F * sum_i W_i det_i / <M>
+#
+# with kappa = sqrt(4 G Msun / c^2) and the unit conversions that make Z (Msun/pc^3 kpc^1.5)
+# times sqrt(M) times v_t (km/s) a rate. <M> is the MEAN LENS MASS of the population as drawn
+# -- the rate is per lens, and F rho / <M> is the lens number density -- taken per Galactic
+# component because the `bulge` population's mass function differs between them.
+#
+# Mirrored from Bulge.h, like galaxy_model's constants: u0m = 3.0 (u0 is drawn uniform on
+# [0.001, u0m]) and t0 uniform on [2 d, Tobs - 2 d].
+U0M = 3.0
+T0_MARGIN_DAYS = 2.0
+_G, _C, _MSUN = 6.67430e-11, 2.99792458e8, 1.98847e30
+_PC = 3.0856775814913673e16                           # m
+_KPC = 1.0e3 * _PC
+RATE_UNIT = (2.0 * U0M * np.sqrt(4.0 * _G * _MSUN / _C**2)   # m^0.5
+             * _KPC**1.5 / _PC**3                            # Z's units -> m^-1.5
+             * 1.0e3)                                        # v_t km/s -> m/s
+# RATE_UNIT * Z * sqrt(M) * Vt / <M> is gamma_i in s^-1 per source star (F = 1).
+
+# Per-filter single-visit depth and saturation, mirrored from Bulge.h `thre` / `satu`
+# (ugrizy, F146). Needed to rebuild which surveys could have accepted a draw.
+THRE = np.array([23.4, 24.6, 24.3, 23.6, 22.9, 21.7, 29.0])
+SATU = np.array([15.2, 16.3, 16.0, 15.3, 14.6, 13.4, 12.0])
+FILTERS = ["u", "g", "r", "i", "z", "y", "F146"]
+
+
+def draw_rate(df):
+    """gamma_i: the rate (s^-1 per source star, F = 1) that draw i stands for.
+
+    Independent of event_weight() -- Z is recomputed here per sightline -- so that the
+    optical-depth check in y1_absolute_yield.py tests the constants rather than re-deriving
+    them from the thing being tested.
+    """
+    import galaxy_model as G
+    Z = np.empty(len(df))
+    Ds = df["Ds"].to_numpy()
+    key = pd.Series(list(zip(df["lon"].round(3), df["lat"].round(3))))
+    for k, pos in key.groupby(key).groups.items():
+        pos = np.asarray(pos)
+        Z[pos] = G.lens_distance_norm(G.density_profile(*k), Ds[pos])
+    return (RATE_UNIT * Z * np.sqrt(df["Ml"].to_numpy()) * df["Vt"].to_numpy()
+            / mean_lens_mass(df))
+
+
+def mean_lens_mass(df):
+    """Per-row <M>: the mean of `Ml` over ALL draws of the same lens component (`struc`).
+
+    Every draw is written to the table, detected or not, and the mass is drawn before any
+    detection test, so a plain mean over rows is the sampler's own mean -- no weight. Must be
+    called on a table that still holds the undetected draws.
+    """
+    if not (df["detJ"] == 0).any():
+        raise ValueError("mean_lens_mass needs the undetected draws too; this table has "
+                         "only detections, whose masses are biased toward detectable ones")
+    m = df.groupby("struc")["Ml"].transform("mean")
+    return m.to_numpy()
+
+
+def acceptance_probability(df):
+    """P that the simulator KEPT this draw, rebuilt from the table (Bulge_LSST.cpp ~1700).
+
+    A drawn star is kept for light-curve generation if Rubin could see its peak (Mpeak below
+    depth and baseline above saturation in >= 2 of ugrizy) AND a uniform draw falls below its
+    r-band blend fraction -- or likewise for Roman in F146. That thinning is the legacy
+    convention (Sajadian & Makler, criterion ii): the blend fraction is the probability of
+    "realising" one star of an unresolved blend, which counts events per RESOLVED OBJECT.
+    Both light curves are generated whenever either survey accepts, so detection is
+    independent of which acceptance fired and 1/P undoes the thinning exactly.
+    """
+    u0 = df["u0"].to_numpy()
+    A0 = (u0**2 + 2.0) / np.sqrt(u0**2 * (u0**2 + 4.0))
+    seen = np.empty((len(df), 7), dtype=bool)
+    for i, f in enumerate(FILTERS):
+        mb, fb = df[f"magb_{f}"].to_numpy(), df[f"blend_{f}"].to_numpy()
+        mpeak = mb - 2.5 * np.log10(A0 * fb + 1.0 - fb)
+        seen[:, i] = (mpeak <= THRE[i]) & (mb > SATU[i])
+    pL = np.where(seen[:, :6].sum(axis=1) > 1, df["blend_r"].to_numpy(), 0.0)
+    pR = np.where(seen[:, 6], df["blend_F146"].to_numpy(), 0.0)
+    return 1.0 - (1.0 - pL) * (1.0 - pR)
+
+
+def yield_weight(df, sightlines, tobs_days, nsim_override=None):
+    """Per-row expected number of events in the window, for F = 1, per resolved object.
+
+    y_i = T * [w_area Nstar / nsim] * gamma_i. Summing y_i over detected rows gives the
+    detected yield with every lens drawn from the population and F = 1; multiply by F.
+    Divide each y_i by acceptance_probability() to count events on every star instead.
+    """
+    w = event_weight(df, sightlines, nsim_override=nsim_override).to_numpy()
+    # event_weight = w_area Nstart/nsim sqrt(M) Vt Z; the rest of gamma is RATE_UNIT / <M>.
+    T = (tobs_days - 2.0 * T0_MARGIN_DAYS) * 86400.0
+    y = T * RATE_UNIT * w / mean_lens_mass(df)
+    return y
+
+
 def weighted_quantile(values, weights, q):
     """Quantile `q` of `values` under `weights`, by cumulative weight. NaN if empty."""
     v = np.asarray(values, dtype=float)

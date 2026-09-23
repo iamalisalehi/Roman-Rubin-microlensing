@@ -90,7 +90,7 @@ Sajadian & Makler). Three steps, each approved before it starts:
   0.12). The report gained §8.3 (N_1 table, figure), §8.4 (step-by-step recipe, commands,
   re-weighting to another mass function, combining populations) and a real natbib bibliography
   (`Report/refs.bib`, 13 entries, checked against arXiv/publishers; SS23 is AJ 165, 119).
-  PDF rebuilt: 15 pages, no undefined references. **Not committed yet.**
+  PDF rebuilt: 15 pages, no undefined references. Commit 63dc530 (pushed).
   **Report template:** `Report/TEMPLATE_report.tex` (builds as is; red `\TODO`s that are also
   logged) + `Report/README.md` (where every number comes from, pre-share checklist). The
   post-extinction-fix re-runs' report should start from it. **Layout (user's decision,

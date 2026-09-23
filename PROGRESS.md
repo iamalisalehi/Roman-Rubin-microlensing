@@ -33,6 +33,53 @@ Sajadian & Makler). Three steps, each approved before it starts:
   mass fraction F. Deliverable: the yield for several realistic F, with the formulae and what the
   raw numbers mean, for both the old (pre-fix) and new runs' reports. **Keep `bh` at 3-1000
   Msun** (user's decision). OPEN_ITEMS "No absolute yield exists" has the numbers so far.
+- **Y ✅ done (2026-09-22/23)** -- Deviation 54. `romanlib.yield_weight/draw_rate/
+  acceptance_probability/mean_lens_mass` + `analysis/y1_absolute_yield.py`, and
+  `analysis/y2_ss23_compare.py` for the matched-mass comparison against Sajadian & Sahu.
+  Outputs: `figures/yield_prefix_20260922/y1_yields.{md,csv}` (+ `y1.log`) and
+  `figures/y2_20260923/y2_ss23.md`. **All numbers are PRE-extinction-fix.**
+  - **The raw counts were never yields.** 110,144 / 93,685 are Monte Carlo sample sizes set by
+    `--events 300 --lenses 50`, with every lens drawn from the population, i.e. F = 1.
+  - **Checks.** tau rebuilt from the rate constants vs the C++ `opt_1e6`: pooled 0.9985 (bulge),
+    0.9999 (bh), 0.9998 (ns). Penny et al. (2019) Table 2 (1.96 deg^2, 6x72 d, 27,000 at
+    |u0|<1 / 54,000 at |u0|<3): per deg^2 per season theirs is 2,296-4,592, ours 2,803 (all 10
+    seasons) to 4,671 (6 high-cadence only) -- a bracket that is predicted, not fitted.
+  - **OGLE-IV (Mroz 2019).** Model/observed rate falls from 1.47 at b=-5.1 to 0.60 at b=-0.1,
+    crossing 1 near b=-1.7. The model's latitude gradient is **too SHALLOW** (an earlier note
+    here said "too steep"; that was wrong). New OPEN_ITEMS entry; not fixed.
+  - **Headline (Roman footprint, per object, 10 yr).** bh 3-1000 Msun: 24.6/49.2/147 at
+    F=0.005/0.01/0.03; re-weighted to 3-50 Msun: 64.4/129/386. ns: 141/281/844/1690 at
+    F=0.005/0.01/0.03/0.06.
+  - **`--stride-roman 5` is a SKY grid, not epoch decimation** (0.10 deg inside the footprint vs
+    0.20 deg outside). Verified in the map file: w_area is 0.01 deg^2 on 149 footprint
+    sightlines and 0.04 outside, so the 4x oversampling is undone by the weight and does not
+    inflate Roman's yield. It buys MC precision in the footprint, nothing else.
+  - **SS23 comparison, done properly.** Their N = 27,000 x F1 x F2, anchored on Penny; F1 =
+    0.019 is a stellar-MASS fraction directly comparable to our F, and for dN/dM ~ M^-1 (our
+    log-flat function) F2 = 0.16-0.17, giving ~86 detections and 3/15/22 characterised at
+    1/5/10%. **At their own F and mass function we give ~2.3x more detections per deg^2 per
+    season** -- plausibly the final design's 4 low-cadence seasons filling the 2.3-yr gap that
+    SS23 flag (their own F2 rises 0.11 -> 0.15 when they patch it with 1 day of observing).
+    Both Penny 2019 (Cycle 7) and SS23 predate the final GBTDS design.
+  - **The characterisation gap is concentrated on the PARALLAX, not the astrometry.** Measured
+    properly (SS23's denominator = detections, and their 3-50 Msun range) by
+    `y2_ss23_compare.py` at the 10% threshold, ours/theirs is: tetE 0.69, tE 0.32, piE 0.25,
+    Ml 0.21. Every parameter is short, but tetE least. An earlier note here said tetE was
+    "within 20%"; that used the report's characterised-event denominator and the 3-1000 Msun
+    range, and was wrong.
+  - **The mass range is NOT the cause.** Restricting 3-1000 -> 3-50 Msun leaves tE (20.1 ->
+    21.7%) and piE (8.3 -> 7.4%) unchanged, and LOWERS tetE (84.0 -> 68.6%) as it must, since
+    tetE ~ sqrt(M). The "our events are too long for Roman's seasons" hypothesis is dead.
+  - **Other verified SS23 differences:** their detection cut is dchi^2 > 800 AND >= 3 points
+    4 sigma above baseline (ours dchi^2 >= 500, so theirs is stricter); their astrometric Fisher
+    has 3 parameters (tetE, mus1, mus2) against our 4 (we also fit piE there), which should help
+    piE, not hurt it. The piE shortfall is NOT explained -- left as an open question.
+  - **Roman baseline verified from the visit list:** 10 seasons, 693.0 d total coverage
+    (clustering epochs on >20 d gaps), 50,401 unique epoch times. Not the ~705 d estimated from
+    the generator constants.
+  - Report `Report/populations_report.tex` gained a yield section (formulae, F grid,
+    validation, both telescopes, pre-fix warning). **User's decision: the pre-fix numbers stay
+    in THIS report; the post-fix re-run gets a NEW report with the new sample plots.**
 - **Then: re-run `bulge`, `bh`, `ns`** (~13.5 h CPU each) with the fixed law, and S3.
 - **S3 after: short runs** under `runctl.sh` (pausable), one per population, with a timing
   estimate first. **Carry forward:** `rubin_only` filled 0/2 and `gap_filler` 1/3 at the stub's

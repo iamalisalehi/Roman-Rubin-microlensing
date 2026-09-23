@@ -1550,7 +1550,13 @@ test pinning A_V/A_V = 1 at 0.55 um and the table above, since nothing caught th
 months. Then: `fishertest` (unaffected -- it uses no photometry), a stub comparison, the three
 production runs, and every downstream product.
 
-## No absolute yield exists: the "detected events" counts are Monte Carlo sample sizes, and the rate has no compact-object abundance
+## RESOLVED (Step Y, Deviation 54, 2026-09-23) -- No absolute yield exists: the "detected events" counts are Monte Carlo sample sizes, and the rate has no compact-object abundance
+
+**Resolved by** `analysis/y1_absolute_yield.py` and the `romanlib` rate functions. The diagnosis
+below was right: the counts were sample sizes at F = 1. The speculation below about the CAUSE of
+the legacy shortfall was not tested and is superseded -- see the new item on the legacy `Neven`.
+The yield normalisation is validated to 0.1% against the C++ optical depth, and bracketed by
+Penny et al. (2019). Kept for the record; do not act on the "candidate reasons" list.
 
 **Raised 2026-09-22 by the user:** the `bh`/`ns` detection counts (110,144 / 93,685 in the report's
 table) looked ~4 orders of magnitude above the literature -- Sajadian & Sahu 2023 (AJ 165, 96):
@@ -1593,3 +1599,95 @@ KMTNet for the `bulge` population) before any number is quoted.
 averages, validate on `bulge` against OGLE-IV/KMTNet rates and Roman's Penny et al. 2019 yield,
 then compare `bh` against Sajadian & Sahu on Roman's footprint with their mass range. Meanwhile,
 relabel the report's "detected events" row as the Monte Carlo sample size.
+
+
+## The model's event rate is too flat in Galactic latitude
+
+Measured in Step Y against OGLE-IV (Mroz et al. 2019, southern fields, sources with I < 21,
+u0 < 1, 0.1-deg latitude bins, >= 500 draws each). The ratio of modelled to observed event rate
+per star runs monotonically from 1.47 at b = -5.1 deg to 0.60 at b = -0.1 deg, crossing 1 near
+b = -1.7 deg. The optical depth ratio behaves the same way but more weakly, 1.41 down to 0.90.
+
+**Why it matters.** The model overproduces events in the outer fields and underproduces them in
+the innermost ones, so any yield summed over the full 59 deg^2 scan carries a systematic of a few
+tens of per cent, and the SHAPE of the sky maps (figure `p7_sky`) is wrong in the same way.
+Yields confined to Roman's footprint, which sits at small |b|, are much less affected -- but they
+sit where the model is if anything LOW, so footprint yields are more likely under- than
+over-stated.
+
+**Why deferred.** It is a property of the Besancon density normalisation and/or the bulge bar
+model, not of anything Step Y added, and diagnosing it means going back into the density profile
+and the star-count normalisation `Nstar_k`. That is a separate investigation from the yield, and
+the yield is validated independently (tau against the C++ to 0.1%, Penny et al. 2019 for Roman).
+
+**What the fix would involve.** Compare `G.density_profile` and the CMD star counts against the
+OGLE-IV star-count and optical-depth maps bin by bin in (l, b), and decide whether the discrepancy
+lives in the lens density, the source counts, or the extinction that sets which sources are
+bright enough to enter the I < 21 sample. The extinction law was inverted when these data were
+made (Deviation 53), which affects the I < 21 cut directly, so this must be re-measured on
+post-fix data before being chased.
+
+## The legacy map-file `Neven` is ~300x below the rate-based yield, and nobody knows why
+
+Step Y computed both. Summed over the scan with `w_area`, the map file's own `Neven` gives
+4.78e4 (bulge), 7,111 (bh) and 2.07e4 (ns) at F = 1, against 3.94e5, and the new estimate is
+~300x higher on the stub. Two differences are known -- `Neven` averages `eps/tE` over DETECTED
+events only and carries no `sqrt(M) v_t` weight (the Deviation 41 bias), and its `nstart`
+(4e5/deg^2) is 0.002 of the new `Nstar` on the stub and 0.04-0.06 in production -- but neither
+has been shown to account for the size of the gap, and `nstart` does not scale with `nsim`.
+
+**Why it matters.** `Neven` is the number the legacy code has always printed, and it feeds
+`figures/*_sky`. If it is wrong by a large factor, every legacy yield statement is too, including
+any inherited from the advisor's LMC+ELT work.
+
+**Why deferred.** Nothing in the current analysis uses it -- Step Y reports it for continuity and
+explicitly does not trust it. Diagnosing it means reading the legacy `Neven` accumulation in
+`Bulge_LSST.cpp` line by line against the new formula, which is a step of its own.
+
+**What the fix would involve.** Either derive `Neven` from the same weighted sum Step Y uses and
+delete the legacy accumulator, or find the missing normalisation. Do not "fix" it in passing.
+
+## Roman's forecast parallax precision is ~4x worse than Sajadian & Sahu's, and nothing found explains it
+
+Measured in Step Y (Deviation 54a) by `analysis/y2_ss23_compare.py`, on matched assumptions --
+their denominator (fraction of DETECTIONS), their mass range (3-50 Msun, the closest we can get to
+their 2-50), and the mass-function row that matches ours. At the 10% threshold, ours / theirs:
+
+| parameter | SS23 [%] | this work [%] | ratio |
+|---|---|---|---|
+| sigma(tetE)/tetE | 99.2 | 68.6 | 0.69 |
+| sigma(tE)/tE     | 67.0 | 21.7 | 0.32 |
+| sigma(piE)/piE   | 30.0 |  7.4 | 0.25 |
+| sigma(Ml)/Ml     | 29.8 |  6.2 | 0.21 |
+
+**Why it matters.** The lens mass is the headline science product and it needs piE:
+Ml = tetE/(kappa piE). If our piE is pessimistic by ~4x, every mass-precision statement in the
+report and the whitepaper is correspondingly pessimistic, and the "Roman characterises, Rubin
+does not" conclusion is understated rather than overstated.
+
+**What has been ruled out.**
+- *The astrometric error model.* tetE is the purely astrometric parameter and the one
+  ROMAN_AST_FLOOR controls; it is the LEAST deficient of the four at 0.69. If the 1.1 mas
+  per-exposure floor were the problem, tetE would be the worst, not the best.
+- *The mass function.* Restricting 3-1000 -> 3-50 Msun leaves tE (20.1 -> 21.7%) and piE
+  (8.3 -> 7.4%) unchanged. It lowers tetE (84.0 -> 68.6%), as tetE ~ sqrt(M) requires.
+- *Photometric parametrisation.* Our Roman partition fits the same seven parameters as theirs
+  (t0, u0, tE, xi, fb, mbase, piE), via activePhotParams.
+- *Astrometric parametrisation.* Theirs has 3 parameters, ours 4 (we fit piE astrometrically too).
+  That should IMPROVE piE, not degrade it -- unless the two matrices are not being combined for
+  piE the way they are for tetE, which has not been checked.
+
+**Candidates not yet tested.** (i) The inverted extinction law (Deviation 53) made F146 sources
+too faint in exactly these data, which degrades the photometric Fisher and so piE -- this must be
+re-measured on post-fix data BEFORE anything else is chased, and may account for much of it.
+(ii) Whether the astrometric piE and the photometric piE are combined at all, or whether the
+reported sigma(piE) is the photometric one alone. (iii) Their parallax may benefit from the
+1-hour-per-10-days gap observations they add by hand, which span the 2.3-yr gap and give a very
+long parallax baseline; our low-cadence seasons are denser but differently distributed.
+
+**Why deferred.** The first candidate is the extinction fix, whose re-runs are already scheduled.
+Chasing a Fisher-level discrepancy on data known to have wrong magnitudes would be wasted work.
+
+**What the fix would involve.** Re-run `y2_ss23_compare.py` on the post-fix black-hole table; if
+the gap survives, read the piE path through FisherM/ErrorCal for the SROMAN partition and check
+whether the astrometric information on piE reaches the reported sigma.

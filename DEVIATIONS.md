@@ -3785,3 +3785,128 @@ stays wrong until re-run. The re-runs wait for Step Y (absolute yield, OPEN_ITEM
 anything the yield needs from the C++ is in place before ~40 h of CPU are spent.
 
 **Commit:** see git log (Step E1).
+
+## 54. Step Y: absolute yields, and what the raw Monte Carlo counts were (2026-09-22/23)
+
+**What the plan said.** Nothing. The plan's Phase F stops at fractions, medians and ratios, in
+which the rate's normalising constants cancel (see 41). The user asked for the actual yield after
+reading the compact-object report's "110,144 detected events" as a prediction that was four orders
+of magnitude too large.
+
+**The finding, before any code.** It is not a yield and never was. `--events 300 --lenses 50`
+tells each sightline how many detections to collect; the number reported is the size of the
+detected Monte Carlo sample, capped by `--maxdraws`. Every lens is drawn from the population under
+test, so the sample describes a Galaxy made entirely of black holes -- F = 1 implicitly. No
+modelling error was involved, and the "four orders of magnitude" is almost exactly the product of
+the two missing factors: the abundance F and the ratio <sqrt(M)>/<M>.
+
+**What was done.** `analysis/y1_absolute_yield.py`, on top of new `romanlib` functions
+(`draw_rate`, `mean_lens_mass`, `acceptance_probability`, `yield_weight`, plus `RATE_UNIT`, `U0M`,
+`THRE`, `SATU`). Each draw carries a rate per source star
+
+    gamma_i = (F / <M>) * 2 u0m * kappa * Z(Ds) * sqrt(M) * v_t,      kappa = sqrt(4G/c^2)
+
+and the expected count over a window T is N = T * 2 u0m * kappa * (F / <M>) * sum_i W_i det_i,
+with W_i the Deviation 41 weight. T = 10 yr - 4 d, the window t0 is drawn over; u0m = 3; <M> is
+taken per lens component (`struc`) over ALL draws, detected or not.
+
+**Two conventions, both reported.** The simulator keeps a drawn source with probability equal to
+its blend fraction (`testL <= blend[2]`, `testR <= blend[6]`), which counts events per RESOLVED
+OBJECT -- the legacy Sajadian & Makler "criterion ii". Re-weighting by 1/P(kept), with
+P = 1 - (1 - fb_r [RubinDet])(1 - fb_F146 [RomanDet]), counts events on every star; this is exact
+because both surveys' light curves are built whenever either accepts. They differ by 3-8% here.
+Comparisons with the Sajadian papers use the per-object convention.
+
+**Verification.**
+- tau rebuilt from the rate constants against the C++ `opt_1e6`, per sightline: pooled ratio
+  0.9985 (bulge, 1612 sightlines), 0.9999 (bh), 0.9998 (ns); bulge median 0.988, 16-84%
+  0.93-1.06. This tests the constants, the units and Z together.
+- OGLE-IV (Mroz et al. 2019, southern fields, I < 21, u0 < 1): the model matches the observed
+  rate near b = -1.5 deg (ratio 0.97) but overproduces by 47% at b = -5.1 deg. The model's
+  latitude gradient is too shallow -- a real defect, recorded in OPEN_ITEMS, not fixed here.
+- Penny et al. (2019) Table 2: 27,000 events at |u0| < 1 and ~54,000 at |u0| < 3, over
+  1.96 deg^2 and 6 x 72 d. Per deg^2 per season that is 2,296 and 4,592; the bulge run gives
+  2,803 counting all 10 seasons and 4,671 counting only the 6 high-cadence ones. The bracket is
+  predicted, not fitted: sampling u0 < 3 forces us above their |u0| < 1 count, and the
+  dchi^2 >= 500 cut forces us below their |u0| < 3 count.
+
+**Headline numbers (PRE-extinction-fix data).** Roman footprint, per object, 10-yr window. Black
+holes, 3-1000 Msun as run: 24.6 / 49.2 / 147 detections at F = 0.005 / 0.01 / 0.03. Re-weighted to
+3-50 Msun: 64.4 / 129 / 386. Neutron stars: 141 / 281 / 844 / 1690 at F = 0.005 / 0.01 / 0.03 /
+0.06.
+
+**The F grid, checked against the literature (2026-09-22).** Sajadian & Makler 4-5e-3; Olejak et
+al. 2020 (1.2e8 BHs at ~14 Msun) and Lam et al. 2020 (2e8 at 5-16 Msun) both ~0.03; Sweeney et al.
+2022 put NS+BH together at ~1%; Gould 2000's bulge census (MS:WD:NS:BH = 69:22:6:3 by mass) gives
+0.03 and 0.06. Grid: BH {0.005, 0.01, 0.03}, NS {0.005, 0.01, 0.03, 0.06}.
+
+**What the map file's own Neven is not.** Summed over the scan it gives 4.78e4 (bulge), 7,111 (bh),
+2.07e4 (ns) at F = 1. It averages eps/tE over DETECTED events only, carries no sqrt(M) v_t weight
+and no F, and on the stub it sits ~300x below the new estimate. Reported for continuity, not
+trusted, and not used for anything.
+
+**Mass range.** Kept at 3-1000 Msun as the user directed. The 3-50 Msun rows re-weight the SAME
+draws (log-flat in M, so the surviving draws scale by ln(1000/3)/ln(50/3) and <M> falls from 171.6
+to 16.7); they are a comparison device, not a second population.
+
+**Commit:** see git log (Step Y).
+
+## 54a. Step Y addendum: the Sajadian & Sahu comparison, done on matched assumptions (2026-09-23)
+
+**Why this is separate.** The first pass at the comparison, written into the report and corrected
+here, was wrong twice over: it quoted SS23's 56-77 (their UNIFORM mass function) against our
+log-uniform run, and it compared at F = 0.005 (Sajadian & Makler) when SS23's own implied
+abundance is different. Both errors flattered the agreement.
+
+**Their method, read from arXiv:2301.03812.** N_e,BHs = N_e,tot x F1 x F2, with N_e,tot = 27,000
+taken from Penny et al. (2019); F1 = 0.019 the fraction of stellar mass in black holes, from the
+Besancon disc IMF converting every star born above 20 Msun into a remnant; F2 the ratio of
+<eps(tE)/tE> for black holes to that for all lenses. F1 is the same kind of quantity as our F, so
+the comparison must be made at F = 0.019. For dN/dM ~ M^-1 -- the row matching our log-uniform
+function -- F2 = 0.16-0.17 and N_e,BHs ~ 86, with 3/15/22 characterised at 1/5/10% (their Table 1,
+sparse-observations block; their "m" requires mass, distance AND proper motion to pass at once).
+
+**Detections: we are ~2.3x above them, and it is probably the survey design.** Matched on mass
+function, F, area and season count: ours 245 detections in 1.47 deg^2 x 10 seasons = 16.7 per
+deg^2 per season; theirs 86 in 1.96 deg^2 x 6 seasons = 7.2. Contributors, in order of confidence:
+  - their detection cut is STRICTER (dchi^2 > 800 and >= 3 points 4 sigma above baseline, against
+    our dchi^2 >= 500);
+  - both Penny 2019 (Cycle 7: 1.96 deg^2, 6 x 72 d) and SS23 predate the final GBTDS design. SS23
+    build their whole paper around a ~2.3-yr gap between the first three and last three seasons,
+    and show that patching it with ~1 day of extra observing lifts F2 from 0.11 to 0.15 (+36%).
+    The ROTAC 2025 design this simulator follows fills that gap with 4 low-cadence seasons, so we
+    should detect more long events than they can, which is the direction and roughly the size of
+    the discrepancy;
+  - their F1 equates progenitor with remnant mass, so 0.019 is an upper bound on their effective
+    F, which if corrected would lower their count further.
+
+**Characterisation: the deficit is on the PARALLAX, not the astrometry.** `y2_ss23_compare.py`
+redoes it on their denominator (fraction of DETECTIONS, not of characterised events as in the
+report's Table 4) and on the 3-50 Msun subset. At the 10% threshold, ours / theirs:
+tetE 68.6/99.2 = 0.69; tE 21.7/67.0 = 0.32; piE 7.4/30.0 = 0.25; Ml 6.2/29.8 = 0.21. Every
+parameter is short; tetE -- the purely astrometric one, and the one ROMAN_AST_FLOOR controls --
+is the least short. So the astrometric error model is not the principal cause.
+
+**A hypothesis killed.** "Our 3-1000 Msun range makes events too long for Roman's ~70-day
+seasons" predicts that restricting to 3-50 Msun repairs tE and piE. It does not: tE 20.1 -> 21.7%
+and piE 8.3 -> 7.4%, both within noise. The restriction instead LOWERS tetE, 84.0 -> 68.6%, as it
+must since tetE ~ sqrt(M). The mass function is not the cause and the parallax shortfall is left
+as an open question, not explained.
+
+**Fisher dimensions, checked.** Our Roman-partition photometric matrix has the same seven free
+parameters as theirs (t0, u0, tE, xi, fb, mbase, piE) via activePhotParams. The astrometric
+matrices differ -- theirs 3 (tetE, mus1, mus2), ours 4 (piE as well) -- which should help piE
+rather than hurt it, so it does not explain the deficit either.
+
+**Roman baseline, verified rather than assumed.** Clustering `Baseline/RomanBaseline.dat` epoch
+times on gaps > 20 d gives 10 seasons, 693.0 d of coverage, 50,401 unique epoch times -- not the
+~705 d implied by the generator's nominal constants. The Penny per-day figure in the report uses
+693.
+
+**`--stride-roman 5` is a SKY grid, not epoch decimation.** 0.10 deg inside Roman's footprint
+against 0.20 deg outside. Verified in the map file: w_area is 0.01 deg^2 on 149 footprint
+sightlines, 0.04 on 1420 outside, 0.02/0.03 on 42 partially-overlapped coarse cells, totalling
+59.24 deg^2 with 1.49 deg^2 in the footprint. The 4x oversampling is undone by the weight and does
+NOT inflate Roman's yield; it buys Monte Carlo precision inside the footprint and nothing else.
+
+**Commit:** see git log (Step Y).

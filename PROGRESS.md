@@ -96,7 +96,34 @@ Sajadian & Makler). Three steps, each approved before it starts:
   post-extinction-fix re-runs' report should start from it. **Layout (user's decision,
   2026-09-23): one directory per report, `Report/<topic>/`; template, `refs.bib`, README in
   `Report/`.** The populations report moved to `Report/populations/`.
-- **Then: re-run `bulge`, `bh`, `ns`** (~13.5 h CPU each) with the fixed law, and S3.
+- **R ⏳ post-extinction-fix re-runs, IN FLIGHT since 2026-09-24 00:20** (user: "start the runs in
+  parallel, pause/resumable"). Three run directories, same layout as P6:
+  `runs/prod_{bulge,bh,ns}_20260924/`, binary `roman.a5028fe` (clean rebuild at HEAD a5028fe; no
+  C++ change since the fix e5ecb54; `extinctiontest` and `fishertest` pass). Flags, identical
+  to the 09-17 runs: `--population <pop> --events 300 --lenses 50 --stride-roman 5
+  --pair-satellite`. **The bulge run now has --pair-satellite too** (the v3 bulge run did not),
+  so all three are directly comparable. Control: `runs/runctl.sh {status|pause|resume|stop|
+  continue} runs/prod_<pop>_20260924`. **Finished when** `status` says "not running" with
+  `entered: 1829 sightlines` and the log ends normally. Outputs: `test<tag>.dat`, `h3_pair.dat`
+  and `files/MONTLMC/files/*` in each run directory. Expect >13.5 h each (3 runs sharing 4
+  cores; bulge has ~2.7x the bh draw count). **Progress at a glance: `runs/progress_r.sh`**
+  (entered, table size vs the previous run's final, CPU; at +5 min CPU: ~43 entered, ~6%).
+  Then: y1/y3, p6/p7, and a NEW report under
+  `Report/<topic>/` from the template.
+- **S3 ⏳ STAGED 2026-09-24, launches automatically as each R run finishes** (user: "start
+  immediately after one finishes"). `runs/samples_{bulge,bh,ns}_S3/`, same layout and binary
+  (`roman.a5028fe`), flags `--population <pop> --events 30 --lenses 10 --maxdraws 10000
+  --stride-roman 5 --dump-samples samples/<pop>.spec` (spec copied into the run dir, so events
+  land in `runs/samples_<pop>_S3/samples/<pop>/`). All three configurations checked with
+  `--dry-run`. Driver: `runs/s3.sh {launch <pop>|status|plot <pop>}` -- `launch` refuses until
+  that population's production run has entered 1829 sightlines and exited; `status` shows each
+  class's kept/quota and says ALL FILLED when the run should be stopped (the simulator has no
+  quota-based exit); `plot` runs the S2 plotter into `figures/samples/s3_<pop>/`.
+  **Correction to the S1 carry-forward note:** there are no "thinly covered" footprint
+  sightlines. Every footprint sightline has the same 50,401 Roman epochs (one mission-wide visit
+  list), measured from the 09-17 bh log. `rubin_only`/`gap_filler` must be filled by TIME (peaks
+  at season edges, in the low-cadence seasons or in gaps), so they are the likely last classes.
+  Footprint sightlines are at scan positions ~500-1100; nothing can fill before ~500.
 - **S3 after: short runs** under `runctl.sh` (pausable), one per population, with a timing
   estimate first. **Carry forward:** `rubin_only` filled 0/2 and `gap_filler` 1/3 at the stub's
   footprint sightline, where Roman (~50,000 epochs) sees everything Rubin does -- S3 needs

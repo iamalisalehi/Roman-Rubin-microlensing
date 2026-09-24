@@ -108,6 +108,17 @@ Sajadian & Makler). Three steps, each approved before it starts:
   and `files/MONTLMC/files/*` in each run directory. Expect >13.5 h each (3 runs sharing 4
   cores; bulge has ~2.7x the bh draw count). **Progress at a glance: `runs/progress_r.sh`**
   (entered, table size vs the previous run's final, CPU; at +5 min CPU: ~43 entered, ~6%).
+  **PAUSED by the user 2026-09-24 16:04** (SIGSTOP, nothing lost; does NOT survive a reboot --
+  use `runctl.sh stop` first if rebooting, then `continue`). At pause: bulge 1583/1829 (out of
+  the footprint, ~1 h of cheap tail left), bh 817, ns 895; ~14.3 h CPU each. Resume with
+  `runs/runctl.sh resume runs/prod_<pop>_20260924`. **Resumed 2026-09-24 18:16.**
+  - **bulge ✅ finished 2026-09-24 20:19** (~16 h CPU). 12,222,487 rows (test5.dat 5.7 GB, 2x
+    the v3 table: the fixed extinction makes many more faint sources visible). Joint detections
+    85,061 (v3 pre-fix: 82,888); **Roman 11,468 (v3: 6,582, +74%)**, Rubin 75,533 (v3: 78,793,
+    -4%) -- the direction Deviation 52 predicted. 115 sightlines hit --maxdraws (09-17 runs: 77).
+    **One DET_ANOMALY event** (single-survey detection the joint test rejected), which the code
+    says is impossible by construction; the 09-17 runs had none. Sightline scan position 597
+    (0-based), l = -0.319, b = -0.94. OPEN_ITEMS entry; not yet investigated.
   Then: y1/y3, p6/p7, and a NEW report under
   `Report/<topic>/` from the template.
 - **S3 ⏳ STAGED 2026-09-24, launches automatically as each R run finishes** (user: "start
@@ -118,12 +129,30 @@ Sajadian & Makler). Three steps, each approved before it starts:
   `--dry-run`. Driver: `runs/s3.sh {launch <pop>|status|plot <pop>}` -- `launch` refuses until
   that population's production run has entered 1829 sightlines and exited; `status` shows each
   class's kept/quota and says ALL FILLED when the run should be stopped (the simulator has no
-  quota-based exit); `plot` runs the S2 plotter into `figures/samples/s3_<pop>/`.
+  quota-based exit); `plot` runs the S2 plotter into **one dedicated folder per population and
+  class, `figures/samples/<pop>/<class>/`**, each event self-contained (figure + its three .dat
+  files; the run directory stays the source of truth), with the run's provenance beside them.
   **Correction to the S1 carry-forward note:** there are no "thinly covered" footprint
   sightlines. Every footprint sightline has the same 50,401 Roman epochs (one mission-wide visit
   list), measured from the 09-17 bh log. `rubin_only`/`gap_filler` must be filled by TIME (peaks
   at season edges, in the low-cadence seasons or in gaps), so they are the likely last classes.
   Footprint sightlines are at scan positions ~500-1100; nothing can fill before ~500.
+  - **bulge sample run launched 2026-09-24 ~20:45** (`runs/s3.sh launch bulge`).
+  - **Batches (user, 2026-09-24: "if some samples are not good, produce more, but keep the
+    previous ones too").** A redraw is a new run dir `runs/samples_<pop>_S3<batch>` with a spec
+    listing only the classes being redrawn (tighter cuts) and `--start-index 500` (starts at the
+    footprint on a FRESH RNG stream; index 0 with the same flags would redraw the same events).
+    Its events keep their class folder but carry the batch letter (`astrometric_b001`); nothing
+    is overwritten. `runs/s3.sh {launch|plot} <pop> [batch]`.
+  - **bulge batch a, judged at 622 entered:** both_007/008/009 good (sigma_tE 11% / 0.3% / 7%;
+    008 has M_L to 6%); gap_filler_010 good (Rubin alone, u0 = 0.12, in a Roman gap);
+    roman_only_003/004 and any_005/006 acceptable (Roman-only detections, poorly
+    characterised -- a real outcome). **astrometric_001/002 NOT good**: max shift ~0.27 mas, barely
+    above ordinary events (bulge median ~0.12); 002 has theta_E to only 40%, 001 is a 1,030-d,
+    u0 = 2.1 event peaking after Roman's mission. The ideal example, both_009 (0.84 mas, theta_E to
+    0.5%), fell into `both` because the astrometric quota was already full.
+  - **bulge batch b STAGED** (`runs/samples_bulge_S3b`, dry-run checked): `astrometric x3
+    shift_min=0.5 te_max=300`. Launches when batch a is ALL FILLED and stopped.
 - **S3 after: short runs** under `runctl.sh` (pausable), one per population, with a timing
   estimate first. **Carry forward:** `rubin_only` filled 0/2 and `gap_filler` 1/3 at the stub's
   footprint sightline, where Roman (~50,000 epochs) sees everything Rubin does -- S3 needs

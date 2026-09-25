@@ -1,0 +1,19 @@
+/home/ali/Documents/PhD/Offline_project/Roman/analysis/w1_pooled_weight_check.py:68: PerformanceWarning: DataFrame is highly fragmented.  This is usually the result of calling `frame.insert` many times, which has poor performance.  Consider joining all columns at once using pd.concat(axis=1) instead. To get a de-fragmented frame, use `newframe = frame.copy()`
+  df = df.assign(W=w)
+density port vs map file: worst 0.050 dex over 1612 sightlines (map writes 1 decimal, so 0.05 is the resolution)
+
+F4 sample (joint-detected, Roman epochs): N = 12461, Kish N_eff = 3969
+         unweighted joint/Roman/Rubin                 weighted
+tE                      21.7/18.9/2.7            13.2/11.6/0.8
+piE                     16.1/14.2/2.4              3.7/3.3/0.2
+tetE                    54.1/53.9/0.5            50.5/50.3/0.1
+
+All joint detections:
+  unweighted median tE   82.0 d   tE>200 d 21.79%   N_eff   85061
+  weighted   median tE   22.7 d   tE>200 d  1.66%   N_eff    9465
+
+F2 median sigma_joint/sigma_Roman, unweighted | weighted [N, N_eff]:
+  tE   peak in gap   :   0.961|0.973 [1359,670]     0.999|0.999 [1808,570]      1.000|1.000 [859,156]       1.000|1.000 [207,71]
+  piE  peak in gap   :   0.974|0.984 [1359,670]     0.999|0.999 [1808,570]      1.000|1.000 [859,156]       1.000|1.000 [207,71]
+  tE   peak in season:   1.000|1.000 [1835,888]     1.000|1.000 [1469,529]       1.000|0.999 [570,21]       1.000|1.000 [150,59]
+  piE  peak in season:   1.000|1.000 [1835,888]     1.000|1.000 [1469,529]       1.000|0.999 [570,21]       1.000|1.000 [150,59]

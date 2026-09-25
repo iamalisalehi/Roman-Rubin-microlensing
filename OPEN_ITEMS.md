@@ -1649,6 +1649,11 @@ delete the legacy accumulator, or find the missing normalisation. Do not "fix" i
 
 ## Roman's forecast parallax precision is ~4x worse than Sajadian & Sahu's, and nothing found explains it
 
+**UPDATE 2026-09-26: re-measured on the post-fix bh run, and the extinction law is ruled out as the
+main cause.** Matched 3-50 Msun, 10% threshold, ours/theirs: tetE 0.90 (was 0.69), tE 0.39 (0.32),
+piE 0.33 (0.25), Ml 0.31 (0.21) -- `figures/y2_20260925/y2_ss23.md`. The astrometric gap mostly
+closed; the photometric one did not. Candidates (ii) and (iii) below remain.
+
 Measured in Step Y (Deviation 54a) by `analysis/y2_ss23_compare.py`, on matched assumptions --
 their denominator (fraction of DETECTIONS), their mass range (3-50 Msun, the closest we can get to
 their 2-50), and the mass-function row that matches ours. At the 10% threshold, ours / theirs:
@@ -1714,6 +1719,12 @@ contribution.
 
 ## Roman "detects" events whose peak falls years outside its mission (2026-09-24)
 
+**MEASURED 2026-09-26 (Deviation 55):** events with no Roman epoch within +-2 tE of t0 are 2.9% (bh),
+3.9% (ns) and 4.4% (bulge) of the Roman-detected yield (`figures/yield_20260925/y5_peak_coverage.md`).
+Peaks outside the mission are 46% of the bh Roman yield, but long events keep Roman on the magnified
+part. A peak-coverage requirement would lower Roman yields by at most 4.4%. Kept open only for the
+report-convention decision (quote Roman yields with or without it).
+
 **What was seen.** Sample astrometric_b003 (bulge, batch b): detR = 1 with **0 Roman epochs
 within +-2 tE of the peak** -- the peak is ~4 yr after Roman's last season (t0zone = 2), so Roman
 saw only the far photometric wing. All three batch-b astrometric events have t0zone = 2.
@@ -1729,3 +1740,17 @@ interpretation, not a code defect. **What resolving it would involve:** from the
 the fraction of detR = 1 events with t0zone = 2 (or with nep_pk_R = 0), weighted; and deciding
 whether the report should quote Roman yields with a peak-coverage requirement as well.
 
+
+## One bulge event violates sigma_joint <= sigma_Roman on the lens mass by a factor 8.3 (2026-09-26)
+
+**What is wrong.** `f3_characterization_map.py` on the post-fix bulge detections
+(`figures/wp_20260926/f3.log`) reports `('Ml', 'roman', 8.34, 1)`: one event whose joint lens-mass
+error is 8.3x its Roman-alone error. Every other violation in the same check is round-off sized
+(<= 1.0007 on tE/piE, 10-20 events). The joint information matrix is the sum of the per-survey
+ones, so a real violation of this size on sigma(Ml) points at the mass propagation rather than the
+matrices -- e.g. `ErrorCal` taking piE from the astrometric matrix for one partition and the
+photometric for the other ("keeps whichever is tighter", per partition).
+
+**Why deferred.** One event in 85,061; no pooled number moves. **Fix would involve:** finding the
+row (relMl_J > relMl_R, both valid), printing its per-partition sigpiE (photometric and astrometric)
+and sigtetE, and checking which piE each partition's mass used.

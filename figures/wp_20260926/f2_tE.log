@@ -1,0 +1,8 @@
+/home/ali/Documents/PhD/Offline_project/Roman/analysis/f2_gap_filling.py:129: PerformanceWarning: DataFrame is highly fragmented.  This is usually the result of calling `frame.insert` many times, which has poor performance.  Consider joining all columns at once using pd.concat(axis=1) instead. To get a de-fragmented frame, use `newframe = frame.copy()`
+  df["W"] = w
+weighting: event-rate weighted, N_eff = 9,465
+wrote figures/wp_20260926/f2_gap_filling.png
+wrote figures/wp_20260926/f2_gap_filling.csv
+
+events in scope: 9764  (ratio defined on 9709, rescued 95)
+characterised: joint 3064, Roman alone 2970

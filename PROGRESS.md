@@ -183,8 +183,18 @@ Sajadian & Makler). Three steps, each approved before it starts:
     bulge joint 2.48e5, Roman 8.19e4; bh Roman 8,398, Roman <10% 1,068; ns Roman 5.79e4,
     Roman <10% 2,286. eta mostly moves <15% (bh joint 0.122->0.125, ns 0.751->0.774); the
     sigma(M)/M<5% etas drop ~1/3 because the bulge's own <5% yield rose 4.6x (N_mc 575).
-  Then: p6/p7, and a NEW report under
-  `Report/<topic>/` from the template.
+- **POST-FIX REPORT DONE 2026-09-26: `Report/postfix/postfix_report.tex`** (13 pp, 0 TODO, clean
+  build; Deviation 55). Data: p6/p7 on bh+ns -> `figures/prod_20260925/` (`run_p67.sh`); y2 ->
+  `figures/y2_20260925/`; y5 peak coverage -> `figures/yield_20260925/y5_peak_coverage.md`.
+  Headlines: Rubin adds ~nothing to Roman on shared events (median joint/Roman 0.997-0.999);
+  Roman-only detection share 21-26%; wing-only Roman detections 3-4%; SS23 piE gap persists (~1/3).
+- **WHITEPAPER FIGURES REGENERATED on the post-fix bulge run: `figures/wp_20260926/`**
+  (`run_wp.sh`; f2 tE/piE, f3, f4, f4_all, h5, h5_astrometry_summary, h3 paired satellite, and
+  `w1.log` with the pooled numbers). Reads `runs/prod_bulge_20260924/test5_detJ.dat` (detections
+  only; see Deviation 55 for why that is exact). **The gap-filling headline shrinks: in-gap 10-30 d
+  median 0.973 (was 0.261); only >45 d past a season edge is it still 0.077.**
+- **NEXT: the whitepaper** (user, 2026-09-26: "update the whitepaper, include what we've learned;
+  the more modeling details the better") -- in progress.
 - **S3 ⏳ STAGED 2026-09-24, launches automatically as each R run finishes** (user: "start
   immediately after one finishes"). `runs/samples_{bulge,bh,ns}_S3/`, same layout and binary
   (`roman.a5028fe`), flags `--population <pop> --events 30 --lenses 10 --maxdraws 10000

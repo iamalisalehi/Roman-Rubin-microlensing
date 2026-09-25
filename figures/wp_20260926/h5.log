@@ -1,0 +1,33 @@
+events=test5_detJ.dat  population=bulge  git_commit=a5028fe  stride=10  events_target=300  sightlines_aggregated=1612  STRATIFIED(stride_roman=5; weight by w_area)
+  scope=footprint: 12461 events
+  weighting: event-rate weighted, N_eff = 3,969
+  wrote figures/wp_20260926/h5_astrometric_shift.png
+  wrote figures/wp_20260926/h5_astrometric_shift.csv
+    a  frac_shift_above_per_exposure_precision        0.00224804
+    a  frac_blenddiluted_above_precision              0.00219229
+    a  median_max_shift_mas                           0.123576
+    a  median_blend_F146                              1
+    a  median_roman_per_exposure_precision_mas        2.75115
+    a  median_max_shift_mas_unweighted                0.109296
+    a  frac_shift_above_per_exposure_precision_unweighted 0.00168526
+    b  frac_reaching_theta_over_sqrt8                 0.710368
+    b  median_stacked_precision_mas                   0.0123408
+    b  median_shift_over_stacked_precision            10.0136
+    b  frac_reaching_theta_over_sqrt8_unweighted      0.652997
+    c  frac_ast_peak_crosses_season_edge              0.395535
+    c  frac_crossing_given_t0_in_season               0.395029
+    c  frac_ast_peak_crosses_season_edge_unweighted   0.393869
+    d  frac_sigtetE_below_10pct_joint                 0.504989
+    d  frac_sigtetE_below_10pct_joint_unweighted      0.540888
+    d  frac_sigtetE_below_10pct_roman                 0.502646
+    d  frac_sigtetE_below_10pct_roman_unweighted      0.539042
+    d  frac_sigtetE_below_10pct_rubin                 0.00131581
+    d  frac_sigtetE_below_10pct_rubin_unweighted      0.00489527
+    e  median_ratio_tetE_joint_over_roman             0.998847
+    e  median_ratio_tetE_joint_over_roman_unweighted  0.999286
+    e  n_above_unity_roman                            0
+    e  median_ratio_tetE_joint_over_rubin             0.0321892
+    e  median_ratio_tetE_joint_over_rubin_unweighted  0.0283264
+    e  n_above_unity_rubin                            0
+    f  median_Ml_msun                                 0.366889
+    f  median_Ml_msun_unweighted                      0.170041

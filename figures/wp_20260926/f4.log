@@ -1,0 +1,7 @@
+events=test5_detJ.dat  population=bulge  git_commit=a5028fe  stride=10  events_target=300  sightlines_aggregated=1612  STRATIFIED(stride_roman=5; weight by w_area)
+  monotonicity sigma_joint <= sigma_single: VIOLATIONS [('tE', 'rubin', 1.0007483938690018, 10), ('tE', 'roman', 1.0000282542041208, 20), ('piE', 'rubin', 1.0006435344265514, 10), ('piE', 'roman', 1.000027458995996, 17), ('Ml', 'rubin', 1.0000826224777473, 1), ('Ml', 'roman', 8.341667914358437, 1)]
+  scope=footprint: 12461 events; weighting: event-rate weighted, N_eff = 3,969
+    Ml joint/roman: median ratio 0.999 weighted, 0.999 raw; 1 above 1 (round-off, cond > 1e9)
+    Ml joint/rubin: median ratio 0.024 weighted, 0.022 raw; 1 above 1 (round-off, cond > 1e9)
+wrote figures/wp_20260926/f4_fisher_precision.png
+wrote figures/wp_20260926/f4_fisher_precision.csv

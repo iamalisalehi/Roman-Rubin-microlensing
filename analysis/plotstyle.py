@@ -169,7 +169,9 @@ def stamp(fig, text):
     weighting or population cannot be read off it is a figure nobody can check. Strip it only
     for a camera-ready submission, where the same facts belong in the caption.
     """
-    fig.text(0.0, -0.015, text, color=MUTED, fontsize=5.5, ha="left", va="top")
+    # wrap=True: a long stamp must wrap at the figure width, not widen the saved image --
+    # with bbox "tight" an unwrapped line made p7_precision twice as wide as its panels.
+    fig.text(0.0, -0.015, text, color=MUTED, fontsize=5.5, ha="left", va="top", wrap=True)
 
 
 def plain_log_ticks(ax, lo, hi, axis="y"):

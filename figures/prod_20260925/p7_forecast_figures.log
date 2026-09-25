@@ -1,0 +1,40 @@
+loading:
+  bh: 2,636,605 draws, 101,515 joint detections, N_eff=210,993
+  ns: 4,538,536 draws, 93,185 joint detections, N_eff=478,123
+  bh: mass measured to 10% for 4.164% of detections (weighted), median Dl 5.53 kpc
+  ns: mass measured to 10% for 1.359% of detections (weighted), median Dl 4.13 kpc
+
+  fraction of measured events better than 10%:
+    bh   Ml    J:   4.16%
+    bh   Ml    L:   0.27%
+    bh   Ml    R:  12.60%
+    bh   piE   J:   5.32%
+    bh   piE   L:   1.46%
+    bh   piE   R:  12.85%
+    bh   tE    J:  18.66%
+    bh   tE    L:  11.74%
+    bh   tE    R:  23.64%
+    bh   tetE  J:  48.84%
+    bh   tetE  L:  37.53%
+    bh   tetE  R:  96.97%
+    ns   Ml    J:   1.36%
+    ns   Ml    L:   0.00%
+    ns   Ml    R:   3.66%
+    ns   piE   J:   2.40%
+    ns   piE   L:   0.78%
+    ns   piE   R:   4.55%
+    ns   tE    J:  10.01%
+    ns   tE    L:   4.45%
+    ns   tE    R:  16.03%
+    ns   tetE  J:  22.12%
+    ns   tetE  L:   0.43%
+    ns   tetE  R:  67.17%
+wrote figures/prod_20260925_precision.pdf
+wrote figures/prod_20260925_precision.png
+wrote figures/prod_20260925_precision_te.pdf
+wrote figures/prod_20260925_precision_te.png
+wrote figures/prod_20260925_mass_distance.pdf
+wrote figures/prod_20260925_mass_distance.png
+wrote figures/prod_20260925_sky.pdf
+wrote figures/prod_20260925_sky.png
+[memrun] peak RSS 3256 MB, wall 15.4 min

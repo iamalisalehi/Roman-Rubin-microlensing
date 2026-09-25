@@ -3945,3 +3945,55 @@ en-dashes.
 
 **Commit:** see git log (Step Y3).
 
+
+---
+
+## 55. Post-extinction-fix results: yields, p6/p7, the report -- and the gap-filling headline shrinks (2026-09-25/26)
+
+**What the plan said.** Nothing specific; this is the analysis of Step R's re-runs
+(`runs/prod_{bulge,bh,ns}_20260924`, commit `a5028fe`), written up as `Report/postfix/`.
+
+**Memory: the real cause of y1's OOM kill was not the table.** `galaxy_model.lens_distance_norm`
+built a (draws-on-a-sightline x 9,500) float64 matrix per sightline, with temporaries; the re-runs
+make 3-4x more draws per sightline, so a single sightline reached several GB and y1 passed 4.5 GB.
+Now evaluated in 512-row blocks, bit-identical (`ec0e749`). Integer sightline codes replaced the
+per-row (lon, lat) tuples (`7feaef6`, validated: 60/60 09-17 bh yields reproduce, n_mc exact).
+Peaks: y1 bh/ns/bulge 0.8/1.4/2.4 GB; p6 4.7 GB; p7 3.3 GB.
+
+**p6/p7 take `-o` as a filename PREFIX**, not a directory: `-o figures/prod_20260925` wrote
+`figures/prod_20260925_synergy.png`. Moved to `figures/prod_20260925/p6_*`/`p7_*`, and
+`run_p67.sh` now passes `-o $o/p6` / `$o/p7`. `plotstyle.stamp()` now wraps (`wrap=True`): an
+unwrapped long provenance line made `p7_precision.png` twice as wide as its panels under
+bbox=tight. The report crops the two affected figures in LaTeX (trim/clip); they are otherwise
+as the scripts wrote them.
+
+**Headline results (all in `Report/postfix/postfix_report.tex`, each with its source file).**
+- Per unit F (whole scan, per object) new/old: Rubin detects 0.50-0.55, Roman detects 1.7-2.1,
+  Roman only 2.5-2.8, Roman sigma(M)/M<10% 2.8-3.2, joint total 0.65-0.67. tau check pooled
+  1.001/1.001/1.000. eta moves <15% (bh Roman 0.119 -> 0.103, ns 0.683 -> 0.708).
+- **On events both surveys characterise, Rubin adds nothing measurable to Roman**: median
+  sigma_joint/sigma_Roman 0.997-0.999 for tE, piE, tetE in bh and ns (was 0.73-0.98); vs Rubin
+  0.008-0.041 (was 0.11-0.19). Detection share Roman-only 21-26% (was 5-6%).
+- Centroid-shift distributions unchanged to <1% (geometry; a control the fix passes).
+- SS23 matched 3-50 Msun: tetE 68.6 -> 88.8% (0.90 of theirs), tE 21.7 -> 26.0, piE 7.4 -> 10.0,
+  Ml 6.2 -> 9.3 (~1/3 of theirs). Detections per deg^2 per season 31.5 vs 7.2 (x4.4, was x2.3).
+- Wing-only Roman detections (no Roman epoch within +-2 tE): 2.9% bh, 3.9% ns, 4.4% bulge of the
+  Roman yield (`analysis/y5_roman_peak_coverage.py`).
+
+**The result that contradicts the whitepaper: gap filling.** Re-run on the post-fix bulge table
+(`figures/wp_20260926/`, `w1.log`): the pooled weighted median sigma_joint(tE)/sigma_Roman(tE) for
+10-30 d footprint events peaking in a gap is **0.973** (N_eff 670), against **0.261** pre-fix; 30-100
+d 0.999 (was 0.826). The effect is intact deep in the gap -- dt_edge > 30 d: 0.44; > 45 d: 0.077
+(N_eff 62; 0.007 pre-fix) -- but the pooled number the whitepaper called "the result the project
+exists to produce" was mostly the inverted extinction law: Roman's sources were ~2 mag too faint
+in F146 and Rubin's several magnitudes too bright, so Rubin carried events Roman now covers on its
+own through the wings. Rescued (joint characterises, Roman alone does not): 2.0% weighted of in-gap
+footprint detections.
+
+**How the whitepaper figures were regenerated without the 6 GB read.** f2/f3/f4/h5 read
+`runs/prod_bulge_20260924/test5_detJ.dat`, the 85,061 detected rows (header kept; detJ is column
+40). Valid because each script selects detections before using a row and a row's event weight
+depends only on that row and its sightline's nsim from the map file. `figures/wp_20260926/run_wp.sh`
+is the driver.
+
+**Commit:** see git log (post-fix report).

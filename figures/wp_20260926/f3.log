@@ -1,0 +1,16 @@
+/home/ali/Documents/PhD/Offline_project/Roman/analysis/f3_characterization_map.py:192: PerformanceWarning: DataFrame is highly fragmented.  This is usually the result of calling `frame.insert` many times, which has poor performance.  Consider joining all columns at once using pd.concat(axis=1) instead. To get a de-fragmented frame, use `newframe = frame.copy()`
+  df["W"] = w
+events=test5_detJ.dat  population=bulge  git_commit=a5028fe  stride=10  events_target=300  sightlines_aggregated=1612  STRATIFIED(stride_roman=5; weight by w_area)
+  weighting: event-rate weighted, N_eff = 9,465
+WARNING: sigma_joint > sigma_single somewhere -- see check_monotonicity:
+    ('tE', 'rubin', 1.0007483938690018, 10)
+    ('tE', 'roman', 1.0000282542041208, 20)
+    ('piE', 'rubin', 1.0006435344265514, 10)
+    ('piE', 'roman', 1.000027458995996, 17)
+    ('Ml', 'rubin', 1.0000826224777473, 1)
+    ('Ml', 'roman', 8.341667914358437, 1)
+  colour scale 1.0 -> 65.90 (shared by both panels)
+  panel roman: 12461 events, 12455 in range, 18 cells coloured, 0 rescue cells, max ratio 1.50
+  panel rubin: 85061 events, 85014 in range, 20 cells coloured, 3 rescue cells, max ratio 65.85
+wrote figures/wp_20260926/f3_characterization_map.png
+wrote figures/wp_20260926/f3_characterization_map.csv

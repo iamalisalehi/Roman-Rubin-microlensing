@@ -1,0 +1,76 @@
+== 85,061 detected events in runs/prod_bulge_20260924/h3_pair.dat
+   weighting: event-rate weighted, N_eff = 9,465
+   both forecasts inverted (okA on both sides): 82,888   (97.4%)
+
+== CONTROL: events with no Roman epochs near the peak (nepR_pk == 0)
+   the satellite cannot act on these, so the ratio must be 1
+   n = 72,082   median sigma_piE ratio = 1.000000
+                       median sigma_tE  ratio = 1.000000
+   fraction within 1% of unity: 99.1%
+
+== events where Roman covers the peak (nepR_pk > 0)
+   n = 10,806
+   N_eff 3,521
+   sigma_piE ratio  median 0.9911   quartiles 0.9878 / 0.9948   5-95% 0.9722 / 1.0024
+   sigma_tE  ratio  median 0.9997   (not a control here:
+                     tE and piE are correlated, so the geometry moves both)
+   improved by >1%  : 40.7%
+   improved by >2x  : 1.2%
+
+== ASTROMETRY: what the observer move does to theta_E and to the mass
+   both astrometric matrices inverted: 85,061 of 85,061
+   Roman covers the peak: n = 10,856   median sigma(theta_E) ratio = 0.999862
+   CONTROL, no Roman epochs near peak: n = 74,205   median sigma(theta_E) ratio = 1.000000
+   lens mass: n = 10,856   median relMl ratio = 0.993524
+              improved by >1%: 27.4%
+   Roman ALONE, sigma(piE): n = 10,803   median ratio = 0.991013
+              the L2 offset is Roman's geometry, so an effect must show here first
+
+== CONDITIONING of the two matrices (the OPEN_ITEMS question, answered)
+   photometric (condA): n = 10,806
+      satellite    median 2.059e+07   95th 3.666e+09
+      no-satellite median 2.108e+07   95th 4.192e+09
+      median ratio no-sat/sat = 1.0030   (far from 1 would mean the two geometries are not equally conditioned)
+   astrometric (condB): n = 10,806
+      satellite    median 4.589   95th 10.94
+      no-satellite median 4.59   95th 10.96
+      median ratio no-sat/sat = 1.0005   (far from 1 would mean the two geometries are not equally conditioned)
+
+wrote figures/wp_20260926/h3a_where.png
+H3b contemporaneous coverage (both surveys at peak): 10,001
+wrote figures/wp_20260926/h3b_corner.png
+wrote figures/wp_20260926/h3c_honest.png
+
+==========================================================================
+VALIDATION -- must pass before any ratio here is quotable
+==========================================================================
+  1. control (no Roman epochs at peak): n=72,082  median 1.000000  95.1% bit-exactly 1
+     moving Roman cannot touch these, so the ratio must be exactly 1
+     passed
+  2. sigma_tE worse for 5.3% of events, median ratio 0.999
+     moving an observer cannot destroy the timescale; expect ~1
+     passed
+  3. sigma(theta_E) ratio median 0.999843  (n=10,806)
+     theta_E is set by the deflection, not the baseline; expect ~1
+     passed
+  4. condition-number ratio no-sat/sat: median 1.0055  (n=10,806)
+     the two geometries must be comparably conditioned
+     passed
+  5. 9,382 of 10,806 non-tied events improve (86.8%)
+     a simultaneous baseline adds parallax information; it must not subtract it
+     passed
+
+==========================================================================
+THE RESULT, STATED PLAINLY
+==========================================================================
+  Roman-covered events: n = 10,806, median sigma_piE ratio 0.9922
+  improved by more than 1%: 36.1% of them
+    tE 10-30 d    n= 3,158  median 0.9914  best 5% 0.9722
+    tE 30-100 d   n= 3,681  median 0.9944  best 5% 0.9781
+    tE 100-300 d  n= 1,936  median 0.9928  best 5% 0.9768
+    tE > 300 d    n=   687  median 0.9909  best 5% 0.9799
+  control (no Roman epochs at peak): median 1.000000 on n=72,082  <- must be 1
+
+  NOT a null. 36.1% of Roman-covered events improve by >1%, and
+  116 (1.1%) improve by more than 2x.
+  Those events sit at median tE 5.3 d, u0 0.341, piE 0.274, du_sat 0.0025.

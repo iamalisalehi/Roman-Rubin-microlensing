@@ -174,7 +174,16 @@ Sajadian & Makler). Three steps, each approved before it starts:
     figures/yield_20260925/y3/. Log: figures/yield_20260925/driver.log ("all done" at the end).
     Re-running skips finished populations. The old figures/yield_20260925/bhns/ is the killed
     attempt and can be deleted.
-  Then: y1/y3, p6/p7, and a NEW report under
+  - **Y ON POST-FIX TABLES DONE 2026-09-25 23:11.** figures/yield_20260925/{bh,ns,bulge}/,
+    y1_yields.csv, y3/, and compare_20260922.md (analysis/y4_compare_yields.py: per-unit-F
+    yields vs 09-22). Peak RSS bh 823 MB / ns 1,355 / bulge 2,392; wall 10 / 16 / 33 min.
+    tau pooled 1.001 / 1.000 / 1.001. Whole-scan N_1 ratios new/old (per object):
+    joint 0.65-0.67; Rubin detects 0.50-0.55; Roman detects 1.7-2.1; Roman only 2.5-2.8;
+    Roman sigma(M)/M<10% 2.8-3.2; joint sigma(M)/M<10% 1.9-2.7. Headline N_1 (whole scan):
+    bulge joint 2.48e5, Roman 8.19e4; bh Roman 8,398, Roman <10% 1,068; ns Roman 5.79e4,
+    Roman <10% 2,286. eta mostly moves <15% (bh joint 0.122->0.125, ns 0.751->0.774); the
+    sigma(M)/M<5% etas drop ~1/3 because the bulge's own <5% yield rose 4.6x (N_mc 575).
+  Then: p6/p7, and a NEW report under
   `Report/<topic>/` from the template.
 - **S3 ⏳ STAGED 2026-09-24, launches automatically as each R run finishes** (user: "start
   immediately after one finishes"). `runs/samples_{bulge,bh,ns}_S3/`, same layout and binary

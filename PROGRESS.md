@@ -112,6 +112,16 @@ Sajadian & Makler). Three steps, each approved before it starts:
   use `runctl.sh stop` first if rebooting, then `continue`). At pause: bulge 1583/1829 (out of
   the footprint, ~1 h of cheap tail left), bh 817, ns 895; ~14.3 h CPU each. Resume with
   `runs/runctl.sh resume runs/prod_<pop>_20260924`. **Resumed 2026-09-24 18:16.**
+  - **Why R is ~5x slower than the 09-17 runs (measured 2026-09-25).** Two multiplying causes.
+    (1) The extinction fix: each sightline stops at 50 DETECTIONS (`--lenses 50` binds; icon and
+    nerr are met first). Over the same sightlines, bh needed 3.5x the draws (1.74M vs 0.50M) and
+    ns 4.2x (2.91M vs 0.69M) for the same ~50 detections each, and generated 2.5-2.9x as many full
+    light curves (Roman sources brighter, so more pass visibility; each costs 50,401 Roman
+    epochs). (2) The laptop is an i7-6500U: **2 physical cores + hyperthreading**, not 4. The
+    09-17 runs were 2 processes; R has run 3-4. **Science consequence to check in y1:** the same
+    detection count from 3.5-4x the draws means the per-star detection rate -- mostly Rubin's --
+    fell by a large factor, so Rubin's absolute yields should drop well beyond the -4% the
+    target-fixed raw counts suggest.
   - **bulge ✅ finished 2026-09-24 20:19** (~16 h CPU). 12,222,487 rows (test5.dat 5.7 GB, 2x
     the v3 table: the fixed extinction makes many more faint sources visible). Joint detections
     85,061 (v3 pre-fix: 82,888); **Roman 11,468 (v3: 6,582, +74%)**, Rubin 75,533 (v3: 78,793,
@@ -119,6 +129,10 @@ Sajadian & Makler). Three steps, each approved before it starts:
     **One DET_ANOMALY event** (single-survey detection the joint test rejected), which the code
     says is impossible by construction; the 09-17 runs had none. Sightline scan position 597
     (0-based), l = -0.319, b = -0.94. OPEN_ITEMS entry; not yet investigated.
+  - **ns ✅ finished 2026-09-25 03:52** (~23.3 h CPU). 8,388,536 rows (09-17: 5,012,348); draws
+    4,538,536 (09-17: 1,162,348, **3.9x**). Joint detections 93,185 (09-17: 93,685, fixed by the
+    per-sightline target); **Roman 18,047 (09-17: 10,004, +80%)**, Rubin 78,633 (09-17: 88,168,
+    -11%); both 3,606 (09-17: 4,666). ANOMALY 0. 86 sightlines hit --maxdraws (09-17: 77).
   Then: y1/y3, p6/p7, and a NEW report under
   `Report/<topic>/` from the template.
 - **S3 ⏳ STAGED 2026-09-24, launches automatically as each R run finishes** (user: "start
@@ -152,7 +166,42 @@ Sajadian & Makler). Three steps, each approved before it starts:
     u0 = 2.1 event peaking after Roman's mission. The ideal example, both_009 (0.84 mas, theta_E to
     0.5%), fell into `both` because the astrometric quota was already full.
   - **bulge batch b STAGED** (`runs/samples_bulge_S3b`, dry-run checked): `astrometric x3
-    shift_min=0.5 te_max=300`. Launches when batch a is ALL FILLED and stopped.
+    shift_min=0.5 te_max=300`. **Launched 2026-09-24 22:51**, before batch a finished, on the
+    free fourth core (bh, ns and batch a use the other three).
+  - **bulge batch b ✅ done 2026-09-24 23:51** (ALL FILLED at 625 entered, stopped, plotted):
+    astrometric_b001/b002/b003, max shift 1.08 / 0.71 / 0.89 mas, sigma(theta_E)/theta_E 0.3% /
+    1.8% / 0.7%. **Judged GOOD** -- the astrometric class is now well illustrated; batch a's two
+    weak events kept beside them. All three peak outside Roman's mission (t0zone = 2): the
+    centroid shift is broad (~theta_E/u far from the peak), so Roman measures it from the wings.
+    b003 is the showcase (D_L 0.74 kpc, theta_E 2.51 mas, pi_E to 9% jointly).
+  - bulge gap_filler_011/012 added in batch a: 012 good (u0 = 0.005, only Rubin caught it); 011
+    detected but barely characterised (sigma_tE 340%) -- kept, 010 and 012 carry the class.
+  - **bulge batch a finished the whole scan 2026-09-25 ~00:36 with rubin_only EMPTY (0/2)** --
+    a finding, not a failure. Among footprint events Rubin detects and Roman does not, almost
+    none peak inside a Roman season: production bulge 1 of 917 (116 in mid-mission gaps, 800
+    outside the mission), batch a 0 of 119. **With the extinction fixed, when Roman sees the peak,
+    Roman detects the event.** rubin_only (Roman epochs within +-2 tE, no Roman detection) can only
+    come from gap events whose wings reach a season edge, and gap_filler -- listed earlier in the
+    spec -- took those first. (Columns, for anyone recounting: in test5.dat ndw_R = $37,
+    detL = $38, detR = $39, detJ = $40, t0zone = $88, 1-based after stripping the leading '#'.)
+  - **bulge batch c launched 2026-09-25 00:55** (`runs/samples_bulge_S3c`): rubin_only x2 only,
+    --events 100 (3x batch a) --maxdraws 20000 --start-index 500. Stop it past ~1150 if still
+    empty; an empty result confirms the finding above.
+  - **ns sample run (batch a) launched 2026-09-25 ~03:55** (`runs/s3.sh launch ns`).
+  - **ns batch a stopped 2026-09-25 04:50 at 1664 entered**, all classes filled but rubin_only
+    (0/2, same physics as bulge). Judged: good -- astrometric_001 (shift 0.52 mas, theta_E to
+    0.019 mas, M_L to 1.4%), both_008/009/010 (shifts 1.0-1.4 mas, M_L to 13-21%), gap_filler_011
+    (sigma_tE 23%, Rubin alone, in a gap), ns_typical_006 (tE to 0.9%), roman_only_003/005 (8%,
+    20%). Weak but kept, each class also has a good one: astrometric_002 (shift 0.03 mas),
+    gap_filler_012 (u0 2.8), ns_typical_004/007 (sigma_tE 84%/73%).
+  - **ns batch b launched 2026-09-25 ~04:52** (`runs/samples_ns_S3b`): rubin_only x2 only, like
+    bulge batch c.
+  - **bulge batch c ✅ filled 2/2 by sightline 674, stopped 2026-09-25 01:45, plotted.**
+    rubin_only_c001 (tE 9.3 d, u0 0.034) and c002 (tE 16.9 d, peak A = 8.5): both peak in a
+    mid-mission gap with only **2 Roman exposures within +-2 tE**, on the wing as Roman's next
+    season opens -- exactly the only route to this class that the measurement above allows.
+    **Judged GOOD**; they illustrate the finding. **Bulge samples COMPLETE**: 17 events over six
+    classes in figures/samples/bulge/, every batch kept.
 - **S3 after: short runs** under `runctl.sh` (pausable), one per population, with a timing
   estimate first. **Carry forward:** `rubin_only` filled 0/2 and `gap_filler` 1/3 at the stub's
   footprint sightline, where Roman (~50,000 epochs) sees everything Rubin does -- S3 needs

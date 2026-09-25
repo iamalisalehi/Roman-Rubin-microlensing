@@ -59,7 +59,9 @@ launch)
     # runctl's `continue` resumes at run.startindex + sightlines entered; start wrote 0, which
     # is wrong for a batch launched with --start-index N.
     si=$(grep -o -- '--start-index [0-9]*' "$d/run.flags" | awk '{print $2}' || true)
-    [[ -n $si ]] && echo "$si" > "$d/run.startindex"
+    # An `if`, not `[[ ]] &&`: as the last command, a false test would make launch exit 1
+    # for every batch without --start-index, and a caller chaining on it would skip its next step.
+    if [[ -n $si ]]; then echo "$si" > "$d/run.startindex"; fi
     ;;
 status)
     for d in samples_*_S3*/; do

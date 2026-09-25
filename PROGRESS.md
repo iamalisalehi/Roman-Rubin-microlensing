@@ -133,6 +133,12 @@ Sajadian & Makler). Three steps, each approved before it starts:
     4,538,536 (09-17: 1,162,348, **3.9x**). Joint detections 93,185 (09-17: 93,685, fixed by the
     per-sightline target); **Roman 18,047 (09-17: 10,004, +80%)**, Rubin 78,633 (09-17: 88,168,
     -11%); both 3,606 (09-17: 4,666). ANOMALY 0. 86 sightlines hit --maxdraws (09-17: 77).
+  - **bh ✅ finished 2026-09-25 07:06** (~26.5 h CPU). 6,486,605 rows (09-17: 4,679,202); draws
+    2,636,605 (09-17: 829,202, **3.2x**). Joint detections 101,515 (09-17: 110,144); **Roman 23,771
+    (09-17: 14,284, +66%)**, Rubin 83,447 (09-17: 103,337, -19%); both 5,764 (09-17: 7,589).
+    ANOMALY 0. 79 sightlines hit --maxdraws (09-17: 77).
+  - **ALL THREE R RUNS DONE 2026-09-25 07:06.** Next: y1/y3 on the new tables, then p6/p7, then a
+    new report under Report/<topic>/ from the template.
   Then: y1/y3, p6/p7, and a NEW report under
   `Report/<topic>/` from the template.
 - **S3 ⏳ STAGED 2026-09-24, launches automatically as each R run finishes** (user: "start
@@ -194,8 +200,36 @@ Sajadian & Makler). Three steps, each approved before it starts:
     (sigma_tE 23%, Rubin alone, in a gap), ns_typical_006 (tE to 0.9%), roman_only_003/005 (8%,
     20%). Weak but kept, each class also has a good one: astrometric_002 (shift 0.03 mas),
     gap_filler_012 (u0 2.8), ns_typical_004/007 (sigma_tE 84%/73%).
+  - **bh sample run (batch a) launched 2026-09-25 07:07** (`runs/s3.sh launch bh`).
+  - **bh batch a ran the whole scan (ended ~08:14)** with BOTH gap classes empty (gap_filler 0/2,
+    rubin_only 0/2): bh events are long (median tE ~330 d), rarely fit a ~110-d Roman gap, and
+    Roman detects season-overlapping ones from the wings. Judged: GOOD -- both_006/007/011 (M_L to
+    1.1% / 7.3% / 0.5%), astrometric_005 (shift 1.9 mas, theta_E 0.3%, M_L 10%), astrometric_001
+    (shift 5.7 mas); acceptable -- bh_long_009/010 (theta_E 3% / 0.3%, tE ~70%),
+    roman_only_002/003; WEAK -- bh_short_004/008 (u0 > 1, sigma_tE 100% / 160%).
+  - **bh batch b launched 2026-09-25 ~08:52** (`runs/samples_bh_S3b`): rubin_only x2 and
+    gap_filler x2 both te_max=150 (the only events that can fit a gap), bh_short x2 te_max=100;
+    rubin_only listed first. Empty gap classes after this pass = the finding.
+    bh_short filled by 706 entered: bh_short_b002 GOOD (tE 49 d, u0 0.37, tE 0.7%, theta_E 2.2%);
+    b001 weak (sigma_tE 800%), kept.
+  - **bh batch b ran the whole scan (ended ~11:41) with rubin_only 0/2 and gap_filler 0/2 even at
+    tE <= 150 d and 100 detections/sightline -- EMPTY BY PHYSICS, the finding.** Every footprint
+    bh event Rubin detects and Roman does not peaks OUTSIDE Roman's mission (t0zone = 2): 354 of
+    354 in the production table, 110 of 110 in batch b; none in a gap, none in a season. For
+    black-hole lenses, any event peaking during Roman's mission -- gaps included -- is detected
+    by Roman, because the events outlast the gaps and Roman's seasons catch their wings. Contrast
+    bulge (116 in gaps) and ns (rubin_only found only once in a full pass).
+  - **S3 COMPLETE 2026-09-25 ~11:50.** Samples, every batch kept, in figures/samples/<pop>/<class>/:
+    bulge 17 events (6 classes), ns 13 (6 classes; rubin_only 1/2), bh 13 (5 of 7 classes; both
+    gap classes empty by physics). Worth a line in the post-fix report: how often "Rubin alone"
+    or "Rubin fills a Roman gap" can happen at all depends strongly on the lens population.
   - **ns batch b launched 2026-09-25 ~04:52** (`runs/samples_ns_S3b`): rubin_only x2 only, like
     bulge batch c.
+  - **ns batch b ran the whole scan (ended ~07:31) with rubin_only 1/2**: rubin_only_b001 (tE 31.8 d,
+    u0 0.22, peak in a gap, 2 Roman exposures within +-2 tE) -- judged GOOD, same signature as
+    bulge's. One event in the full footprint at 100 detections/sightline: the class is rarer for
+    ns than for bulge. **Accepted at 1/2** rather than spend another multi-hour pass; ns samples
+    COMPLETE (13 events).
   - **bulge batch c ✅ filled 2/2 by sightline 674, stopped 2026-09-25 01:45, plotted.**
     rubin_only_c001 (tE 9.3 d, u0 0.034) and c002 (tE 16.9 d, peak A = 8.5): both peak in a
     mid-mission gap with only **2 Roman exposures within +-2 tE**, on the wing as Roman's next

@@ -1691,3 +1691,41 @@ Chasing a Fisher-level discrepancy on data known to have wrong magnitudes would 
 **What the fix would involve.** Re-run `y2_ss23_compare.py` on the post-fix black-hole table; if
 the gap survives, read the piE path through FisherM/ErrorCal for the SROMAN partition and check
 whether the astrometric information on piE reaches the reported sigma.
+
+## One DET_ANOMALY event in the post-extinction-fix bulge run (2026-09-24)
+
+**What is wrong.** `runs/prod_bulge_20260924` (commit a5028fe) reports
+`ANOMALY(single-not-joint) 1` in its RUN TOTALS: one event where a single-survey detection
+test passed and the joint test did not. Since Step H7 all three tests share one fixed bar and
+chi2 accumulates over both instruments, so the code's own warning says this count "should be
+ZERO by construction" and a non-zero value means a sign convention has crept into the signed
+lensing statistic. The 09-17 bh and ns runs had 0.
+
+**Where.** Scan position 597 (0-based; the 598th `NEW STEP`), l = -0.319 deg, b = -0.94 deg,
+inside Roman's footprint; run.log line ~7,216,041.
+
+**Why it matters, and why it is deferred.** detJ is still made monotone downstream, so no output
+table is wrong; one event in 85,061 detections changes no number. But it is evidence that the
+"by construction" argument has a hole, possibly one the extinction fix exposed (fainter Rubin
+sources, brighter Roman ones). Deferred because the production runs are in flight and it does
+not bias them. **Fix would involve:** finding the row in test5.dat (detL/detR set, raw joint
+test failed), recomputing its three delta-chi2 values, and checking the sign of each survey's
+contribution.
+
+## Roman "detects" events whose peak falls years outside its mission (2026-09-24)
+
+**What was seen.** Sample astrometric_b003 (bulge, batch b): detR = 1 with **0 Roman epochs
+within +-2 tE of the peak** -- the peak is ~4 yr after Roman's last season (t0zone = 2), so Roman
+saw only the far photometric wing. All three batch-b astrometric events have t0zone = 2.
+
+**Why it matters.** Plausible physics -- 50,000 Roman exposures can accumulate delta-chi2 >= 500
+from a small, slow wing brightening -- but it changes how "Roman detections" in the yields should
+be read: some are wing detections of events Rubin sees peak, with no Roman coverage of the peak.
+It also bears on the detection test's sensitivity to baseline systematics that the simulation
+does not model (a real survey fits the baseline; a slow wing is degenerate with it).
+
+**Deferred because** the production runs are in flight and this is a question of
+interpretation, not a code defect. **What resolving it would involve:** from the post-fix tables,
+the fraction of detR = 1 events with t0zone = 2 (or with nep_pk_R = 0), weighted; and deciding
+whether the report should quote Roman yields with a peak-coverage requirement as well.
+

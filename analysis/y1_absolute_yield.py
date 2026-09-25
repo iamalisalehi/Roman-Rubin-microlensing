@@ -100,9 +100,11 @@ class Run:
                              dtype=np.float64)
         df["gamma"] = np.asarray(R.draw_rate(df), dtype=np.float64)
         df["P"] = np.asarray(R.acceptance_probability(df), dtype=np.float64)
-        df["key"] = list(zip(df["lon"].round(3), df["lat"].round(3)))
-        roman_keys = set(df.loc[df["ndw_R"] > 0, "key"])
-        df["foot"] = df["key"].isin(roman_keys)
+        # An int32 sightline code, not a (lon, lat) tuple per row: the tuples were ~1 KB a row
+        # and made the post-fix tables unreadable in 8 GB. self.keys[code] is the tuple.
+        codes, self.keys = R.sightline_index(df)
+        df["key"] = codes
+        df["foot"] = np.isin(codes, np.unique(codes[df["ndw_R"].to_numpy() > 0]))
         self.nsim = {**{(round(a, 3), round(b, 3)): n for a, b, n in
                         zip(self.sl.get("lon", []), self.sl.get("lat", []),
                             self.sl.get("nsim", [])) if np.isfinite(a)}, **override}
@@ -114,11 +116,11 @@ class Run:
 def raw_numbers(run):
     df = run.df
     per = df.groupby("key").agg(rows=("detJ", "size"), w=("w_area", "first"))
-    nsim = np.array([run.nsim.get(k, np.nan) for k in per.index])
+    nsim = np.array([run.nsim.get(run.keys[k], np.nan) for k in per.index])
     return {
         "sightlines": len(per),
         "area_deg2": per["w"].sum(),
-        "area_footprint_deg2": per.loc[[k in set(df.key[df.foot]) for k in per.index], "w"].sum(),
+        "area_footprint_deg2": per.loc[np.isin(per.index, df.key[df.foot].unique()), "w"].sum(),
         "draws (table rows)": len(df),
         "draws (sum of nsim)": np.nansum(nsim),
         "rows == nsim on every sightline": bool(np.allclose(per["rows"].to_numpy(), nsim)),

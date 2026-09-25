@@ -160,6 +160,16 @@ Sajadian & Makler). Three steps, each approved before it starts:
     time under the memrun wrapper ($CLAUDE_JOB_DIR/tmp/memrun.py -- copy it into analysis/ if
     the job dir is gone: it runs a script via runpy and prints ru_maxrss at the end). Then concatenate
     the two CSVs and run y3 (it needs bulge for eta).
+  - **Integer sightline index DONE 2026-09-25, VALIDATED:** 09-17 bh rerun reproduces all 60 yields (n_mc exact, N to 4e-8, err to 4e-7). Peak RSS only 1,071 -> 998 MB on 0.83M rows, so the tuples were NOT the dominant cost there; the rest is read overhead, not per-row.
+    `romanlib.sightline_index(df)` -> (int32 codes, keys[code] = (lon, lat) tuple) and
+    `sightline_groups(codes)`; used by yield_weight, draw_rate and y1. Validation: y1 on
+    runs/prod_bh_20260917 into $CLAUDE_JOB_DIR/tmp/val, compared with the bh rows of
+    figures/yield_prefix_20260922/y1_yields.csv.
+  - **Driver: `runs/yields_20260925.sh`** -- bh -> ns -> bulge in sequence under memrun, into
+    figures/yield_20260925/<pop>/, then concatenates the CSVs and runs y3 into
+    figures/yield_20260925/y3/. Log: figures/yield_20260925/driver.log ("all done" at the end).
+    Re-running skips finished populations. The old figures/yield_20260925/bhns/ is the killed
+    attempt and can be deleted.
   Then: y1/y3, p6/p7, and a NEW report under
   `Report/<topic>/` from the template.
 - **S3 ⏳ STAGED 2026-09-24, launches automatically as each R run finishes** (user: "start

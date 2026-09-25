@@ -100,6 +100,33 @@ def _narrow(df, keep64):
     return pd.DataFrame(out, index=df.index)
 
 
+def sightline_index(df):
+    """(codes, keys): an int32 sightline code per row, and keys[code] = (lon, lat) to 3 dp.
+
+    Replaces the per-row Python tuple `list(zip(lon.round(3), lat.round(3)))`, which cost
+    ~1 KB a row and put a 12M-row table out of reach of an 8 GB machine (2026-09-25). The keys
+    are the rounded values of each sightline's first row, i.e. exactly the tuples the old code
+    built, so every dict lookup keyed on them (nsim, density_profile) is unchanged.
+    """
+    lon = df["lon"].to_numpy(np.float64).round(3)
+    lat = df["lat"].to_numpy(np.float64).round(3)
+    # rint(x*1000) is the integer numpy's round(3) went through, so equal packs <=> equal pairs.
+    packed = (np.rint(lon * 1000).astype(np.int64) + 1_000_000) * 10_000_000 \
+        + (np.rint(lat * 1000).astype(np.int64) + 1_000_000)
+    _, first, codes = np.unique(packed, return_index=True, return_inverse=True)
+    keys = [(float(lon[i]), float(lat[i])) for i in first]
+    return codes.astype(np.int32).ravel(), keys
+
+
+def sightline_groups(codes):
+    """Yield (code, row positions) per sightline, from sightline_index()'s codes."""
+    order = np.argsort(codes, kind="stable")
+    bounds = np.flatnonzero(np.diff(codes[order])) + 1
+    for pos in np.split(order, bounds):
+        if len(pos):
+            yield int(codes[pos[0]]), pos
+
+
 def load_events(path, keep=None, chunksize=None, usecols=None, narrow=False,
                 keep64=("lon", "lat")):
     """Read the per-event table (test5.dat) written by the `filg_in <<` block.
@@ -382,7 +409,7 @@ def event_weight(df, sightlines, nsim_override=None):
     if "w_area" not in df.columns:
         raise ValueError("event table predates Step E1: no w_area column, so no pooled weight")
 
-    key = list(zip(df["lon"].round(3), df["lat"].round(3)))
+    codes, keys = sightline_index(df)
     nsim = {}
     if sightlines is not None and "lon" in sightlines:
         for lon, lat, n in zip(sightlines["lon"], sightlines["lat"], sightlines["nsim"]):
@@ -411,11 +438,11 @@ def event_weight(df, sightlines, nsim_override=None):
     #
     # So: verify, then decide. Weight 0 only for rows that demonstrably contribute nothing;
     # raise, as before, the moment one of them carries something countable.
-    missing = sorted({k for k in set(key) if k not in nsim})
+    missing = sorted(k for k in keys if k not in nsim)
     zero_weight = np.zeros(len(df), dtype=bool)
     if missing:
         miss = set(missing)
-        zero_weight = np.array([k in miss for k in key], dtype=bool)
+        zero_weight = np.isin(codes, [c for c, k in enumerate(keys) if k in miss])
         countable = [c for c in ("detL", "detR", "detJ", "okA_J", "okB_J") if c in df.columns]
         if countable:
             carried = int((df.loc[zero_weight, countable] == 1).any(axis=1).sum())
@@ -441,9 +468,8 @@ def event_weight(df, sightlines, nsim_override=None):
     nstart = np.empty(len(df))
     Z = np.empty(len(df))
     Ds = df["Ds"].to_numpy()
-    order = pd.Series(np.arange(len(df))).groupby(pd.Series(key)).groups
-    for k, pos in order.items():
-        pos = np.asarray(pos)
+    for c, pos in sightline_groups(codes):
+        k = keys[c]
         prof = G.density_profile(*k)
         n_draws[pos] = nsim[k]
         nstart[pos] = prof.Nstart
@@ -574,10 +600,9 @@ def draw_rate(df):
     import galaxy_model as G
     Z = np.empty(len(df))
     Ds = df["Ds"].to_numpy()
-    key = pd.Series(list(zip(df["lon"].round(3), df["lat"].round(3))))
-    for k, pos in key.groupby(key).groups.items():
-        pos = np.asarray(pos)
-        Z[pos] = G.lens_distance_norm(G.density_profile(*k), Ds[pos])
+    codes, keys = sightline_index(df)
+    for c, pos in sightline_groups(codes):
+        Z[pos] = G.lens_distance_norm(G.density_profile(*keys[c]), Ds[pos])
     return (RATE_UNIT * Z * np.sqrt(df["Ml"].to_numpy()) * df["Vt"].to_numpy()
             / mean_lens_mass(df))
 

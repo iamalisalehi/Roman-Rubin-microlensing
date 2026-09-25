@@ -85,7 +85,23 @@ MAP_COLS = ([f"{n}_{i}" for n in _MAP_PAIRS for i in (0, 1)]
                "w_area", "lon", "lat"])
 
 
-def load_events(path, keep=None, chunksize=None, usecols=None):
+def _narrow(df, keep64):
+    """float64 -> float32 and int64 -> int32, except the columns named in keep64."""
+    out = {}
+    for c in df.columns:
+        if c in keep64:
+            out[c] = df[c]
+        elif df[c].dtype == np.float64:
+            out[c] = df[c].astype(np.float32)
+        elif df[c].dtype == np.int64:
+            out[c] = df[c].astype(np.int32)
+        else:
+            out[c] = df[c]
+    return pd.DataFrame(out, index=df.index)
+
+
+def load_events(path, keep=None, chunksize=None, usecols=None, narrow=False,
+                keep64=("lon", "lat")):
     """Read the per-event table (test5.dat) written by the `filg_in <<` block.
 
     Column names come from the file's own `#` header, not from a list hardcoded here, so a
@@ -111,6 +127,16 @@ def load_events(path, keep=None, chunksize=None, usecols=None):
         rows, so it has to discard columns instead -- eight of ninety is ~380 MB rather than
         ~4 GB. The `detCls`/`synClass`/`t0zone` label columns are only added if their source
         column survives the selection.
+
+    narrow -- store each chunk's floats as float32 and integers as int32, halving memory. For
+        statistics that need EVERY draw, where neither `keep` nor `usecols` can shrink the
+        table enough: the post-extinction-fix tables are 6.5-12.2M rows, and y1's 30 columns of
+        them in float64 got a run killed for memory (2026-09-25). float32 keeps 7 significant
+        digits, ample for every physical input; callers must do their arithmetic in float64.
+        Columns in `keep64` stay float64 because they are MATCHED, not computed with: lon/lat
+        key the sightline lookup, and float64(float32(-0.319)) rounds to a different key than
+        the map file's -0.319, so a narrowed coordinate would silently drop that row's weight.
+        Off by default, so every existing caller is unchanged.
     """
     with open(path) as fh:
         header = fh.readline()
@@ -127,13 +153,17 @@ def load_events(path, keep=None, chunksize=None, usecols=None):
         if missing:
             raise ValueError(f"{path}: no such column(s) {missing}")
         reader_kw["usecols"] = list(usecols)
-    if keep is None and chunksize is None:
+    if keep is None and chunksize is None and not narrow:
         df = pd.read_csv(path, **reader_kw)
     else:
         parts = []
         with pd.read_csv(path, chunksize=chunksize or 500_000, **reader_kw) as it:
             for chunk in it:
-                parts.append(chunk if keep is None else chunk[keep(chunk)])
+                if keep is not None:
+                    chunk = chunk[keep(chunk)]
+                if narrow:
+                    chunk = _narrow(chunk, keep64)
+                parts.append(chunk)
         df = (pd.concat(parts, ignore_index=True) if parts
               else pd.DataFrame(columns=cols))
 

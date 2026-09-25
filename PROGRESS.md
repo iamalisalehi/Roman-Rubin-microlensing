@@ -139,6 +139,27 @@ Sajadian & Makler). Three steps, each approved before it starts:
     ANOMALY 0. 79 sightlines hit --maxdraws (09-17: 77).
   - **ALL THREE R RUNS DONE 2026-09-25 07:06.** Next: y1/y3 on the new tables, then p6/p7, then a
     new report under Report/<topic>/ from the template.
+  - **Y on the post-fix tables, IN FLIGHT 2026-09-25 ~11:58.** Split in two because y1 holds
+    30 columns of every draw in memory (bulge: 12.2M rows, ~3 GB + concat) and writes its
+    tables only at the end, and an OOM kill is silent: (1) bh+ns ->
+    `figures/yield_20260925/bhns/`, running; (2) bulge alone -> `figures/yield_20260925/bulge/`,
+    after (1). /usr/bin/time is NOT installed; each runs under a runpy wrapper that prints
+    "[memrun] peak RSS" at the end of y1.log. Finished when `y1_yields.csv` exists in that
+    directory and y1.log ends with the [memrun] line.
+  - **Killed for memory 2026-09-25 ~13:05 while reading the bh table; NOT restarted (user: "wrap
+    up, we'll start them later").** Fix so far: `romanlib.load_events(..., narrow=True)` stores
+    floats as float32 and ints as int32 (lon/lat kept float64 -- they key the sightline lookup,
+    and a narrowed -0.319 rounds to a different key); y1 uses it and holds y/gamma/P in float64.
+    **Validated:** rerun on the 09-17 bh table reproduces all 60 yields to 4e-8 and n_mc exactly.
+    **But not enough on its own:** that run peaked at 1,071 MB for 0.83M rows (~1.1 KB/row), so bh
+    (6.5M) would need ~7 GB and bulge (12.2M) ~13 GB. The per-row cost is dominated by Python
+    TUPLE sightline keys, `list(zip(lon.round(3), lat.round(3)))`, built at
+    y1_absolute_yield.py:103 and romanlib.py:385 and :577. **Next step before any yield run:**
+    replace them with an integer sightline index (e.g. pd.factorize on the rounded pair, or
+    lon*1e4+lat), re-validate against the 09-17 bh yields, then run bh -> ns -> bulge one at a
+    time under the memrun wrapper ($CLAUDE_JOB_DIR/tmp/memrun.py -- copy it into analysis/ if
+    the job dir is gone: it runs a script via runpy and prints ru_maxrss at the end). Then concatenate
+    the two CSVs and run y3 (it needs bulge for eta).
   Then: y1/y3, p6/p7, and a NEW report under
   `Report/<topic>/` from the template.
 - **S3 ⏳ STAGED 2026-09-24, launches automatically as each R run finishes** (user: "start

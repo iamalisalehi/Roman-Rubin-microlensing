@@ -88,14 +88,18 @@ class Run:
                      if os.path.exists(os.path.join(directory, f))]
         self.tobs_days = float(self.prov.get("Tobs_days", 3652.43))
         print(f"[{name}] reading {self.table} ({self.population})", flush=True)
+        # narrow: float32 storage -- the post-fix tables are 6.5-12.2M rows and a float64 read
+        # of them was killed for memory (2026-09-25). The per-draw quantities computed below
+        # are held in float64.
         self.df = R.load_events(self.table, usecols=COLS, chunksize=chunksize,
-                                keep=R.keep_weightable(self.map, self.logs))
+                                keep=R.keep_weightable(self.map, self.logs), narrow=True)
         self.sl = R.load_sightlines(self.map)
         override = R.nsim_from_logs(self.logs)
         df = self.df
-        df["y"] = R.yield_weight(df, self.sl, self.tobs_days, nsim_override=override)
-        df["gamma"] = R.draw_rate(df)
-        df["P"] = R.acceptance_probability(df)
+        df["y"] = np.asarray(R.yield_weight(df, self.sl, self.tobs_days, nsim_override=override),
+                             dtype=np.float64)
+        df["gamma"] = np.asarray(R.draw_rate(df), dtype=np.float64)
+        df["P"] = np.asarray(R.acceptance_probability(df), dtype=np.float64)
         df["key"] = list(zip(df["lon"].round(3), df["lat"].round(3)))
         roman_keys = set(df.loc[df["ndw_R"] > 0, "key"])
         df["foot"] = df["key"].isin(roman_keys)

@@ -126,13 +126,23 @@ def lens_distance_norm(prof, Ds):
     that, so dividing the physical rate by the sampling density leaves Z as a factor -- see
     Deviation 41. Units are Msun/pc^3 * kpc^(3/2), which cancels in any weighted fraction.
     """
-    Ds = np.atleast_1d(np.asarray(Ds, dtype=float))[:, None]
+    Ds = np.atleast_1d(np.asarray(Ds, dtype=float))
     k = np.arange(1, NUM)[None, :]
     Dl = k * STEP
-    nums = np.round(Ds / STEP).astype(int)
-    inside = k <= nums - 2
-    tt = np.sqrt(np.clip((Ds - Dl) * Dl / Ds, 0.0, None)) * prof.rho_tot[None, :] * inside
-    return tt.sum(axis=1) * STEP
+    out = np.empty(len(Ds))
+    # In row blocks: the (rows x grid) matrix and its temporaries are ~0.4 MB per row, so one
+    # post-extinction-fix sightline (thousands of draws) in a single pass took GBs and got y1
+    # killed for memory (2026-09-25). Each row's sum is unchanged by the blocking.
+    for i in range(0, len(Ds), BLOCK):
+        d = Ds[i:i + BLOCK, None]
+        nums = np.round(d / STEP).astype(int)
+        inside = k <= nums - 2
+        tt = np.sqrt(np.clip((d - Dl) * Dl / d, 0.0, None)) * prof.rho_tot[None, :] * inside
+        out[i:i + BLOCK] = tt.sum(axis=1) * STEP
+    return out
+
+
+BLOCK = 512
 
 
 def check_against_map(sightlines, tol=0.05):

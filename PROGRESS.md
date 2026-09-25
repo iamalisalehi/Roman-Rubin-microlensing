@@ -165,6 +165,10 @@ Sajadian & Makler). Three steps, each approved before it starts:
     `sightline_groups(codes)`; used by yield_weight, draw_rate and y1. Validation: y1 on
     runs/prod_bh_20260917 into $CLAUDE_JOB_DIR/tmp/val, compared with the bh rows of
     figures/yield_prefix_20260922/y1_yields.csv.
+  - **The real memory culprit (found 2026-09-25 ~22:00): `galaxy_model.lens_distance_norm`** built a
+    (draws-on-sightline x 9,500) float64 matrix per sightline; with 3-4x more draws per
+    sightline post-fix that took y1 past 4.5 GB. Now evaluated in 512-row blocks (bit-identical Z).
+    bh y1 load+weights now peak ~660 MB flat (2.64M weightable draws, 1612 sightlines).
   - **Driver: `runs/yields_20260925.sh`** -- bh -> ns -> bulge in sequence under memrun, into
     figures/yield_20260925/<pop>/, then concatenates the CSVs and runs y3 into
     figures/yield_20260925/y3/. Log: figures/yield_20260925/driver.log ("all done" at the end).

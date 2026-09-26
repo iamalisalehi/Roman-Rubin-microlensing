@@ -42,12 +42,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import romanlib as R
 
 # Temporal-baseline gain for H3c: median sigma_joint/sigma_Roman for piE on in-gap events
-# (t0zone == 1, Roman-covered), recomputed from Step F2 on the post-H7 v3 table. A DIFFERENT
+# (t0zone == 1, Roman-covered), EVENT-RATE WEIGHTED, from the post-extinction-fix bulge run
+# (runs/prod_bulge_20260924; figures/wp_20260926/w1.log, Deviation 55). The pre-fix v3 values were
+# 0.433 / 0.936 / 0.978 / 0.991 (unweighted); the fix all but removed the pooled in-gap gain, which
+# now survives only for peaks deep inside a gap (dt_edge > 45 d: tE ratio 0.077). A DIFFERENT
 # physical effect -- Rubin filling Roman's season gaps in time, not two observers separated in
 # space. H3c exists to put the two on one axis at the right scale, not to declare a winner.
-# The in-season control for the same quantity is ~0.98 in every bin, so the short-tE number
-# below is a gap effect and not a general "Rubin helps a bit" offset.
-TEMPORAL_GAIN = {"10-30 d": 0.433, "30-100 d": 0.936, "100-300 d": 0.978, "> 300 d": 0.991}
+# The in-season control for the same quantity is 0.999-1.000 in every bin.
+TEMPORAL_GAIN = {"10-30 d": 0.984, "30-100 d": 0.999, "100-300 d": 1.000, "> 300 d": 1.000}
 TE_EDGES = [10.0, 30.0, 100.0, 300.0, np.inf]
 TE_LABELS = list(TEMPORAL_GAIN.keys())
 BG = "#fcfcfb"
@@ -436,25 +438,32 @@ def figures(d, covered, blind, prefix):
     ax.set_facecolor(BG)
     x = np.arange(len(TE_LABELS))
     w = 0.36
-    sat = [covered[covered.tb == l].ratio.median() if (covered.tb == l).sum() >= 5 else np.nan
-           for l in TE_LABELS]
-    ax.bar(x - w / 2, sat, w, color="#3b6ea5",
+    # Weighted, like TEMPORAL_GAIN beside it: a raw bar next to a weighted one is not a comparison.
+    sat = [R.weighted_median(covered.loc[covered.tb == l, "ratio"], covered.loc[covered.tb == l, "W"])
+           if (covered.tb == l).sum() >= 5 else np.nan for l in TE_LABELS]
+    # Plotted as the IMPROVEMENT, 100 (1 - ratio) %, on a linear axis from zero. A log axis of
+    # the ratio with labels at 1.06x the bar only worked while the gains were large; once both
+    # effects are percent-level (post-extinction-fix) the labels land far outside the axes.
+    gs = [100.0 * (1.0 - v) if np.isfinite(v) else np.nan for v in sat]
+    gt = [100.0 * (1.0 - TEMPORAL_GAIN[l]) for l in TE_LABELS]
+    ax.bar(x - w / 2, gs, w, color="#3b6ea5",
            label="satellite baseline  (Roman at L2 vs at Earth), this work")
-    ax.bar(x + w / 2, [TEMPORAL_GAIN[l] for l in TE_LABELS], w, color="#c0703a",
+    ax.bar(x + w / 2, gt, w, color="#c0703a",
            label="temporal baseline  (Rubin filling Roman's gaps), Step F2")
-    ax.axhline(1.0, color="#444", lw=1.0, ls="--")
+    ax.axhline(0.0, color="#444", lw=1.0)
     ax.set_xticks(x, TE_LABELS)
-    ax.set_yscale("log")
+    top = np.nanmax(gs + gt)
+    ax.set_ylim(0, 1.25 * top if top > 0 else 1)
     ax.set_xlabel(r"$t_E$ bin")
-    ax.set_ylabel(r"median $\sigma_{\pi_E}$ ratio   (lower = bigger gain)")
+    ax.set_ylabel(r"median improvement in $\sigma_{\pi_E}$  [%]")
     ax.set_title("H3c  Two different effects, at the same scale", fontsize=11)
-    ax.legend(frameon=False, fontsize=8.5)
+    ax.legend(frameon=False, fontsize=8.5, loc="upper right")
     ax.grid(alpha=0.25, axis="y", lw=0.6)
-    for xi, v in zip(x - w / 2, sat):
+    for xi, v in zip(x - w / 2, gs):
         if np.isfinite(v):
-            ax.text(xi, v * 1.06, f"{v:.3f}", ha="center", fontsize=8)
-    for xi, l in zip(x + w / 2, TE_LABELS):
-        ax.text(xi, TEMPORAL_GAIN[l] * 1.06, f"{TEMPORAL_GAIN[l]:.2f}", ha="center", fontsize=8)
+            ax.text(xi, v + 0.02 * top, f"{v:.1f}", ha="center", fontsize=8)
+    for xi, v in zip(x + w / 2, gt):
+        ax.text(xi, v + 0.02 * top, f"{v:.1f}", ha="center", fontsize=8)
     fig.text(0.01, -0.06,
              "DIFFERENT PHYSICAL EFFECTS. Pairing the bars compares their size, not their "
              "merit: one is two observers separated in\nspace, the other is one observer's "

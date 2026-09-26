@@ -3997,3 +3997,54 @@ depends only on that row and its sightline's nsim from the map file. `figures/wp
 is the driver.
 
 **Commit:** see git log (post-fix report).
+
+---
+
+## 56. The whitepaper brought up to the post-fix runs, and three of its claims reversed (2026-09-26)
+
+**What was asked.** "Update the whitepaper, include what we've learned since the last time. The more
+modeling details the better." Last whitepaper commit was `ae21dbb` (event-rate weighting).
+
+**Modelling added** (all in `Whitepaper/whitepaper.tex`): aims and findings (new 1.5); the reddening
+law in full -- CCM89 coefficients, per-component R_V (2.5 bulge / 3.1 elsewhere), per-band scatter,
+the seven band values, the inversion, its size and how it was found, the unit test (new 2.2.4);
+the three lens populations with the Kroupa IMF continuity coefficients, the initial-final mass
+map, the bh/ns samplers and why populations are never pooled; the Rubin/Roman pre-selection and
+the per-object vs all-stars convention; which stopping floor binds and why it moved; barren
+sightlines; the six efficiency curves that were never counted; image resolution and the paired
+satellite mode (new 5.x "Observables that exist only epoch by epoch"); Z(Ds) evaluation; a whole
+new section 7 "Absolute Event Rates and Yields" (rate per draw, F, conventions, abundance grid,
+tau / OGLE-IV / Penny validation, N_1 table, eta, peak coverage, recipe, mass-function
+re-weighting); memory lessons; the sample-event dump and the geocentric no-parallax frame.
+Eight bib entries copied from `Report/refs.bib`.
+
+**Results rewritten on the post-fix bulge run** (`figures/wp_20260926/`). Three conclusions of
+the pre-fix text are reversed and the text says so rather than quietly replacing numbers:
+1. Gap filling: pooled in-gap 10-30 d median 0.261 -> 0.973; the effect survives only >45 d into
+   a gap (0.077). Deviation 55.
+2. "The temporal baseline is worth ~50x the spatial one": now 1.6% vs 0.9% for 10-30 d events,
+   and the satellite gain is the larger for longer events.
+3. Penny et al. bracket: Roman detections per deg^2 per day were 40.4 (inside 31.9-63.8, called
+   "predicted, not fitted"); post-fix 80.4, ABOVE the |u0|<3 bound. Recorded as a tension.
+What survives: theta_E is Roman's (joint/Roman 0.9988); 358 events characterised only jointly
+(was 351); 143 with a 10% mass only jointly (was 145).
+
+**Satellite parallax is now weighted and footprint-wide** (the pre-fix whitepaper listed both as
+impossible): 10,806 events, N_eff 3,521, weighted median 0.9911, all five validation checks pass.
+
+**Code changes made for the figures.**
+- `analysis/h3_satellite_parallax.py`: `TEMPORAL_GAIN` updated to the post-fix WEIGHTED in-gap piE
+  medians (0.984/0.999/1.000/1.000; were the pre-fix unweighted 0.433/0.936/0.978/0.991); h3c's
+  satellite bars now weighted too (they were raw next to weighted temporal bars); h3c plotted as
+  percent improvement on a linear axis -- the log axis with labels at 1.06x the bar put the labels
+  far outside the axes once both effects were percent-level, making the PNG a 1296x2798 strip.
+- `h5_astrometry_summary.py` input extract built from the header (`run_wp.sh`), not awk indices.
+
+**Verification.** Every number typed into the whitepaper was checked against its source file
+(logs and CSVs in `figures/wp_20260926/`, `figures/prod_20260925/`, `figures/yield_20260925/`,
+`figures/y2_20260925/`); two drafts were wrong and corrected before commit (an "8-50 sigma" that
+held only for the detection rows; the claim that the inverted law passed the A_V/A_V = 1 check --
+it gives 0.138). Build: 56 pp, no undefined references, no overfull boxes; the one BibTeX warning
+(empty author, `RomanBHbinaries`) predates this change.
+
+**Commit:** see git log (whitepaper update).

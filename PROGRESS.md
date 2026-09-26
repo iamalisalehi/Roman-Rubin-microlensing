@@ -193,8 +193,14 @@ Sajadian & Makler). Three steps, each approved before it starts:
   `w1.log` with the pooled numbers). Reads `runs/prod_bulge_20260924/test5_detJ.dat` (detections
   only; see Deviation 55 for why that is exact). **The gap-filling headline shrinks: in-gap 10-30 d
   median 0.973 (was 0.261); only >45 d past a season edge is it still 0.077.**
-- **NEXT: the whitepaper** (user, 2026-09-26: "update the whitepaper, include what we've learned;
-  the more modeling details the better") -- in progress.
+- **WHITEPAPER UPDATED 2026-09-26** (Deviation 56): 56 pp, clean build. New modelling sections
+  (reddening law + bug, populations, pre-selection, per-epoch observables, absolute yields,
+  sample dump, memory lessons); Results rewritten on the post-fix bulge run; open items updated.
+  **Three pre-fix claims reversed, each stated as such in the text**: gap filling (pooled 0.26 ->
+  0.97), temporal vs spatial baseline (~50x -> comparable), Penny bracket (inside -> 26% above).
+- **Next:** the figure second pass (overlapping subtitle in f4/h5; p7_precision legend gap and
+  wide stamp -- re-render with the wrapped stamp; p6_synergy '(a)' on a bar); the OPEN_ITEMS
+  Penny tension and the one DET_ANOMALY row; push when the user says.
 - **S3 ⏳ STAGED 2026-09-24, launches automatically as each R run finishes** (user: "start
   immediately after one finishes"). `runs/samples_{bulge,bh,ns}_S3/`, same layout and binary
   (`roman.a5028fe`), flags `--population <pop> --events 30 --lenses 10 --maxdraws 10000

@@ -1603,6 +1603,10 @@ relabel the report's "detected events" row as the Monte Carlo sample size.
 
 ## The model's event rate is too flat in Galactic latitude
 
+**RE-MEASURED 2026-09-26 on the post-fix bulge run** (`figures/yield_20260925/bulge/y1_yields.md`):
+model/observed rate 1.38 at b = -5.1 falling to 0.48 at b = -0.1, crossing 1 near b = -2.3 (was
+1.47 -> 0.60, crossing -1.7). Still too shallow; at the footprint (b ~ -1.4) the model is 25-40% low.
+
 Measured in Step Y against OGLE-IV (Mroz et al. 2019, southern fields, sources with I < 21,
 u0 < 1, 0.1-deg latitude bins, >= 500 draws each). The ratio of modelled to observed event rate
 per star runs monotonically from 1.47 at b = -5.1 deg to 0.60 at b = -0.1 deg, crossing 1 near
@@ -1751,6 +1755,29 @@ ones, so a real violation of this size on sigma(Ml) points at the mass propagati
 matrices -- e.g. `ErrorCal` taking piE from the astrometric matrix for one partition and the
 photometric for the other ("keeps whichever is tighter", per partition).
 
+**Likely benign:** `f4_fisher_precision.py` reports the same single point above the line and
+attributes it to a photometric matrix with condition number > 1e9 (`figures/wp_20260926/f4.log`),
+i.e. double precision has lost the answer and neither forecast is meaningful. Keep open until the
+row is inspected.
+
 **Why deferred.** One event in 85,061; no pooled number moves. **Fix would involve:** finding the
 row (relMl_J > relMl_R, both valid), printing its per-partition sigpiE (photometric and astrometric)
 and sigtetE, and checking which piE each partition's mass used.
+
+## Roman's detection rate now exceeds Penny et al.'s |u0| < 3 figure (2026-09-26)
+
+**What is wrong.** Per deg^2 of footprint per day of Roman coverage (693 d), Roman detections
+(u0 < 3, delta-chi2 >= 500) are 80.4 post-fix, against Penny et al. (2019) 31.9 (|u0| < 1) and
+63.8 (|u0| < 3). Pre-fix the figure was 40.4, inside that bracket, and the whitepaper called the
+bracket "predicted, not fitted". Our count should sit BELOW the |u0| < 3 figure, since the
+delta-chi2 cut rejects most low-magnification events.
+
+**Why it matters.** It is the one external check on Roman's absolute normalisation; the internal
+tau check (1.001) validates the rate constants, not the source counts or the detection efficiency.
+
+**Why deferred / candidates.** Known differences push the right way -- ten seasons including four
+low-cadence ones (Penny: six high-cadence), a different detection criterion, a different field
+layout and source-count model -- but none has been quantified. The OGLE-IV comparison says our
+footprint rate per star is 25-40% LOW, which makes an over-count from the rate unlikely; the source
+counts or the detection efficiency are the places to look. **Fix would involve:** restricting our
+count to Penny's six high-cadence seasons and |u0| < 1, and comparing per-star rather than per-area.

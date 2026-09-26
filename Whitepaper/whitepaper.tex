@@ -2,7 +2,7 @@
 \usepackage[T1]{fontenc}
 \usepackage{geometry}
 \usepackage{graphicx}
-\graphicspath{{./}{../figures/}}
+\graphicspath{{./}{../figures/wp_20260926/}{../figures/prod_20260925/}{../figures/yield_20260925/y3/}{../figures/}}
 \usepackage{subcaption}
 \usepackage{mathtools}
 \usepackage{amssymb}
@@ -80,8 +80,13 @@
 	
 	Finally, the bulge is, right now, a genuine point of convergence for several major facilities at once: alongside Roman's GBTDS, the Euclid mission has recently conducted its own Galactic Bulge Survey, and a dedicated HST program has imaged much of the same footprint specifically to support Roman's future exoplanet characterization \cite{Terry2026HST}. This project's Rubin+Roman combination sits within that same broader, current push to extract as much joint value as possible from bulge observations across facilities.
 	
-	What is this project trying to achieve?
-	
+	\subsection{What this project sets out to do, and what it has found}
+	\label{subsec:aims}
+
+	The project asks one question in several forms: \emph{what does observing the Galactic bulge with both Roman and Rubin buy that neither buys alone?} To answer it, the simulator draws source--lens pairs along 1829 sightlines covering $67.94\,\mathrm{deg}^2$ of the bulge, generates each event's light curve and centroid track as each telescope would record them, applies one detection test three times -- to Rubin's data, to Roman's, and to both -- and forecasts each event's parameter precision with three Fisher matrices, one per survey partition (Sections~\ref{sec:montecarlo}--\ref{sec:fisher}). Every pooled number is weighted by the microlensing event rate (Section~\ref{sec:weighting}), and Section~\ref{sec:yields} turns the Monte Carlo sample into absolute event counts for any assumed abundance of the lens population. Three lens populations are simulated separately: ordinary bulge and disc stars with their remnants, isolated black holes, and neutron stars (Section~\ref{subsec:populations}).
+
+	Four findings stand out, and the second corrects this document's own earlier headline. \textbf{(1) The Einstein radius, and with it the lens mass, is Roman's measurement}: Rubin's astrometry measures $\theta_E$ to $10\%$ for $0.1\%$ of the events Roman observes, against $50\%$ for Roman. \textbf{(2) Rubin's contribution inside Roman's footprint is narrow.} On events both surveys characterise it barely moves Roman's precision; it matters decisively only for short events that peak deep inside a gap between Roman's seasons. An earlier version of this paper reported a far larger effect; that result was produced by an inverted reddening law, now corrected (Section~\ref{subsec:reddening}). \textbf{(3) The combination still produces measurements neither survey makes alone}: $358$ footprint events are characterised only by the joint fit, and $143$ have a lens mass to $10\%$ only through it. \textbf{(4) Outside Roman's $1.5\,\mathrm{deg}^2$ footprint, Rubin is the only survey}, and $64\%$ of all detected events (event-rate weighted) lie there. The numbers behind each are in Section~\ref{sec:results}.
+
 	\section{Input Datasets}
 	\label{sec:input_datasets}
 	
@@ -327,8 +332,41 @@
 	
 	This choice also disposes of a query-time selection effect: Besan\c{c}on's own apparent-magnitude window ($10<V<29$) is now evaluated at zero extinction, which is the most permissive assumption possible at the faint end -- no star that would fall within the survey's true magnitude range under any realistic (larger) extinction is excluded by this cut, since real reddening can only push a star fainter, never brighter, relative to the zero-extinction case used for selection. A residual, likely negligible edge case remains at the bright end: a star intrinsically brighter than $V=10$ could in principle be excluded here even though real extinction would have pushed it fainter into range; given this project's sources of interest span $15$--$26$~mag (Section~\ref{subsec:besancon}), this is not expected to matter in practice.
 	
+	\subsubsection{From $A_V$ to every band: the reddening law, and a bug that inverted it}
+	\label{subsec:reddening}
+
+	The 3D map supplies $A_V$ at the source's simulated distance, interpolated along the nearest extinction sightline. Each band's extinction is then
+	\begin{equation}
+		A_i \;=\; A_V\,\frac{A_{\lambda_i}}{A_V}(R_V) \;+\; \epsilon_i, \qquad \epsilon_i \sim \mathcal{N}(0,\sigma_i)\ \text{truncated at}\ \pm\sigma_i, \qquad A_i \to \max(A_i, 0),
+	\end{equation}
+	and the apparent magnitude is $m_i = M_i + 5\log_{10}(100\,D_s/\mathrm{kpc}) + A_i$. The small per-band scatter $\sigma_i = (0.022, 0.020, 0.017, 0.017, 0.027, 0.027, 0.04)$~mag for $ugrizy$ and F146 stands in for sub-sightline patchiness; the F146 value is a K-band placeholder. The extinction ratio follows \cite{Cardelli1989},
+	\begin{equation}
+		\frac{A_\lambda}{A_V} = a(x) + \frac{b(x)}{R_V}, \qquad x \equiv \frac{1}{\lambda/\mu\mathrm{m}},
+	\end{equation}
+	with, in the infrared ($0.3 \le x < 1.1$), $a = 0.574\,x^{1.61}$ and $b = -0.527\,x^{1.61}$, and in the optical ($1.1 \le x < 3.3$, $y = x - 1.82$)
+	\begin{align*}
+		a &= 1 + 0.17699y - 0.50447y^2 - 0.02427y^3 + 0.72085y^4 + 0.01979y^5 - 0.77530y^6 + 0.32999y^7,\\
+		b &= 1.41338y + 2.28305y^2 + 1.07233y^3 - 5.38434y^4 - 0.62251y^5 + 5.30260y^6 - 2.09002y^7 .
+	\end{align*}
+	$R_V$ depends on the Galactic component the source belongs to: $2.5$ for the bulge, following the low bulge values measured toward the inner Galaxy, and $3.1$ for the thin disc, thick disc and halo. The seven effective wavelengths are $0.367, 0.482, 0.622, 0.755, 0.869, 0.971$ and $1.464\,\mu$m, which give, at the bulge's $R_V=2.5$,
+
+	\begin{center}
+	\begin{tabular}{lccccccc}
+		\toprule
+		band & $u$ & $g$ & $r$ & $i$ & $z$ & $y$ & F146 \\
+		\midrule
+		$A_\lambda/A_V$, correct & 1.694 & 1.216 & 0.854 & 0.627 & 0.460 & 0.381 & 0.197 \\
+		$A_\lambda/A_V$, as run before 2026-09-22 & 0.072 & & & & & & 0.751 \\
+		\bottomrule
+	\end{tabular}
+	\end{center}
+
+	\paragraph{The inversion.} Until 2026-09-22 the code computed $x = 1/\lambda$ and passed $x$ to functions that themselves take a wavelength and invert it again, so the law was evaluated at wavenumber $=\lambda$. The result was not noise but a mirror image: extinction \emph{rose} from blue to red, from $0.07$ in $u$ to $0.75$ in F146, where it should fall from $1.69$ to $0.20$. At the median $A_V \approx 3.8$ of detected events, Rubin's $r$-band sources were $\sim\!3.7$~mag too bright and Roman's F146 sources $\sim\!3$~mag too faint -- in opposite directions for the two telescopes, and therefore directly in the quantity this project exists to measure. It was found not by a test but by looking: a sightline flagged as unusually rich in Rubin-only events turned out to carry sources with $F146 \approx 28$--$29$ against $r \approx 19.5$, which a reddened bulge star cannot have. The fix passes the wavelength straight through, and a unit test with no data dependencies (\texttt{make extinctiontest}) pins $A_V/A_V = 1$ at $V$ for $R_V=2.5$ and $3.1$, a monotone fall from $u$ to F146, and all seven band values above against an independent evaluation of CCM89 to $5\times10^{-3}$; run against the old code, it fails. Every result in this document from Section~\ref{sec:results} onward comes from runs made after the fix, and Section~\ref{subsec:fixeffect} measures what it changed.
+
+	\paragraph{A lesson for anyone reimplementing this.} A reddening law has two properties that can be checked without any data: $A_\lambda/A_V = 1$ at $V$, and $A_\lambda$ falls monotonically with wavelength from the ultraviolet to the near-infrared. The inverted law fails both -- it gives $A_V/A_V \approx 0.14$ at $V$ -- and was in production for two months because neither had been written down. Both cost nothing and belong in any pipeline that applies extinction per band.
+
 	\subsection{Color maps}
-	
+
 	A color-magnitude diagram (CMD), in the sense used throughout this project, is the bridge between theoretical stellar population synthesis and the actual observables a survey records. The Besan\c{c}on model (Section~\ref{subsec:besancon}) supplies the physical population of stars along a given sightline -- their masses, ages, temperatures, and evolutionary state -- but not, in this pipeline, their photometry in Rubin or Roman's own filters. MIST's bolometric correction tables (Section~\ref{subsec:mist}) supply the translation from those intrinsic stellar parameters into specific instrumental bandpasses. \texttt{interpolate2.py} (Section~\ref{subsec:interpolation}) is the numerical machinery that carries out that translation, star by star, producing the synthetic Rubin+Roman photometry that the C++ simulation treats as its library of possible source and lens types.
 	
 	\subsubsection{The Besan\c{c}on Galaxy Model}
@@ -475,7 +513,7 @@
 	\]
 	The floor is $1\%$ of the pixel, a centroiding systematic rather than photon noise, which is why it does not improve for brighter sources \cite{Sanderson2019WFIRSTastrometry}. The two anchors and the $23.5$~mag background transition are taken from a Roman black-hole astrometric-binary study \cite{RomanBHbinaries}, whose curve derives from Pandeia and the Roman astrometry simulation tool; the $0.333$/mag slope between them is fixed by those anchors, and sits between the $0.2$/mag of pure source-photon noise and the $0.4$/mag of pure background domination because the transition is already under way across that range.
 	
-	\textbf{Two factors of ten are easy to get wrong here, and both are fatal to the astrometric result.} The first is that the widely quoted $0.1$~mas Roman astrometric precision is a \emph{daily-binned} number, roughly $100$ exposures stacked; the per-epoch error this simulation needs is the single-exposure value, because one row of the Roman visit list is one $66$-second exposure at a $12.1$-minute cadence. Using $0.1$~mas as a per-epoch error would overstate Roman's astrometry tenfold and flatter every $\theta_E$ and lens-mass forecast in the study. The second is that $1.1$~mas is the \emph{bright-source} floor and does not describe a GBTDS microlensing source: those are faint bulge main-sequence stars, median $F146\approx23.0$ in this sample, for which the same curve gives $6.69$~mas. Evaluating the error at each source's own magnitude, rather than quoting the floor, changes the astrometric conclusion by a factor of six.
+	\textbf{Two factors of ten are easy to get wrong here, and both are fatal to the astrometric result.} The first is that the widely quoted $0.1$~mas Roman astrometric precision is a \emph{daily-binned} number, roughly $100$ exposures stacked; the per-epoch error this simulation needs is the single-exposure value, because one row of the Roman visit list is one $66$-second exposure at a $12.1$-minute cadence. Using $0.1$~mas as a per-epoch error would overstate Roman's astrometry tenfold and flatter every $\theta_E$ and lens-mass forecast in the study. The second is that $1.1$~mas is the \emph{bright-source} floor and does not describe a GBTDS microlensing source: those are faint bulge main-sequence stars, median $F146\approx21.8$ among the Roman-observed detections (event-rate weighted), for which the same curve gives $2.75$~mas. (Before the reddening law was corrected, Section~\ref{subsec:reddening}, the F146 sources were $\sim\!1$~mag too faint in this sample -- median $23.0$ -- and the curve gave $6.69$~mas.) Evaluating the error at each source's own magnitude, rather than quoting the floor, changes the astrometric conclusion by a factor of $2.5$.
 	
 	\paragraph{Photometric error (\texttt{errRomanM}).} Roman's photometric error is a lookup against a tabulated magnitude--error curve rather than an evaluation of the Rubin formula above. This is the right shape of model for a space-based survey -- there is no per-visit $5\sigma$ depth to interpolate against, because there is no atmosphere to vary -- but the present implementation takes the nearest tabulated magnitude rather than interpolating between entries, which is a placeholder and is recorded as such in Section~\ref{sec:openitems}. Wilson et al.\ \cite{Wilson2023GBTDS} derive a pixel-level F146 noise model directly from simulated GBTDS images, identifying $F146\approx22$ as the source-to-background transition; that is the model a replacement should be built from.
 	
@@ -501,9 +539,17 @@
 
 	\subsection{Event generation and pre-selection}
 	
-	The lens mass function is Kroupa (2001) \cite{Kroupa2001} plus stellar remnants, drawn over a bulge-appropriate mass range. This is worth stating as a first-class modelling choice rather than a detail, because it propagates into every quantity the study reports and it is the easiest thing in the pipeline to get silently wrong: a mass range borrowed from a MACHO dark-matter search ($3$--$5000\,M_\odot$) produces a median lens mass of $387\,M_\odot$, a median Einstein crossing time of $953$~d and a median angular Einstein radius of $13.75$~mas, against a bulge whose median lens is a few tenths of a solar mass and whose typical event lasts tens of days. Those four medians are a cheap and decisive sanity check on any reimplementation: if they do not look like a bulge, nothing downstream describes one either.
+	\paragraph{Lens populations.}\label{subsec:populations} The lens mass function is a run-time choice (\texttt{-{}-population}), and three populations are simulated, each in its own run with its own output files. This is worth stating as a first-class modelling choice rather than a detail, because it propagates into every quantity the study reports and it is the easiest thing in the pipeline to get silently wrong: a mass range borrowed from a MACHO dark-matter search ($3$--$5000\,M_\odot$) produces a median lens mass of $387\,M_\odot$, a median Einstein crossing time of $953$~d and a median angular Einstein radius of $13.75$~mas, against a bulge whose median lens is a few tenths of a solar mass and whose typical event lasts tens of days. Those four medians are a cheap and decisive sanity check on any reimplementation: if they do not look like a bulge, nothing downstream describes one either.
 
-	For each simulated star, \texttt{func\_source} draws a random source (distance, population, and, per the zero-extinction convention described in Section~\ref{sec:extinction-fix}, magnitude in each filter) and \texttt{func\_lens} draws a random lens (distance, mass, impact parameter $u_0$, and time of closest approach $t_0$) along the same sightline; \texttt{optical\_depth} accumulates the microlensing optical depth out to the source's distance. Before any light curve is generated, a cheap pre-selection is applied: the source must be detectable (between saturation and threshold, Table~\ref{tab:opsim_columns}) in at least two filters, and a random draw against the source's blend fraction decides whether it is bright enough, relative to its blended neighbours, to be the one actually monitored.
+	\emph{Ordinary lenses} (\texttt{bulge}, the default) are the present-day population of a $\sim\!10$~Gyr-old bulge. An \emph{initial} mass is drawn from the Kroupa (2001) broken power law \cite{Kroupa2001}, $\mathrm{d}N/\mathrm{d}M = k_i M^{-\alpha_i}$ with $\alpha = 0.3, 1.3, 2.3$ on $[0.01, 0.08]$, $[0.08, 0.5]$ and $[0.5, 120]\,M_\odot$, and the $k_i$ fixed by continuity at the breaks, $k_2 = k_1\,0.08^{\alpha_2-\alpha_1}$ and $k_3 = k_2\,0.5^{\alpha_3-\alpha_2}$ -- a discontinuous IMF would put steps in the mass, and therefore the $t_E$, distribution. It is sampled by inverse CDF: a segment is chosen in proportion to its star count $k_i\int M^{-\alpha_i}\mathrm{d}M$, then that segment's CDF is inverted, one uniform draw each. The initial mass is then mapped to whatever still exists to act as a lens: below the $1\,M_\odot$ turnoff the star is unevolved and lenses at its birth mass; $1$--$8\,M_\odot$ leaves a white dwarf of $0.109\,M_i + 0.394\,M_\odot$ (the semi-empirical initial--final relation of Kalirai et al.\ 2008); $8$--$20\,M_\odot$ leaves a $1.4\,M_\odot$ neutron star; above $20\,M_\odot$, a black hole of $0.24\,M_i$, i.e.\ $4.8$--$28.8\,M_\odot$. The last step is the crudest in the chain, and it matters out of proportion to its numbers, because $t_E\propto\sqrt{M_L}$: the remnants populate the long-$t_E$ tail, which is exactly the regime Roman's season gaps interrupt.
+
+	\emph{Black holes} (\texttt{bh}) are drawn flat in $\log M$ over $3$--$1000\,M_\odot$. No mass function is measured over this range, and equal weight per decade is the prior that invents no structure; half the draws lie above $\sqrt{3\times1000}\approx55\,M_\odot$. The log-uniform function is taken as the \emph{assumed truth}, not as an importance-sampling device, and that choice is load-bearing: it is what keeps the event-rate weight of Section~\ref{sec:weighting} unchanged. Were it reinterpreted as a sampler for some other mass function, every pooled number would need an extra factor $p_{\rm phys}(M)/p_{\rm log}(M)$.
+
+	\emph{Neutron stars} (\texttt{ns}) follow the measured distribution \cite{OzelFreire2016}, a Gaussian of mean $1.35$ and width $0.15\,M_\odot$ truncated to $1.10$--$2.20\,M_\odot$ -- below the lower bound no supernova is known to leave a neutron star, above the upper the equation of state gives a black hole. Out-of-range draws are \emph{redrawn}, not clamped: clamping would pile probability onto the two edges and print as two spurious lines in every $t_E$ histogram. The truncation is asymmetric ($1.7\sigma$ below, $5.7\sigma$ above), so the sampled mean is $1.365$. The real distribution is arguably bimodal, with a recycled population above the canonical peak; a single Gaussian understates that tail, and is a stated simplification.
+
+	Each population writes to its own tagged files (\texttt{test<tag>.dat}, \texttt{MapLMC<tag>.dat}, \ldots; tags \texttt{5}, \texttt{bh}, \texttt{ns}), and every run's provenance block records which population produced it, so that two populations can never overwrite or silently append to one another. \textbf{Populations are never pooled in a weighted statistic}: the event-rate weight contains $\sqrt{M_L}$ of the mass function actually sampled, so a pooled black-hole-plus-bulge median is not a presentation choice but a wrong number. Their \emph{yields} add, $N = \sum_p F_p N_{1,p}$ (Section~\ref{sec:yields}), because each is a separate integral over its own population. Verification, $2\times10^5$ draws each: \texttt{bh} has exactly $50.0\%$ of draws below its geometric mean, the signature of flat-in-log; \texttt{ns} has mean $1.365$ and standard deviation $0.135$; every draw of every population lies inside its bounds.
+
+	For each simulated star, \texttt{func\_source} draws a random source (distance, population, and, per the zero-extinction convention described in Section~\ref{sec:extinction-fix}, magnitude in each filter) and \texttt{func\_lens} draws a random lens (distance, mass, impact parameter $u_0$, and time of closest approach $t_0$) along the same sightline; \texttt{optical\_depth} accumulates the microlensing optical depth out to the source's distance. Before any light curve is generated, a cheap pre-selection is applied, once per telescope. Rubin accepts the draw if, in at least two of $ugrizy$, the source's peak magnitude $m_{\rm peak} = m_{\rm base} - 2.5\log_{10}(A_0 f_b + 1 - f_b)$ is brighter than the single-visit depth and its baseline is fainter than saturation, \emph{and} a uniform draw falls below its $r$-band blend fraction; Roman accepts it likewise in F146 against its F146 blend fraction. Both light curves are generated whenever either telescope accepts. The blend-fraction draw is the legacy convention of the parent code and of \cite{SajadianMakler2026}: a blend of several stars is ``realised'' as one monitored object with probability equal to the source's share of the light, so the Monte Carlo counts events \emph{per resolved object}. Because acceptance is decided before, and independently of, detection, the probability a draw was kept, $P = 1 - (1 - f_{b,r}[\text{Rubin can see it}])(1 - f_{b,\mathrm{F146}}[\text{Roman can}])$, is known exactly per event, and dividing by it converts any count to the \emph{all-stars} convention (Section~\ref{sec:yields}).
 	
 	\subsection{Synthetic light curves and detection}
 	
@@ -534,11 +580,26 @@
 
 	Only for events meeting the detection bar is \texttt{FisherM} (Section~\ref{sec:fisher}) invoked at all -- the Monte Carlo detection test is deliberately run first, since forecasting parameter precision for an event the survey would never have flagged as real would be meaningless.
 	
+	\subsection{Observables that exist only epoch by epoch}
+	\label{subsec:perepoch}
+
+	Two quantities cannot be reconstructed from a per-event summary, because they depend on the state of the event at each individual visit; they are therefore tallied inside the light-curve loop, where the per-epoch data exist, and written as extra columns.
+
+	\paragraph{Whether the two images can be resolved.} A point lens forms two images separated by $\Delta\theta(u) = \theta_E\sqrt{u^2+4}$, with magnifications
+	\[
+		A_\pm = \frac{u^2+2}{2u\sqrt{u^2+4}} \pm \frac{1}{2} .
+	\]
+	The obvious per-event summary, the separation at closest approach, is the wrong statistic and wrong in the flattering direction: the separation is \emph{smallest} at the peak and grows as the source departs, while the minor image's magnification $A_-$ collapses on the same motion. The images are least separated exactly when both are bright. Following \cite{SajadianMakler2026}, the simulator counts, per survey, the epochs at which both images are individually within that visit's $[\text{saturation}, \text{depth}]$ range \emph{and} separated by more than a stated bar, and calls the pair resolvable at three or more such epochs. Each image's magnitude is computed from the source's own flux, $m_\pm = m_{\rm base} - 2.5\log_{10}(f_b A_\pm)$, without the blend light: an image resolved from its twin is resolved from the neighbours too, and re-adding the blend would let a faint minor image look detectable on light that is not its own. Three bars are recorded, because the choice moves the answer by orders of magnitude and no single one is defensible: $\Delta\theta \ge \mathcal{D}\sigma_a$ with $\mathcal{D} = 5$ (the faint-limit value of \cite{SajadianMakler2026}) and $\mathcal{D} = 20$ (their value at signal-to-noise $100$), and $\Delta\theta \ge$ the filter's PSF FWHM. The third is not in that paper, which needed only Rubin; for Roman, diffraction-limited at $0.105''$, a bar of $\mathcal{D}\sigma_a$ on its $1.1$~mas floor would claim a few-mas resolution no $2.4$~m telescope delivers. The check that the tally is physical, not merely populated: $\sqrt{u^2+4}\ge2$ forces the largest qualifying separation to be at least $2\theta_E$ on every event with a qualifying epoch, and it is.
+
+	\paragraph{The same event from L2 and from Earth.} With \texttt{-{}-pair-satellite}, every detected event is characterised twice after the light curve is complete: once with Roman at its L2 offset and once with the offset set to zero, on the same draw, the same epochs and the same noise. The two forecasts, their condition numbers and the event's physical parameters (including $M_L$, $D_l$, $D_s$ and $v_t$, so that the event-rate weight can be attached) are written to a separate paired file. Section~\ref{subsec:satpar} explains why this, and not two runs differing in the offset, is the only design that isolates the satellite parallax.
+
 	\subsection{Stopping criteria and per-field aggregation}
 	
-	Each field's simulation continues, generating new random stars, until three separate statistical floors are \emph{all} satisfied: a target number of simulated events with a usable light curve, a target number of detected lensing events, and a target number of events with a well-conditioned Fisher matrix (Section~\ref{sec:fisher}). The production runs reported here use $300$, $50$ and $2$ respectively. Because the three are combined conjunctively, the binding constraint is whichever is hardest to reach at that sightline, and in practice it is the first: the number of \emph{simulated} events is unaffected by the detection criterion, so changes to the detection bar alter how many Fisher matrices are built but not how many draws a sightline takes.
+	Each field's simulation continues, generating new random stars, until three separate statistical floors are \emph{all} satisfied: a target number of simulated events with a usable light curve, a target number of detected lensing events, and a target number of events with a well-conditioned Fisher matrix (Section~\ref{sec:fisher}). The production runs reported here use $300$, $50$ and $2$ respectively. Because the three are combined conjunctively, the binding constraint is whichever is hardest to reach at that sightline, and which one that is depends on the photometry, not only on the targets. Under the inverted reddening law of Section~\ref{subsec:reddening} it was the first: detections arrived quickly, so $300$ simulated events came last. With the corrected law Rubin's sources are fainter and detections rarer, and the second floor binds: over the same sightlines the black-hole run needed $3.5\times$ the draws ($1.74$ against $0.50$ million) and the neutron-star run $4.2\times$ to reach the same $\sim\!50$ detections each. The practical lesson is that a change to the detection bar, the error model or the photometry can move which floor binds, and with it the cost of a run, by a large factor; the draw count should be read off the run log rather than predicted from the targets.
 
-	A fourth limit caps the number of draws (\texttt{-{}-maxdraws}, $5\times10^{4}$ here) so that a sightline which cannot meet its targets -- a sparse field, or one where few events are characterisable -- terminates instead of running indefinitely. Sightlines stopped by the cap are counted and reported separately at the end of the run, because their Poisson precision is whatever they reached rather than what was requested, and averaging them in as though they were complete would understate the error bars.
+	A fourth limit caps the number of draws (\texttt{-{}-maxdraws}, $5\times10^{4}$ here) so that a sightline which cannot meet its targets -- a sparse field, or one where few events are characterisable -- terminates instead of running indefinitely. Sightlines stopped by the cap are counted and reported separately at the end of the run, because their Poisson precision is whatever they reached rather than what was requested, and averaging them in as though they were complete would understate the error bars. In the production runs $79$--$115$ of the $1{,}829$ sightlines stop on the cap.
+
+	\paragraph{Barren sightlines.} A sightline can draw stars and yet characterise nothing -- at the western edge of the scan the stellar density is low and the visit coverage thin. Such a sightline runs to the draw cap and then takes a separate branch that skips both its row in the per-sightline map file and the printout of its draw count, $n_{\rm sim}$. Its $5\times10^4$ rows are in the event table with nothing to normalise them by. There are $77$ of them in every production run, and before the fix they held $77\%$ of the rows of the neutron-star table. They carry no detection and no characterisation, so they contribute nothing to any statistic, and the analysis layer drops them at read time (\texttt{keep\_weightable}) -- but only after checking that none of the dropped rows carries a detection, since the same symptom, rows with no $n_{\rm sim}$, is also what a run killed before its map file was flushed looks like, and there the rows are real sky that must not be deleted (Section~\ref{sec:implementation}).
 
 	These thresholds are an analysis choice trading runtime against how noisy the per-field efficiency and precision estimates are. The third is a comparatively weak floor and worth revisiting if per-field parameter-precision estimates turn out to be volatile -- see the caveats in Section~\ref{sec:fisher_caveats}.
 	
@@ -550,9 +611,11 @@
 	\end{equation}
 	with $A$ the sky area the sightline stands for, $N_\star$ its stellar column density and $N_{\mathrm{draws}}$ the draws it took; $Z$ is the normalisation of the lens-distance sampler. Constants common to every event cancel in any fraction, median or ratio, so $W$ gives no absolute yield. The sightline factors matter little -- under a point on any fraction here -- while the per-event rate factor changes pooled numbers by factors of two to six.
 
-	The check that this is right, rather than merely derived, is external: applying $W$ to all $6{,}075{,}044$ draws gives a mean Einstein timescale of $24.0$~d, against the $22$~d that OGLE-IV measures in its central fields after correcting for detection efficiency \cite{Mroz2019OGLEIV}; unweighted, the same sample gives $56.2$~d. Weighting costs precision, so every weighted number here is quoted with Kish's effective sample size $N_{\mathrm{eff}}=(\sum W)^2/\sum W^2$: the $8{,}894$ Roman-observed detections weigh as $2{,}564$. Quantities formed \emph{per event} -- every $\sigma_{\mathrm{joint}}/\sigma_{\mathrm{single}}$ ratio in this paper -- are unaffected by $W$; only the aggregation over events is.
+	The check that this is right, rather than merely derived, is external: applying $W$ to all $6{,}075{,}044$ draws of the pre-fix bulge run gives a mean Einstein timescale of $24.0$~d, against the $22$~d that OGLE-IV measures in its central fields after correcting for detection efficiency \cite{Mroz2019OGLEIV}; unweighted, the same sample gives $56.2$~d. (The check is over all draws, detected or not, and the weight contains no photometry, so the extinction fix does not bear on it.) Weighting costs precision, so every weighted number here is quoted with Kish's effective sample size $N_{\mathrm{eff}}=(\sum W)^2/\sum W^2$ \cite{Kish1965}: in the post-fix bulge run the $12{,}461$ Roman-observed detections weigh as $3{,}969$, and all $85{,}061$ detections as $9{,}465$.
 
-	Each simulated star's summary quantities are appended to an in-memory buffer (\texttt{std::vector<EventRecord>}) rather than written to disk and re-read, avoiding both an I/O bottleneck and the silent precision loss of a text round-trip, which truncates columns to 4--7 significant figures -- enough to corrupt a finite-difference derivative computed from them downstream. At the end of the field's simulation, this buffer is used to build detection-efficiency curves as a function of each physical parameter (Einstein time, lens mass, parallax, impact parameter, blend fraction, baseline magnitude, relative proper motion), the microlensing optical depth and event rate $\Gamma$, and the expected number of events for that field, before moving on to the next pointing.
+	$Z(D_s)$ is evaluated per sightline from a port of the simulator's own density model (\texttt{analysis/galaxy\_model.py}, checked against the map file's star counts to its $0.05$~dex print resolution on all $1{,}612$ sightlines), on the same $9{,}500$-point distance grid the lens sampler uses, $Z = \Delta D\sum_{k=1}^{n_s-2}\rho(D_k)\sqrt{(D_s-D_k)D_k/D_s}$ with $n_s = \mathrm{round}(D_s/\Delta D)$. Evaluated naively for all draws of a sightline at once this is a (draws $\times$ grid) matrix -- several gigabytes for one post-fix sightline -- so it is computed in blocks of $512$ rows, which is bit-identical. Quantities formed \emph{per event} -- every $\sigma_{\mathrm{joint}}/\sigma_{\mathrm{single}}$ ratio in this paper -- are unaffected by $W$; only the aggregation over events is.
+
+	Each simulated star's summary quantities are appended to an in-memory buffer (\texttt{std::vector<EventRecord>}) rather than written to disk and re-read, avoiding both an I/O bottleneck and the silent precision loss of a text round-trip, which truncates columns to 4--7 significant figures -- enough to corrupt a finite-difference derivative computed from them downstream. At the end of the field's simulation, this buffer is used to build detection-efficiency curves as a function of each physical parameter (Einstein time, lens mass, parallax, impact parameter, blend fraction, baseline magnitude, relative proper motion), the microlensing optical depth and event rate $\Gamma$, and the expected number of events for that field, before moving on to the next pointing. Six of those seven efficiency curves -- all but $t_E$ -- had never been counted: their accumulators were declared and written out but never incremented, because the only calls that computed their bin indices had been commented out, and two further columns (the halo-lens and bulge-self-lensing fractions) were divided without the guard every other column had and came out as \texttt{NaN} in every row of every run. All seven are now counted in the draw loop, before the detection test so that the denominator is every simulated event, and incremented under the same joint-detection definition; the detection efficiency against lens mass, the central curve for a compact-object population, exists only since then.
 	
 	\section{Fisher Forecast}
 	\label{sec:fisher}
@@ -619,6 +682,96 @@
 		\item A Fisher matrix is only as good as the error model that weights it (Section~\ref{sec:error_models}), and one assumption inside that model dominates every astrometric number in this paper: each epoch enters as an independent term $(\partial\theta/\partial\theta_j)^2/\sigma_{a,i}^2$, so $N$ epochs buy a factor $\sqrt{N}$, and $N\approx5\times10^{4}$ here. Whether Roman's $1.1$~mas centroiding floor -- a systematic, not photon noise -- actually averages down over exposures is an open question, stated in full in Section~\ref{sec:openitems}. It is the difference between $\theta_E$ being measurable and not.
 	\end{itemize}
 	
+	\section{Absolute Event Rates and Yields}
+	\label{sec:yields}
+
+	Every count the Monte Carlo produces is a \emph{sample size}, not a forecast. A sightline draws until its detection floor is met (Section~\ref{sec:montecarlo}), and every lens is drawn from the population under test -- for the black-hole run, a Galaxy whose entire stellar mass is black holes. Turning the sample into an expected number of events needs two things the run does not contain: the event rate each draw stands for, and the true abundance of the population. This section supplies both; the analysis is \texttt{analysis/y1\_absolute\_yield.py} and \texttt{y3\_yield\_vs\_F.py}, and it requires no new simulation.
+
+	\subsection{The rate a draw stands for}
+
+	For one lens of mass $M_L$ at distance $D_l$ with transverse speed $v_t$, the differential event rate per source star is $\mathrm{d}\Gamma = 2u_{0,\max}\,\theta_E D_l\,v_t\,n(D_l)\,\mathrm{d}D_l$, with $\theta_E = \sqrt{\kappa M_L\pi_{\rm rel}}$ and $\kappa = 4G/(c^2\mathrm{AU})$. The simulator draws $D_l$ in proportion to $\rho(D_l)\sqrt{(D_s-D_l)D_l/D_s}$ -- already the rate's distance dependence -- so what remains per draw is
+	\begin{equation}
+		\gamma_i \;=\; 2u_{0,\max}\,\kappa'\,\frac{F}{\langle M_L\rangle}\;Z(D_{s,i})\,\sqrt{M_{L,i}}\;v_{t,i},
+		\label{eq:gamma}
+	\end{equation}
+	with $Z$ the lens-distance normalisation of Section~\ref{sec:weighting}, $u_{0,\max}=3$ the impact-parameter range sampled, $\kappa'$ collecting the unit conversions, and $F$ the fraction of the Galaxy's \emph{stellar mass} in the population. The number density of lenses is the mass density divided by the mean lens mass, which is why $F$ enters only as $F/\langle M_L\rangle$; $\langle M_L\rangle$ is the plain mean over all draws of the lens component, detected or not, since the mass is drawn before any detection test. Summing over draws and restoring the sightline's area and star count,
+	\begin{equation}
+		N \;=\; T\sum_i \frac{w_{{\rm area},k}\,N_{\star,k}}{n_{{\rm sim},k}}\;\gamma_i\;s_i ,
+		\label{eq:yield}
+	\end{equation}
+	where $k$ is draw $i$'s sightline, $N_{\star,k}$ its source-star count, $n_{{\rm sim},k}$ the draws it made, and $s_i \in\{0,1\}$ the selection of interest (detected by Roman, mass measured to $10\%$, inside the footprint, \ldots). $T = 10\,\mathrm{yr} - 4\,\mathrm{d}$ is the window over which $t_0$ is drawn, so $N$ counts events whose peak falls in the decade. The summand is the event-rate weight $W_i$ of Section~\ref{sec:weighting} times constants: this section adds only the normalisation that cancelled in every ratio before. The Monte Carlo error is $(\sum_i y_i^2 s_i)^{1/2}$ with $y_i$ the summand.
+
+	\paragraph{Why a mass fraction does not set the count by itself.} Equation~(\ref{eq:yield}) depends on $F/\langle M_L\rangle$ and on $\sqrt{M_L}$ inside the sum, never on $F$ alone. A mass fraction buys \emph{mass}; lensing counts \emph{objects}, each with a cross-section growing only as $\sqrt{M_L}$. The figure of merit at equal $F$ is $\langle\sqrt{M_L}\rangle/\langle M_L\rangle$: $1.97$ for ordinary lenses ($\langle M_L\rangle = 0.23\,M_\odot$), $0.85$ for neutron stars and $0.060$ for the log-uniform black holes ($\langle M_L\rangle = 172\,M_\odot$). Black holes are suppressed $33\times$ against ordinary lenses at equal mass fraction, and detection efficiency hands back about $4\times$ because their events are long.
+
+	\paragraph{Two counting conventions.} The simulator keeps a drawn source with the probability $P$ of Section~\ref{sec:montecarlo}, i.e.\ it counts events \emph{per resolved object}, the convention of \cite{SajadianSahu2023} and \cite{SajadianMakler2026}. Dividing each $y_i$ by $P_i$ counts events on \emph{every} star, blended or not. Both are reported; they differ by $1$--$8\%$, since most detected sources are only mildly blended. Literature comparisons use the per-object convention.
+
+	\paragraph{The abundance $F$.} No value is established, so a grid is quoted. \cite{SajadianMakler2026} adopt $F_{\rm BH} = 4$--$5\times10^{-3}$; population syntheses give $1.2\times10^8$ black holes at $\sim\!14\,M_\odot$ \cite{Olejak2020} and $2\times10^8$ at $5$--$16\,M_\odot$ \cite{Lam2020}, both $F_{\rm BH}\approx0.03$; \cite{Sweeney2022} place neutron stars and black holes together at $\sim\!1\%$; the bulge census of \cite{Gould2000}, MS:WD:NS:BH $= 69\!:\!22\!:\!6\!:\!3$ by mass, gives $F_{\rm BH} = 0.03$ and $F_{\rm NS} = 0.06$. The grid used is $F_{\rm BH}\in\{0.005, 0.01, 0.03\}$ and $F_{\rm NS}\in\{0.005, 0.01, 0.03, 0.06\}$; for the ordinary-lens run $F=1$ by definition.
+
+	\subsection{Validation of the normalisation}
+
+	\emph{Internal.} The optical depth rebuilt from the same constants, $\tau = (\pi/2u_{0,\max})\langle\gamma\,t_E\rangle$, is compared against the optical depth the simulator computes independently for every sightline by integrating the density. Pooled over all $1{,}612$ sightlines the ratio is $1.001$ (ordinary lenses), $1.001$ (black holes) and $1.000$ (neutron stars); per sightline the median is $0.995$ with a 16--84\% range of $0.94$--$1.05$ for the ordinary lenses. Any error in a constant, a unit or $Z$ appears here first, and this check is the reason to trust the rest of the section.
+
+	\emph{OGLE-IV.} The rate per star and the optical depth for OGLE-like sources ($I<21$, $u_0<1$) are compared against the southern fields of \cite{Mroz2019OGLEIV}, $\Gamma = 14.3\times10^{-6}\exp[0.52(3-|b|)]$ per star per year, in $0.2^\circ$ latitude bins. The model over the observed rate falls monotonically from $1.38$ at $b=-5.1^\circ$ through $1.00$ at $b=-2.3^\circ$ to $0.48$ at $b=-0.1^\circ$ (before the extinction fix: $1.47$, crossing near $-1.7^\circ$, to $0.60$). The model's latitude gradient is too shallow: it over-produces events in the outer bulge and under-produces them near the plane. Yields over the full $59\,\mathrm{deg}^2$ scan carry a systematic of a few tens of per cent from this, and the footprint, at $b\approx-1.4^\circ$, sits where the model is \emph{low}, by $25$--$40\%$ in the $b=-1.5^\circ$ and $-1.3^\circ$ bins. The comparison depends on the $I<21$ selection, which the extinction law acts on directly, so the shift across the fix is expected; the cause of the gradient -- the density normalisation, the source counts, or the extinction that sets which sources enter an $I<21$ sample -- is an open item.
+
+	\emph{Roman's own forecast.} \cite{penny2019predictions} predict $27{,}000$ events at $|u_0|<1$ and $54{,}000$ at $|u_0|<3$ over $1.96\,\mathrm{deg}^2$ and $6\times72$ days, i.e.\ $31.9$ and $63.8$ events per deg$^2$ per day of observing. Our Roman detections ($u_0<3$, $\Delta\chi^2\ge500$), per deg$^2$ of footprint and per day of Roman coverage ($693$~d in ten seasons, counted from the visit list), come to $80.4$. Before the extinction fix they came to $40.4$, inside the bracket, which the pre-fix version of this paper described as a prediction confirmed; the corrected photometry lifts the count above even the $|u_0|<3$ figure. Two differences are known and both push this way: the design simulated here has ten seasons including four low-cadence ones that detect long events Penny's six-season design misses, and Penny's detection criterion is not ours. Neither has been shown to account for a factor $1.26$ over the upper bracket, and the comparison is recorded as a tension rather than a confirmation.
+
+	\subsection{The yield at any abundance}
+
+	$F$ enters Eq.~(\ref{eq:yield}) only through the prefactor, and $\langle M_L\rangle$ is fixed by the mass function, not by how much of it there is, so every selection has one coefficient:
+	\begin{equation}
+		N(F) = F\,N_1 ,
+		\label{eq:linear}
+	\end{equation}
+	with $N_1$ the yield at $F=1$. The script checks that $N/F$ is identical, to machine precision, at every grid value. $N_1$ is not a forecast by itself -- no population makes up all the stellar mass -- but it is the one number needed to use any $F$. Table~\ref{tab:n1} gives it for the post-fix runs.
+
+	\begin{table}[htbp]
+		\centering
+		\small
+		\begin{tabular}{lrrr}
+			\toprule
+			selection & black holes & neutron stars & ordinary lenses \\
+			\midrule
+			\multicolumn{4}{l}{\emph{inside Roman's $1.47\,\mathrm{deg}^2$ footprint}} \\
+			either survey detects         & $8477\pm91$  & $62\,400\pm680$ & $89\,700\pm1400$ \\
+			Roman detects                 & $8398\pm91$  & $57\,900\pm650$ & $81\,900\pm1400$ \\
+			Rubin detects                 & $1812\pm40$  & $11\,560\pm280$ & $16\,830\pm640$ \\
+			both detect                   & $1746\pm40$  & $7520\pm220$    & $9490\pm480$ \\
+			Roman only                    & $6653\pm81$  & $50\,400\pm610$ & $72\,400\pm1300$ \\
+			Rubin only                    & $65.7\pm5.3$ & $4040\pm180$    & $7340\pm430$ \\
+			Roman, $\sigma(M_L)/M_L<1\%$  & $59.8\pm5.9$ & $40.5\pm4.5$    & $11.7\pm3.9$ \\
+			Roman, $\sigma(M_L)/M_L<5\%$  & $589\pm22$   & $960\pm50$      & $1010\pm240$ \\
+			Roman, $\sigma(M_L)/M_L<10\%$ & $1068\pm31$  & $2286\pm90$     & $1930\pm260$ \\
+			joint, $\sigma(M_L)/M_L<10\%$ & $1216\pm33$  & $2599\pm95$     & $2120\pm270$ \\
+			\midrule
+			\multicolumn{4}{l}{\emph{full $59\,\mathrm{deg}^2$ scan}} \\
+			Rubin detects                 & $24\,340\pm220$ & $141\,100\pm1300$ & $174\,900\pm2200$ \\
+			either survey detects         & $31\,010\pm230$ & $191\,900\pm1500$ & $247\,800\pm2500$ \\
+			\midrule
+			$\eta$, Roman detects             & 0.103 & 0.708 & \\
+			$\eta$, Rubin detects (full scan) & 0.139 & 0.806 & \\
+			\bottomrule
+		\end{tabular}
+		\caption{Yield per unit abundance, $N_1$: expected events whose peak falls in the ten-year window at $F=1$, per-object convention, Monte Carlo errors only. Multiply by $F$ for a yield; the ordinary-lens column is a yield as it stands. $\eta = N_1/N_1^{\rm ordinary}$ for the same selection: the fraction of all events a population supplies per unit mass fraction. Post-extinction-fix runs \texttt{runs/prod\_\{bh,ns,bulge\}\_20260924}, commit \texttt{a5028fe}; source \texttt{figures/yield\_20260925/y3/}.}
+		\label{tab:n1}
+	\end{table}
+
+	\paragraph{Reading the table.} Roman detects black holes at $84$ events per per cent of stellar mass, so the literature range $F_{\rm BH}=0.005$--$0.03$ gives $42$--$250$ events over the decade and $5$--$32$ masses to $10\%$ from Roman alone; one black hole with a $10\%$ mass needs only $F_{\rm BH}\gtrsim10^{-3}$. Neutron stars give $290$--$3500$ Roman detections and $11$--$140$ masses to $10\%$ for $F_{\rm NS} = 0.005$--$0.06$. The ratio $\eta$ closes the loop on the figure-of-merit argument above: suppression by $33$ and a detection-efficiency return of $\sim\!4$ predict $\eta\approx0.12$ for black holes, and the independent runs give $0.10$--$0.14$. For $\sigma(M_L)/M_L < 1\%$, black holes \emph{outnumber} ordinary lenses per unit $F$ -- only a heavy lens has a $\theta_E$ large enough -- and the ordinary-lens mass rows rest on $32$--$1{,}089$ Monte Carlo events, so their $\eta$ is not quoted. Populations add: $N = F_{\rm BH}N_{1,\rm BH} + F_{\rm NS}N_{1,\rm NS}$.
+
+	\paragraph{Which of Roman's detections saw the peak.} With $\sim\!5\times10^4$ exposures Roman can pass $\Delta\chi^2\ge500$ on the slow wing of an event whose peak it never observed. Splitting Roman's detected yield by where the peak falls: $54\%$ / $37\%$ / $9\%$ of ordinary-lens detections peak in a season / in a gap / outside the mission, $40/47/13\%$ for neutron stars and $23/32/46\%$ for black holes. But the fraction with \emph{no Roman epoch within $\pm2t_E$ of the peak} is only $4.4\%$, $3.9\%$ and $2.9\%$: a black-hole event lasts hundreds of days, so Roman observes the magnified part of most events that peak after its last season. A peak-coverage requirement would lower Roman's yields by at most $4.4\%$ (\texttt{analysis/y5\_roman\_peak\_coverage.py}).
+
+	\subsection{How to compute a yield, for any population or mass function}
+
+	\begin{enumerate}
+		\item \textbf{Simulate the population} with every lens drawn from it, and keep the \emph{undetected} draws: $\langle M_L\rangle$ is a mean over all draws, and the detected ones are biased heavy.
+		\item \textbf{Attach a rate to each draw}, $y_i = T\,(w_{\rm area}N_\star/n_{\rm sim})_k\,\gamma_i$ at $F=1$, per Eq.~(\ref{eq:gamma}).
+		\item \textbf{Choose the convention}: keep $y_i$ (per resolved object) or use $y_i/P_i$ (all stars).
+		\item \textbf{Select and sum}: $N_1 = \sum_i y_i s_i$, error $(\sum_i y_i^2 s_i)^{1/2}$.
+		\item \textbf{Multiply by $F$}.
+		\item \textbf{Check the normalisation} against the simulator's optical depth before trusting $N_1$.
+	\end{enumerate}
+
+	\emph{A different window or area} is a selection in step 4, on $t_0$ or on sightline. Do not rescale by $T$: detection efficiency depends on where $t_0$ falls relative to the seasons, so a yield is not proportional to the window. \emph{A different mass function} needs no new run where the sampled one covers it: re-weight each draw by $p_{\rm new}(M_i)/p_{\rm old}(M_i)$ and replace $\langle M_L\rangle$ by the new mean. The narrower log-uniform $3$--$50\,M_\odot$ function used for comparison with \cite{SajadianSahu2023} is the simplest case: keep the draws below $50\,M_\odot$ and scale them by $[\ln(1000/3)/\ln(50/3)]\,\langle M_L\rangle_{3-1000}/\langle M_L\rangle_{3-50}$. Re-weighting costs precision in proportion to how uneven the new weights are, which the Kish $N_{\rm eff}$ of the re-weighted sample measures.
+
 	\section{Implementation}
 	\label{sec:implementation}
 
@@ -640,13 +793,20 @@
 
 	\subsection{Output, determinism and provenance}
 
-	One row per simulated event, not per detection: $93$ whitespace-separated columns, named in a header line, carrying the event's true parameters, its per-survey epoch counts, its per-survey detection flags and detection class, the per-survey inversion flags, condition numbers and forecast uncertainties, the derived lens-mass precision, the sky-area weight of its sightline, and the satellite-parallax observable. Keeping the undetected draws is what makes detection efficiency computable after the fact; the cost is that a production table is a few gigabytes and must be filtered in chunks rather than loaded whole.
+	One row per simulated event, not per detection: $100$ whitespace-separated columns, named in a header line, carrying the event's true parameters, its per-survey epoch counts, its per-survey detection flags and detection class, the per-survey inversion flags, condition numbers and forecast uncertainties, the derived lens-mass precision, the sky-area weight of its sightline, and the satellite-parallax observable. Keeping the undetected draws is what makes detection efficiency computable after the fact; the cost is that a production table is a few gigabytes and must be filtered in chunks rather than loaded whole. The post-fix production tables are $3$--$6$~GB and $6.5$--$12.2$ million rows, and on an $8$~GB machine every one of the following was needed at some point, each found by a silent out-of-memory kill (exit status $0$, empty output -- indistinguishable from a script that did nothing): read in chunks and keep only what the statistic needs; drop barren rows at read time; store floats as 32-bit where the arithmetic is done in 64 (coordinates excepted, because they are \emph{matched} against the map file, and $-0.319$ does not survive a round trip through \texttt{float32}); key sightlines by an integer code rather than a per-row tuple; and evaluate $Z(D_s)$ in row blocks. Where a statistic uses only detections and each row's weight depends on no other row -- true of every figure in Section~\ref{sec:results} -- a detections-only extract of the table ($85{,}061$ of $12.2$ million rows for the bulge) gives identical numbers in a fraction of the memory. Run every analysis script under a wrapper that reports its peak memory, so that the kill is predicted rather than discovered.
 
 	Every run writes a provenance block: the git commit of the binary that produced it, the build timestamp, every command-line parameter, the sky grid and its stratification, the detection threshold, the RNG seed, the L2 offset, and -- written at the end -- how many sightlines were aggregated, uncovered, barren, or stopped by the draw cap. The generator is a seeded Mersenne twister and a run is deterministic given its configuration, which is what makes the paired experiment of Section~\ref{subsec:satpar} possible at all. Any figure that cannot name the commit and the table it came from should be regarded as undated.
 
+	\subsection{Drawing single events}
+	\label{subsec:samples}
+
+	The per-event table cannot draw a light curve: it has one row per event, and the per-epoch data live only inside the light-curve loop, where they are handed to the Fisher matrices and overwritten by the next draw. A specific production event cannot be cheaply regenerated either, because the random stream runs sequentially across sightlines. With \texttt{-{}-dump-samples <spec>} the loop instead buffers, per recorded visit, the time, telescope tag, that visit's filter, the noisy magnitude the detection test used, the model magnitude with and without parallax, the photometric error, $u$ with and without parallax, both magnifications, the centroid deflection with and without parallax, the unlensed source track, the lensed centroid, the lens track and the astrometric error. After the Fisher stage the event is tested against the spec's classes (\texttt{roman\_only}, \texttt{rubin\_only}, \texttt{both}, \texttt{gap\_filler}, \texttt{astrometric}, and population-specific ones), first match wins, and if it fills a quota it is written with a dense model curve regenerated by the real \texttt{lightcurve()} for both observers in all seven filters. The dump consumes \emph{no} random numbers -- every value was already computed -- and a run with it enabled is byte-identical in every other output to one without; that property is tested, and it is what the parent code's own legacy dump lacked. Samples are drawn in batches that start at a different sightline index, so that a weak sample can be redrawn on a fresh random stream without discarding the earlier events.
+
+	\paragraph{What ``without parallax'' means.} The simulator references the observer's displacement to the Earth's position at $t=0$, so its no-parallax trajectory is offset from the true one by $\pi_E$ times the Earth's displacement since the start of the simulation -- for one test event, $|\Delta u| = 0.36$, so the true peak is at $u=0.25$ fourteen days after $t_0$ while the ``no-parallax'' curve peaks at $u_0=0.51$ at $t_0$. Drawn as ``the parallax signal'' that is $0.7$~mag, almost all of it the constant and linear part of the Earth's motion, which any fit absorbs into $u_0$, $t_0$, $t_E$ and the direction of motion. The plotter therefore uses the standard geocentric frame: the straight line matching the true trajectory's position and velocity at its own peak, per observer. The residual is then the observer's acceleration, zero at the peak by construction and $0.1$~mag for that event -- the part a fit can measure. A consequence outside the figures: \textbf{the table's $t_0$ is not the observed peak}, and the columns derived from it (which season the peak falls in, its distance to the nearest season edge, the epochs near the peak) inherit the offset. For most events it is days; for slow events with large $\pi_E$ it can move the peak across a season edge. This is recorded as an open item rather than changed, because every gap-filling statistic is binned on those columns.
+
 	\subsection{Cost}
 
-	The full scan reported here -- $1{,}829$ sightlines, $6.1\times10^{6}$ simulated events -- costs of order $16$ CPU-hours on one core, and it is not distributed evenly. A sightline outside Roman's footprint takes a few seconds; one inside it takes tens of seconds, because Roman contributes $\sim5\times10^{4}$ epochs against Rubin's $\sim2\times10^{3}$ and the light-curve and Fisher loops scale with the epoch count. Startup is a fixed $\sim170$~s dominated by parsing the extinction maps, which matters only because it must be subtracted before any per-sightline timing means anything.
+	Before the extinction fix the full scan -- $1{,}829$ sightlines, $6.1\times10^{6}$ simulated events -- cost of order $16$ CPU-hours on one core; after it, the detection floor binds instead of the event floor (Section~\ref{sec:montecarlo}) and the same scan takes $6.5$--$12.2\times10^{6}$ draws, $3.5$--$4.2$ times as many per sightline for the same number of detections. The cost is not distributed evenly. A sightline outside Roman's footprint takes a few seconds; one inside it takes tens of seconds, because Roman contributes $\sim5\times10^{4}$ epochs against Rubin's $\sim2\times10^{3}$ and the light-curve and Fisher loops scale with the epoch count. Startup is a fixed $\sim170$~s dominated by parsing the extinction maps, which matters only because it must be subtracted before any per-sightline timing means anything.
 
 	Two consequences are worth planning for. The first is that the detection threshold is a cost lever as well as a scientific choice: the Fisher forecast runs only for events that pass it, so a bar that admits twice as many events roughly doubles the Fisher work while leaving the number of draws -- and therefore the rest of the runtime -- unchanged. The second is that a run of this length will be interrupted, so it should be resumable by sightline index from the start, and the resume must not truncate the table it appends to.
 
@@ -822,7 +982,7 @@
 	
 	\subsection{Reddening law ($a(\lambda)$, $b(\lambda)$)}
 	
-	The per-filter extinction ratios used in \texttt{Lensing.cpp} (\texttt{a0[i]}, \texttt{b0[i]}, combined as $A_\lambda/A_V = a(\lambda) + b(\lambda)/R_V$) follow the functional form of the standard Galactic reddening law \cite{Cardelli1989}, which showed that this ratio is well described, across a wide wavelength range, by a single parameter $R_V$. This project's code applies that law with population-dependent $R_V$ (Table~\ref{tab:galactic_constants} note), rather than the single average Galactic value of $R_V\approx3.1$ the law is most often quoted with \cite{Cardelli1989}.
+	The per-filter extinction ratios are computed at run time by \texttt{AlAv()} in \texttt{helper.cpp}, $A_\lambda/A_V = a(x) + b(x)/R_V$ with $x = 1/\lambda$, following \cite{Cardelli1989}, which showed that this ratio is well described across the ultraviolet to near-infrared by the single parameter $R_V$. The coefficients, the seven band values and the component-dependent $R_V$ ($2.5$ bulge; $3.1$ thin disc, thick disc and halo) are given in Section~\ref{subsec:reddening}, together with the inversion that affected every run before 2026-09-22 and the test that now guards against it.
 	
 	\subsection{Solar position and Galactic kinematics}
 	
@@ -847,81 +1007,100 @@
 	\section{Results}
 	\label{sec:results}
 
-	Every number in this section comes from one scan: $1{,}829$ sightlines covering $67.94$~deg$^2$, stratified as in Section~\ref{subsec:stratification} ($147$ sightlines inside Roman's footprint on a $0.1^{\circ}$ grid, $1{,}682$ outside on a $0.2^{\circ}$ grid), $6{,}075{,}044$ simulated events, detection bar $\Delta\chi^2>500$. Of those draws, $82{,}888$ ($1.4\%$) are detections; $8{,}894$ of them are events Roman actually observed, and those are the only ones any Roman-alone or joint-versus-Roman statement below can be made about. Where a result is conditional on an assumption, the assumption is stated with it rather than deferred to Section~\ref{sec:openitems}.
+	Every number in this section comes from the runs made after the reddening law was corrected (Section~\ref{subsec:reddening}), at commit \texttt{a5028fe}: one scan per population over the same $1{,}829$ sightlines covering $67.94$~deg$^2$, stratified as in Section~\ref{subsec:stratification} ($147$ sightlines inside Roman's footprint on a $0.1^{\circ}$ grid, $1{,}682$ outside on a $0.2^{\circ}$ grid), detection bar $\Delta\chi^2\ge500$, targets \texttt{-{}-events 300 -{}-lenses 50}, same random seed. Sections~\ref{subsec:fixeffect}--\ref{subsec:twobaselines} use the ordinary-lens run: $12{,}222{,}487$ simulated events, of which $85{,}061$ ($0.70\%$) are detections and $12{,}461$ are events Roman actually observed -- the only ones any Roman-alone or joint-versus-Roman statement can be made about. The detection labels of Section~\ref{subsec:detclass} divide them into $73{,}517$ events Rubin detects unaided, $9{,}452$ Roman detects unaided, $2{,}016$ both do, and $76$ neither does alone while the combined stream does. Weighted by the event rate, $67\%$ of detections are Rubin's alone, $29\%$ Roman's alone and $4\%$ both. The count of single-survey detections the joint test misses is \emph{one} -- where the monotonicity argument requires zero; the detection flag is made monotone downstream so no table is affected, and the cause is an open item. Section~\ref{subsec:compact} adds the black-hole and neutron-star runs. Figures are the analysis scripts' own output (\texttt{figures/wp\_20260926/}, \texttt{figures/prod\_20260925/}, \texttt{figures/yield\_20260925/}), each with the script and run it came from printed beneath it.
 
-	The detection labels of Section~\ref{subsec:detclass} divide the sample as follows: $76{,}146$ events Rubin detects unaided, $3{,}935$ Roman detects unaided, $2{,}647$ both do, and $160$ neither does alone while the combined stream does. The count of single-survey detections the joint test misses is zero, as the monotonicity argument requires.
+	\subsection{What the extinction fix changed}
+	\label{subsec:fixeffect}
+
+	Because the corrected runs differ from the earlier ones only in the reddening law -- same flags, seed and grid -- their difference is the fix and nothing else. The cleanest measure is the yield per unit abundance of Section~\ref{sec:yields}, selection by selection; raw detection counts would hide the change, being sample sizes fixed by the stopping rule.
+
+	\begin{center}
+	\begin{tabular}{lrrr}
+		\toprule
+		$N_1$, post-fix / pre-fix, whole scan & ordinary lenses & black holes & neutron stars \\
+		\midrule
+		either survey detects          & 0.65 & 0.66 & 0.67 \\
+		Rubin detects                  & 0.50 & 0.55 & 0.53 \\
+		Roman detects                  & 1.99 & 1.71 & 2.06 \\
+		Roman only                     & 2.49 & 2.68 & 2.81 \\
+		Roman, $\sigma(M_L)/M_L<10\%$  & 3.02 & 2.83 & 3.23 \\
+		joint, $\sigma(M_L)/M_L<10\%$  & 2.67 & 1.85 & 2.68 \\
+		Rubin only, inside the footprint & 0.50 & 0.17 & 0.43 \\
+		\bottomrule
+	\end{tabular}
+	\end{center}
+
+	\noindent Rubin's yield halves and Roman's doubles in every population (the detection rows at $10$--$50\sigma$ in Monte Carlo error, the mass rows at $4.5$--$19\sigma$); the mass-precision yields gain most, $\sim\!3\times$, because a brighter F146 source improves both the photometric parallax and the astrometric $\theta_E$. The total falls by a third because Rubin dominated it. The \emph{ratio} of populations, $\eta$, moves by less than $15\%$, as it should when the fix acts on every lens population alike -- the strongest internal check that the change is the photometry and nothing else. The one quantity the fix should not touch, the geometric centroid shift, is unchanged to $<1\%$. (Source: \texttt{figures/yield\_20260925/compare\_20260922.md}.)
 
 	\subsection{What Rubin's year-round coverage recovers from Roman's season gaps}
+	\label{subsec:gapfill}
 
-	This is the result the project exists to produce, and it is a large effect with a sharp shape. Roman observes the bulge in $\sim$$70$-day seasons separated by $\sim$$110$-day gaps forced by the solar-angle constraint; Rubin observes it all year at low cadence. Figure~\ref{fig:f2} plots, per event, $\sigma_{\mathrm{joint}}/\sigma_{\mathrm{Roman}}$ against the distance in days from the event's peak to the nearest Roman season boundary.
+	An earlier version of this paper called this ``the result the project exists to produce'' and reported that, for $10$--$30$~d events peaking in a Roman season gap, the joint fit shrinks the timescale error to a median $0.26$ of Roman's alone. \textbf{With the corrected photometry that pooled number is $0.97$.} The gap-filling effect is real, but it lives in a much narrower corner than the pooled number claimed. Roman observes the bulge in $\sim$$70$-day seasons separated by $\sim$$110$-day gaps; Rubin observes all year at low cadence. Figure~\ref{fig:f2} plots, per event, $\sigma_{\mathrm{joint}}/\sigma_{\mathrm{Roman}}$ against the distance from the event's peak to the nearest Roman season edge.
 
 	\begin{figure}[htbp]
 		\centering
-		\includegraphics[width=\linewidth]{f2_gap_filling_v3}
-		\caption{What Rubin adds as an event's peak moves out of a Roman season and into a gap. Left: median per-event $\sigma_{\mathrm{joint}}(t_E)/\sigma_{\mathrm{Roman}}(t_E)$ in bins of $t_E$, with interquartile bands; only events Roman characterises alone can appear, since the ratio needs a denominator. Right: the fraction of events the joint fit characterises and Roman alone does not -- the events for which no ratio exists, and which a precision-only plot would silently discard. Shaded region: inside a Roman season.}
+		\includegraphics[width=\linewidth]{f2_gap_filling}
+		\caption{What Rubin adds as an event's peak moves out of a Roman season and into a gap, post-fix bulge run. Left: median per-event $\sigma_{\mathrm{joint}}(t_E)/\sigma_{\mathrm{Roman}}(t_E)$ in bins of distance to the nearest season edge, per $t_E$ bin, with interquartile bands (solid: event-rate weighted, $N_{\rm eff}=9{,}465$; dashed: raw); only events Roman characterises alone can appear. Right: the fraction of events the joint fit characterises and Roman alone does not -- the events for which no ratio exists. Shaded: inside a Roman season.}
 		\label{fig:f2}
 	\end{figure}
-
-	Pooling over the gap, the median per-event ratio is
 
 	\begin{center}
 	\begin{tabular}{lcccc}
 		\toprule
-		 & $10$--$30$~d & $30$--$100$~d & $100$--$300$~d & $>300$~d \\
+		median $\sigma_{\rm joint}/\sigma_{\rm Roman}$, $10$--$30$~d, peak in a gap & $t_E$ & $\pi_E$ & events & $N_{\mathrm{eff}}$ \\
 		\midrule
-		$\sigma(t_E)$, peak in a gap    & $\mathbf{0.261}$ & $0.826$ & $0.980$ & $0.985$ \\
-		$\sigma(\pi_E)$, peak in a gap  & $\mathbf{0.485}$ & $0.863$ & $0.983$ & $0.988$ \\
-		\addlinespace
-		$\sigma(t_E)$, peak in a season & $0.988$ & $0.987$ & $0.995$ & $0.981$ \\
-		$\sigma(\pi_E)$, peak in a season & $0.988$ & $0.991$ & $0.995$ & $0.981$ \\
-		\addlinespace
-		in-gap events ($N_{\mathrm{eff}}$) & $818\ (372)$ & $1{,}148\ (348)$ & $635\ (33)$ & $193\ (66)$ \\
+		whole gap                           & $0.973$ & $0.984$ & $1{,}359$ & $670$ \\
+		more than $15$~d past a season edge & $0.826$ & $0.892$ & $778$ & $376$ \\
+		more than $30$~d past                & $0.436$ & $0.703$ & $365$ & $177$ \\
+		more than $45$~d past                & $\mathbf{0.077}$ & $\mathbf{0.183}$ & $122$ & $62$ \\
+		\midrule
+		peak in a season (control)          & $1.000$ & $1.000$ & $1{,}835$ & $888$ \\
 		\bottomrule
 	\end{tabular}
 	\end{center}
 
-	\noindent These are weighted by the event rate (Section~\ref{sec:weighting}); unweighted, the same four in-gap $\sigma(t_E)$ medians read $0.250$, $0.924$, $0.975$, $0.990$ and the $\sigma(\pi_E)$ ones $0.433$, $0.936$, $0.978$, $0.991$. The short-$t_E$ result is the one the paper rests on and it barely moves, $0.250\to0.261$; the $30$--$100$~d bin moves the other way, from $0.924$ to $0.826$, so Rubin's contribution there is about twice what the raw sample suggested. \textbf{The last two columns should not be read as measurements}: weighting costs effective sample size, and at $N_{\mathrm{eff}}=33$ and $66$ those medians are consistent with the in-season control. The in-season rows are the control, and they are what make the in-gap rows a measurement rather than an offset: where Roman has the event in-season, Rubin sharpens it by $1$--$2\%$ in every $t_E$ bin, and that is the floor against which the short-$t_E$ in-gap number of $0.26$ should be read. Deeper into the gap the effect is larger still: for $10$--$30$~d events peaking more than $45$ days past a season edge, the median ratio is $0.007$ in $t_E$ and $0.044$ in $\pi_E$ ($104$ events, $N_{\mathrm{eff}}=52$) -- Roman has essentially nothing and the joint forecast is Rubin's.
+	\noindent For $30$--$100$, $100$--$300$ and $>300$~d events peaking in a gap the pooled medians are $0.999$, $1.000$ and $1.000$. Pre-fix, the whole-gap row read $0.261$ for $t_E$ and the $>45$~d row $0.007$.
 
-	\textbf{The ordering runs the opposite way to the intuition usually offered for it.} The argument advanced for combining a space survey with a ground survey is generally about \emph{long} events: a longer temporal baseline samples the annual-parallax signal better. That is not where the effect lives. The gain deepens as $t_E$ gets \emph{shorter}, and the reason is geometric rather than subtle: a $20$-day event peaking inside a $110$-day gap is over before Roman's next season opens, while a $500$-day event is still magnified when it does. Rubin does not improve Roman's sampling of a long event by much; it is the only instrument that sees a short one at all.
+	\textbf{Why the pooled effect collapsed.} Most gap events peak within a few weeks of a season edge, and with $\sim\!5\times10^4$ exposures Roman constrains such an event through its wings -- provided its sources are bright enough. The inverted law made Roman's F146 sources $\sim\!3$~mag too faint and Rubin's several magnitudes too bright, so Roman's wing coverage carried little information and Rubin's peak coverage a great deal. Corrected, the wings suffice for Roman unless the whole event falls inside the gap. \textbf{What survives is sharp and physical}: a $10$--$30$~d event that peaks more than $45$ days from both season edges begins and ends while Roman is not observing, Roman has essentially nothing, and the joint forecast is Rubin's -- a factor $13$ in $\sigma(t_E)$. The ordering by $t_E$ also survives: the effect lives in short events, not long ones, the opposite of the intuition usually offered (a longer baseline for parallax). A $20$-day event in a $110$-day gap is over before Roman's next season opens; a $500$-day event is still magnified when it does.
 
-	\textbf{The effect is a yield effect first and a precision effect second}, and the two should be quoted separately. The right panel of Figure~\ref{fig:f2} carries the part no ratio can express: events for which $\sigma_{\mathrm{Roman}}$ does not exist because Roman never characterised them. Those are not events on which the combination does slightly better; they are events the combination has and Roman does not.
+	\textbf{The effect is a yield effect first}, and the two should be quoted separately. The right panel of Figure~\ref{fig:f2} carries the events for which $\sigma_{\mathrm{Roman}}$ does not exist because Roman never characterised them: $2.0\%$ of in-gap footprint detections (weighted; $82$ events), rising to $7$--$10\%$ for events peaking more than $45$ days into a gap.
 
 	\subsection{What the combination characterises that neither survey does}
 
-	Inside the six GBTDS fields, where both surveys have data, the sample holds $8{,}902$ detections. Applying the characterisation criterion of \cite{Abrams2025MicrolensingRubin} -- $t_E>2\sigma_{t_E}$ and $\pi_E>2\sigma_{\pi_E}$, a two-parameter criterion adopted so these numbers are directly comparable to their published ones:
+	Inside the six GBTDS fields the sample holds $12{,}461$ detections. With the characterisation criterion of \cite{Abrams2025MicrolensingRubin} -- $t_E>2\sigma_{t_E}$ and $\pi_E>2\sigma_{\pi_E}$, adopted so these numbers compare directly with theirs:
 
 	\begin{center}
-	\begin{tabular}{lr}
+	\begin{tabular}{lrr}
 		\toprule
-		characterised by the joint fit & $2{,}795$ \\
-		characterised by Roman alone   & $2{,}042$ \\
-		characterised by Rubin alone   & $1{,}113$ \\
+		 & post-fix & pre-fix \\
 		\midrule
-		joint but \emph{not} Roman alone & $753$ \\
-		joint but \emph{neither} survey alone & $\mathbf{351}$ \\
+		characterised by the joint fit & $3{,}948$ & $2{,}795$ \\
+		characterised by Roman alone   & $3{,}412$ & $2{,}042$ \\
+		characterised by Rubin alone   & $670$ & $1{,}113$ \\
+		\midrule
+		joint but \emph{not} Roman alone & $537$ & $753$ \\
+		joint but \emph{neither} survey alone & $\mathbf{358}$ & $\mathbf{351}$ \\
 		\bottomrule
 	\end{tabular}
 	\end{center}
 
-	\noindent The last row is the synergy claim in its strictest form: $351$ events whose single-survey Fisher matrices do not support a characterisation and whose joint matrix does. It is also precisely the population a ratio-based comparison discards, since no ratio is defined for them.
-
-	Figure~\ref{fig:f3} shows where in parameter space this happens. Panel (a) is what Rubin adds to Roman and panel (b) what Roman adds to Rubin; the hatched cell in (b) is the case where the ratio is not large but infinite -- the single survey characterises nothing there and the joint fit does.
+	\noindent The last row is the synergy claim in its strictest form, and it is the one row the fix leaves unchanged: $358$ events whose single-survey Fisher matrices do not support a characterisation and whose joint matrix does. It is precisely the population a ratio-based comparison discards, since no ratio is defined for them. These are raw counts; Figure~\ref{fig:f3} shows where in $(t_E,\pi_E)$ they sit -- panel (a) what Rubin adds to Roman, now close to nothing across the plane, and (b) what Roman adds to Rubin, with hatched cells where Rubin alone characterises nothing and the joint fit does.
 
 	\begin{figure}[htbp]
 		\centering
-		\includegraphics[width=\linewidth]{f3_characterization_map_v3}
-		\caption{Characterised fraction, joint fit over single survey, in the $(t_E,\pi_E)$ plane. Dashed lines are constant lens mass at the sample's median relative proper motion. Grey cells hold too few events to report or none that either fit characterises.}
+		\includegraphics[width=\linewidth]{f3_characterization_map}
+		\caption{Characterised fraction, joint fit over single survey, in the $(t_E,\pi_E)$ plane, post-fix bulge run, event-rate weighted. Dashed lines: constant lens mass at the sample's median relative proper motion ($2.14$~mas/yr). Grey: too few events, or none either fit characterises.}
 		\label{fig:f3}
 	\end{figure}
 
 	\subsection{How well anything is measured, in absolute terms}
 
-	Every comparison above is a ratio, and a ratio is unfalsifiable without the scale it is a ratio of: a factor of two on a $300\%$ error is not a measurement. Figure~\ref{fig:f4} gives the forecasts themselves, as cumulative distributions over the $8{,}894$ Roman-observed detections, weighted by the event rate to an effective $2{,}564$ (Section~\ref{sec:weighting}); each panel also carries the unweighted curve as a dashed line.
+	Every comparison above is a ratio, and a ratio is unfalsifiable without the scale it is a ratio of. Figure~\ref{fig:f4} gives the forecasts themselves, as cumulative distributions over the $12{,}461$ Roman-observed detections, weighted by the event rate to an effective $3{,}969$; each panel carries the unweighted curve dashed.
 
 	\begin{figure}[htbp]
 		\centering
-		\includegraphics[width=\linewidth]{f4_fisher_precision_v3}
-		\caption{Fractional $1\sigma$ forecasts per survey partition. (a)--(c) the fitted parameters, (d) the derived lens mass, (e) the invariant $\sigma_{\mathrm{joint}}\le\sigma_{\mathrm{single}}$ tested event by event, (f) the condition numbers that say which inverses are trustworthy. Curves are normalised to the full sample, not to the events each survey managed to measure: an unmeasurable event lowers the curve rather than leaving the denominator.}
+		\includegraphics[width=\linewidth]{f4_fisher_precision}
+		\caption{Fractional $1\sigma$ forecasts per survey partition, post-fix bulge run. (a)--(c) the fitted parameters, (d) the derived lens mass, (e) the invariant $\sigma_{\mathrm{joint}}\le\sigma_{\mathrm{single}}$ tested event by event, (f) the condition numbers. Curves are normalised to the full sample: an unmeasurable event lowers the curve rather than leaving the denominator.}
 		\label{fig:f4}
 	\end{figure}
 
@@ -930,86 +1109,92 @@
 		\toprule
 		fraction measured to better than $10\%$ & joint & Roman alone & Rubin alone \\
 		\midrule
-		$t_E$        & $10.1\%$ & $6.0\%$  & $2.1\%$ \\
-		$\pi_E$      & $2.6\%$  & $1.8\%$  & $0.5\%$ \\
-		$\theta_E$   & $27.9\%$ & $27.5\%$ & $0.4\%$ \\
-		$M_L$        & $1.4\%$  & $1.1\%$  & $0.004\%$ \\
+		$t_E$        & $13.2\%$ ($10.1$) & $11.6\%$ ($6.0$) & $0.8\%$ ($2.1$) \\
+		$\pi_E$      & $3.7\%$ ($2.6$)   & $3.3\%$ ($1.8$)  & $0.2\%$ ($0.5$) \\
+		$\theta_E$   & $50.5\%$ ($27.9$) & $50.3\%$ ($27.5$) & $0.1\%$ ($0.4$) \\
+		$M_L$        & $2.4\%$ ($1.4$)   & $2.2\%$ ($1.1$)  & $0.001\%$ ($0.004$) \\
 		\bottomrule
 	\end{tabular}
 	\end{center}
 
-	\noindent Weighted by the event rate, over $N_{\mathrm{eff}}=2{,}564$. The unweighted sample gives $20.4/14.3/6.3$ for $t_E$, $15.9/11.9/5.3$ for $\pi_E$, $33.2/32.8/0.7$ for $\theta_E$ and $7.5/5.9/0.03$ for $M_L$ -- larger throughout, because the raw sample over-represents the long, slow, massive events that are easiest to characterise (Section~\ref{sec:weighting}). $\pi_E$ moves most, by a factor of six, and it is the parameter the gap-filling argument is about; the ordering between partitions is unchanged.
+	\noindent Weighted by the event rate over $N_{\mathrm{eff}}=3{,}969$; pre-fix values in brackets. The unweighted sample gives $21.7/18.9/2.7$ for $t_E$, $16.1/14.2/2.4$ for $\pi_E$, $54.1/53.9/0.5$ for $\theta_E$ and $9.9/8.8/0.02$ for $M_L$ -- larger, because the raw sample over-represents the long, slow, massive events that are easiest to characterise (Section~\ref{sec:weighting}). Every Roman column roughly doubles; every Rubin column falls; the joint column now sits within $1.6$ points of Roman's on every parameter, where before the fix it sat up to $4$ points above it.
 
-	That normalisation choice matters more than it looks. Normalising instead to the subset that happens to invert would report the precision of the events that were easy to characterise and silently drop the rest, which is the same selection error that makes a naive ratio misleading.
-
-	Panel (e) is a check rather than a result, and it is the one worth running first in any reimplementation: because the joint information matrix is the sum of the per-survey ones, $\sigma_{\mathrm{joint}}\le\sigma_{\mathrm{single}}$ must hold event by event. It does here, with a single point above the line, on a matrix whose condition number exceeds $10^{9}$ -- round-off on a forecast that was meaningless anyway. A violation on a well-conditioned event is a partitioning bug, not a marginal case.
+	Normalising instead to the subset that happens to invert would report the precision of the events that were easy to characterise and silently drop the rest -- the same selection error that makes a naive ratio misleading. Panel (e) is a check rather than a result, and the one worth running first in any reimplementation: because the joint information matrix is the sum of the per-survey ones, $\sigma_{\mathrm{joint}}\le\sigma_{\mathrm{single}}$ must hold event by event. It holds here except for $10$--$20$ events per parameter at $\le1.0007$ -- round-off -- and one lens-mass forecast a factor $8$ above the line, on a photometric matrix with condition number above $10^9$, where double precision has lost the answer.
 
 	\subsection{The astrometric shift, and who measures the Einstein radius}
 
-	A point lens displaces the centroid of the source's unresolved images by $\delta\theta(u)=\theta_E\,u/(u^2+2)$, which is not monotonic: it rises from zero, peaks at $u=\sqrt{2}$, and falls again. Two consequences drive everything below. A high-magnification event is a \emph{poor} astrometric event, because the shift vanishes as $u_0\to0$; and the astrometric maximum falls at $|t-t_0| = t_E\sqrt{2-u_0^2}$, twice, symmetrically, up to $\sim$$1.41\,t_E$ either side of the photometric peak. For a survey with $\sim$$70$-day seasons that second point is not a curiosity: $40.9\%$ of events here have an astrometric peak that crosses a season edge, and of the events whose photometric peak Roman does catch in-season, $50.5\%$ have an astrometric peak outside one. Catching the brightening is not the same as catching the wobble.
+	A point lens displaces the centroid of the source's unresolved images by $\delta\theta(u)=\theta_E\,u/(u^2+2)$, which rises from zero, peaks at $u=\sqrt{2}$ at $\theta_E/\sqrt8$, and falls again. A high-magnification event is therefore a \emph{poor} astrometric event, and the astrometric maximum falls at $|t-t_0| = t_E\sqrt{2-u_0^2}$, up to $\sim$$1.41\,t_E$ either side of the photometric peak: for $39.6\%$ of events it lies beyond a season edge from the photometric peak. Catching the brightening is not the same as catching the wobble.
 
 	\begin{figure}[htbp]
 		\centering
-		\includegraphics[width=\linewidth]{h5_astrometric_shift_v3}
-		\caption{The astrometric signal and what it is worth. (a) the distribution of the maximum centroid shift against the precision these sources actually have; (b) the signal relative to a single exposure and to the full stack; (c) where the astrometric maximum falls relative to Roman's seasons; (d) the forecast precision on $\theta_E$; (e) the joint-versus-single invariant; (f) the joint constraint in the $(\pi_E,\theta_E)$ plane, which is where the lens mass comes from.}
+		\includegraphics[width=\linewidth]{h5_astrometric_shift}
+		\caption{The astrometric signal and what it is worth, post-fix bulge run, Roman-observed detections ($N_{\rm eff}=3{,}969$). (a) the maximum centroid shift against the per-exposure precision; (b) the signal relative to one exposure and to the stack; (c) where the astrometric maximum falls relative to Roman's seasons; (d) the forecast precision on $\theta_E$; (e) the joint-versus-single invariant; (f) the $(\pi_E,\theta_E)$ plane the lens mass comes from.}
 		\label{fig:h5shift}
 	\end{figure}
 
-	\textbf{The signal is far below a single exposure.} The median maximum shift is $0.120$~mas; $81.0\%$ of events have a trajectory that reaches $u=\sqrt{2}$ and therefore attain the full $\theta_E/\sqrt{8}$. Roman's per-exposure astrometric precision \emph{for these sources} is $6.96$~mas at the median -- not the $1.1$~mas bright-source floor, which does not describe a faint bulge main-sequence star. Only $0.020\%$ of events have a peak shift exceeding a single exposure's precision. (Event-rate weighted, Section~\ref{sec:weighting}; the raw sample gives $0.111$~mas, $74.1\%$ and $0.11\%$. The weight favours short, fast events, which have smaller $\theta_E$ but pass through $u=\sqrt{2}$ more often.)
-
-	The measurement therefore exists entirely through averaging. With a median of $\sim$$5\times10^{4}$ exposures per detected event, an error independent between exposures averages to $0.031$~mas, against which the median $0.120$~mas signal stands at $3.9\sigma$. \textbf{That factor of $\sim$$224$ is the whole astrometric result, and that it is available is an assumption, not a measurement} -- see Section~\ref{sec:openitems}. Every astrometric number in this paper should be read with the clause \emph{if the per-exposure astrometric error is independent between exposures} attached to it.
+	\textbf{The signal is far below a single exposure.} The median maximum shift is $0.124$~mas and $71.0\%$ of events reach $\theta_E/\sqrt8$. Roman's per-exposure precision \emph{for these sources} is $2.75$~mas at the median -- not the $1.1$~mas bright-source floor -- and only $0.22\%$ of events have a peak shift above it. (Pre-fix the median precision was $6.96$~mas, because the sources were too faint in F146; the shift, being geometry, was $0.120$~mas.) The measurement exists entirely through averaging: over the median $\sim\!5\times10^4$ exposures an error independent between exposures averages to $0.012$~mas, against which the median signal stands at $10\sigma$. \textbf{That factor of $\sim$$224$ is the whole astrometric result, and that it is available is an assumption} -- Section~\ref{sec:openitems}. Every astrometric number here carries the clause \emph{if the per-exposure astrometric error is independent between exposures}.
 
 	\begin{figure}[htbp]
 		\centering
 		\includegraphics[width=\linewidth]{h5_astrometry_summary}
-		\caption{The four claims the astrometric result rests on, each with the check that makes it testable: (a) where the signal sits relative to one exposure and to the stack; (b) which instrument measures $\theta_E$; (c) the lens mass, the one quantity needing an observable from each matrix; (d) that precision improves as the deflection grows -- were this panel flat, the astrometric matrix would not be responding to the deflection at all.}
+		\caption{The four claims the astrometric result rests on, each with the check that makes it testable, post-fix bulge run: (a) where the signal sits relative to one exposure and to the stack; (b) which instrument measures $\theta_E$; (c) the lens mass; (d) precision improving as the deflection grows -- a flat panel would mean the astrometric matrix is not responding to the deflection at all.}
 		\label{fig:h5sum}
 	\end{figure}
 
-	\textbf{$\theta_E$ is Roman's measurement.} Median fractional precision $\sigma(\theta_E)/\theta_E$ is $0.317$ for the joint fit, $0.345$ for Roman alone and $2.13$ for Rubin alone: ground-based astrometry is not a capability here. Rubin's contribution is a $2.3\%$ tightening of Roman's number -- the paired, event-by-event median of $\sigma_{\mathrm{joint}}/\sigma_{\mathrm{Roman}}$ is $0.977$. (Comparing the two medians instead gives $0.918$, an apparent $8\%$ gain; the ratio of medians is not the median of ratios, and for a paired quantity the per-event statistic is the correct one.) Any claim that the joint fit measures the Einstein radius should attribute it to Roman.
+	\textbf{$\theta_E$ is Roman's measurement.} Median fractional precision $\sigma(\theta_E)/\theta_E$ is $0.098$ for the joint fit, $0.099$ for Roman alone and $2.30$ for Rubin alone. The paired, event-by-event median of $\sigma_{\mathrm{joint}}/\sigma_{\mathrm{Roman}}$ is $0.9988$ (pre-fix $0.977$): Rubin adds a tenth of a per cent. Against Rubin alone the joint fit is $31\times$ better.
 
-	\textbf{The lens mass is the quantity that genuinely needs both telescopes.} $M_L=\theta_E/(\kappa\pi_E)$ takes $\theta_E$ from Roman's astrometry and $\pi_E$ from the photometric baseline, so it is the one place where a change in either shows up as a change in the science. Counting Roman-observed detections whose mass the joint fit measures to a given precision and \emph{neither survey alone} does: $608$ events at better than $100\%$, $338$ at better than $30\%$, $145$ at better than $10\%$. Those are counts of simulated events, and the sample they are counted in is not distributed like the sky: as a weighted share of the footprint population they are $3.3\%$, $1.2\%$ and $0.26\%$ (Section~\ref{sec:weighting}), against the raw $6.8\%$, $3.8\%$ and $1.6\%$.
-
-	That count is deliberately taken at a precision threshold. Counting instead the events where a mass merely exists -- where the inversion succeeded and the value is not a sentinel -- returns zero events exclusive to the joint fit, because Rubin's matrix inverts for almost all of them with a median fractional error of $82$ -- i.e. $8200\%$, and $15$ in the unweighted sample. An inverted matrix is not a measured mass.
+	\textbf{The lens mass is still the quantity that needs both telescopes.} $M_L=\theta_E/(\kappa\pi_E)$ takes $\theta_E$ from Roman's astrometry and $\pi_E$ from the photometric baseline. Counting Roman-observed detections whose mass the joint fit measures to a given precision and \emph{neither survey alone} does: $494$ at better than $100\%$, $319$ at better than $30\%$ and $\mathbf{143}$ at better than $10\%$ (pre-fix $608$, $338$, $145$). As weighted shares of the footprint population they are $1.8\%$, $0.82\%$ and $0.22\%$. Counting instead events where a mass merely \emph{exists} returns none exclusive to the joint fit, because Rubin's matrix inverts for almost all of them -- with a median fractional mass error of $206$, i.e.\ $20{,}600\%$. An inverted matrix is not a measured mass.
 
 	\subsection{Satellite parallax: Roman at L2 against Roman at Earth}
 	\label{subsec:satpar}
 
-	Roman observes from L2 and Rubin from the ground, so the two see the source along slightly different lines of sight and the microlens parallax acquires a \emph{simultaneous} baseline in addition to the time-evolving annual one. The observable is the observer separation projected into Einstein radii, $\Delta u_{\mathrm{sat}} = \pi_E D_\perp/\mathrm{AU}$, recorded per event. Its median over events with Roman coverage near the peak is $0.0021\,\theta_E$, its $95$th percentile $0.0096$ and its maximum $0.039$. The perturbation is a few thousandths of an Einstein radius, so a large gain would be surprising on physical grounds; the question is whether the gain is measurable at all, and that is not answerable analytically because it depends on the cadence, the photometric errors and the correlation structure of the Fisher matrix.
+	Roman observes from L2 and Rubin from the ground, so the two see the source along slightly different lines of sight, and the microlens parallax acquires a \emph{simultaneous} baseline beside the time-evolving annual one. The observable is the observer separation in Einstein radii, $\Delta u_{\mathrm{sat}} = \pi_E D_\perp/\mathrm{AU}$, a few thousandths; a large gain would be surprising, and whether a small one is measurable depends on cadence, errors and the correlation structure of the Fisher matrix.
 
-	\paragraph{The experiment must be paired, and the obvious design does not work.} Two production runs differing only in the offset, matched event by event, is the natural experiment and it is impossible: moving the observer changes which events are detectable, the random-number stream is shared across the scan, and the two runs therefore diverge from the first sightline where the effect is non-zero. Measured, they agree exactly for $1{,}740{,}091$ events and part company at precisely the first field inside Roman's footprint. An unpaired comparison of the two \emph{populations} was tried and rejected by its own control: it reported the satellite making the \emph{timescale} forecast $15\%$ worse, which is impossible for matched events and instead measures how much the two detected samples differ -- an artefact larger than the effect being sought.
-
-	The comparison is therefore made inside a single run: each detected event is characterised twice, once with Roman at L2 and once with the offset zeroed, on the same draw, the same epochs and the same photometry. Events with no Roman epochs near the peak are kept deliberately as a control, because for them moving Roman cannot change anything and the ratio must be exactly $1$.
+	\paragraph{The experiment must be paired, and the obvious design does not work.} Two runs differing only in the offset diverge from the first sightline where the effect is non-zero, because moving the observer changes which events are detectable and the random stream is shared across the scan: measured, they agree exactly for $1{,}740{,}091$ events and part company at precisely the first field inside Roman's footprint. An unpaired comparison of the two detected populations was tried and rejected by its own control, reporting the satellite making the \emph{timescale} $15\%$ worse -- impossible for matched events. The comparison is therefore made inside one run (Section~\ref{subsec:perepoch}): each detected event characterised twice, with and without the offset, events with no Roman epochs near the peak kept as a control on which the ratio must be exactly $1$.
 
 	\begin{figure}[htbp]
 		\centering
 		\includegraphics[width=\linewidth]{h3a_where}
-		\caption{Per-event $\sigma_{\pi_E}$(Roman at L2)$/\sigma_{\pi_E}$(Roman at Earth) against the observer separation in Einstein radii, coloured by $t_E$. Below $1$ means the displacement to L2 tightens the parallax forecast. Both forecasts come from the same run and the same event.}
+		\caption{Per-event $\sigma_{\pi_E}$(Roman at L2)$/\sigma_{\pi_E}$(Roman at Earth) against the observer separation in Einstein radii, coloured by $t_E$; post-fix bulge run, the whole footprint. Below $1$: the displacement to L2 tightens the parallax forecast.}
 		\label{fig:h3a}
 	\end{figure}
 
-	\textbf{The result: satellite parallax improves $\sigma(\pi_E)$ by under one per cent, and the improvement is real.} Over $528$ Roman-covered events the median ratio is $0.9924$, bootstrap $95\%$ interval $[0.9915,\,0.9935]$; $446$ of $527$ non-tied events improve, a one-sided sign test at $p=2\times10^{-62}$. The control returns a median of exactly $1.000000$ over $2{,}114$ events, $90.6\%$ of them bit-exactly $1$. Highly significant and very small is the physically expected combination: the perturbation is tiny, and the paired design removes essentially all the noise that would otherwise hide it.
+	\textbf{Satellite parallax improves $\sigma(\pi_E)$ by under one per cent, and the improvement is real.} Over the $10{,}806$ Roman-covered events of the full footprint, weighted to $N_{\rm eff}=3{,}521$, the median ratio is $0.9911$ (quartiles $0.9878$--$0.9948$); $86.8\%$ of non-tied events improve. The control returns a median of exactly $1.000000$ over $72{,}082$ events, $95.1\%$ of them bit-exactly $1$. $40.7\%$ of covered events improve by more than $1\%$ and $1.2\%$ by more than a factor two; the latter sit at a median $t_E$ of $5.3$~d and $u_0$ of $0.34$ -- short, fairly high-magnification events, where the light curve changes fast enough that a small difference in observer position shows. Elsewhere the observer move does what it must: $\sigma(\theta_E)$ median ratio $0.99986$ (the Einstein radius comes from the deflection amplitude, not a baseline), $\sigma(t_E)$ $0.9997$, and the two geometries' condition numbers agree to $0.3\%$. The lens mass inherits the parallax gain, median $0.9935$.
 
-	Elsewhere the observer move does nothing, as it must: $\sigma(\theta_E)$ has a median ratio of $0.99986$ -- the Einstein radius comes from the deflection amplitude, not from a parallax baseline -- and $\sigma(t_E)$ of $0.998$. The two geometries are equally conditioned, their condition numbers agreeing to $0.7\%$.
+	These numbers replace two limitations of the earlier version: they cover the whole footprint (before: $528$ events on a contiguous quarter of it), and they are event-rate weighted, which the earlier paired file could not be because it lacked the lens distance and velocity; the file now carries them. The weighted and raw medians agree closely ($0.9911$ and $0.9922$).
 
-	\textbf{The population is not uniform.} $36.7\%$ of Roman-covered events improve by more than $1\%$, and $12$ of them ($2.3\%$) improve by more than a factor of two. Those sit at a median $t_E$ of $5.8$~d and $u_0$ of $0.23$: short, high-magnification events, where the light curve is changing fast enough that a small difference in observer position produces a measurable difference in the sampled magnification. That is the corner the effect was expected to live in, and it does -- it is simply a small corner.
-
-	\paragraph{A validation gate that could not have worked, and what replaced it.} An obvious check is to require the gain to grow with $\Delta u_{\mathrm{sat}}$. It is the wrong check, and it is wrong in a way worth recording, because it looks like a physics test and is not one: $\Delta u_{\mathrm{sat}}=\pi_E D_\perp/\mathrm{AU}$, and $D_\perp$ is one observatory's orbit, nearly the same for every event. Across this sample $\Delta u_{\mathrm{sat}}/\pi_E$ spans a factor of $1.14$ while $\pi_E$ spans $35.6$, and $\mathrm{corr}(\log\pi_E,\log\Delta u_{\mathrm{sat}})=+0.9985$. Such a check tests a dependence on $\pi_E$, not on separation. It is replaced by five that do follow from the physics: the control bit-exact, $\sigma(t_E)$ intact, $\sigma(\theta_E)$ untouched, the two geometries comparably conditioned, and a sign test against the control's exact null. The number of Roman epochs near the peak was tried as a monotone axis in its place and also shows no trend -- the lowest tercile, with a median of $43$ epochs, already shows the full gain against the highest with $16{,}410$. A simultaneous baseline is a geometric constraint: once a few epochs see the source from both positions at once the offset is constrained, and further epochs only reduce photon noise on a term that is already small.
-
-	\paragraph{Coverage.} These $528$ events come from $137$ sightlines spanning $36$ of the scan's $147$ footprint sightlines -- a contiguous quarter of Roman's footprint rather than all of it. The statistic is a per-event ratio of two forecasts for the same event, so it is far less sensitive to which sightlines were sampled than an area-weighted yield would be; but stellar density and extinction vary across the footprint, so quoting this as a footprint-wide average would require finishing the stratum. The estimate was stable as the sample grew, moving from $0.9927$ at $n=71$ to $0.99235$ at $n=528$ while the interval narrowed as expected.
+	\paragraph{A validation gate that could not have worked.} An obvious check is to require the gain to grow with $\Delta u_{\mathrm{sat}}$. It tests nothing: $D_\perp$ is one observatory's orbit, nearly the same for every event, so $\Delta u_{\mathrm{sat}}$ is essentially $\pi_E$ times a constant ($\mathrm{corr}(\log\pi_E,\log\Delta u_{\mathrm{sat}})=+0.9985$ in the earlier sample), and the check tests a dependence on $\pi_E$. It is replaced by five checks that follow from the physics, all passed here: the control bit-exact, $\sigma(t_E)$ intact, $\sigma(\theta_E)$ untouched, comparable conditioning, and a sign test against the control's exact null. The number of Roman epochs near the peak shows no trend either: a simultaneous baseline is a geometric constraint, fixed once a few epochs see the source from both positions.
 
 	\subsection{Two baselines, at the same scale}
+	\label{subsec:twobaselines}
 
-	The two effects this paper measures are both often described as "combining Roman and Rubin", and they are not the same physics. One is a temporal baseline -- one observatory's season gaps filled by another observatory's year-round cadence. The other is a spatial baseline -- two observatories separated by $0.01$~AU seeing the same event from different places. Figure~\ref{fig:h3c} puts them on one axis.
+	The two effects are both described as ``combining Roman and Rubin'', and they are different physics: a \emph{temporal} baseline -- one observatory's gaps filled by another's year-round cadence -- and a \emph{spatial} one -- two observatories $0.01$~AU apart. Figure~\ref{fig:h3c} puts them on one axis, both as weighted medians over the events each applies to.
 
 	\begin{figure}[htbp]
 		\centering
-		\includegraphics[width=0.92\linewidth]{h3c_honest}
-		\caption{Median $\sigma_{\pi_E}$ ratio for each effect, per $t_E$ bin; lower is a larger gain. Blue: Roman at L2 against Roman at Earth, the same event evaluated twice. Orange: the joint fit against Roman alone for events peaking in a season gap. Pairing the bars compares their size, not their merit.}
+		\includegraphics[width=0.85\linewidth]{h3c_honest}
+		\caption{Median improvement in $\sigma(\pi_E)$ for each effect, per $t_E$ bin, event-rate weighted. Blue: Roman at L2 against Roman at Earth, the same event twice. Orange: the joint fit against Roman alone, for footprint events peaking in a season gap. Pairing the bars compares their size, not their merit.}
 		\label{fig:h3c}
 	\end{figure}
 
-	For short events the temporal baseline is worth roughly $50$ times what the spatial one is. This is the honest framing for a survey-design conversation: the case for observing the bulge with both facilities rests on Rubin covering Roman's gaps, and not on the L2 separation, which is a real but sub-percent effect outside a small corner of high-magnification short events. Stating that plainly is worth more than the alternative, because it is the claim the data support and it anticipates the obvious question rather than waiting for it.
+	The pre-fix version of this paper found the temporal baseline worth $\sim$$50$ times the spatial one for short events and concluded that the case for observing with both facilities rests on Rubin covering Roman's gaps, not on the L2 separation. \textbf{Corrected, the two are the same size}: for $10$--$30$~d events, pooled over the gap, $1.6\%$ against $0.9\%$; for longer events the satellite's sub-per-cent gain is the larger, the temporal one being nil. Both are small when pooled, and each is large only in its own corner -- the temporal gain for short events deep inside a gap (a factor $13$ beyond $45$~d), the spatial gain for a per-cent of short, high-magnification events (a factor two or more).
+
+	\subsection{Black holes and neutron stars}
+	\label{subsec:compact}
+
+	The two compact-object runs (Section~\ref{subsec:populations}) were analysed the same way; the full account is the report \texttt{Report/postfix/}, and the yields are in Section~\ref{sec:yields}. Four results matter here.
+
+	\begin{figure}[htbp]
+		\centering
+		\includegraphics[width=\linewidth]{p6_synergy}
+		\caption{Compact-object runs. (a) Weighted share of detected events by who detects them. (b) Median joint/single-survey $\sigma(t_E)$ ratio against $t_E$, over events characterised by both surveys.}
+		\label{fig:p6synergy}
+	\end{figure}
+
+	\emph{Detection share.} Roman alone detects $21.5\%$ of black-hole and $26.3\%$ of neutron-star events (pre-fix $5.3$ and $6.3\%$), Rubin alone $73\%$ and $70\%$, both $5.6\%$ and $3.9\%$. \emph{The joint gain.} On events both surveys characterise ($23{,}961$ and $18{,}895$), the median joint/Roman ratio is $0.997$--$0.999$ for $t_E$, $\pi_E$ and $\theta_E$ in both populations, flat across four decades of $t_E$ (Figure~\ref{fig:p6synergy}b), while joint/Rubin is $0.008$--$0.041$. Rubin's decade adds nothing measurable to Roman's ten seasons for these long events, because at the footprint's extinction its sources are several magnitudes fainter than Roman's. \emph{Astrometry.} The centroid shift exceeds Roman's $1.1$~mas floor for $90.4\%$ of black-hole detections and $0.58\%$ of neutron-star ones, unchanged by the fix. Satellite parallax is worthless for both (median gain exactly $1$; fewer than $0.2\%$ gain $10\%$), since their events last months to years. \emph{Image resolution} (Section~\ref{subsec:perepoch}): Roman resolves the two images of $65.5\%$ of its black-hole detections at $\mathcal{D}=5$, $30.9\%$ at $\mathcal{D}=20$ and $0.68\%$ at its PSF FWHM; for neutron stars $14.9\%$, $0.35\%$ and $0.001\%$. The two orders of magnitude between criteria outweigh every other effect.
+
+	\paragraph{Against \cite{SajadianSahu2023}.} Their forecast for isolated black holes with Roman is the natural comparison, and it needs alignment first: their $F_1 = 0.019$ is the same kind of quantity as our $F$; their $\mathrm{d}N/\mathrm{d}M\propto M^{-1}$ row matches our log-uniform function; and our draws are re-weighted to $3$--$50\,M_\odot$ against their $2$--$50$ (Section~\ref{sec:yields}). Then Roman detects $464$ black holes in its footprint over ten seasons, $31.5$ per deg$^2$ per season against their $7.2$ -- a factor $4.4$, part of which is the survey design (the final GBTDS fills the $2.3$-year gap their forecast was built around \cite{ROTAC2025}) and part their stricter detection cut. On their denominator, the fraction of detections characterised to $10\%$ is, ours against theirs: $\theta_E$ $88.8$ vs $99.2\%$; $t_E$ $26.0$ vs $67.0\%$; $\pi_E$ $10.0$ vs $30.0\%$; $M_L$ $9.3$ vs $29.8\%$. The extinction fix closed most of the astrometric shortfall ($\theta_E$ was $68.6\%$) but little of the photometric one, so the parallax deficit has another cause (Section~\ref{sec:openitems}).
+
 
 	\section{Open items}
 	\label{sec:openitems}
@@ -1017,7 +1202,7 @@
 	Stated plainly, because this document is meant to be usable by someone deciding whether to build on it. They are ordered by how much they would move the numbers above.
 
 	\begin{itemize}
-		\item \textbf{Roman's $1.1$~mas centroiding floor is treated as independent between exposures, and it may not be.} This is the dominant caveat on every $\theta_E$ and lens-mass number here. The Fisher sum gives each epoch an independent weight, so $N\approx5\times10^{4}$ exposures buy a factor $\sqrt{N}\approx224$ and take a $6.69$~mas per-exposure precision to $0.030$~mas. But the floor is documented as a \emph{centroiding systematic} -- $1\%$ of the pixel, which is why it does not improve for brighter stars -- and a systematic of that kind is exactly the sort of error that correlates between exposures, through the PSF model, the distortion solution or the reference frame. In the fully correlated limit the effective precision approaches the full per-exposure value, the median signal sits nearly two orders of magnitude below the noise, and $\theta_E$ would not be measurable at all. Note that some averaging is demonstrably real: the $\sim$$0.1$~mas figure quoted for $\sim$$100$ stacked exposures \cite{Sanderson2019WFIRSTastrometry} is almost exactly $1.1/\sqrt{100}$, implying the floor is close to fully white over $100$ exposures. Whether that continues for another factor of $500$ in $N$ is the open question, and neither source addresses it. The fix is a two-component error model, $\sigma_{\mathrm{eff}}^2 = \sigma_{\mathrm{white}}^2/N + \sigma_{\mathrm{corr}}^2$, with the split taken from the Roman astrometry literature rather than assumed; inventing a split would be worse than naming the assumption.
+		\item \textbf{Roman's $1.1$~mas centroiding floor is treated as independent between exposures, and it may not be.} This is the dominant caveat on every $\theta_E$ and lens-mass number here. The Fisher sum gives each epoch an independent weight, so $N\approx5\times10^{4}$ exposures buy a factor $\sqrt{N}\approx224$ and take the median $2.75$~mas per-exposure precision of these sources to $0.012$~mas. But the floor is documented as a \emph{centroiding systematic} -- $1\%$ of the pixel, which is why it does not improve for brighter stars -- and a systematic of that kind is exactly the sort of error that correlates between exposures, through the PSF model, the distortion solution or the reference frame. In the fully correlated limit the effective precision approaches the full per-exposure value, the median signal sits nearly two orders of magnitude below the noise, and $\theta_E$ would not be measurable at all. Note that some averaging is demonstrably real: the $\sim$$0.1$~mas figure quoted for $\sim$$100$ stacked exposures \cite{Sanderson2019WFIRSTastrometry} is almost exactly $1.1/\sqrt{100}$, implying the floor is close to fully white over $100$ exposures. Whether that continues for another factor of $500$ in $N$ is the open question, and neither source addresses it. The fix is a two-component error model, $\sigma_{\mathrm{eff}}^2 = \sigma_{\mathrm{white}}^2/N + \sigma_{\mathrm{corr}}^2$, with the split taken from the Roman astrometry literature rather than assumed; inventing a split would be worse than naming the assumption.
 
 		\item \textbf{Roman's photometric error model is a placeholder.} It is a nearest-neighbour lookup in a tabulated magnitude--error curve, not an interpolation, and the provenance of that table has not been verified against the F146 noise model of \cite{Wilson2023GBTDS}. Every photometric forecast for Roman inherits whatever that table is.
 
@@ -1029,14 +1214,24 @@
 
 		\item \textbf{The per-sightline stopping criterion is weak in its third floor}, requiring only two well-conditioned Fisher matrices, so a field can complete with very few characterisable events and a noisy per-field precision estimate (Section~\ref{sec:fisher_caveats}).
 
-		\item \textbf{The satellite-parallax measurement covers a quarter of the footprint stratum.} $36$ of $147$ footprint sightlines, contiguous rather than spread. The statistic is a per-event ratio and so is robust to this, but a footprint-wide average would require finishing the stratum.
-
 		\item \textbf{The sample is stratified in sky position only.} Stratifying in $t_E$ as well would sharpen the short-$t_E$ bins, which is where the gap-filling effect lives and where the bins are thinnest.
 
-		\item \textbf{The satellite-parallax numbers are not event-rate weighted, and cannot be from the data that exist.} Everything else here carries Section~\ref{sec:weighting}'s weight, including the astrometric-shift section. The paired satellite-parallax run predates the columns the weight needs: $W\propto\sqrt{M_L}\,v_t\,Z(D_s)$, and a paired row records $\theta_E$ and $\pi_E$ but neither distance, so $v_t$ and $Z$ cannot be reconstructed ($\pi_{\rm rel}=1/D_l-1/D_s$ is one equation in two unknowns). The simulator now writes $M_L$, $D_l$, $D_s$ and $v_t$ into that file, so the next paired run is weightable; until then the $0.9924$ median ratio and the $36.7\%$ improving by more than $1\%$ are raw-sample statistics. The pairing itself -- the same event evaluated twice -- carries no weight and is unaffected, as are the sign test and the bit-exact control.
-
 		\item \textbf{The Rubin-alone branch has not been validated against an independent published forecast.} The natural comparison is \cite{Abrams2025MicrolensingRubin}, and it must reweight to their sampling first, or the difference in selection will look like a bug in this code.
-	\end{itemize}
+			\item \textbf{The model's event rate is too flat in Galactic latitude.} Against OGLE-IV \cite{Mroz2019OGLEIV} the model over-produces the rate per star by $38\%$ at $b=-5.1^\circ$ and under-produces it by up to $50\%$ near the plane, crossing unity at $b\approx-2.3^\circ$ (Section~\ref{sec:yields}). Full-scan yields carry a systematic of a few tens of per cent, and the footprint sits where the model is $25$--$40\%$ low, so footprint yields are if anything understated. The cause -- the density normalisation, the source counts, or the extinction that sets which sources enter an $I<21$ sample -- is not known.
+
+		\item \textbf{Roman's detection rate exceeds Penny et al.'s upper bracket.} $80.4$ events per deg$^2$ per day against their $63.8$ at $|u_0|<3$ \cite{penny2019predictions}. Known differences (ten seasons including four low-cadence ones; a different detection criterion) push in this direction but have not been shown to account for a factor $1.26$.
+
+		\item \textbf{Roman's forecast parallax precision is $\sim\!3\times$ worse than \cite{SajadianSahu2023}'s}, on matched assumptions, and the extinction law is now ruled out as the main cause. Candidates: whether the photometric and astrometric $\pi_E$ information are combined as they should be, and the long parallax baseline of the gap observations they add by hand.
+
+		\item \textbf{The table's $t_0$ is not the observed peak} (Section~\ref{subsec:samples}): it is referenced to the Earth's position at $t=0$, and the columns derived from it -- which season the peak falls in, its distance to a season edge, the epochs near the peak -- inherit the offset. Every gap-filling statistic is binned on them. For most events the offset is days.
+
+		\item \textbf{One detection-test anomaly} in the $85{,}061$ bulge detections: a single-survey test passed and the joint test did not, which the construction of Section~\ref{subsec:detclass} should forbid. The flag is made monotone downstream, so no table is wrong; the event has not yet been inspected.
+
+		\item \textbf{The black-hole remnant masses of the ordinary-lens population are a single slope}, $M_{\rm BH} = 0.24\,M_i$. Real remnant masses depend on metallicity and mass loss in ways no slope captures, and these lenses populate the long-$t_E$ tail the gap-filling and parallax results depend on. The neutron-star population's single Gaussian likewise understates a probable high-mass recycled component.
+
+		\item \textbf{The F146 extinction scatter and several F146 constants are placeholders}: the per-band extinction scatter $\sigma_i$ uses a K-band value for F146 (Section~\ref{subsec:reddening}), and the F146 PSF width in \texttt{Bulge.h} is an ELT-scale value (Table~\ref{tab:gbtds_design}).
+
+\end{itemize}
 
 	\bibliographystyle{ieeetr}
 	\bibliography{refs}

@@ -64,7 +64,7 @@ def coefficients(df):
     return g.first()[["n_mc", "k_obj", "e_obj", "k_all", "e_all"]].reset_index()
 
 
-def figure(k, out):
+def figure(k, out, src):
     ps.use_paper_style()
     pops = [p for p in ("bh", "ns") if p in set(k.run)]
     fig, axes = ps.figure(width="double", height=3.0, ncols=len(pops), sharey=True)
@@ -95,8 +95,10 @@ def figure(k, out):
     h, l = axes[0].get_legend_handles_labels()
     fig.legend(h, l, loc="lower center", bbox_to_anchor=(0.5, axes[0].get_position().y1), ncol=len(CURVES),
                frameon=False, fontsize=6.5)
-    ps.stamp(fig, "y3_yield_vs_F.py from y1_yields.csv; per-object convention; band = MC 1-sigma; "
-                  "pre-extinction-fix runs (Deviation 53)")
+    # The source path names the run (yield_prefix_20260922 = pre-extinction-fix, Deviation 53;
+    # yield_20260925 = post-fix). It used to be a fixed "pre-extinction-fix" note, which then
+    # mislabelled every post-fix figure.
+    ps.stamp(fig, f"y3_yield_vs_F.py from {src}; per-object convention; band = MC 1-sigma")
     return ps.save_figure(fig, os.path.join(out, "y3_yield_vs_F"))
 
 
@@ -127,7 +129,7 @@ def main():
         fh.write("\n".join(lines) + "\n")
     k.to_csv(os.path.join(a.out, "y3_coefficients.csv"), index=False)
     print("\n".join(lines))
-    print("wrote", figure(k, a.out))
+    print("wrote", figure(k, a.out, a.csv))
 
 
 if __name__ == "__main__":

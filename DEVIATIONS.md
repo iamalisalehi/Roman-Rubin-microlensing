@@ -4048,3 +4048,25 @@ it gives 0.138). Build: 56 pp, no undefined references, no overfull boxes; the o
 (empty author, `RomanBHbinaries`) predates this change.
 
 **Commit:** see git log (whitepaper update).
+
+## 57. The y3 yield figure stamped every run "pre-extinction-fix" (2026-09-28)
+
+**Found while** restructuring the onboarding report (now `Report/overview/overview_report.tex`): the stamp under
+`figures/yield_20260925/y3/y3_yield_vs_F.{pdf,png}` read "pre-extinction-fix runs (Deviation 53)",
+although that figure is built from the POST-fix `figures/yield_20260925/y1_yields.csv`.
+
+**Cause.** `analysis/y3_yield_vs_F.py` hardcoded the note in its `ps.stamp` call when it was written
+on the pre-fix data (Deviation 54b) and was re-run unchanged on the post-fix yields. The numbers
+were never affected; only the label was wrong -- but it told any reader of the post-fix report and
+the overview report that the yields were pre-fix.
+
+**What was done.** The stamp now prints the input CSV's path instead of a fixed claim; the path
+names the run (`yield_prefix_20260922` = pre-fix, `yield_20260925` = post-fix). `figure()` takes
+the path as a third argument. Regenerated `figures/yield_20260925/y3/`.
+
+**Verification.** `y3_coefficients.csv` and `y3_coefficients.md` byte-identical before and after;
+the new stamp reads "y3_yield_vs_F.py from figures/yield_20260925/y1_yields.csv; ...". The pre-fix
+copy under `figures/yield_prefix_20260922/` was not regenerated (its old stamp is correct for it).
+`Report/postfix/` picks up the corrected figure on its next build; its PDF was not rebuilt.
+
+**Commit:** not yet committed.

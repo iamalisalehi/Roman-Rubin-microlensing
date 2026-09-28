@@ -156,6 +156,30 @@ Roman, $\sigma(\Ml)/\Ml<10\%$ & \TODO{} \\
 \TODO{like-for-like comparison, or delete this section}
 
 % -------------------------------------------------------------------------------------------------
+%% OPTIONAL SECTIONS for a longer report (e.g. an overview meant for someone outside the
+%% project). Report/overview/overview_report.tex is the worked example of samples and uncertainty
+%% (its cluster-scaling section was replaced by a non-technical "Next steps" on 2026-09-28).
+%%
+%% (a) Sample events. Figures from analysis/s2_sample_lightcurves.py live in
+%%     figures/samples/<pop>/<class>/<event>.pdf; add {../../figures/samples/} to \graphicspath.
+%%     Use the vector PDFs, one showcase event per page, the rest in an appendix gallery. Say that
+%%     the samples are selected illustrations, not a representative sample, and explain the
+%%     "without parallax" = geocentric convention. Generate any table of their parameters from
+%%     the *_params.dat files by script (see Report/overview/make_sample_table.py); never type it.
+%%     Inside a longtable, pull a generated file in with \@@input, not \input.
+%\section{Sample events}
+%
+%% (b) Uncertainty budget. Separate Monte Carlo error (shrinks with computing), modelling
+%%     assumptions (do not), and unexplained tensions with the literature; list the checks the
+%%     results pass; end with a result / confidence / main-risk table.
+%\section{How certain are these results?}
+%
+%% (c) Scaling. What a bigger run changes (MC noise only) and what it cannot; cost by sky stratum
+%%     (footprint vs outside -- never a count that mixes them); which target binds where; code
+%%     prerequisites (OPEN_ITEMS: no --seed / --end-index for chunked runs).
+%\section{Scaling to a larger run}
+
+% -------------------------------------------------------------------------------------------------
 \section{Caveats}
 %% Copy the standing ones from OPEN_ITEMS.md that bear on these numbers; do not invent new
 %% reassurance. At the time of writing the standing ones are: populations must not be pooled;

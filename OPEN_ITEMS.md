@@ -1781,3 +1781,54 @@ layout and source-count model -- but none has been quantified. The OGLE-IV compa
 footprint rate per star is 25-40% LOW, which makes an over-count from the rate unlikely; the source
 counts or the detection efficiency are the places to look. **Fix would involve:** restricting our
 count to Penny's six high-cadence seasons and |u0| < 1, and comparing per-star rather than per-area.
+
+## The simulator cannot yet be split safely across cluster jobs: no seed option, no end index (2026-09-26)
+
+**What is wrong.** The RNG is `mt19937_64` seeded with the compile-time constant `seed = 42`
+(`Bulge.h:32`), and `--start-index` skips sightlines *without* consuming random numbers
+(`Bulge_LSST.cpp`, `if (iScan < cfg.startIndex) continue;`). A scan split into chunks by start
+index therefore starts every chunk from the same random stream: chunk k's first sightline sees
+exactly the deviates chunk 0's first sightline saw. There is also no `--end-index`, so a chunk
+runs to the end of the scan, and the analysis layer assumes one run directory per population.
+
+**Why it matters.** Draws in different chunks would be correlated (different sightlines, same
+uniform deviates), so pooled Monte Carlo errors would be underestimated. Harmless for the laptop
+runs (one chunk each, or resumes that redo a sightline on purpose), but it is exactly what a
+cluster production run would do.
+
+**Why deferred.** No cluster run is scheduled yet; it is named, without the technical detail, as a
+challenge in `Report/overview/` "Next steps" (the report's earlier cluster section, with the cost
+table below, was removed 2026-09-28 at the user's request). **Fix would involve:** a `--seed` option written to `run_provenance.txt`, an
+`--end-index`, a documented per-chunk seed rule, a merge step for tables and map files that
+checks every sightline appears exactly once, per-sightline timestamps in the log (cost is
+currently unmeasurable by stratum), and a validation that a chunked stub run reproduces a
+single-process run's pooled numbers within Monte Carlo error.
+
+**Related fact found while costing it.** Every footprint sightline stops on the `--events 300`
+target, not `--lenses 50`: the bh and ns tables hold exactly 44,100 = 147 x 300 footprint rows
+(bulge 44,119), with 28-55% of footprint draws detected. The whitepaper's "Stopping criteria"
+paragraph ("the second floor binds") is true of the outside sightlines only. So a finer
+`--stride-roman` grows CPU time but barely grows the tables, and `--events` is the lever on
+footprint statistics.
+
+**Cost projection (moved here 2026-09-28 from the old onboarding report's cluster section, so it is
+not lost).** Units are the laptop CPU-hours of the measured runs (i7-6500U, two cores, under
+hyper-threading contention); a cluster core is probably faster, which is not assumed. The CPU split
+between footprint and outside sightlines is unmeasured post-fix (no timestamps in `run.log`): pre-fix
+a profiled footprint sightline cost ~340 s against ~7 s outside (~80% of a run in the footprint),
+and the fix grew the outside share, so the footprint share is bracketed at f = 40-80%. Footprint cost
+scales with the footprint sightline count; outside cost and table size stay as they are.
+
+| `--stride-roman` | footprint step | footprint sightlines | CPU-h (bulge / ns / bh) | footprint N_eff | table size |
+|---|---|---|---|---|---|
+| 5 (current) | 0.10 deg | 147 | 16 / 23 / 27 (measured) | 1x | 3-6 GB |
+| 2 | 0.04 deg | 907 | 50-82 / 72-120 / 82-136 | ~6x | +1-2% |
+| 1 | 0.02 deg | 3656 | 170-320 / 250-470 / 280-530 | ~25x | +6-12% |
+
+Raising `--events` adds draws mainly in the footprint (where it binds) and so grows footprint
+statistics without changing the sky grid; raising `--lenses` adds draws mainly outside and grows the
+table roughly in proportion. Which target binds where should be re-checked in a pilot. The three
+populations are independent runs and parallelise trivially. Operational traps for such a run have
+their own items: stale git stamp (`make clean && make` after the last commit), `--dry-run`
+truncating outputs, append-mode outputs, ~170 s start-up per chunk, silent OOM kills in analysis
+(run under `analysis/memrun.py`); resume with `runs/runctl.sh stop/continue`.

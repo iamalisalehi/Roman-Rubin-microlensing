@@ -4147,4 +4147,4 @@ extracts are exact). Report: 41 pp, clean build, 0 TODO, no undefined references
 boxes. Outputs: `figures/u1_20260929/{u1_numbers.md,u1_numbers.csv,u1.log,
 u2_resolution_depth.csv,u2.log,p6_resolution.*,p6_resolution.log}`.
 
-**Commit:** not yet committed.
+**Commit:** `18858be`.

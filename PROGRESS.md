@@ -230,7 +230,7 @@ Sajadian & Makler). Three steps, each approved before it starts:
   items in plain language. The old cluster cost table now lives in OPEN_ITEMS (cluster-split item).
 - **U1/U2 ✅ OVERVIEW REPORT EXTENDED 2026-09-29** (Deviation 58; user: image resolution in Results
   + Table 1, "how much Roman helps Rubin" in results and abstract, errors on every number, re-check
-  every claim). User's own report edits committed first as 074440d; the rest NOT yet committed.
+  every claim). User's own report edits committed first as 074440d; the rest in 18858be.
   `analysis/u1_report_numbers.py` recomputes each pooled number the report quotes (logged value
   beside it: all reproduce) with a Poisson-bootstrap error, plus the new numbers;
   `analysis/u2_resolution_depth.py` re-counts resolvable epochs at a realistic Roman depth. New

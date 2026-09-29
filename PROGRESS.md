@@ -244,6 +244,19 @@ Sajadian & Makler). Three steps, each approved before it starts:
     (D=20), 0.3% (PSF); ns 2.9%, bulge 1.4% (D=5). Rubin: bh 5.5% (D=5), else ~0. **The simulator
     used a 29 mag F146 depth placeholder (`thre[6]`)** -- new OPEN_ITEMS entry; as simulated, bh
     was 65.5%. u2's model matches the simulator 99.5-100% per event at depth 29.
+  - **Later the same day (Deviation 59):** Table 3 gained Roman's coverage of the gap events
+    (Roman detects 95.5% of in-gap 10-30 d events; deepest row: 72.8% no Roman point near the
+    peak, 66.5% still Roman-detected). Two footprint figures via `Report/overview/make_footprints.py`
+    (tiling rebuilt and checked against the run log): **the modelled GBTDS fields sit ~0.2 deg closer
+    to the plane than the real layout** (five-field block b -1.2 vs -1.40); 83% of the simulated
+    footprint lies on real detectors, covering 58% of the real tiles. Rubin covers 62.4 deg^2, of
+    which 59.3 produce detections. Not yet committed.
+  - **Footprint mismatch quantified (Deviation 60, `analysis/u3_footprint_offset.py`):** on the real
+    GBTDS layout Roman's footprint yields change by only +1 to +5% (area +16.5% vs lower density
+    farther from the plane), 10% masses -5..+8%, Rubin's footprint detections -1..-10%; per-event
+    fractions ~unchanged. **The scan's corner cut is on the wrong side in the code** (drops the corner
+    Rubin images with the GC field; costs ~1-2.4% of whole-scan Rubin yields) -- OPEN_ITEMS. Report
+    Section 5.4 + Table 10. Not yet committed.
   - **Eight wrong report statements fixed**, incl.: the OGLE tE check quoted the PRE-fix run (post-fix
     24.02+-0.04 d; same-region 23.5+-0.1 vs OGLE 23.8+-0.5), A_V 3.8 was pre-fix (now 3.6), the
     footprint is not Penny 2019's (notional layout, circles, 1.47 vs 1.7 deg^2). List in Dev. 58.

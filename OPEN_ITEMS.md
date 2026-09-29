@@ -106,6 +106,16 @@ simplifying `FisherM`'s data loop. Do it when `FisherM` is next opened for other
 
 ## Sky coverage is Penny et al.'s, not the current GBTDS footprint — and Rubin's FoV overlap is unmodelled (raised by Ali, 2026-08-24)
 
+**MEASURED 2026-09-29 (Deviation 59):** against the real tile layout in
+`Whitepaper/roman_967_both_aladinX.png` (spring + autumn), the modelled five-field block sits at
+b = -1.2 where the real one is centred at b = -1.40 (spans -1.80..-0.97), and the modelled GC field
+at (0, -0.125) against the real (0.06, -0.22). 79% of the simulated footprint lies on real
+detectors; it covers 59% of the real tiles (1.97 deg^2 over both seasons, 1.71 per season), missing
+mostly b < -1.5. **Effect estimated (Deviation 60):** Roman footprint yields change by only +1 to +5%
+(area +16.5%, lower density farther from the plane -10 to -13%); Rubin's footprint detections -1 to
+-10%; per-event fractions ~unchanged. A run on the adopted layout is still the remedy. Figure:
+`figures/footprint_20260929/footprint_vs_gbtds.pdf` (`Report/overview/make_footprints.py`).
+
 **What is wrong:** the region scanned by the Monte Carlo (`l1`/`l2`/`b1`/`b2`/`wid` in `Bulge.h`)
 and the Roman field centres (`FIELDS_L_B` in `Baseline/generateRomanBaseline.py`) both descend
 from the Penny et al. survey design. That design is now superseded — STScI's published GBTDS
@@ -1861,3 +1871,30 @@ analytically meanwhile, validated to 99.5-100% per event against the simulator a
 derive it from the same table at run time so the two cannot drift -- extend or clamp
 `sigma_roman.txt` beyond 27 mag, re-run `fishertest`, and fold the change into the next production
 runs (it belongs with the Roman photometric-model item above, since both are the same curve).
+
+## The scan's corner cut removes the wrong corner (raised by the user, 2026-09-29)
+
+**What is wrong.** `Bulge_LSST.cpp` drops every grid point with `lon < lx and lat > bx`
+(Bulge.h: lx = 1.0053 - 0.2 - 1.75 = -0.9447, bx = -1.64 + 0.2 + 1.75 = 0.31), i.e. the upper corner
+on the NEGATIVE-longitude side (upper right in a map with l increasing leftward, as in the overview
+report's Fig. 6; the figure reproduces the run's 1,829 sightlines exactly, so it is the code, not the
+plot). The user's intent was to drop the corner NOT needed to cover Roman's Galactic-centre field.
+Measured with Rubin's real pointings (`analysis/u3_footprint_offset.py`, Deviation 60): the cut
+corner is imaged in Rubin exposures that also contain the GC field over 4.85 deg^2 (52,866
+cell-visits); the opposite upper corner over 2.65 deg^2 (17,374). The cut therefore removes 4.9 of
+the 57.5 deg^2 that Rubin images together with a Roman field (the scan keeps 91%).
+
+**Why it matters.** Only Rubin-only events outside Roman's footprint are affected: estimated from
+simulated sightlines with the same Rubin visit counts, the corner would add ~1.0% (bulge), 2.4% (bh),
+1.2% (ns) to the whole-scan Rubin yields. No footprint result changes.
+
+**Why deferred.** A code change to the scan region needs new production runs; the effect is small
+and confined to whole-scan Rubin totals.
+
+**What the fix involves.** Decide which corner (if any) should be cut -- the opposite corner is still
+imaged with the five-field block over 3.56 deg^2, so neither upper corner is empty of Roman-overlapping
+Rubin exposures -- then flip the l inequality (or replace the rectangle cut by a distance test: keep
+a point if it is within 1.75 + 1.75 + 0.30 deg of any Roman field centre, which is the actual
+design intent), update the provenance line, and re-run with the next production set. The scan box
+itself (l1/l2/b1/b2) was built from an older field layout (l -0.219..1.413, b -1.64..-0.85) that
+excludes the current GC field; with the distance test that stops mattering.

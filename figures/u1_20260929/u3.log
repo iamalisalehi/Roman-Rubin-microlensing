@@ -1,0 +1,189 @@
+d ln(model/OGLE)/db over -1.95..-0.75: -0.075 +- 0.193 per deg (8 latitude bins)
+real tiles: spring 1.715 deg^2, autumn 1.708 deg^2, season-weighted 1.712 deg^2, union 1.974 deg^2
+[bulge] reading runs/prod_bulge_20260924/test5_detJ.dat
+[bulge] 85,061 detections, 12,461 in the footprint, event-rate weighted, N_eff = 9,465
+[bulge] Roman detects: rows
+    b  n_sl  area          rho         err
+-1.44    17  0.17 42924.896892 1998.588245
+-1.34    22  0.22 44953.996000 1883.460829
+-1.24    22  0.22 48370.790275 2240.475186
+-1.14    22  0.22 50362.255251 2134.546373
+-1.04    21  0.21 51832.841419 2192.889017
+-0.94    15  0.15 66650.796724 3358.756114
+-0.34     4  0.04 88160.228829 7816.437463
+-0.24     5  0.05 84084.363738 7746.344570
+-0.14     6  0.06 81723.478741 6094.683419
+-0.04     6  0.06 72413.215348 5358.043731
+ 0.06     5  0.05 73835.115302 6367.075670
+ 0.16     2  0.02 69963.864770 8664.125835
+[bulge] Roman, sigma(M)/M<10%: rows
+    b  n_sl  area         rho         err
+-1.44    17  0.17  830.965857  161.694638
+-1.34    22  0.22 1130.191919  255.955543
+-1.24    22  0.22  774.325941  172.462654
+-1.14    22  0.22  958.801866  199.194715
+-1.04    21  0.21  651.142708  129.798638
+-0.94    15  0.15 2173.517333  867.993062
+-0.34     4  0.04  944.919139  305.271975
+-0.24     5  0.05 6865.237864 3974.326145
+-0.14     6  0.06 1055.446510  448.179066
+-0.04     6  0.06 1378.896452  424.448936
+ 0.06     5  0.05 2213.978408 1021.456384
+ 0.16     2  0.02 2887.310232 1604.103035
+[bulge] Rubin detects (footprint): rows
+    b  n_sl  area          rho         err
+-1.44    17  0.17  5911.561817  710.416053
+-1.34    22  0.22  7784.816821  772.145137
+-1.24    22  0.22 10479.032503 1118.522498
+-1.14    22  0.22  8893.198319  797.032930
+-1.04    21  0.21 12155.038294 1054.063489
+-0.94    15  0.15 18230.438536 1912.168894
+-0.34     4  0.04 19491.075137 3668.213010
+-0.24     5  0.05 16379.803894 4483.818408
+-0.14     6  0.06 15582.583716 2680.036594
+-0.04     6  0.06 13900.655402 2403.368270
+ 0.06     5  0.05 17427.027825 2940.674125
+ 0.16     2  0.02 16352.556177 4320.586369
+[bh] reading runs/prod_bh_20260924/testbh_detJ.dat
+[bh] 101,515 detections, 24,186 in the footprint, event-rate weighted, N_eff = 17,638
+[bh] Roman detects: rows
+    b  n_sl  area         rho        err
+-1.44    17  0.17 4401.021674 140.157063
+-1.34    22  0.22 4526.798954 127.234094
+-1.24    22  0.22 5014.073694 140.017160
+-1.14    22  0.22 5242.405816 147.989165
+-1.04    21  0.21 6156.069009 175.716009
+-0.94    15  0.15 6619.970688 210.073650
+-0.34     4  0.04 8367.316421 517.253562
+-0.24     5  0.05 8074.842648 455.011905
+-0.14     6  0.06 7171.017586 357.886826
+-0.04     6  0.06 7091.932490 362.485011
+ 0.06     5  0.05 7236.674752 407.977609
+ 0.16     2  0.02 7806.403224 719.118051
+[bh] Roman, sigma(M)/M<10%: rows
+    b  n_sl  area         rho        err
+-1.44    17  0.17  516.851366  46.314696
+-1.34    22  0.22  597.266868  45.088874
+-1.24    22  0.22  623.922583  44.953722
+-1.14    22  0.22  615.904675  47.000701
+-1.04    21  0.21  728.430376  59.430986
+-0.94    15  0.15  863.484396  68.154064
+-0.34     4  0.04 1305.057426 214.379402
+-0.24     5  0.05 1151.642018 160.717748
+-0.14     6  0.06  971.998102 130.235453
+-0.04     6  0.06  923.024564 128.819910
+ 0.06     5  0.05 1023.215110 143.766677
+ 0.16     2  0.02  963.039581 236.149453
+[bh] Rubin detects (footprint): rows
+    b  n_sl  area         rho        err
+-1.44    17  0.17  836.313324  58.383993
+-1.34    22  0.22  894.449758  53.908825
+-1.24    22  0.22  965.065795  59.832835
+-1.14    22  0.22  997.133162  61.165435
+-1.04    21  0.21 1252.089967  73.882373
+-0.94    15  0.15 1764.356152 103.875822
+-0.34     4  0.04 2711.791134 292.047493
+-0.24     5  0.05 1830.842144 194.177088
+-0.14     6  0.06 1673.005735 172.963875
+-0.04     6  0.06 1719.014979 173.302866
+ 0.06     5  0.05 1561.505518 176.661300
+ 0.16     2  0.02 1580.801955 276.287846
+[ns] reading runs/prod_ns_20260924/testns_detJ.dat
+[ns] 93,185 detections, 19,058 in the footprint, event-rate weighted, N_eff = 17,086
+[ns] Roman detects: rows
+    b  n_sl  area          rho         err
+-1.44    17  0.17 30115.489476 1003.687052
+-1.34    22  0.22 30634.378500  888.701143
+-1.24    22  0.22 33214.322915  986.179883
+-1.14    22  0.22 34946.436456 1027.123827
+-1.04    21  0.21 40407.931031 1170.350447
+-0.94    15  0.15 47786.475660 1597.830239
+-0.34     4  0.04 54301.484124 3553.865374
+-0.24     5  0.05 58455.856030 3369.639695
+-0.14     6  0.06 55173.211911 2878.840218
+-0.04     6  0.06 52706.652397 2686.190577
+ 0.06     5  0.05 55943.797191 3136.666232
+ 0.16     2  0.02 53569.918041 4907.906176
+[ns] Roman, sigma(M)/M<10%: rows
+    b  n_sl  area         rho        err
+-1.44    17  0.17  843.140648  98.084814
+-1.34    22  0.22 1258.277214 117.765465
+-1.24    22  0.22 1314.409861 139.668923
+-1.14    22  0.22 1402.293431 139.497401
+-1.04    21  0.21 1522.592359 158.138817
+-0.94    15  0.15 1979.125004 234.943697
+-0.34     4  0.04 1887.622182 380.337182
+-0.24     5  0.05 2604.615019 529.838570
+-0.14     6  0.06 2534.920151 436.868987
+-0.04     6  0.06 1930.024770 344.154884
+ 0.06     5  0.05 2421.207917 500.602408
+ 0.16     2  0.02 2825.093470 686.600015
+[ns] Rubin detects (footprint): rows
+    b  n_sl  area          rho         err
+-1.44    17  0.17  4945.809345  391.564310
+-1.34    22  0.22  5155.819176  356.052421
+-1.24    22  0.22  5625.759846  383.930863
+-1.14    22  0.22  6708.474860  430.895533
+-1.04    21  0.21  8874.405735  520.658864
+-0.94    15  0.15 11942.046628  796.689989
+-0.34     4  0.04  9780.254690 1372.113032
+-0.24     5  0.05 12988.628057 1465.030540
+-0.14     6  0.06 11390.320492 1261.684172
+-0.04     6  0.06 11264.662979 1134.655510
+ 0.06     5  0.05 11909.222436 1471.341537
+ 0.16     2  0.02 11199.960899 2319.607149
+sky imaged by Rubin exposures that overlap a Roman field: 57.45 deg^2 (2478 distinct pointings); inside the scan 52.51 deg^2 = 91%; lost to the corner cut 4.94; beyond the box 0.00
+visit counter vs run log: 1829/1829 sightlines agree
+cut (l < -0.94, b > 0.31): 750 cells = 7.50 deg^2; with Rubin visits 4.88 deg^2; imaged by Rubin exposures that also contain Roman's fields 4.86 deg^2; median visits 24; imaged with the GC field 4.85 deg^2 (52,866 cell-visits), with the five-field block 4.24 deg^2 (47,271 cell-visits)
+opposite (high l, b > 0.31): 750 cells = 7.50 deg^2; with Rubin visits 6.73 deg^2; imaged by Rubin exposures that also contain Roman's fields 3.73 deg^2; median visits 68; imaged with the GC field 2.65 deg^2 (17,374 cell-visits), with the five-field block 3.56 deg^2 (35,241 cell-visits)
+[bulge] Rubin yield in the cut corner ~ 1817 (N_1), 1.0% of the whole-scan Rubin yield (density from 372 northern sightlines by visit bin: {1: 0.0, 2: 16.0, 3: 95.0, 4: 357.0, 5: 1058.0, 6: 4487.0})
+[bh] Rubin yield in the cut corner ~ 590.5 (N_1), 2.4% of the whole-scan Rubin yield (density from 372 northern sightlines by visit bin: {1: 0.0, 2: 24.0, 3: 79.0, 4: 132.0, 5: 299.0, 6: 853.0})
+[ns] Rubin yield in the cut corner ~ 1754 (N_1), 1.2% of the whole-scan Rubin yield (density from 372 northern sightlines by visit bin: {1: 0.0, 2: 18.0, 3: 119.0, 4: 331.0, 5: 1037.0, 6: 3899.0})
+population                                quantity                       block  slope_per_deg  slope_err      chi2  dof                                                                                          b_rows  area_sim  area_real_eff  area_factor  latitude_factor    ratio  ratio_lo  ratio_hi  ratio_ogle_slope  N1_sim_measured
+      scan       d ln(model/OGLE rate per star)/db         footprint latitudes      -0.074868   0.192861       NaN  NaN                                                                                             NaN       NaN            NaN          NaN              NaN      NaN       NaN       NaN               NaN              NaN
+     bulge                           Roman detects                  five-field       0.724656   0.159289  8.253517  4.0                                                                                    -1.44..-0.94      1.19       1.428243     1.200205         0.869061 1.043051  1.014576  1.073872          1.028930     59790.897814
+     bulge                           Roman detects                    GC field      -0.495707   0.233100  0.597228  4.0                                                                                     -0.34..0.16      0.28       0.283612     1.012899         1.062742 1.076450  1.045746  1.110018          1.066053     22069.862046
+     bulge                   Roman, sigma(M)/M<10%                  five-field       0.061006   0.872546  9.199741  4.0                                                                                    -1.44..-0.94      1.19       1.428243     1.200205         0.987668 1.185403  1.005180  1.423891          1.167663      1233.962104
+     bulge                   Roman, sigma(M)/M<10%                    GC field       1.343263   1.594764  9.996704  4.0                                                                                     -0.34..0.16      0.28       0.283612     1.012899         0.882703 0.894089  0.826601  1.042957          0.889373       695.564361
+     bulge               Rubin detects (footprint)                  five-field       1.884070   0.397101  9.829253  4.0                                                                                    -1.44..-0.94      1.19       1.428243     1.200205         0.715942 0.859277  0.810644  0.913479          0.849613     12266.639813
+     bulge               Rubin detects (footprint)                    GC field      -0.280059   0.505195  1.666559  4.0                                                                                     -0.34..0.16      0.28       0.283612     1.012899         1.033955 1.047291  0.984970  1.118858          1.037723      4566.030062
+     bulge                           Roman detects             whole footprint            NaN        NaN       NaN  NaN                                                                                             NaN      1.47       1.711855     1.164527         0.903418 1.052055  1.028732  1.075379          1.038939     81860.759860
+     bulge                   Roman, sigma(M)/M<10%             whole footprint            NaN        NaN       NaN  NaN                                                                                             NaN      1.47       1.711855     1.164527         0.927749 1.080389  0.940939  1.219838          1.067344      1929.526466
+     bulge               Rubin detects (footprint)             whole footprint            NaN        NaN       NaN  NaN                                                                                             NaN      1.47       1.711855     1.164527         0.781672 0.910278  0.868640  0.951917          0.900639     16832.669875
+     bulge            Roman-characterised fraction five-field, per-event trend       0.003997   0.030548       NaN  NaN  -1.44:10.8+-1.3 -1.34:10.5+-1.0 -1.24:11.0+-1.2 -1.14:12.0+-1.1 -1.04:9.4+-1.0 -0.94:13.0+-1.8       NaN            NaN          NaN              NaN 0.992610       NaN       NaN               NaN              NaN
+     bulge           Roman sigma(M)/M<10% fraction five-field, per-event trend      -0.016151   0.010218       NaN  NaN       -1.44:1.9+-0.4 -1.34:2.5+-0.5 -1.24:1.6+-0.4 -1.14:1.9+-0.4 -1.04:1.3+-0.3 -0.94:3.3+-1.3       NaN            NaN          NaN              NaN 1.189650       NaN       NaN               NaN              NaN
+     bulge P(resolvable), Roman D=5 (as simulated) five-field, per-event trend       0.021523   0.020507       NaN  NaN       -1.44:2.5+-0.6 -1.34:5.1+-0.9 -1.24:7.1+-2.1 -1.14:3.1+-0.6 -1.04:3.7+-0.9 -0.94:5.1+-1.5       NaN            NaN          NaN              NaN 0.880288       NaN       NaN               NaN              NaN
+        bh                           Roman detects                  five-field       0.866919   0.088355  5.812121  4.0                                                                                    -1.44..-0.94      1.19       1.428243     1.200205         0.846957 1.016521  1.001290  1.032606          1.003063      6286.265042
+        bh                           Roman detects                    GC field      -0.286621   0.164241  4.217300  4.0                                                                                     -0.34..0.16      0.28       0.283612     1.012899         1.034796 1.048143  1.027930  1.069708          1.038550      2112.173596
+        bh                   Roman, sigma(M)/M<10%                  five-field       0.892950   0.195976  2.751639  4.0                                                                                    -1.44..-0.94      1.19       1.428243     1.200205         0.843026 1.011804  0.977701  1.047516          0.998463       774.518478
+        bh                   Roman, sigma(M)/M<10%                    GC field      -0.588311   0.415011  1.521360  4.0                                                                                     -0.34..0.16      0.28       0.283612     1.012899         1.075848 1.089725  1.034436  1.154799          1.078957       293.907305
+        bh               Rubin detects (footprint)                  five-field       1.408061   0.292339 15.210567  4.0                                                                                    -1.44..-0.94      1.19       1.428243     1.200205         0.771869 0.926401  0.884153  0.972038          0.915151      1298.228298
+        bh               Rubin detects (footprint)                    GC field      -1.012748   0.354111  5.626635  4.0                                                                                     -0.34..0.16      0.28       0.283612     1.012899         1.142032 1.156763  1.097112  1.220544          1.144169       513.226310
+        bh                           Roman detects             whole footprint            NaN        NaN       NaN  NaN                                                                                             NaN      1.47       1.711855     1.164527         0.879734 1.024474  1.011631  1.037318          1.011988      8398.438638
+        bh                   Roman, sigma(M)/M<10%             whole footprint            NaN        NaN       NaN  NaN                                                                                             NaN      1.47       1.711855     1.164527         0.887260 1.033239  1.002999  1.063478          1.020605      1068.425783
+        bh               Rubin detects (footprint)             whole footprint            NaN        NaN       NaN  NaN                                                                                             NaN      1.47       1.711855     1.164527         0.851562 0.991668  0.955647  1.027689          0.980037      1811.454609
+        bh            Roman-characterised fraction five-field, per-event trend       0.014466   0.031417       NaN  NaN -1.44:27.7+-1.4 -1.34:32.7+-1.2 -1.24:30.7+-1.2 -1.14:30.2+-1.3 -1.04:28.8+-1.2 -0.94:31.8+-1.3       NaN            NaN          NaN              NaN 0.990480       NaN       NaN               NaN              NaN
+        bh           Roman sigma(M)/M<10% fraction five-field, per-event trend       0.002066   0.022844       NaN  NaN -1.44:11.7+-1.0 -1.34:13.2+-0.9 -1.24:12.4+-0.8 -1.14:11.8+-0.9 -1.04:11.8+-0.9 -0.94:13.0+-1.0       NaN            NaN          NaN              NaN 0.996649       NaN       NaN               NaN              NaN
+        bh P(resolvable), Roman D=5 (as simulated) five-field, per-event trend       0.113727   0.034414       NaN  NaN -1.44:62.3+-1.5 -1.34:63.8+-1.3 -1.24:63.4+-1.3 -1.14:62.1+-1.4 -1.04:67.4+-1.4 -0.94:68.4+-1.5       NaN            NaN          NaN              NaN 0.964695       NaN       NaN               NaN              NaN
+        ns                           Roman detects                  five-field       0.908536   0.137463 12.959439  4.0                                                                                    -1.44..-0.94      1.19       1.428243     1.200205         0.840689 1.008999  0.985812  1.033876          0.995728     42508.200408
+        ns                           Roman detects                    GC field      -0.075254   0.163341  1.816961  4.0                                                                                     -0.34..0.16      0.28       0.283612     1.012899         1.008757 1.021769  1.003285  1.041527          1.012943     15436.232245
+        ns                   Roman, sigma(M)/M<10%                  five-field       1.317088   0.275234  4.291087  4.0                                                                                    -1.44..-0.94      1.19       1.428243     1.200205         0.783572 0.940446  0.899379  0.984510          0.928857      1634.442768
+        ns                   Roman, sigma(M)/M<10%                    GC field       0.364446   0.512960  2.891863  4.0                                                                                     -0.34..0.16      0.28       0.283612     1.012899         0.961177 0.973575  0.928120  1.030338          0.966207       651.194599
+        ns               Rubin detects (footprint)                  five-field       1.828735   0.268992 10.346955  4.0                                                                                    -1.44..-0.94      1.19       1.428243     1.200205         0.722017 0.866568  0.832420  0.903133          0.856734      8343.531641
+        ns               Rubin detects (footprint)                    GC field       0.092197   0.349957  2.574263  4.0                                                                                     -0.34..0.16      0.28       0.283612     1.012899         0.989625 1.002390  0.964065  1.044033          0.994141      3219.400938
+        ns                           Roman detects             whole footprint            NaN        NaN       NaN  NaN                                                                                             NaN      1.47       1.711855     1.164527         0.869366 1.012401  0.994050  1.030752          1.000314     57944.432653
+        ns                   Roman, sigma(M)/M<10%             whole footprint            NaN        NaN       NaN  NaN                                                                                             NaN      1.47       1.711855     1.164527         0.815683 0.949885  0.916143  0.983627          0.939499      2285.637366
+        ns               Rubin detects (footprint)             whole footprint            NaN        NaN       NaN  NaN                                                                                             NaN      1.47       1.711855     1.164527         0.776610 0.904384  0.876548  0.932220          0.894992     11562.932580
+        ns            Roman-characterised fraction five-field, per-event trend       0.014268   0.023144       NaN  NaN -1.44:14.4+-0.9 -1.34:16.1+-1.0 -1.24:14.9+-0.9 -1.14:16.3+-0.9 -1.04:15.7+-0.9 -0.94:15.2+-1.0       NaN            NaN          NaN              NaN 0.981500       NaN       NaN               NaN              NaN
+        ns           Roman sigma(M)/M<10% fraction five-field, per-event trend       0.019574   0.009627       NaN  NaN       -1.44:2.8+-0.3 -1.34:4.1+-0.4 -1.24:4.0+-0.4 -1.14:4.0+-0.4 -1.04:3.8+-0.4 -0.94:4.1+-0.5       NaN            NaN          NaN              NaN 0.895890       NaN       NaN               NaN              NaN
+        ns P(resolvable), Roman D=5 (as simulated) five-field, per-event trend       0.074254   0.023963       NaN  NaN -1.44:12.2+-0.9 -1.34:13.2+-1.0 -1.24:13.1+-0.9 -1.14:12.6+-1.0 -1.04:15.5+-1.0 -0.94:16.5+-1.2       NaN            NaN          NaN              NaN 0.891830       NaN       NaN               NaN              NaN
+      scan   Rubin sky co-imaged with Roman fields                completeness            NaN        NaN       NaN  NaN                                    corner cut 4.94 deg^2; beyond box 0.00 deg^2; 2478 pointings     52.51      57.450000          NaN              NaN 0.914012       NaN       NaN               NaN              NaN
+      scan        visit counter reproduces run log              all sightlines            NaN        NaN       NaN  NaN                                                                                             NaN       NaN            NaN          NaN              NaN 1.000000       NaN       NaN               NaN              NaN
+      scan               cut (l < -0.94, b > 0.31)                      corner            NaN        NaN       NaN  NaN                                            median visits 24, median overlapping-Roman visits 22      7.50       4.880000          NaN              NaN      NaN       NaN       NaN               NaN         4.860000
+      scan               cut (l < -0.94, b > 0.31)      corner, by Roman block            NaN        NaN       NaN  NaN                          area_sim = imaged with GC field; area_real_eff = with five-field block      4.85       4.240000          NaN              NaN      NaN       NaN       NaN               NaN              NaN
+      scan             opposite (high l, b > 0.31)                      corner            NaN        NaN       NaN  NaN                                             median visits 68, median overlapping-Roman visits 0      7.50       6.730000          NaN              NaN      NaN       NaN       NaN               NaN         3.730000
+      scan             opposite (high l, b > 0.31)      corner, by Roman block            NaN        NaN       NaN  NaN                          area_sim = imaged with GC field; area_real_eff = with five-field block      2.65       3.560000          NaN              NaN      NaN       NaN       NaN               NaN              NaN
+     bulge Rubin detections lost to the corner cut                    estimate            NaN        NaN       NaN  NaN                                      of whole-scan Rubin N_1 1.749e+05; 372 northern sightlines       NaN            NaN          NaN              NaN 0.010386       NaN       NaN               NaN      1816.880376
+        bh Rubin detections lost to the corner cut                    estimate            NaN        NaN       NaN  NaN                                      of whole-scan Rubin N_1 2.434e+04; 372 northern sightlines       NaN            NaN          NaN              NaN 0.024257       NaN       NaN               NaN       590.465813
+        ns Rubin detections lost to the corner cut                    estimate            NaN        NaN       NaN  NaN                                      of whole-scan Rubin N_1 1.411e+05; 372 northern sightlines       NaN            NaN          NaN              NaN 0.012436       NaN       NaN               NaN      1754.421859
+[memrun] peak RSS 666 MB, wall 4.0 min

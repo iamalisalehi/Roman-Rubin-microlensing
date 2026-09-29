@@ -495,6 +495,22 @@ def bulge_specific(run, logged):
             q = b.quantile(r, m & np.isfinite(r), W)
             rec(pop, "gap filling: median sigma_J/sigma_Roman, 10-30 d", f"{p}, {lab}", q[0],
                 q[1], n=q[2], neff=q[3], logged=logged["gap"].get((p, lab)))
+    # What Roman has on these events. "In a gap" does not mean Roman has no data: every event
+    # here is on a sightline Roman observes all mission and has a Roman forecast (the ratio is
+    # defined). What changes with depth is whether Roman saw the magnified part, and whether it
+    # still detects the event from the wings. Same rows as above, over the tE-ratio sample.
+    rt = R.ratio_joint_over(d, "tE", "roman").to_numpy(float)
+    detR, detL = (d.detR == 1).to_numpy(), (d.detL == 1).to_numpy()
+    nopk = (d.nepR_pk == 0).to_numpy()
+    for lab, m in (("anywhere in a gap", gap), (">15 d past an edge", gap & (dt > 15)),
+                   (">30 d past", gap & (dt > 30)), (">45 d past", gap & (dt > 45)),
+                   ("in a season (control)", sea)):
+        m = m & np.isfinite(rt)
+        for what, sel in (("Roman detects", detR), ("Rubin detects", detL),
+                          ("no Roman epoch within +-2 tE", nopk)):
+            f = b.frac(m & sel, m, W)
+            rec(pop, "gap filling: Roman's coverage of the same events, 10-30 d",
+                f"{lab}: {what} [%]", f[0], f[1], n=f[2], neff=f[3], scale=100)
     # Improvement factor deep in the gap, 1/ratio, with its own bootstrap (not 1/err).
     r = R.ratio_joint_over(d, "tE", "roman").to_numpy(float)
     with np.errstate(divide="ignore"):

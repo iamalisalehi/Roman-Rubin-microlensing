@@ -4148,3 +4148,100 @@ boxes. Outputs: `figures/u1_20260929/{u1_numbers.md,u1_numbers.csv,u1.log,
 u2_resolution_depth.csv,u2.log,p6_resolution.*,p6_resolution.log}`.
 
 **Commit:** `18858be`.
+
+## 59. Footprint figures: the simulated Roman fields sit ~0.2 deg closer to the plane than the real ones; Table 3 gains Roman's coverage (2026-09-29)
+
+**What was asked (user).** (1) Explain Table 3 and, having done so, add to it that "in a gap"
+still means Roman has data on the event; (2) two figures: the simulated Rubin and Roman footprints
+overlaid, and the simulated Roman footprint overlaid on the real GBTDS layout
+(`Whitepaper/roman_967_both_aladinX.png`, an Aladin view of the spring and autumn tiles).
+
+**What was done.**
+- `analysis/u1_report_numbers.py`: per gap-filling row, the weighted share Roman detects, Rubin
+  detects, and with no Roman epoch within +-2 tE (bootstrap errors). All 496 earlier values
+  unchanged. Table 3 gains the three columns; the text notes that every event in it has >= 46,112
+  recorded Roman exposures and a Roman forecast, and that in the deepest row 72.8+-5.5% have no
+  Roman point near the peak yet 66.5+-6.1% still pass Roman's detection test (wing detections).
+- `Report/overview/make_footprints.py` (new, run from the repo root) ->
+  `figures/footprint_20260929/footprint_{simulated,vs_gbtds}.{pdf,png}`. It REBUILDS the
+  stratified tiling from Bulge.h's constants and exits unless it reproduces exactly the 1,829
+  sightlines (and the 147 Roman ones) entered in `runs/prod_bulge_20260924/run.log`; it did. The
+  screenshot, which has no WCS, is placed in (l, b) from Aladin's own Galactic grid lines, found as
+  image columns/rows green over >90% of their length: six vertical, five horizontal, 348.0 px/deg,
+  rectilinear to a pixel (0.003 deg). Real detectors = filled green outlines.
+- Report: both figures in Section 2.4 with text; modelling-uncertainty and next-steps items cite
+  the measured offset.
+
+**Findings.**
+- **The modelled GBTDS fields are offset from the real layout.** Real five-field block centred at
+  (l, b) = (0.49, -1.40), spanning b -1.80..-0.97; modelled circles at b = -1.2 (-1.50..-0.90).
+  Real Galactic-centre field at (0.06, -0.22); modelled (0, -0.125). So ~0.2 deg and ~0.1 deg closer
+  to the plane. 83% of the simulated 1.47 deg^2 (1.22 deg^2) lies on real detectors; it covers 58%
+  of the 2.10 deg^2 the real tiles span over both seasons, missing mainly b < -1.5.
+- **Coverage bookkeeping in the report was loose.** "The 59 deg^2 of bulge that has survey
+  coverage": Rubin covers 62.36 deg^2 (1,689 sightlines); 59.28 deg^2 (1,612) produced detections;
+  the other 77 (barren, all capped) have <= 14 Rubin visits (median 7, against 306), and 140
+  sightlines have no coverage at all. Section 2.4 now says so.
+- Drawing convention: the code's area bookkeeping has a grid point stand for the cell extending
+  from it in +l, +b; the figures centre each cell on its point (where the sightline samples the
+  sky). With the corner convention the overlap would read 76% / 54% instead of 83% / 58%.
+
+**Verification.** Tiling rebuild matches the run log sightline for sightline; calibration lines
+regular to < 3 px; report builds clean (42 pp, 0 TODO, no overfull boxes); figures inspected as
+rendered in the PDF (cell seams in the vector PDF fixed with own-colour edges).
+
+**Commit:** not yet committed.
+
+## 60. What the footprint mismatch costs, why the scan is so large, and a corner cut on the wrong side (2026-09-29)
+
+**What was asked (user).** Discuss the simulated-vs-real Roman footprint mismatch and how much
+uncertainty it adds, with numbers if possible; explain why the simulated Rubin area is much larger
+(intent: miss nothing Rubin sees at the edges of images that also contain Roman's fields); explain
+"Roman, as simulated" vs "modelled GBTDS fields" in two lines; double-check both footprint plots;
+and find out whether the scan's corner cut (intended to drop the corner not needed for the GC field)
+is wrong in the code or only in the image.
+
+**New: `analysis/u3_footprint_offset.py`** -> `figures/u1_20260929/u3_footprint_offset.csv`.
+Part A measures Roman's yield density per 0.1-deg latitude row inside the simulated footprint,
+fits ln(density) linear in b per block, and integrates the fit over the real tiles (spring and
+autumn images separately, each patch weighted by the fraction of seasons it is observed), giving
+real/simulated ratios split into area and latitude factors, with the fit error propagated. It
+also regresses per-event fractions on b, and repeats the ratio with the latitude slope steepened
+by the model-vs-OGLE-IV gradient (from y1's OGLE table). Part B checks a visit counter against the
+run log (1,829/1,829 sightlines agree), measures which upper corner Rubin images together with each
+Roman block, the scan's completeness against Rubin's reach, and the Rubin yield in the cut corner.
+
+**Results.**
+- Real tiles: 1.715 (spring) and 1.708 (autumn) deg^2 -- the design's 1.7, an independent check of
+  the image calibration; season-weighted 1.712, union 1.97.
+- Real/simulated, whole footprint (16-84%): Roman detections 1.05 (1.03-1.08) ordinary, 1.02
+  (1.01-1.04) bh, 1.01 (0.99-1.03) ns; Roman 10% masses 1.08 (0.94-1.22), 1.03 (1.00-1.06), 0.95
+  (0.92-0.98); Rubin footprint detections 0.91, 0.99, 0.90. Area factor 1.165, latitude factor
+  0.87-0.90 for Roman: they nearly cancel. Roman's density slope +0.7..0.9 per deg in ln toward the
+  plane (five-field block); Rubin's steeper (+1.4..1.9).
+- Model-vs-OGLE gradient over b -1.95..-0.75: -0.08 +- 0.19 per deg (consistent with zero here);
+  with it the ratios move ~1%.
+- Per-event: Roman-characterised fraction has no latitude trend (ratio 0.98-0.99); 10%-mass fraction
+  -10..+19% (<2 sigma); P(resolvable) has a ~3-sigma trend for bh/ns, 4-12% lower on the real fields
+  (bh D=5: 45% -> 44%).
+- Extrapolation: 39% of the real five-field area lies south of the last simulated row, 30% of the
+  GC field below its own. Stated in the report as the main limitation.
+- Scan completeness: Rubin images 57.45 deg^2 together with a Roman field (2,478 pointings); the scan
+  holds 91%, nothing lies beyond the box, 4.94 deg^2 is lost to the corner cut.
+- **Corner cut: a code error, not a plotting error.** The code drops l < -0.9447, b > 0.31; the
+  figure reproduces the run exactly. That corner is imaged together with the GC field over
+  4.85 deg^2 (52,866 cell-visits); the opposite upper corner over 2.65 deg^2 (17,374), though it is
+  imaged with the five-field block over 3.56 deg^2. Rubin yield lost: ~1.0% (bulge), 2.4% (bh), 1.2%
+  (ns) of the whole-scan Rubin totals; nothing in the footprint. OPEN_ITEMS entry added.
+
+**Corrections to Deviation 59 (same day).** The real-tile mask was dilated by 1 px to close outlines
+and not eroded back, inflating every detector ~9%; fixed in both scripts. With the fix and with the
+union taken from the separate season images (the combined image also fills pockets where the two
+roll angles' tiles cross): overlap 1.16 deg^2 = 79% of the simulated footprint (was 83%), covering 59%
+of the real 1.97 deg^2 (was 58% of 2.10).
+
+**Report.** Section 2.4: why the scan is large (Rubin's field around Roman's, with the 91%), the
+two-line caption distinction, the corner cut; new Section 5.4 with Table 10; modelling item 5 and
+next-steps item 3 updated. 44 pp, clean build.
+
+**Commit:** not yet committed.

@@ -1,0 +1,43 @@
+loading:
+  bulge: 85,061 draws, 85,061 joint detections, N_eff=9,465, population=bulge, event-rate weighted, N_eff = 9,465, pair=85,061
+  bh: 101,515 draws, 101,515 joint detections, N_eff=17,638, population=bh, event-rate weighted, N_eff = 17,638, pair=101,515
+  ns: 93,185 draws, 93,185 joint detections, N_eff=17,086, population=ns, event-rate weighted, N_eff = 17,086, pair=93,185
+
+=== bulge  (bulge) ===
+  rows (detections only) 85,061 | detected 85,061 | N_eff 9,465 | dropped barren 0
+  detection share:  Rubin only  66.76%   Roman only  29.20%   both   3.83%
+  characterised by both surveys: 12,271
+    median sigma(tE  ) joint/single:  vs Rubin 0.006   vs Roman 0.999
+    median sigma(piE ) joint/single:  vs Rubin 0.006   vs Roman 0.999
+    median sigma(tetE) joint/single:  vs Rubin 0.032   vs Roman 0.999
+  max centroid shift [mas]: median 0.1321   95th 0.3933   above Roman floor 0.40%   (blend-diluted 0.39%)
+  P(resolvable) Rubin:  D=5  0.0114%   D=20  0.0000%   PSF  0.0000%   (of 75,533 detections)
+  P(resolvable) Roman:  D=5  5.0618%   D=20  0.5604%   PSF  0.0000%   (of 11,468 detections)
+  satellite parallax: median gain 1.0000   >1.1x 0.965%   >2x 0.392%   (of 82,888 paired)
+
+=== bh  (bh) ===
+  rows (detections only) 101,515 | detected 101,515 | N_eff 17,638 | dropped barren 0
+  detection share:  Rubin only  72.88%   Roman only  21.45%   both   5.63%
+  characterised by both surveys: 23,961
+    median sigma(tE  ) joint/single:  vs Rubin 0.022   vs Roman 0.997
+    median sigma(piE ) joint/single:  vs Rubin 0.010   vs Roman 0.998
+    median sigma(tetE) joint/single:  vs Rubin 0.041   vs Roman 0.999
+  max centroid shift [mas]: median 3.6023   95th 9.6976   above Roman floor 90.43%   (blend-diluted 89.89%)
+  P(resolvable) Rubin:  D=5  5.4540%   D=20  0.0310%   PSF  0.0003%   (of 83,447 detections)
+  P(resolvable) Roman:  D=5 65.5078%   D=20 30.9002%   PSF  0.6788%   (of 23,771 detections)
+  satellite parallax: median gain 1.0000   >1.1x 0.001%   >2x 0.000%   (of 100,969 paired)
+
+=== ns  (ns) ===
+  rows (detections only) 93,185 | detected 93,185 | N_eff 17,086 | dropped barren 0
+  detection share:  Rubin only  69.59%   Roman only  26.27%   both   3.92%
+  characterised by both surveys: 18,895
+    median sigma(tE  ) joint/single:  vs Rubin 0.008   vs Roman 0.999
+    median sigma(piE ) joint/single:  vs Rubin 0.008   vs Roman 0.999
+    median sigma(tetE) joint/single:  vs Rubin 0.035   vs Roman 0.999
+  max centroid shift [mas]: median 0.2637   95th 0.6040   above Roman floor 0.58%   (blend-diluted 0.56%)
+  P(resolvable) Rubin:  D=5  0.0002%   D=20  0.0000%   PSF  0.0000%   (of 78,633 detections)
+  P(resolvable) Roman:  D=5 14.8533%   D=20  0.3516%   PSF  0.0011%   (of 18,047 detections)
+  satellite parallax: median gain 1.0000   >1.1x 0.151%   >2x 0.040%   (of 92,330 paired)
+wrote figures/u1_20260929/p6_resolution.pdf
+wrote figures/u1_20260929/p6_resolution.png
+[memrun] peak RSS 352 MB, wall 4.3 min

@@ -4070,3 +4070,81 @@ copy under `figures/yield_prefix_20260922/` was not regenerated (its old stamp i
 `Report/postfix/` picks up the corrected figure on its next build; its PDF was not rebuilt.
 
 **Commit:** not yet committed.
+
+## 58. Overview report: image resolution, Roman-for-Rubin, error bars on every number -- and eight wrong statements found while adding them (2026-09-29)
+
+**What was asked (user, 2026-09-29).** In `Report/overview/overview_report.tex`: (1) a Results
+subsection, and a Table 1 row, on each telescope's ability to resolve the two images by the method
+of Sajadian & Makler (arXiv:2608.16448); (2) the "how much Roman helps Rubin" result in the results
+and the abstract, not only Rubin-for-Roman; (3) Monte Carlo errors on the numbers; (4) re-check every
+claim. The user's own edits to the report were committed first (074440d).
+
+**What was done.**
+- `analysis/u1_report_numbers.py` (new) recomputes every pooled number the report quotes from the
+  event tables, prints the value the original script logged beside it, and attaches a Poisson
+  bootstrap error (400 replicates; each event's weight times a Poisson(1) count, one count matrix
+  per population shared by all its statistics). Yields keep y1's sqrt(sum y^2). It also adds the
+  new quantities: P(resolvable) and its yield for all three populations, and, over the events each
+  survey detects in the footprint, what adding the other survey does (characterised, 10% fractions,
+  their yields, per-event sigma ratios). Inputs are detection-only extracts
+  `runs/prod_{bh,ns}_20260924/test{bh,ns}_detJ.dat` (new, as the bulge one) and an all-draws column
+  extract `runs/prod_bulge_20260924/test5_w1cols.dat` for the intrinsic-tE check; <M> per lens
+  component, which needs the undetected draws, is read from y1's markdown.
+- `analysis/u2_resolution_depth.py` (new): see the depth finding below.
+- `analysis/p6_synergy_resolution.py`: `--detections-only` (read test<tag>_detJ.dat) and `--only
+  <figure>`; resolution-figure legend moved above panel (a) and its label to the upper left.
+  Three-population figure in `figures/u1_20260929/p6_resolution.{pdf,png}`.
+- Report: new §4.4 "What Roman adds to Rubin" (Table 4), new §4.11 "Resolving the two images"
+  (Table 7, Fig. 16), image-separation physics in §1.1, Table 1 rows for both, yield-table rows,
+  abstract and summary rewritten around the Roman-for-Rubin result, errors throughout.
+
+**The headline added.** Over Rubin's footprint detections (9.6/7.4/8.2% of Rubin's detections,
+ordinary/bh/ns), adding Roman raises the characterised fraction (tE, piE both > 2 sigma) from
+5.0+-1.4 / 13.4+-0.7 / 4.9+-0.3% to 26.0+-1.7 / 78.9+-0.9 / 37.3+-1.1%, sharpens the median tE
+6.4 / 15 / 7.6-fold, and gives masses to 10% for 8.9+-1.4 / 49.5+-1.2 / 14.9+-0.7% of them (Rubin
+alone: 0.007 / 0.45 / 0.001%). The reverse, Rubin added to Roman's detections: x1.10-1.14.
+
+**Wrong statements found in the report and corrected** (each checked against its source):
+1. "56.2 d unweighted -> 24.0 d vs OGLE-IV 22 d" was the PRE-fix bulge run. Post-fix, all 12.2M
+   draws: 54.4+-0.1 -> 24.02+-0.04 d. Compared like-for-like, -6<=b<=-1, |l|<2: model 23.5+-0.1 d
+   against OGLE-IV 22.7+-0.9 .. 25.5+-1.2 d in its four 1-deg bins (inverse-variance mean
+   23.8+-0.5), read from Mroz et al. 2019 Fig. 13 (standard errors of the mean).
+2. "Median A_V ~ 3.8" was the pre-fix median over bh detections. Post-fix, footprint detections:
+   A_r = 3.04+-0.05 mag, A_V ~ 3.6, so r loses 3.0 mag and F146 0.7 (not 3.2 and 0.75).
+3. "2.75 mas at the median source magnitude of Roman's detections, F146 ~ 21.8": 21.82 is the
+   median BASELINE magnitude of all footprint detections (Roman detections' median source
+   magnitude is 22.07). The 2.75 mas is right for 21.82.
+4. Satellite parallax "86.8% of events improve" was an unweighted count; weighted: 92.3+-0.4%.
+5. Monte Carlo error ranges ("1-3% detection rows, 3-10% mass rows") were wrong: the ordinary-lens
+   10% masses are 13-14%, Rubin-in-footprint rows 2-4%.
+6. The footprint was attributed to Penny et al. (2019). It is a notional six-field layout from
+   M. Penny's GBTDS field-layout tool (layout 40395), each field a circle of 0.2833 deg^2
+   (FoVRoman = 0.3003 deg radius); the circles overlap, giving 1.47 deg^2 against the design's 1.7.
+7. The f2 caption's N_eff 9,465 is that of all detections; the plotted sample (9,764 in-mission
+   footprint detections) has N_eff 3,471.
+8. "An event either survey detects is always detected by the combination": true in the table
+   (detJ is forced), but one raw joint test failed in the bulge run (OPEN_ITEMS); now stated.
+Also: wing detections are 3-4.4%, not 3-4%; "Rubin adds nothing measurable" -> "almost nothing"
+(0.997, measurable); Table 8 bh "Rubin detects" 1812 -> 1811 (y3).
+
+**The resolution depth finding (Step U2).** The per-epoch resolution count (Deviation 48) calls
+an image detectable down to `thre[6]` = 29.0 mag in F146, which Bulge.h itself marks "(value needs
+to change)". Roman's own error table (files/sigma_roman.txt) reaches 5 sigma at 25.52 mag and ends
+at 27.0. Since the images separate only as the minor image fades, the depth matters. u2 rebuilds the
+count semi-analytically per Roman detection on the real 50,401-epoch list (no parallax): at depth
+29 it reproduces the simulator's verdict for 99.5-100% of events and the weighted fractions to
+<0.1 pp; at 25.52 mag, Roman's P(resolvable) falls: bh 65.5 -> 45.4+-0.6% (D=5), 30.9 -> 22.1+-0.5%
+(D=20), 0.68 -> 0.31+-0.04% (PSF); ns 14.9 -> 2.9+-0.1% (D=5); bulge 5.1 -> 1.4+-0.4% (D=5). The
+report quotes the 25.5-mag numbers and the simulated ones in brackets. The depth hardly matters for
+detection: 0.3-1% of Roman's detections have baselines fainter than 25.5 mag, none (bulge) to
+0.02% (ns) fainter than 27. Rubin's `thre` are real single-visit depths; its numbers stand.
+
+**Verification.** u1 reproduces every value it has a logged counterpart for (detection shares,
+joint/single medians, shifts, p7 fractions, P(resolvable), yields and their errors, F4 fractions,
+F3/H5 raw counts, gap medians with N and N_eff, h3 medians) exactly or to the logged rounding.
+p6 run on the detection-only tables reproduces the 2026-09-25 bh/ns log line for line (the
+extracts are exact). Report: 41 pp, clean build, 0 TODO, no undefined references, no overfull
+boxes. Outputs: `figures/u1_20260929/{u1_numbers.md,u1_numbers.csv,u1.log,
+u2_resolution_depth.csv,u2.log,p6_resolution.*,p6_resolution.log}`.
+
+**Commit:** not yet committed.

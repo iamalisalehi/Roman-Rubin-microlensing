@@ -1,0 +1,76 @@
+depths: code 29.0, SNR3 26.11, SNR5 25.52 (from files/sigma_roman.txt)
+Roman epochs: 50,401
+[bulge] reading runs/prod_bulge_20260924/test5_detJ.dat
+[bulge] 85,061 detections, 12,461 in the footprint, event-rate weighted, N_eff = 9,465
+[bulge] counting epochs for 11,468 Roman detections
+[bulge] D=5   depth 29: simulator 5.062%  model 5.094%  event agreement 99.72%
+[bulge] D=20  depth 29: simulator 0.560%  model 0.566%  event agreement 99.95%
+[bulge] D=PSF depth 29: simulator 0.000%  model 0.000%  event agreement 100.00%
+[bh] reading runs/prod_bh_20260924/testbh_detJ.dat
+[bh] 101,515 detections, 24,186 in the footprint, event-rate weighted, N_eff = 17,638
+[bh] counting epochs for 23,771 Roman detections
+[bh] D=5   depth 29: simulator 65.508%  model 65.537%  event agreement 99.76%
+[bh] D=20  depth 29: simulator 30.900%  model 30.962%  event agreement 99.91%
+[bh] D=PSF depth 29: simulator 0.679%  model 0.677%  event agreement 99.99%
+[ns] reading runs/prod_ns_20260924/testns_detJ.dat
+[ns] 93,185 detections, 19,058 in the footprint, event-rate weighted, N_eff = 17,086
+[ns] counting epochs for 18,047 Roman detections
+[ns] D=5   depth 29: simulator 14.853%  model 14.940%  event agreement 99.52%
+[ns] D=20  depth 29: simulator 0.352%  model 0.356%  event agreement 99.89%
+[ns] D=PSF depth 29: simulator 0.001%  model 0.002%  event agreement 99.99%
+population                                            bar            depth         P      err          N1     N1_err     n  agreement
+     bulge                                              5 29.0 (simulator)  5.061841 0.517633 4143.639571 412.184011   732        NaN
+     bulge                                              5    29.00 (model)  5.094030 0.517687 4169.987908 412.818369   738  99.720963
+     bulge                                              5    26.11 (model)  1.800252 0.453044 1473.772802 347.762077   273        NaN
+     bulge                                              5    25.52 (model)  1.389888 0.366533 1137.776603 292.505246   209        NaN
+     bulge                                             20 29.0 (simulator)  0.560445 0.304380  458.826082 239.864036    35        NaN
+     bulge                                             20    29.00 (model)  0.565547 0.304477  463.002490 239.946624    35  99.947681
+     bulge                                             20    26.11 (model)  0.333382 0.252517  272.965636 203.128207     9        NaN
+     bulge                                             20    25.52 (model)  0.000363 0.000317    0.297196   0.261971     2        NaN
+     bulge                                            PSF 29.0 (simulator)  0.000000 0.000000    0.000000   0.000000     0        NaN
+     bulge                                            PSF    29.00 (model)  0.000000 0.000000    0.000000   0.000000     0 100.000000
+     bulge                                            PSF    26.11 (model)  0.000000 0.000000    0.000000   0.000000     0        NaN
+     bulge                                            PSF    25.52 (model)  0.000000 0.000000    0.000000   0.000000     0        NaN
+     bulge                          baseline F146 > 25.52 Roman detections  0.311245 0.065313  254.815375        NaN    25        NaN
+     bulge                          baseline F146 > 27.00 Roman detections  0.000000 0.000000    0.000000        NaN     0        NaN
+     bulge                            source F146 > 25.52 Roman detections  0.311245 0.065313  254.815375        NaN    25        NaN
+     bulge                            source F146 > 27.00 Roman detections  0.000000 0.000000    0.000000        NaN     0        NaN
+     bulge median baseline F146, all footprint detections                  21.816100 0.042376         NaN        NaN 12461        NaN
+     bulge median sigma_a(baseline) [mas], footprint dets                   2.751152 0.089418         NaN        NaN 12461        NaN
+        bh                                              5 29.0 (simulator) 65.507752 0.491423 5501.514921  75.680765 13475        NaN
+        bh                                              5    29.00 (model) 65.536967 0.491386 5503.966323  75.689700 13477  99.764419
+        bh                                              5    26.11 (model) 51.527452 0.538460 4327.476064  67.087102 10677        NaN
+        bh                                              5    25.52 (model) 45.382313 0.558961 3811.452400  62.745133  9534        NaN
+        bh                                             20 29.0 (simulator) 30.900181 0.520178 2594.978121  53.616801  5105        NaN
+        bh                                             20    29.00 (model) 30.961712 0.520591 2600.144210  53.661869  5117  99.907450
+        bh                                             20    26.11 (model) 24.581776 0.516176 2064.417625  48.910246  3816        NaN
+        bh                                             20    25.52 (model) 22.135900 0.498831 1859.006863  46.424471  3445        NaN
+        bh                                            PSF 29.0 (simulator)  0.678846 0.076188   57.009977   6.333257   268        NaN
+        bh                                            PSF    29.00 (model)  0.676602 0.076173   56.821471   6.330850   267  99.987380
+        bh                                            PSF    26.11 (model)  0.355976 0.049430   29.903991   4.187998   187        NaN
+        bh                                            PSF    25.52 (model)  0.312214 0.043311   26.230001   3.530650   175        NaN
+        bh                          baseline F146 > 25.52 Roman detections  0.946024 0.110979   79.461247        NaN   137        NaN
+        bh                          baseline F146 > 27.00 Roman detections  0.003435 0.003486    0.288551        NaN     1        NaN
+        bh                            source F146 > 25.52 Roman detections  1.011241 0.116739   84.938311        NaN   140        NaN
+        bh                            source F146 > 27.00 Roman detections  0.003435 0.003486    0.288551        NaN     1        NaN
+        bh median baseline F146, all footprint detections                  22.406900 0.031133         NaN        NaN 24186        NaN
+        bh median sigma_a(baseline) [mas], footprint dets                   4.326755 0.103318         NaN        NaN 24186        NaN
+        ns                                              5 29.0 (simulator) 14.853286 0.385631 8606.552631 238.400044  3678        NaN
+        ns                                              5    29.00 (model) 14.940357 0.386211 8657.003539 238.655165  3681  99.517925
+        ns                                              5    26.11 (model)  3.835019 0.166277 2222.141696 101.311925  1810        NaN
+        ns                                              5    25.52 (model)  2.930256 0.149810 1697.890169  89.261860  1480        NaN
+        ns                                             20 29.0 (simulator)  0.351648 0.045974  203.756205  26.196127   244        NaN
+        ns                                             20    29.00 (model)  0.355807 0.045590  206.165616  26.259564   250  99.889178
+        ns                                             20    26.11 (model)  0.036477 0.008079   21.136225   4.861728    73        NaN
+        ns                                             20    25.52 (model)  0.021743 0.005686   12.598522   3.423420    56        NaN
+        ns                                            PSF 29.0 (simulator)  0.001124 0.000853    0.651424   0.484795     5        NaN
+        ns                                            PSF    29.00 (model)  0.001719 0.001050    0.995795   0.594657     6  99.994459
+        ns                                            PSF    26.11 (model)  0.000043 0.000044    0.025082   0.025082     1        NaN
+        ns                                            PSF    25.52 (model)  0.000043 0.000044    0.025082   0.025082     1        NaN
+        ns                          baseline F146 > 25.52 Roman detections  0.507963 0.085419  294.341024        NaN    65        NaN
+        ns                          baseline F146 > 27.00 Roman detections  0.021566 0.018513   12.496423        NaN     2        NaN
+        ns                            source F146 > 25.52 Roman detections  0.515591 0.085137  298.761311        NaN    66        NaN
+        ns                            source F146 > 27.00 Roman detections  0.021566 0.018513   12.496423        NaN     2        NaN
+        ns median baseline F146, all footprint detections                  21.939400 0.034089         NaN        NaN 19058        NaN
+        ns median sigma_a(baseline) [mas], footprint dets                   3.023813 0.078962         NaN        NaN 19058        NaN
+[memrun] peak RSS 550 MB, wall 7.8 min

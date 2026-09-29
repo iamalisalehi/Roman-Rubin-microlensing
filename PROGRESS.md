@@ -228,9 +228,29 @@ Sajadian & Makler). Three steps, each approved before it starts:
   (user request): a roadmap diagram (model -> pilot -> whole-footprint run -> results), benefits and
   non-technical challenges of a 0.02-deg whole-footprint run, and the eight most important open
   items in plain language. The old cluster cost table now lives in OPEN_ITEMS (cluster-split item).
+- **U1/U2 ✅ OVERVIEW REPORT EXTENDED 2026-09-29** (Deviation 58; user: image resolution in Results
+  + Table 1, "how much Roman helps Rubin" in results and abstract, errors on every number, re-check
+  every claim). User's own report edits committed first as 074440d; the rest NOT yet committed.
+  `analysis/u1_report_numbers.py` recomputes each pooled number the report quotes (logged value
+  beside it: all reproduce) with a Poisson-bootstrap error, plus the new numbers;
+  `analysis/u2_resolution_depth.py` re-counts resolvable epochs at a realistic Roman depth. New
+  detection-only extracts `runs/prod_{bh,ns}_20260924/test{bh,ns}_detJ.dat` (exact; p6 reproduces
+  its bh/ns log from them) and `runs/prod_bulge_20260924/test5_w1cols.dat`. Outputs in
+  `figures/u1_20260929/`. Report: 41 pp, clean build.
+  - **Headline added: Roman transforms Rubin's footprint detections.** Characterised 5.0/13.4/4.9%
+    -> 26.0/78.9/37.3% (ordinary/bh/ns); median tE 6-15x sharper; masses to 10% 0.007/0.45/0.001%
+    -> 8.9/49.5/14.9%. Reverse (Rubin for Roman): x1.10-1.14.
+  - **Image resolution (Sajadian & Makler), Roman at its 5-sigma depth 25.5:** bh 45% (D=5), 22%
+    (D=20), 0.3% (PSF); ns 2.9%, bulge 1.4% (D=5). Rubin: bh 5.5% (D=5), else ~0. **The simulator
+    used a 29 mag F146 depth placeholder (`thre[6]`)** -- new OPEN_ITEMS entry; as simulated, bh
+    was 65.5%. u2's model matches the simulator 99.5-100% per event at depth 29.
+  - **Eight wrong report statements fixed**, incl.: the OGLE tE check quoted the PRE-fix run (post-fix
+    24.02+-0.04 d; same-region 23.5+-0.1 vs OGLE 23.8+-0.5), A_V 3.8 was pre-fix (now 3.6), the
+    footprint is not Penny 2019's (notional layout, circles, 1.47 vs 1.7 deg^2). List in Dev. 58.
 - **Next:** the figure second pass (overlapping subtitle in f4/h5; p7_precision legend gap and
   wide stamp -- re-render with the wrapped stamp; p6_synergy '(a)' on a bar); the OPEN_ITEMS
-  Penny tension and the one DET_ANOMALY row; push when the user says.
+  Penny tension and the one DET_ANOMALY row; push when the user says. **Before any new production
+  run:** set Roman's F146 depth `thre[6]` from `sigma_roman.txt` (OPEN_ITEMS, 2026-09-29).
 - **S3 ⏳ STAGED 2026-09-24, launches automatically as each R run finishes** (user: "start
   immediately after one finishes"). `runs/samples_{bulge,bh,ns}_S3/`, same layout and binary
   (`roman.a5028fe`), flags `--population <pop> --events 30 --lenses 10 --maxdraws 10000

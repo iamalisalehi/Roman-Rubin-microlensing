@@ -87,31 +87,43 @@
 \maketitle
 
 % Numbers: figures/yield_20260925/y3/y3_coefficients.md (N_1, footprint and whole scan, per object);
-% p6_synergy_resolution.log (joint/Roman medians, centroid shifts); extinctiontest (A_r/A_V 0.854,
-% A_F146/A_V 0.197 at R_V = 2.5); Whitepaper Results (median A_V 3.8, median bulge shift 0.124 mas).
+% figures/u1_20260929/u1_numbers.md (every error bar; Roman-for-Rubin; dust; shares; shifts);
+% figures/u1_20260929/u2_resolution_depth.csv (image resolution at Roman's 5-sigma depth);
+% extinctiontest (A_r/A_V 0.854, A_F146/A_V 0.197 at R_V = 2.5). All errors are Monte Carlo 1-sigma.
 \begin{abstract}
 We forecast which microlensing events toward the Galactic bulge will be detected by the Nancy Grace
 Roman Space Telescope's Galactic Bulge Time Domain Survey and by the Vera C.\ Rubin Observatory's
 Legacy Survey of Space and Time, and how precisely each survey, and the two together, will measure
 them, for three lens populations: ordinary stars and stellar remnants, isolated black holes, and
-neutron stars. Over the decade 2026--2036, inside Roman's $1.47$\,deg$^2$ footprint, Roman is
-expected to detect $(8.2\pm0.1)\times10^4$ events by ordinary lenses and to measure about $1{,}900$
-of their lens masses to $10\%$; Rubin detects $1.7\times10^4$ there and $1.75\times10^5$ across the
-$59$\,deg$^2$ of bulge simulated. Compact-object yields scale with the fraction $F$ of the Galaxy's
-stellar mass the population holds. Roman detects $8{,}400\,F$ black-hole events
-($3$--$1000\,\Msun$), i.e.\ $42$--$250$ for $F=0.005$--$0.03$, with $5$--$32$ masses measured to
-$10\%$; and $57{,}900\,F$ neutron-star events, i.e.\ $290$--$3{,}500$ for $F=0.005$--$0.06$, with
-$11$--$140$ masses. Inside its footprint Roman dominates: at the typical $A_V\approx3.8$, dust dims
-Rubin's $r$-band source by $3.2$\,mag but Roman's F146 source by only $0.75$\,mag. On black-hole and
-neutron-star events that both surveys characterise, Rubin improves Roman's precision by less than
-$0.3\%$, even for multi-year events: Roman's ten seasons provide the parallax baseline on their own.
-Rubin's contribution lies elsewhere. About two thirds of all detections fall outside Roman's
-footprint, and for short events peaking deep inside Roman's season gaps Rubin improves the timescale
-precision about $13$-fold. Combining the surveys adds $10$--$14\%$ to the number of $10\%$ mass
-measurements. The Einstein radius, and so the mass, is Roman's astrometric measurement. Black-hole
-centroid shifts (median $3.6$\,mas) exceed a single exposure's precision, but ordinary-lens shifts
-(median $0.12$\,mas) emerge only by averaging $\sim\!5\times10^4$ exposures. That assumes Roman's
-$1.1$\,mas astrometric floor averages down, and it is the largest uncertainty in these results.
+neutron stars. Over the decade 2026--2036, inside Roman's footprint ($1.47$\,deg$^2$ as modelled),
+Roman is expected to detect $(8.19\pm0.14)\times10^4$ events by ordinary lenses and to measure
+$1{,}930\pm260$ of their lens masses to $10\%$; Rubin detects $(1.68\pm0.06)\times10^4$ there and
+$(1.75\pm0.02)\times10^5$ across the $59$\,deg$^2$ of bulge simulated. Compact-object yields scale
+with the fraction $F$ of the Galaxy's stellar mass the population holds. Roman detects
+$(8{,}400\pm90)\,F$ black-hole events ($3$--$1000\,\Msun$), i.e.\ $42$--$252$ for $F=0.005$--$0.03$,
+with $5$--$32$ masses measured to $10\%$; and $(57{,}900\pm650)\,F$ neutron-star events, i.e.\
+$290$--$3{,}480$ for $F=0.005$--$0.06$, with $11$--$137$ masses. Inside its footprint Roman
+dominates, above all because of dust: at the median extinction of footprint detections,
+$A_V\approx3.6$, Rubin's $r$-band source is dimmed by $3.0$\,mag and Roman's F146 source by only
+$0.7$\,mag. Rubin therefore changes Roman's precision on shared events by less than $0.3\%$ (median)
+and adds $10$--$14\%$ to the number of $10\%$ masses. \textbf{The gain in the other direction is far
+larger.} For the events Rubin detects inside the footprint, adding Roman's data sharpens the
+timescale a median $6$--$15$-fold, raises the fraction with both timescale and parallax measured
+from $5$--$13\%$ to $26$--$79\%$, and turns lens masses to $10\%$ from essentially none into
+$(8.9\pm1.4)\%$ of them for ordinary lenses, $(14.9\pm0.7)\%$ for neutron stars and
+$(49.5\pm1.2)\%$ for black holes. Rubin's own strengths are sky area, with $(63.8\pm0.5)\%$ of all
+detections outside Roman's footprint, and short events that fall wholly inside Roman's season gaps,
+whose timescale precision it improves by an order of magnitude. The Einstein radius, and so the mass,
+is Roman's astrometric measurement. Black-hole centroid shifts (median $3.60\pm0.03$\,mas) exceed a
+single exposure's precision; ordinary-lens shifts (median $0.124\pm0.002$\,mas) emerge only by
+averaging $\sim\!5\times10^4$ exposures, which assumes that Roman's $1.1$\,mas astrometric floor
+averages down, the largest uncertainty in these results. Heavy lenses can also split the source into
+two images that a telescope resolves. With the criterion of \citet{SajadianMakler2026}, Roman could
+separate them in $(45\pm1)\%$ of its black-hole detections if a separation of five times the
+astrometric error suffices, $(22\pm1)\%$ at twenty times, and $(0.31\pm0.04)\%$ if the width of its
+point-spread function is required. For neutron stars and ordinary lenses the most permissive figures
+are $3\%$ and $1\%$. Rubin resolves the images of $(5.5\pm0.2)\%$ of the black-hole events it
+detects and of essentially no others.
 \end{abstract}
 
 \tableofcontents
@@ -151,6 +163,17 @@ Then $\Ml = \tetE/(\kappa\piE)$ \citep{Gould2000Formalism}. Measuring the masses
 lenses -- isolated black holes and neutron stars -- is the main reason to want both observables.
 Ordinary bulge events have $\tE\sim 20$\,d; black-hole events last hundreds of days.
 
+A third, more direct route to $\tetE$ exists for heavy, nearby lenses: seeing the two images
+themselves. They lie on either side of the lens, separated by
+\begin{equation}
+\Delta\theta = \tetE\sqrt{u^2+4}\;\ge\;2\,\tetE,
+\end{equation}
+so a black hole of tens of solar masses a few kpc away splits its source by $\gtrsim10$\,mas. The
+difficulty is that the separation is smallest when both images are bright, at closest approach,
+and grows only as the fainter (minor) image fades, with magnification
+$A_- = (u^2+2)/(2u\sqrt{u^2+4})-\tfrac12\to1/u^4$. Section~\ref{sec:resolve} asks how often each
+telescope could tell the two apart.
+
 \begin{figure}[h]
 \centering
 \begin{tikzpicture}
@@ -187,7 +210,8 @@ $(\sigma_M/M)^2 = (\sigma_{\piE}/\piE)^2 + (\sigma_{\tetE}/\tetE)^2$.}
 \subsection{Two surveys with complementary strengths}
 \begin{itemize}
 \item \textbf{Roman's Galactic Bulge Time Domain Survey (GBTDS)} images six fields covering
-      $1.47$\,deg$^2$ in the near-infrared F146 filter. It observes only in ten seasons of
+      $\sim\!1.7$\,deg$^2$ ($1.47$\,deg$^2$ as modelled here; Section~\ref{sec:simulator}) in the
+      near-infrared F146 filter. It observes only in ten seasons of
       $\sim\!70$ days, separated by $\sim\!110$-day gaps when the bulge is too close to the Sun:
       six high-cadence seasons (three at each end of the mission), in which every field is imaged
       every $12.1$ minutes, and four low-cadence seasons in between, with one visit every five days.
@@ -290,13 +314,18 @@ half turns the simulated sample into statements about the real sky.}
   kinematics of each component.
 \item[Schedules.] Rubin's visits are those of the LSST baseline cadence simulation, each with its own
   time, band and $5\sigma$ depth. Roman's are generated from the published GBTDS design
-  \citep{ROTAC2025} (Fig.~\ref{fig:timeline}). Roman observes from L2, Rubin from Earth.
+  \citep{ROTAC2025} (Fig.~\ref{fig:timeline}). Its six fields are placed at a notional layout
+  (five contiguous fields at $b=-1.2^\circ$ and one on the Galactic centre, from M.\ Penny's GBTDS
+  field-layout tool) and each is modelled as a circle of the published per-field area,
+  $0.28$\,deg$^2$; the circles overlap, so the modelled footprint is $1.47$\,deg$^2$ rather than
+  the design's $1.7$. Roman observes from L2, Rubin from Earth.
 \item[Noise.] Rubin's photometric error follows the LSST model with each visit's own depth
   \citep{Ivezic2019LSST}; its astrometric error follows an empirical precision--magnitude curve.
-  Roman's photometric error comes from a tabulated F146 magnitude--error curve from \citep{Penny2019}. Its per-exposure
+  Roman's photometric error comes from a tabulated F146 magnitude--error curve from
+  \citet{Penny2019}. Its per-exposure
   astrometric error is $1.1$\,mas for bright stars, a centroiding systematic rather than photon noise
-  \citep{Sanderson2019WFIRSTastrometry}, and rises for fainter ones. It is $2.75$\,mas at the median
-  source magnitude of Roman's detections, F146\,$\approx21.8$.
+  \citep{Sanderson2019WFIRSTastrometry}, and rises for fainter ones. It is $2.75\pm0.09$\,mas at the
+  median baseline magnitude of footprint detections, F146\,$=21.82\pm0.04$.
 \end{description}
 
 \subsection{Simulating one event}
@@ -323,7 +352,8 @@ the light centroid. Noise is then added from that instrument's error model.
    for Rubin in at least two bands or for Roman in F146};
 \node[box, text width=8.6cm] (lc) at (0,-4.45)
   {\textbf{Simulate the data} at every real visit: magnification and centroid shift with
-   parallax, Rubin from Earth ($ugrizy$) and Roman from L2 (F146); add each instrument's noise};
+   parallax, Rubin from Earth ($ugrizy$) and Roman from L2 (F146); add each instrument's noise;
+   count the visits at which the two images could be told apart};
 \node[ask, text width=8.6cm] (det) at (0,-5.95)
   {\textbf{Detected?} The lensing model beats a constant star by ${\Delta\chi^2\ge500}$, with three
    consecutive points above $3\sigma$. Tested on Rubin's data, on Roman's, and on both};
@@ -365,7 +395,9 @@ a constant star by $\Delta\chi^2\ge500$, the criterion of \citet{Penny2019}'s Ro
 also show three consecutive points more than $3\sigma$ above the baseline and have more than ten
 usable points. The test is made three times, on Rubin's data alone, Roman's alone and both together,
 with the same threshold. Because the $\chi^2$ of the combined data is the sum of the two surveys',
-an event that either survey detects is always detected by the combination. Each event is therefore
+an event that either survey detects is always detected by the combination (the event table enforces
+this; in one of the $85{,}061$ ordinary-lens detections the combined test failed where a
+single-survey test passed, a numerical exception still under investigation). Each event is therefore
 labelled \emph{detected by Rubin alone}, \emph{by Roman alone}, \emph{by both}, or \emph{only
 jointly}.
 
@@ -448,8 +480,13 @@ W = \frac{w_{\rm area}\,N_\star}{n_{\rm sim}}\;\sqrt{\Ml}\;v_t\;Z(D_s),
 \end{equation}
 with $w_{\rm area}$ the sightline's sky area, $N_\star$ its source-star density, $n_{\rm sim}$ its
 number of draws and $Z$ the normalisation of the lens-distance distribution. The weight is validated
-externally: it brings the model's mean timescale from $56.2$\,d (unweighted) to $24.0$\,d, against
-OGLE-IV's efficiency-corrected $22$\,d \citep{Mroz2019}. Weighting costs statistical precision, so every
+externally, against a published quantity from which the survey's own detection efficiency has been
+removed: the efficiency-corrected mean Einstein timescale. Over all $12.2$ million draws of the
+ordinary-lens run, detected or not, the weight brings the model's mean from $54.4\pm0.1$\,d
+(unweighted) to $24.02\pm0.04$\,d, and to $23.5\pm0.1$\,d over $-6^\circ\le b\le-1^\circ$,
+$|l|<2^\circ$. In that same region OGLE-IV measures $22.7\pm0.9$ to $25.5\pm1.2$\,d in its four
+$1^\circ$ longitude bins, an inverse-variance mean of $23.8\pm0.5$\,d (\citealt{Mroz2019}, values
+read from their Fig.~13). The model's errors are Monte Carlo only. Weighting costs statistical precision, so every
 weighted number is quoted with the effective sample size $\Neff = (\sum W)^2/\sum W^2$
 \citep{Kish1965}: the $12{,}461$ footprint detections of the ordinary-lens run weigh as
 $\Neff=3{,}969$.
@@ -486,7 +523,8 @@ shows the chain and Table~\ref{tab:analyses} lists the analyses.
 \node[box, text width=12cm] (q) at (0,-2.55)
   {\textbf{Per-event quantities}: $\sigma_{\rm joint}/\sigma_{\rm Roman}$ and
    $\sigma_{\rm joint}/\sigma_{\rm Rubin}$ for each parameter; the largest centroid shift; the peak's
-   distance from a season edge; $\sigma(\piE)$ with Roman at L2 against Roman at Earth};
+   distance from a season edge; $\sigma(\piE)$ with Roman at L2 against Roman at Earth; the number
+   of visits at which each telescope resolves the two images};
 \node[box, fill=green!8, text width=12cm] (w) at (0,-3.8)
   {\textbf{Event-rate weight} $W$ for each event};
 \node[box, fill=green!8, text width=5.6cm] (p) at (-3.2,-5.1)
@@ -517,6 +555,9 @@ who detects what & Which survey finds which events, and where? & weighted shares
 gap filling & What does Rubin recover when an event peaks while Roman is not observing? &
   $\sigma_{\rm joint}/\sigma_{\rm Roman}$ against the peak's distance from a season edge, per $\tE$
   & \S\ref{sec:gap} \\
+Roman for Rubin & How much better are the events Rubin detects in the footprint measured once
+  Roman's data are added? & characterised and $10\%$ fractions, Rubin alone against joint, and
+  their yields; $\sigma_{\rm joint}/\sigma_{\rm Rubin}$ & \S\ref{sec:romanrubin} \\
 synergy map & Which events can only the combination characterise? & characterised fraction, joint
   over single survey, across the $(\tE,\piE)$ plane & \S\ref{sec:synergy} \\
 absolute precision & How well are $\tE$, $\piE$, $\tetE$ and the mass measured? & weighted
@@ -527,8 +568,11 @@ satellite parallax & What does observing from L2 add? & each event forecast twic
   at Earth & \S\ref{sec:satpar} \\
 two baselines & How do the temporal and spatial parallax gains compare? & both on one scale, per
   $\tE$ bin & \S\ref{sec:two} \\
-compact objects & The same questions for black-hole and neutron-star lenses; can the two images be
-  resolved? & as above, per population; resolvability & \S\ref{sec:compact} \\
+compact objects & The same questions for black-hole and neutron-star lenses & as above, per
+  population & \S\ref{sec:compact} \\
+resolving the images & Can either telescope see the two lensed images separately, and for which
+  lenses? & visits with both images detectable and farther apart than $\mathcal{D}\sigma_a$ or the
+  PSF width; resolvable if $\ge3$ \citep{SajadianMakler2026} & \S\ref{sec:resolve} \\
 absolute yields & How many events and masses, for a given abundance? & $N_1$ per selection;
   $N(F)$ & \S\ref{sec:yield} \\
 sample events & What do individual events look like? & full light curves and centroid tracks &
@@ -547,7 +591,12 @@ validation & Does the model reproduce known numbers? & optical depth, OGLE-IV, P
 Three runs were made, identical except for the lens population, over the same sightlines
 (Table~\ref{tab:runs}). The counts in the table are Monte Carlo sample sizes: they set the statistical
 precision of the results, not the number of events the surveys will see, which is in
-Section~\ref{sec:yield}. Sections~\ref{sec:who}--\ref{sec:two} use the ordinary-lens run.
+Section~\ref{sec:yield}. Sections~\ref{sec:who}--\ref{sec:two} use the ordinary-lens run; the
+comparison of what each survey adds to the other (Section~\ref{sec:romanrubin}) and the resolution
+of the two images (Section~\ref{sec:resolve}) cover all three. Every error bar is the $1\sigma$
+Monte Carlo uncertainty: a bootstrap over simulated events for fractions and medians, and Poisson
+on the draws for yields. Modelling uncertainties are discussed separately in
+Section~\ref{sec:certainty} and are larger.
 
 % Source: runs/prod_*_20260924/run.log and the y1 logs (figures/yield_20260925/<pop>/y1.log).
 \begin{table}[h]
@@ -570,18 +619,23 @@ simulated detections, any survey & $85{,}061$ & $101{,}515$ & $93{,}185$ \\
 
 \subsection{Who detects what, and why}
 \label{sec:who}
-Weighted by the event rate, $67\%$ of ordinary-lens detections are made by Rubin alone, $29\%$ by
-Roman alone and $4\%$ by both; for black holes and neutron stars the shares are similar
-(Table~\ref{tab:compact}). The large Rubin share is sky area: Rubin covers the $59$\,deg$^2$, Roman
-$1.47$\,deg$^2$ of it. Inside the footprint the balance reverses. There Roman detects $8.2\times10^4$
-events over the decade and Rubin $1.7\times10^4$, and Roman also detects $56\%$ of the events Rubin
-detects there; the rest peak while Roman is not observing. Two physical causes compound. The first is dust: at the footprint's median $A_V\approx3.8$ it
-dims Rubin's $r$-band source by $3.2$\,mag and Roman's F146 source by $0.75$\,mag. The second is
-sampling: Roman has $\sim\!20$ times as many data points on each sightline. The simplest summary
-came out of the sample events (Section~\ref{sec:samples}): \emph{when Roman observes the peak, Roman
-detects the event.} Among simulated footprint events that Rubin detects and Roman does not, only $1$
-in $917$ peaks inside a Roman season. And only $3$--$4\%$ of Roman's detections have no Roman
-exposure within $\pm2\tE$ of the peak, so Roman's yield is of events it saw while they were magnified.
+% Source: figures/u1_20260929/u1_numbers.md (shares, yields, dust, peak coverage).
+Weighted by the event rate, $(66.8\pm0.5)\%$ of ordinary-lens detections are made by Rubin alone,
+$(29.2\pm0.4)\%$ by Roman alone and $(3.8\pm0.2)\%$ by both ($\Neff=9{,}465$); for black holes and
+neutron stars the shares are similar (Table~\ref{tab:compact}). The large Rubin share is sky area:
+Rubin covers the $59$\,deg$^2$, Roman $1.47$\,deg$^2$ of it, and $(63.8\pm0.5)\%$ of all detections
+fall outside Roman's footprint. Inside the footprint the balance reverses. There Roman detects
+$(8.19\pm0.14)\times10^4$ events over the decade and Rubin $(1.68\pm0.06)\times10^4$, and Roman also
+detects $(56\pm2)\%$ of the events Rubin detects there; the rest peak while Roman is not observing.
+Two physical causes compound. The first is dust: at the median extinction of footprint detections,
+$A_r=3.04\pm0.05$\,mag ($A_V\approx3.6$), it dims Rubin's $r$-band source by $3.0$\,mag and Roman's
+F146 source by $0.7$\,mag. The second is sampling: Roman has $\sim\!20$ times as many data points
+on each sightline. The simplest summary came out of the sample events (Section~\ref{sec:samples}):
+\emph{when Roman observes the peak, Roman detects the event.} Among the $917$ simulated footprint
+events that Rubin detects and Roman does not, only $1$ peaks inside a Roman season ($116$ peak in a
+gap, $800$ outside Roman's mission). And only $(4.4\pm0.4)\%$ of Roman's ordinary-lens detections
+($2.9$--$3.9\%$ for compact objects) have no Roman exposure within $\pm2\tE$ of the peak, so Roman's
+yield is of events it saw while they were magnified.
 
 \subsection{Gap filling: what Rubin recovers from Roman's season gaps}
 \label{sec:gap}
@@ -591,41 +645,111 @@ exposure within $\pm2\tE$ of the peak, so Roman's yield is of events it saw whil
 \includegraphics[width=\textwidth]{f2_gap_filling}
 \caption{What Rubin adds as an event's peak moves out of a Roman season into a gap. Left: median
 per-event $\sigma_{\rm joint}(\tE)/\sigma_{\rm Roman}(\tE)$ against distance to the nearest season
-edge, per $\tE$ bin (solid: weighted, $\Neff=9{,}465$; dashed: raw). Right: fraction of events the
-joint fit characterises and Roman alone does not. Shaded: inside a season.}
+edge, per $\tE$ bin (solid: weighted; dashed: raw), over the $9{,}764$ footprint detections peaking
+within Roman's mission ($\Neff=3{,}471$; the stamp's $9{,}465$ is that of all detections). Right:
+fraction of events the joint fit characterises and Roman alone does not. Shaded: inside a season.}
 \label{fig:f2}
 \end{figure}
 
-% Source: figures/wp_20260926/f2_tE.log, f2_piE.log.
+% Source: figures/wp_20260926/f2_tE.log, f2_piE.log; errors from figures/u1_20260929/u1_numbers.md.
 \begin{table}[h]
 \centering
 \caption{Median $\sigma_{\rm joint}/\sigma_{\rm Roman}$ for $10$--$30$\,d footprint events, by where
-the peak falls. Events: simulated events in the bin.}
+the peak falls, with bootstrap errors (below $10^{-4}$ for the control row). Events: simulated
+events in the bin.}
 \label{tab:gap}
 \begin{tabular}{lcccc}
 \toprule
 peak position & $\tE$ & $\piE$ & events & $\Neff$ \\
 \midrule
-anywhere in a gap                   & $0.973$ & $0.984$ & $1{,}359$ & $670$ \\
-more than $15$\,d past a season edge & $0.826$ & $0.892$ & $778$ & $376$ \\
-more than $30$\,d past               & $0.436$ & $0.703$ & $365$ & $177$ \\
-more than $45$\,d past               & $\mathbf{0.077}$ & $\mathbf{0.183}$ & $122$ & $62$ \\
+anywhere in a gap                    & $0.973\pm0.010$ & $0.984\pm0.006$ & $1{,}359$ & $670$ \\
+more than $15$\,d past a season edge & $0.83\pm0.07$ & $0.89\pm0.04$ & $778$ & $376$ \\
+more than $30$\,d past               & $0.44\pm0.15$ & $0.70\pm0.09$ & $365$ & $177$ \\
+more than $45$\,d past               & $\mathbf{0.08\pm0.06}$ & $\mathbf{0.18\pm0.07}$ & $122$ & $62$ \\
 \midrule
-in a season (control)              & $1.000$ & $1.000$ & $1{,}835$ & $888$ \\
+in a season (control)                & $1.0000$ & $1.0000$ & $1{,}835$ & $888$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 For $10$--$30$\,d events pooled over the gaps, Rubin improves Roman's $\tE$ precision by only
-$3\%$. With Roman's sources as
-bright as they are in F146, Roman's coverage of the wings settles any event that peaks near a season
-edge. The gain is large, sharp and physical only where the \emph{whole event} falls inside a gap:
-for a $10$--$30$\,d event peaking more than $45$ days from either edge, the joint forecast is
-essentially Rubin's, and it is $\sim\!13$ times better than Roman's alone. For events of $30$\,d and
-longer the pooled in-gap medians are $0.999$--$1.000$. Gap filling also adds events: $2.0\%$ of in-gap
-footprint detections are characterised jointly and not by Roman alone, rising to $7$--$10\%$ beyond
-$45$\,d. The last row of Table~\ref{tab:gap} rests on $\Neff=62$ and is uncertain at the tens of per
-cent level.
+$(2.7\pm1.0)\%$. With Roman's sources as bright as they are in F146, Roman's coverage of the wings
+settles any event that peaks near a season edge. The gain is large, sharp and physical only where
+the \emph{whole event} falls inside a gap: for a $10$--$30$\,d event peaking more than $45$ days from
+either edge, the joint forecast is essentially Rubin's, and it is better than Roman's alone by an
+order of magnitude (median ratio $0.08\pm0.06$, i.e.\ a factor $\gtrsim7$). For events of $30$\,d
+and longer the pooled in-gap medians are $0.999$--$1.000$. Gap filling also adds events:
+$(2.0\pm0.4)\%$ of in-gap footprint detections are characterised jointly and not by Roman alone,
+rising to $(7\pm3)\%$ ($10$--$30$\,d) and $(10\pm3)\%$ ($30$--$100$\,d) beyond $45$\,d. The deepest
+row of Table~\ref{tab:gap} rests on $\Neff=62$, which is why its errors are large.
+
+\subsection{What Roman adds to Rubin}
+\label{sec:romanrubin}
+
+The question can be turned round: for the events \emph{Rubin} detects, what does adding Roman's data
+buy? Only events inside the footprint can gain, and they are a minority of Rubin's detections --
+$(9.6\pm0.4)\%$ for ordinary lenses, $(7.4\pm0.2)\%$ for black holes and $(8.2\pm0.2)\%$ for
+neutron stars -- because Rubin's other $\sim\!90\%$ lie where Roman does not look. For those events,
+however, the gain is not a refinement but a change of kind (Table~\ref{tab:romanrubin}).
+
+% Source: figures/u1_20260929/u1_numbers.md, sections "what Roman adds, over Rubin's footprint
+% detections" and "what Rubin adds, over Roman's footprint detections".
+\begin{table}[h]
+\centering
+\caption{What Roman adds to the events Rubin detects inside the footprint, per population. Each
+cell is Rubin alone $\to$ joint, as a weighted percentage of Rubin's footprint detections;
+\emph{characterised} means $\tE>2\sigma_{\tE}$ and $\piE>2\sigma_{\piE}$. The medians are of the
+per-event ratio $\sigma_{\rm joint}/\sigma_{\rm Rubin}$. Yields are per unit abundance $N_1$ (ordinary
+lenses: $F=1$), footprint, ten years. The last row gives the reverse, what Rubin adds to Roman's own
+footprint detections, for scale.}
+\label{tab:romanrubin}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lccc}
+\toprule
+ & ordinary lenses & black holes & neutron stars \\
+\midrule
+Rubin's footprint detections, $N_1$ & $16{,}830\pm640$ & $1{,}811\pm40$ & $11{,}560\pm280$ \\
+\quad Roman also detects [\%] & $56\pm2$ & $96.4\pm0.3$ & $65\pm1$ \\
+characterised [\%] & $5.0\pm1.4\to26.0\pm1.7$ & $13.4\pm0.7\to78.9\pm0.9$ & $4.9\pm0.3\to37.3\pm1.1$ \\
+$\tE$ to $10\%$ [\%] & $4.4\pm1.4\to33.3\pm1.8$ & $17.6\pm0.9\to75.2\pm1.0$ & $5.8\pm0.5\to42.4\pm1.2$ \\
+$\piE$ to $10\%$ [\%] & $0.8\pm0.1\to12.4\pm1.5$ & $2.2\pm0.3\to49.9\pm1.2$ & $0.9\pm0.1\to16.7\pm0.7$ \\
+$\tetE$ to $10\%$ [\%] & $0.04\pm0.02\to60.7\pm1.8$ & $41.5\pm1.2\to98.8\pm0.2$ & $0.4\pm0.1\to77.7\pm1.0$ \\
+$\Ml$ to $10\%$ [\%] & $0.007\pm0.005\to8.9\pm1.4$ & $0.45\pm0.13\to49.5\pm1.2$ & $0.001\pm0.001\to14.9\pm0.7$ \\
+\midrule
+median $\sigma_{\rm joint}/\sigma_{\rm Rubin}$, $\tE$ & $0.16\pm0.02$ & $0.065\pm0.003$ & $0.13\pm0.01$ \\
+\qquad\qquad\quad $\piE$ & $0.13\pm0.01$ & $0.039\pm0.001$ & $0.105\pm0.006$ \\
+\qquad\qquad\quad $\Ml$ & $0.10\pm0.01$ & $0.036\pm0.001$ & $0.081\pm0.006$ \\
+\midrule
+characterised, $N_1$ & $840\pm230\to4{,}380\pm330$ & $242\pm13\to1{,}429\pm36$ & $571\pm37\to4{,}310\pm150$ \\
+$\Ml$ to $10\%$, $N_1$ & $1.1\pm0.8\to1{,}490\pm260$ & $8\pm2\to896\pm28$ & $0.15\pm0.10\to1{,}726\pm80$ \\
+\midrule
+reverse, Rubin for Roman: $\Ml$ to $10\%$ [\%] & $2.36\pm0.32\to2.59\pm0.33$ & $12.7\pm0.4\to14.5\pm0.4$ & $3.9\pm0.2\to4.5\pm0.2$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Rubin alone characterises one in eight of its black-hole detections in the footprint and one in
+twenty of the others; with Roman's data added, $26$--$79\%$ are characterised, a factor
+$5.2\pm1.3$ (ordinary lenses), $5.9\pm0.3$ (black holes) and $7.6\pm0.5$ (neutron stars) more.
+The median event's timescale becomes $6$--$15$ times more precise and its parallax $8$--$26$ times.
+The largest change is in the mass. Rubin by itself measures essentially no lens masses. For ordinary
+lenses and neutron stars its seeing-limited astrometry cannot reach $\tetE$; for black holes it does
+reach $\tetE$ in $42\%$ of events, but its parallax is measured to $10\%$ in only $2\%$. With Roman's
+photometry and astrometry added, a tenth of Rubin's ordinary-lens detections, a seventh of its
+neutron-star detections and half of its black-hole detections have masses to $10\%$. The reverse gain, what Rubin adds to Roman's own
+detections, is $10$--$14\%$ in the same quantity (last row). The asymmetry has the same cause as the
+detection results. Toward the bulge Rubin's optical photometry is sparse and heavily extincted, so on
+the same event Roman holds most of the information, and adding Roman to Rubin changes the answer
+while adding Rubin to Roman only refines it.
+
+For most of these events Roman is not only adding information but has detected the event itself:
+it also detects $56\%$ of Rubin's ordinary-lens footprint detections, $65\%$ of the neutron-star and
+$96\%$ of the black-hole ones. The rest peak while Roman is not observing, and Roman still
+contributes the wings.
+Seen from Rubin's side, the result is this: of Rubin's $1.75\times10^5$ ordinary-lens detections over
+the decade, the $1.7\times10^4$ that fall in Roman's footprint are the ones that can be turned into
+measurements of $\tE$, $\piE$ and the lens mass.
 
 \subsection{What the combination characterises that neither survey does}
 \label{sec:synergy}
@@ -642,8 +766,10 @@ nothing and the joint fit does). Dashed: constant lens mass at the median $\mu_{
 Panel (a) is pale everywhere: inside the footprint, adding Rubin barely changes which events are
 characterised. Panel (b) is the reverse. Roman multiplies what Rubin can characterise, most of all for
 short events: at $3$--$10$\,d Rubin alone characterises none and the joint fit does, and at
-$10$--$30$\,d with small parallax ($\piE\sim0.03$--$0.1$) the joint fit characterises about $60$
-times as many. Of the $12{,}461$ simulated footprint detections (raw counts), the joint fit
+$10$--$30$\,d with small parallax ($\piE\sim0.03$--$0.1$) the joint fit characterises $66$ times as
+many. Panel (b) is over all detections, most of them outside the footprint where Roman has no data,
+so it shows where in the $(\tE,\piE)$ plane Roman helps rather than by how much;
+Section~\ref{sec:romanrubin} gives the size of the gain on the events Roman can reach. Of the $12{,}461$ simulated footprint detections (raw counts), the joint fit
 characterises $3{,}948$, Roman alone $3{,}412$ and Rubin alone $670$; $358$ are characterised jointly
 and by neither survey alone, events in which each survey holds part of the information and only
 their sum constrains both $\tE$ and $\piE$.
@@ -661,19 +787,20 @@ normalised to the full sample, so an unmeasured event lowers a curve.}
 \label{fig:f4}
 \end{figure}
 
-% Source: figures/wp_20260926/f4.log.
+% Source: figures/wp_20260926/f4.log; errors from figures/u1_20260929/u1_numbers.md.
 \begin{table}[h]
 \centering
-\caption{Weighted fraction of footprint detections measured to better than $10\%$, ordinary lenses.}
+\caption{Weighted percentage of the $12{,}461$ footprint detections ($\Neff=3{,}969$) measured to
+better than $10\%$, ordinary lenses.}
 \label{tab:f4}
 \begin{tabular}{lccc}
 \toprule
  & joint & Roman alone & Rubin alone \\
 \midrule
-$\tE$      & $13.2\%$ & $11.6\%$ & $0.8\%$ \\
-$\piE$     & $3.7\%$  & $3.3\%$  & $0.2\%$ \\
-$\tetE$    & $50.5\%$ & $50.3\%$ & $0.1\%$ \\
-$\Ml$      & $2.4\%$  & $2.2\%$  & $0.001\%$ \\
+$\tE$      & $13.2\pm0.5$ & $11.6\pm0.5$ & $0.8\pm0.3$ \\
+$\piE$     & $3.7\pm0.3$  & $3.3\pm0.3$  & $0.15\pm0.02$ \\
+$\tetE$    & $50.5\pm0.8$ & $50.3\pm0.8$ & $0.13\pm0.04$ \\
+$\Ml$      & $2.4\pm0.3$  & $2.2\pm0.3$  & $0.001\pm0.001$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -709,19 +836,22 @@ improving with the deflection.}
 \end{figure}
 
 % Source: figures/wp_20260926/h5.log, h5sum.log.
-The median maximum shift of an ordinary event is $0.124$\,mas, against Roman's median per-exposure
-precision of $2.75$\,mas for these sources; only $0.22\%$ of events exceed one exposure. \textbf{The
+The median maximum shift of an ordinary event is $0.124\pm0.002$\,mas, against Roman's median
+per-exposure precision of $2.75\pm0.09$\,mas for these sources; only $(0.22\pm0.07)\%$ of events
+exceed one exposure. \textbf{The
 measurement exists entirely through averaging}: over $\sim\!5\times10^4$ exposures an independent
 error falls to $0.012$\,mas, and the median signal stands at $10\sigma$. That factor $\sim\!224$ is
 the whole astrometric result, and it rests on an assumption discussed in Section~\ref{sec:certainty}.
-Given it, $\tetE$ is Roman's measurement: the median $\sigma(\tetE)/\tetE$ is $0.098$ joint, $0.099$
-Roman alone and $2.30$ Rubin alone, since Rubin's seeing-limited images are ten times wider.
+Given it, $\tetE$ is Roman's measurement: the median $\sigma(\tetE)/\tetE$ is $0.098\pm0.003$ joint,
+$0.099\pm0.003$ Roman alone and $2.30\pm0.06$ Rubin alone, since Rubin's seeing-limited images are ten
+times wider.
 \textbf{The lens mass still benefits from both surveys}: $143$ simulated footprint events have a
 $10\%$ mass from the joint fit and from neither survey alone ($319$ at $30\%$). In yield terms the
-combination raises the number of $10\%$ masses over the decade from $1{,}930$ to $2{,}120$
-(Table~\ref{tab:n1}). The astrometric maximum falls $\sim\!1.4\,\tE$ from the photometric peak, and
-lies across a season edge from it for $39.6\%$ of events, so the two signals are often caught in
-different seasons.
+combination raises the number of $10\%$ masses over the decade from $1{,}930\pm260$ to
+$2{,}120\pm270$ (Table~\ref{tab:n1}); the two share most of their events, so the gain itself is
+measured more precisely, a factor $1.10\pm0.03$. The astrometric maximum falls $\sim\!1.4\,\tE$ from the photometric peak, and
+lies across a season edge from it for $(39.6\pm0.8)\%$ of events, so the two signals are often
+caught in different seasons.
 
 \subsection{Satellite parallax: Roman at L2 against Roman at Earth}
 \label{sec:satpar}
@@ -737,9 +867,10 @@ observer separation in Einstein radii, coloured by $\tE$; the same event charact
 % Source: figures/wp_20260926/h3.log.
 To isolate the satellite parallax, every detected event is forecast twice from the same simulated
 data: once with Roman at L2 and once with Roman placed at Earth. Over $10{,}806$ Roman-covered events
-($\Neff=3{,}521$) the median ratio of the two $\sigma(\piE)$ is $0.9911$. The gain is \textbf{under
-$1\%$, but real}: $86.8\%$ of events improve, and control events with no Roman data near the peak give
-exactly $1.000000$. The $1.2\%$ of events that improve by more than a factor of two are short
+($\Neff=3{,}521$) the median ratio of the two $\sigma(\piE)$ is $0.99110\pm0.00009$. The gain is
+\textbf{under $1\%$, but real}: $(92.3\pm0.4)\%$ of events improve, and control events with no Roman
+data near the peak give exactly $1.000000$. The $(1.2\pm0.1)\%$ of events that improve by more than a
+factor of two are short
 ($\tE\approx5$\,d), fairly high-magnification events, for which the $0.01$\,AU between L2 and Earth
 is the largest fraction of the Einstein radius projected onto the observer's plane
 (Fig.~\ref{fig:h3a}). For black holes and neutron stars, whose projected Einstein radii are larger
@@ -758,8 +889,8 @@ a gap (temporal baseline).}
 \end{figure}
 
 A second observer helps the parallax in two ways: across space (L2 against Earth) and across time
-(Rubin observing while Roman cannot). On one scale they are the same size, $1.6\%$ (temporal) against
-$0.9\%$ (spatial) for $10$--$30$\,d events pooled over the gaps. Each is large only in its own corner:
+(Rubin observing while Roman cannot). On one scale they are the same size for $10$--$30$\,d events:
+$(1.6\pm0.6)\%$ (temporal, pooled over the gaps) against $(0.92\pm0.01)\%$ (spatial). Each is large only in its own corner:
 the spatial baseline for short, high-magnification events, the temporal one for events that fall
 entirely inside a gap.
 
@@ -774,42 +905,51 @@ $\sigma(\tE)$ against $\tE$, over events characterised by both surveys.}
 \label{fig:p6}
 \end{figure}
 
-% Source: figures/prod_20260925/p6_synergy_resolution.log.
+% Source: figures/prod_20260925/p6_synergy_resolution.log, p7_forecast_figures.log; errors from
+% figures/u1_20260929/u1_numbers.md (which reproduces every logged value).
 \begin{table}[h]
 \centering
-\caption{Compact-object runs. Shares are weighted over all detections; $\sigma$ ratios are weighted
-medians over events characterised by both surveys ($23{,}961$ simulated black-hole events, $18{,}895$
-neutron-star events).}
+\caption{Compact-object runs. Shares, shifts and $10\%$ fractions are weighted over all detections
+($\Neff=17{,}638$ black holes, $17{,}086$ neutron stars); the $10\%$ fractions are over the events
+whose Roman forecast exists. The $\sigma$ ratios are weighted medians over the events whose
+photometric Fisher matrices both surveys can invert ($23{,}961$ black-hole, $18{,}895$ neutron-star
+events).}
 \label{tab:compact}
 \small
+\setlength{\tabcolsep}{4pt}
 \begin{tabular}{lrr}
 \toprule
  & black holes & neutron stars \\
 \midrule
-detected by Rubin only / Roman only / both [\%] & 72.9 / 21.5 / 5.6 & 69.6 / 26.3 / 3.9 \\
-median $\sigma_{\rm joint}/\sigma_{\rm Roman}$, $\tE$ / $\piE$ / $\tetE$ & 0.997 / 0.998 / 0.999 & 0.999 / 0.999 / 0.999 \\
-median $\sigma_{\rm joint}/\sigma_{\rm Rubin}$, $\tE$ / $\piE$ / $\tetE$ & 0.022 / 0.010 / 0.041 & 0.008 / 0.008 / 0.035 \\
-median max.\ centroid shift [mas]      & 3.60 & 0.264 \\
-fraction above Roman's $1.1$\,mas floor [\%] & 90.4 & 0.58 \\
-Roman characterised to $10\%$: $\tE$ / $\piE$ / $\tetE$ / $\Ml$ [\%] & 23.6 / 12.9 / 97.0 / 12.6 & 16.0 / 4.6 / 67.2 / 3.7 \\
-$P(\text{images resolvable})$ Roman, $\mathcal{D}=5$ / $20$ / PSF [\%] & 65.5 / 30.9 / 0.68 & 14.9 / 0.35 / 0.001 \\
+detected by Rubin only [\%] & $72.9\pm0.3$ & $69.6\pm0.3$ \\
+\quad by Roman only / by both [\%] & $21.5\pm0.3$ / $5.6\pm0.1$ & $26.3\pm0.3$ / $3.9\pm0.1$ \\
+median $\sigma_{\rm joint}/\sigma_{\rm Roman}$, $\tE$ & $0.9971\pm0.0003$ & $0.9989\pm0.0001$ \\
+\qquad\qquad\quad $\piE$ / $\tetE$ & $0.9978\pm0.0002$ / $0.9990\pm0.0001$ & $0.9991\pm0.0001$ / $0.9988\pm0.0001$ \\
+median $\sigma_{\rm joint}/\sigma_{\rm Rubin}$, $\tE$ & $0.0216\pm0.0007$ & $0.0084\pm0.0003$ \\
+\qquad\qquad\quad $\piE$ / $\tetE$ & $0.0100\pm0.0003$ / $0.0414\pm0.0009$ & $0.0075\pm0.0002$ / $0.0350\pm0.0006$ \\
+median max.\ centroid shift [mas]      & $3.60\pm0.03$ & $0.264\pm0.001$ \\
+fraction above Roman's $1.1$\,mas floor [\%] & $90.4\pm0.1$ & $0.58\pm0.03$ \\
+Roman to $10\%$: $\tE$ / $\piE$ [\%] & $23.6\pm0.5$ / $12.9\pm0.4$ & $16.0\pm0.4$ / $4.5\pm0.2$ \\
+\qquad\qquad\quad $\tetE$ / $\Ml$ [\%] & $97.0\pm0.1$ / $12.6\pm0.4$ & $67.2\pm0.5$ / $3.7\pm0.2$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 Roman is the only detector of $21$--$26\%$ of compact-object events, from $2.5\%$ of the sky. On
-events both surveys
-characterise, Rubin adds nothing measurable to Roman: the ratio is $0.997$--$0.999$, flat over four
-decades of $\tE$, including multi-year events where Rubin's decade-long baseline should matter most.
+events both surveys constrain, Rubin adds almost nothing to Roman: the median ratio is
+$0.997$--$0.999$, flat over four decades of $\tE$, including multi-year events where Rubin's
+decade-long baseline should matter most. The mirror image, what Roman does to Rubin's forecast of
+the same events, is a median factor $46$ (black holes) and $120$ (neutron stars) in $\sigma(\tE)$
+(Table~\ref{tab:compact}). Most of these events are Roman detections that Rubin only barely
+constrains; Section~\ref{sec:romanrubin} gives the gain on the events Rubin itself detects.
 The reason is the dust: Rubin's $r$-band source is several magnitudes fainter than Roman's F146 one.
 \textbf{The expectation that long events need Rubin for the parallax is not borne out}; Roman's ten
 seasons over $4.7$ years already sample enough of Earth's orbit. Black holes exceed Roman's
 per-exposure astrometric floor for $90\%$ of detections, so their $\tetE$, unlike that of ordinary
 lenses, does not depend on averaging exposures; $97\%$ are measured to $10\%$. The mass is then limited
 by the parallax, measured to $10\%$ for $13\%$ of black-hole events: the heaviest lenses have the
-smallest $\piE$. Whether the two images could be resolved depends on the criterion by two orders of
-magnitude -- $\mathcal{D}$ times the astrometric error, or the width of the point-spread function --
-which is why all three are given.
+smallest $\piE$. The same large $\tetE$ can make the two images separately visible, the subject of
+Section~\ref{sec:resolve}.
 
 \begin{figure}[h]
 \centering
@@ -821,15 +961,117 @@ of samples, not a violation of $\sigma_{\rm joint}\le\sigma_{\rm single}$.}
 \end{figure}
 
 \FloatBarrier
+\subsection{Resolving the two images}
+\label{sec:resolve}
+
+\paragraph{Method.} A point lens forms two images of the source, one on each side of it, separated
+by $\Delta\theta=\tetE\sqrt{u^2+4}$ (Section~\ref{sec:science}). We follow
+\citet{SajadianMakler2026}, who asked whether Rubin could see the two images of black-hole lenses
+toward the Magellanic Clouds. At every visit it records, the simulation asks two questions.
+\emph{(i) Would both images be detected on their own?} Each image's magnitude is the source's own
+flux times its magnification $A_\pm$, with the light of unrelated blended stars not added back, which
+makes the fainter image fainter and the test conservative; both must lie between saturation and the
+single-visit depth of that filter. \emph{(ii) Are they farther apart than the telescope can
+separate?} An event counts as \emph{resolvable} if at least three visits pass both tests. Because
+the separation grows only as the minor image fades, the count must be made visit by visit; it cannot
+be reconstructed from an event's summary parameters.
+
+The resolution bar in (ii) is where the answer depends on assumptions. \citet{SajadianMakler2026} take
+$\Delta\theta\ge\mathcal{D}\sigma_a$, with $\sigma_a$ the per-visit astrometric precision of a single
+star and $\mathcal{D}$ growing with signal-to-noise and with the brightness difference of the two
+images: $\mathcal{D}\approx5$ at the detection limit, $\approx20$ at a signal-to-noise of $100$ for
+images of similar brightness, and larger when one image is several magnitudes fainter. We record both
+anchors, $\mathcal{D}=5$ and $\mathcal{D}=20$. The criterion was built for Rubin's seeing-limited
+images. On Roman's $1.1$\,mas floor, $\mathcal{D}=5$ would mean separating two point sources
+$5.5$\,mas apart, a twentieth of its diffraction-limited point-spread function (FWHM $105$\,mas), and
+whether the shape of one blended image allows that is doubtful. A third, conservative bar is
+therefore recorded as well: $\Delta\theta$ at least the PSF width ($105$\,mas for Roman,
+$\approx1''$ for Rubin). For Roman the truth plausibly lies between the $\mathcal{D}$ bars and the
+PSF bar.
+
+\paragraph{A correction to the depth.} The production runs took Roman's single-exposure depth in
+F146 as $29$\,mag, a placeholder. Roman's own photometric error model, the one every simulated Roman
+point uses, reaches $5\sigma$ at $25.5$\,mag. Since the images separate only as the minor image
+fades, the depth matters here, although it barely matters for detection: only $0.3$--$1\%$ of Roman's
+detections have a baseline fainter than $25.5$\,mag. The per-visit counts were therefore rebuilt for
+every Roman detection on Roman's real list of $50{,}401$ exposures, with the same magnitudes, errors
+and bars as the simulator but without parallax. With the depth at $29$\,mag this reproduces the
+simulator's own verdict for $99.5$--$100\%$ of events individually, and its resolvable fractions to
+within $0.1$ percentage points. The Roman numbers quoted below use the realistic $25.5$\,mag. Rubin's
+depths were its real single-visit ones, and its numbers are the simulator's.
+
+% Source: figures/u1_20260929/u1_numbers.md (Rubin; Roman as simulated) and
+% figures/u1_20260929/u2_resolution_depth.csv (Roman at the 5-sigma depth, semi-analytic re-count).
+\begin{table}[h]
+\centering
+\caption{Probability that the two images are resolvable ($\ge3$ qualifying visits), as a weighted
+percentage of each telescope's own detections, and the yield of such events. Roman: at its $5\sigma$
+single-exposure depth, F146\,$=25.5$ (in brackets: as simulated, with the $29$\,mag placeholder).
+Rubin: as simulated. Yields $N_1$ are per unit abundance (ordinary lenses: $F=1$) over ten years;
+Roman's are in its footprint, Rubin's over the whole scan.}
+\label{tab:resolve}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lccc}
+\toprule
+ & ordinary lenses & black holes & neutron stars \\
+\midrule
+Roman, $\mathcal{D}=5$ [\%]  & $1.4\pm0.4$ \;($5.1\pm0.5$) & $45.4\pm0.6$ \;($65.5\pm0.5$) & $2.9\pm0.1$ \;($14.9\pm0.4$) \\
+Roman, $\mathcal{D}=20$ [\%] & $<0.001$ \;($0.6\pm0.3$) & $22.1\pm0.5$ \;($30.9\pm0.5$) & $0.022\pm0.006$ \;($0.35\pm0.05$) \\
+Roman, PSF [\%]              & $0$ \;($0$) & $0.31\pm0.04$ \;($0.68\pm0.07$) & $<10^{-4}$ \;($0.001\pm0.001$) \\
+Rubin, $\mathcal{D}=5$ [\%]  & $0.011\pm0.010$ & $5.5\pm0.2$ & $0.0002\pm0.0001$ \\
+Rubin, $\mathcal{D}=20$ / PSF [\%] & $0$ / $0$ & $0.031\pm0.006$ / $0.0003\pm0.0002$ & $0$ / $0$ \\
+\midrule
+Roman $N_1$, $\mathcal{D}=5$ / $20$ / PSF & $1{,}140\pm290$ / $0.3$ / $0$ & $3{,}810\pm60$ / $1{,}860\pm50$ / $26\pm4$ & $1{,}700\pm90$ / $13\pm3$ / $0.03$ \\
+Rubin $N_1$, $\mathcal{D}=5$ & $20\pm18$ & $1{,}330\pm60$ & $0.3\pm0.1$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{../../figures/u1_20260929/p6_resolution}
+\caption{Resolving the two images, as simulated (Roman's depth at the $29$\,mag placeholder; at its
+real $5\sigma$ depth Roman's probabilities fall by the factors in Table~\ref{tab:resolve}). (a) The
+probability per population, telescope and bar, over each telescope's detections. (b) The same at
+$\mathcal{D}=5$ against lens mass.}
+\label{fig:resolve}
+\end{figure}
+
+\paragraph{Results.} The three bars differ by two orders of magnitude, and that spread, not the
+Monte Carlo error, is the real uncertainty (Table~\ref{tab:resolve}, Fig.~\ref{fig:resolve}).
+\emph{Black holes} are the only population for which resolution is common: Roman resolves the images
+of $(45.4\pm0.6)\%$ of its black-hole detections at $\mathcal{D}=5$, $(22.1\pm0.5)\%$ at
+$\mathcal{D}=20$ and $(0.31\pm0.04)\%$ at the PSF width, i.e.\ $38$, $19$ and $0.3$ events over the
+decade for $F_{\rm BH}=0.01$. The probability climbs steadily with the lens mass
+(Fig.~\ref{fig:resolve}b), since $\tetE\propto\sqrt{\Ml}$. For \emph{neutron stars} and
+\emph{ordinary lenses} the images are resolvable only at the most permissive bar, for $3\%$ and $1\%$
+of Roman's detections; these are the nearby lenses (as simulated, median $D_L$ $4.9$ and $3.8$\,kpc against
+$6.4$\,kpc for all Roman detections), whose $\tetE$ is largest. \emph{Rubin}, with a per-visit
+astrometric error of at least $10$\,mas, resolves the images of $(5.5\pm0.2)\%$ of the black-hole
+events it detects at $\mathcal{D}=5$ and essentially none at $\mathcal{D}=20$ or for lighter lenses.
+Toward the Magellanic Clouds \citet{SajadianMakler2026} find $1.4\%$ (LMC) and $16.3\%$ (SMC) for
+Rubin, with $\mathcal{D}$ varying with signal-to-noise; our two fixed anchors bracket a variable
+$\mathcal{D}$, and their geometry, with sources at $50$--$60$\,kpc, differs from the bulge's.
+
+What resolution would add is an independent route to $\tetE$, and so to the mass, for the heaviest
+lenses. Clean resolution into two separate point sources (the PSF bar) is rare even for black holes.
+The $\mathcal{D}$ bars say that an analysis of the blended image's shape could reach a fifth to a
+half of Roman's black-hole events, and demonstrating that on simulated Roman images is the step that
+would turn this bracket into a forecast.
+
+\FloatBarrier
 \subsection{Absolute event yields}
 \label{sec:yield}
 
-% Source: figures/yield_20260925/y3/y3_coefficients.md (per object).
+% Source: figures/yield_20260925/y3/y3_coefficients.md (per object); the Rubin-detection and
+% resolution rows from figures/u1_20260929/u1_numbers.md and u2_resolution_depth.csv.
 \begin{table}[h]
 \centering
 \caption{Yield per unit abundance $N_1$: expected events over the ten years at $F=1$, inside
 Roman's $1.47$\,deg$^2$ footprint unless stated, per resolved object. Multiply by $F$. Errors are
-Monte Carlo only. For ordinary lenses $F=1$ by definition, so their column is the yield itself.}
+Monte Carlo only. For ordinary lenses $F=1$ by definition, so their column is the yield itself.
+Resolution rows use Roman's $5\sigma$ depth (Section~\ref{sec:resolve}).}
 \label{tab:n1}
 \small
 \begin{tabular}{lrrr}
@@ -837,11 +1079,18 @@ Monte Carlo only. For ordinary lenses $F=1$ by definition, so their column is th
 selection & black holes & neutron stars & ordinary lenses \\
 \midrule
 Roman detects                 & $8398\pm91$  & $57\,900\pm650$ & $81\,900\pm1400$ \\
-Rubin detects                 & $1812\pm40$  & $11\,560\pm280$ & $16\,830\pm640$ \\
+Rubin detects                 & $1811\pm40$  & $11\,560\pm280$ & $16\,830\pm640$ \\
 both detect                   & $1746\pm40$  & $7520\pm220$    & $9490\pm480$ \\
 Rubin only                    & $65.7\pm5.3$ & $4040\pm180$    & $7340\pm430$ \\
 Roman, $\sigma(\Ml)/\Ml<10\%$ & $1068\pm31$  & $2286\pm90$     & $1930\pm260$ \\
 joint, $\sigma(\Ml)/\Ml<10\%$ & $1216\pm33$  & $2599\pm95$     & $2120\pm270$ \\
+Roman, $\sigma(\Ml)/\Ml<1\%$  & $59.8\pm5.9$ & $40.5\pm4.5$    & $11.7\pm3.9$ \\
+\midrule
+Rubin detects, $\sigma(\Ml)/\Ml<10\%$ from Rubin alone & $8\pm2$ & $0.15\pm0.10$ & $1.1\pm0.8$ \\
+\quad the same events, from both surveys & $896\pm28$ & $1726\pm80$ & $1490\pm260$ \\
+\midrule
+Roman resolves the images, $\mathcal{D}=5$  & $3810\pm60$ & $1700\pm90$ & $1140\pm290$ \\
+\quad $\mathcal{D}=20$ / PSF width & $1860\pm50$ / $26\pm4$ & $13\pm3$ / $0.03$ & $0.3$ / $0$ \\
 \midrule
 Rubin detects, all $59$\,deg$^2$ & $24\,340\pm220$ & $141\,100\pm1300$ & $174\,900\pm2200$ \\
 \bottomrule
@@ -857,12 +1106,14 @@ is one event.}
 \label{fig:yieldF}
 \end{figure}
 
-For the literature range $F_{\rm BH}=0.005$--$0.03$, Roman detects $42$--$250$ black-hole events,
-$5$--$32$ of them with a $10\%$ mass; for $F_{\rm NS}=0.005$--$0.06$, $290$--$3500$ neutron-star events
-and $11$--$140$ masses. Rubin alone detects almost no black-hole events in the footprint ($66\,F$),
-and those peak outside Roman's mission: black-hole events are long enough to overlap a Roman season,
-and Roman then detects them. The
-combination adds $10$--$14\%$ to the number of $10\%$ masses in every population. Per unit mass, black
+For the literature range $F_{\rm BH}=0.005$--$0.03$, Roman detects $42$--$252$ black-hole events,
+$5$--$32$ of them with a $10\%$ mass; for $F_{\rm NS}=0.005$--$0.06$, $290$--$3{,}480$ neutron-star
+events and $11$--$137$ masses (Monte Carlo errors $1$--$4\%$ on each). Only $(66\pm5)\,F$ black-hole
+events in the footprint are detected by Rubin and not by Roman, and all of them peak outside Roman's
+mission: black-hole events are long enough to overlap a Roman season, and Roman then detects them.
+The combination adds $10$--$14\%$ to the number of Roman's $10\%$ masses in every population, while
+for the events Rubin detects it turns $8\,F$ black-hole and $0.15\,F$ neutron-star masses into
+$(896\pm28)\,F$ and $(1{,}726\pm80)\,F$ (Section~\ref{sec:romanrubin}). Per unit mass, black
 holes are poor lenses: the event rate grows only as $\sqrt{\Ml}$ while their number falls as
 $1/\Ml$, so at equal $F$ they give far fewer events than neutron stars. They are, however, the
 population whose masses are best measured, because a heavy lens gives a large $\tetE$: Roman measures
@@ -873,10 +1124,11 @@ footprint yields are more likely under- than overstated.
 % Source: figures/y2_20260925/y2_ss23.md.
 \paragraph{Against \citet{SajadianSahu2023}.} With their assumptions adopted (their $F_1=0.019$ is our
 $F$; their $M^{-1}$ mass function is our log-uniform one, re-weighted to $3$--$50\,\Msun$), Roman
-detects $31.5$ black holes per deg$^2$ per season against their $7.2$; part of the difference is the
-final GBTDS design, whose low-cadence seasons fill the gap their forecast assumed. On their
-denominator, the fraction characterised to $10\%$ is, ours against theirs: $\tetE$ $88.8$ against
-$99.2\%$, $\tE$ $26.0$ against $67.0\%$, $\piE$ $10.0$ against $30.0\%$, $\Ml$ $9.3$ against $29.8\%$.
+detects $31.5\pm0.5$ black holes per deg$^2$ per season against their $7.2$; part of the difference
+is the final GBTDS design, whose low-cadence seasons fill the gap their forecast assumed. On their
+denominator ($\Neff=4{,}894$), the fraction characterised to $10\%$ is, ours against theirs: $\tetE$
+$(88.8\pm0.5)$ against $99.2\%$, $\tE$ $(26.0\pm0.6)$ against $67.0\%$, $\piE$ $(10.0\pm0.4)$ against
+$30.0\%$, $\Ml$ $(9.3\pm0.4)$ against $29.8\%$.
 The astrometry nearly agrees; the parallax is $\sim\!3\times$ short, and the cause is not yet known.
 
 % =================================================================================================
@@ -982,12 +1234,17 @@ shrinks with more computing; modelling assumptions, which are larger and do \emp
 more computing; and unexplained tensions with the literature.
 
 \subsection{Monte Carlo (statistical) uncertainty}
-The yields in Table~\ref{tab:n1} carry $1$--$3\%$ Monte Carlo errors for the detection rows and
-$3$--$10\%$ for the $10\%$-mass rows; the rarest selections (ordinary lenses with
-$\sigma(\Ml)/\Ml<1\%$, $11.7\pm3.9$) are uncertain by $\sim\!30\%$. Pooled fractions and medians are
-limited by $\Neff$, not by the raw count: $3{,}969$ for the ordinary-lens footprint sample, and
-$\sim\!60$--$700$ in the gap-filling bins, so the most interesting gap-filling number ($0.077$,
-$\Neff=62$) is uncertain at the tens of per cent level.
+Every number in Section~\ref{sec:results} carries its Monte Carlo $1\sigma$ error. For yields it is
+Poisson on the simulated draws; for weighted fractions and medians it is a bootstrap over simulated
+events (400 replicates, each re-weighting every event by a Poisson-distributed count), recomputed from
+the event tables with the same selections as the original analyses, whose logged values it
+reproduces. The yields in Table~\ref{tab:n1} are known to $1$--$2\%$ for Roman's detections, $2$--$4\%$
+for Rubin's inside the footprint and $3$--$4\%$ for compact-object $10\%$ masses. The ordinary-lens
+selections are the weakest, because the weight concentrates on few events: $13$--$14\%$ for their
+$10\%$ masses and $\sim\!30\%$ for their $1\%$ masses ($11.7\pm3.9$). Pooled fractions and medians
+are limited by $\Neff$, not by the raw count: $3{,}969$ for the ordinary-lens footprint sample, and
+$\sim\!60$--$700$ in the gap-filling bins, so the deepest gap-filling median ($0.08\pm0.06$,
+$\Neff=62$) is uncertain by nearly its own size.
 
 \subsection{Checks the results pass}
 \begin{table}[h]
@@ -1000,9 +1257,9 @@ $\Neff=62$) is uncertain at the tens of per cent level.
 check & result & would catch \\
 \midrule
 optical depth from the event-rate constants against direct integration of the density
-  & $1.001$ / $1.001$ / $1.000$ & yield normalisation \\
-weighted mean $\tE$ against OGLE-IV \citep{Mroz2019} & $24.0$ against $22$\,d & the event-rate
-  weight \\
+  & $1.001$ / $1.001$ / $1.000$ (ordinary / black holes / neutron stars) & yield normalisation \\
+weighted mean $\tE$ against OGLE-IV \citep{Mroz2019}, $-6^\circ\le b\le-1^\circ$, $|l|<2^\circ$
+  & $23.5\pm0.1$ against $23.8\pm0.5$\,d (unweighted: $53.8$\,d) & the event-rate weight \\
 $\sigma_{\rm joint}\le\sigma_{\rm single}$, event by event & holds, but for round-off and one
   near-singular event & the three-matrix bookkeeping \\
 satellite-parallax control events & median ratio $1.000000$ & the paired L2/Earth design \\
@@ -1010,6 +1267,8 @@ reddening law against published \citet{Cardelli1989} ratios & agrees to $10^{-3}
   in every band \\
 Fisher forecasts against the finite-difference step & on a plateau for every parameter & numerical
   derivatives \\
+semi-analytic re-count of resolvable visits against the simulator's own count & same verdict for
+  $99.5$--$100\%$ of events & the depth correction of Section~\ref{sec:resolve} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1026,7 +1285,10 @@ Fisher forecasts against the finite-difference step & on a plateau for every par
   \citep{Sanderson2019WFIRSTastrometry}.
 \item \textbf{Roman's photometric error model is provisional}: a tabulated curve not yet checked
   against the F146 noise model of \citet{Wilson2023GBTDS}. Every Roman photometric forecast inherits
-  it.
+  it. Its single-exposure depth in the simulator is a $29$\,mag placeholder, against the curve's own
+  $5\sigma$ limit of $25.5$\,mag; this matters for resolving the images, where it has been corrected
+  (Section~\ref{sec:resolve}), and hardly for detection ($0.3$--$1\%$ of Roman's detections have
+  fainter baselines).
 \item \textbf{The event rate is too flat in latitude} compared with OGLE-IV \citep{Mroz2019}: the
   model's rate per star is $1.38$ times the observed one at $b=-5.1^\circ$ and $0.48$ times it at
   $b=-0.1^\circ$, crossing unity near $b=-2.3^\circ$. Full-scan yields carry a systematic of tens of
@@ -1036,9 +1298,16 @@ Fisher forecasts against the finite-difference step & on a plateau for every par
   Gaussian for neutron stars (the real distribution may be bimodal), and a simple initial--final mass
   relation for the remnants among ordinary lenses. Yields scale with $F$, which is uncertain by an
   order of magnitude; this is why $N_1$ is quoted.
-\item \textbf{The GBTDS footprint is that of \citet{Penny2019}}, since superseded by the adopted
-  design; the overlap of Rubin's fields with it is not modelled. Roman's start date is also a choice
-  (Fig.~\ref{fig:timeline}).
+\item \textbf{The GBTDS footprint is a notional layout}, not the adopted one: six fields placed
+  with M.\ Penny's field-layout tool and modelled as overlapping circles, $1.47$\,deg$^2$ against
+  the design's $1.7$\,deg$^2$. Footprint yields scale roughly with the area, so they may be
+  $\sim\!15\%$ low on this count alone. The partial overlap of Rubin's wide pointings with Roman's
+  fields is not modelled either, and Roman's start date is a choice (Fig.~\ref{fig:timeline}).
+\item \textbf{Resolving the images depends on a criterion no one has calibrated for Roman.} The
+  $\mathcal{D}\sigma_a$ bar of \citet{SajadianMakler2026} was built for Rubin's seeing-limited images;
+  applied to Roman it sits at a twentieth of the PSF width. The resolvable fractions therefore span two
+  orders of magnitude between the permissive and the conservative bar, and only simulated Roman images
+  can say where in that range the truth lies.
 \item \textbf{The tabulated $t_0$ is not exactly the observed peak} once parallax is included; the
   gap-filling statistics are binned on the peak's distance from a season edge computed from it, which
   is typically off by days.
@@ -1049,8 +1318,8 @@ Fisher forecasts against the finite-difference step & on a plateau for every par
 
 \subsection{Unexplained tensions}
 \begin{itemize}
-\item \textbf{Roman's detection rate is $26\%$ above \citet{Penny2019}'s} upper bracket: $80.4$
-  against $63.8$ events per deg$^2$ per day of Roman coverage, at $|u_0|<3$. Four extra low-cadence
+\item \textbf{Roman's detection rate is $(26\pm2)\%$ above \citet{Penny2019}'s} upper bracket:
+  $80.4\pm1.4$ against $63.8$ events per deg$^2$ per day of Roman coverage, at $|u_0|<3$. Four extra low-cadence
   seasons and a different detection criterion push in this direction, but have not been shown to
   account for it.
 \item \textbf{Roman's parallax precision is $\sim\!3\times$ worse than \citet{SajadianSahu2023}'s} on
@@ -1066,8 +1335,10 @@ result & confidence & main risk \\
 \midrule
 Roman dominates inside its footprint; Rubin adds $<0.3\%$ there & high & Roman photometric error
   model \\
+Roman turns Rubin's footprint detections into measurements ($5$--$8\times$ more characterised; masses
+  from $\sim\!0$ to $9$--$50\%$) & high & Roman photometric error model; astrometric floor \\
 two thirds of detections are outside the footprint, Rubin's alone & high & latitude gradient \\
-gap filling only deep in gaps, for short events, factor $\sim\!13$ & medium & $\Neff=62$; $t_0$
+gap filling only deep in gaps, for short events, an order of magnitude & medium & $\Neff=62$; $t_0$
   offset \\
 satellite parallax $<1\%$ pooled & high & halo orbit (small) \\
 $\tetE$ is Roman's measurement; black-hole $\tetE$ robust & high (bh) & -- \\
@@ -1075,6 +1346,8 @@ ordinary and neutron-star $\tetE$ and masses & medium--low & correlated astromet
 absolute yields $N_1$ & medium & latitude gradient, Penny tension \\
 yields $N(F)$ & low & $F$ unknown to $\times10$ \\
 $\piE$ and mass fractions against Sajadian \& Sahu & low & unexplained factor 3 \\
+resolving the images: black holes $0.3$--$45\%$ (Roman), others rare & low & the resolution criterion
+  for Roman \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1084,20 +1357,28 @@ $\piE$ and mass fractions against Sajadian \& Sahu & low & unexplained factor 3 
 \label{sec:summary}
 
 \begin{enumerate}
-\item \textbf{Roman is the survey inside its footprint.} Over the decade it detects $8.2\times10^4$
-  ordinary-lens events there, five times Rubin's, and measures about $1{,}900$ lens masses to $10\%$.
-  Dust is the main reason: F146 loses $0.75$\,mag where $r$ loses $3.2$.
-\item \textbf{Rubin is the survey everywhere else}, supplying about two thirds of all detections, and
-  inside the footprint it matters only for short events that fall wholly inside Roman's gaps, where
-  it improves $\sigma(\tE)$ about $13$-fold.
+\item \textbf{Roman is the survey inside its footprint.} Over the decade it detects
+  $(8.19\pm0.14)\times10^4$ ordinary-lens events there, five times Rubin's, and measures
+  $1{,}930\pm260$ lens masses to $10\%$. Dust is the main reason: at the median extinction of
+  footprint detections F146 loses $0.7$\,mag where $r$ loses $3.0$.
+\item \textbf{Roman transforms the events Rubin detects inside its footprint.} Adding Roman's data
+  characterises $5$--$8$ times as many of them, sharpens their timescales a median $6$--$15$-fold,
+  and gives lens masses to $10\%$ for $9\%$ (ordinary lenses), $15\%$ (neutron stars) and $50\%$
+  (black holes) of them, where Rubin alone gives essentially none. The reverse gain is $10$--$14\%$.
+\item \textbf{Rubin is the survey everywhere else}, supplying $(63.8\pm0.5)\%$ of all detections from
+  outside Roman's footprint, and inside the footprint it matters only for short events that fall
+  wholly inside Roman's gaps, where it improves $\sigma(\tE)$ by an order of magnitude.
 \item \textbf{Roman's ten seasons give the parallax of long events on their own}; Rubin's
   longer baseline adds $<0.3\%$ even for multi-year black-hole events. Roman at L2 adds $<1\%$.
 \item \textbf{The combination} characterises events neither survey can alone and adds $10$--$14\%$ to
-  the number of $10\%$ mass measurements.
-\item \textbf{Compact objects.} Roman detects $8{,}400\,F$ black-hole events and $57{,}900\,F$
-  neutron-star events, measuring $1{,}070\,F$ and $2{,}290\,F$ masses to $10\%$; at $F_{\rm BH}=0.01$
-  that is $84$ events and $11$ masses. Black-hole Einstein radii are measured in single exposures;
-  their masses are limited by the parallax.
+  the number of Roman's $10\%$ mass measurements.
+\item \textbf{Compact objects.} Roman detects $(8{,}400\pm90)\,F$ black-hole events and
+  $(57{,}900\pm650)\,F$ neutron-star events, measuring $(1{,}070\pm30)\,F$ and $(2{,}290\pm90)\,F$
+  masses to $10\%$; at $F_{\rm BH}=0.01$ that is $84$ events and $11$ masses. Black-hole Einstein
+  radii are measured in single exposures; their masses are limited by the parallax.
+\item \textbf{The two images of a black-hole lens are often resolvable in principle.} Roman separates
+  them in $0.3$--$45\%$ of its black-hole detections depending on the criterion, and Rubin in $5\%$
+  of its own at the most permissive one; for lighter lenses resolution is rare.
 \item \textbf{The astrometric masses of ordinary lenses and neutron stars rest on one assumption}:
   that Roman's centroiding floor averages down over $5\times10^4$ exposures.
 \end{enumerate}
@@ -1184,9 +1465,10 @@ These are the known limitations that most affect the results, roughly in order o
 \item \textbf{Roman's photometric noise.} The present tabulated curve should be replaced by a
   noise model derived from simulated GBTDS images \citep{Wilson2023GBTDS}; every Roman photometric
   forecast depends on it.
-\item \textbf{The survey geometry.} The simulated footprint follows the design of \citet{Penny2019},
-  since superseded. It should be replaced by the adopted GBTDS fields, with Rubin's larger fields
-  that only partly overlap Roman's handled properly, and Roman's start date revisited.
+\item \textbf{The survey geometry.} The simulated footprint is a notional six-field layout,
+  modelled as overlapping circles ($1.47$\,deg$^2$ instead of $1.7$). It should be replaced by the
+  adopted GBTDS fields, with Rubin's larger fields that only partly overlap Roman's handled
+  properly, and Roman's start date revisited.
 \item \textbf{The event rate's latitude dependence.} The Galactic model's event rate is too flat in
   latitude compared with OGLE-IV. This sets the absolute yields, and may be connected to the excess
   over \citet{Penny2019}.
@@ -1201,11 +1483,11 @@ These are the known limitations that most affect the results, roughly in order o
 \item \textbf{An external check of Rubin's results.} The Rubin-only forecasts have no independent
   check yet: the closest published study \citep{Abrams2025MicrolensingRubin} quotes no directly
   comparable number, so the check means running their method on the same cadence as ours.
-\item \textbf{Detections from the wings.} $3$--$4\%$ of Roman's detections have no Roman data within
-  $\pm2\tE$ of the peak: a long, slow brightening seen only on its wing, over tens of thousands of
-  exposures. A real survey fits the baseline, and such a slow wing is partly degenerate with it, so
+\item \textbf{Detections from the wings.} $3$--$4.4\%$ of Roman's detections have no Roman data
+  within $\pm2\tE$ of the peak: a long, slow brightening seen only on its wing, over tens of thousands
+  of exposures. A real survey fits the baseline, and such a slow wing is partly degenerate with it, so
   whether to count these events is a convention still to be decided. It moves the yields by at most
-  a few per cent.
+  $4.4\%$.
 \end{enumerate}
 
 % =================================================================================================

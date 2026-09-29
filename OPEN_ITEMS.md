@@ -1395,6 +1395,10 @@ smoothly.
 change them: fixing the model changes every Roman forecast, which is a result-moving change to be
 made deliberately and re-verified with `fishertest`, not slipped in beside a plotting step.
 
+**Provenance (2026-09-29):** the user identifies the curve as Penny et al. (2019)'s and cites it so
+in `Report/overview/`; its 5-sigma point is F146 = 25.52 and it ends at 27.0 mag. See also the entry
+"Roman's F146 single-visit depth is a 29 mag placeholder" (end of file): `thre[6]` = 29.0 does not match it.
+
 **What the fix involves.** Establish what `sigma_roman.txt` is (its provenance, and whether it is
 per exposure -- which is what one row of `RomanBaseline.dat` is), then replace the lookup with
 linear interpolation in magnitude, and confirm with `fishertest` and a stub run how far Roman's
@@ -1832,3 +1836,28 @@ populations are independent runs and parallelise trivially. Operational traps fo
 their own items: stale git stamp (`make clean && make` after the last commit), `--dry-run`
 truncating outputs, append-mode outputs, ~170 s start-up per chunk, silent OOM kills in analysis
 (run under `analysis/memrun.py`); resume with `runs/runctl.sh stop/continue`.
+
+## Roman's F146 single-visit depth is a 29 mag placeholder, and the image-resolution count used it (2026-09-29)
+
+**What is wrong.** `thre` in `Bulge.h` gives F146 a single-visit depth of 29.0 mag, commented
+"(value needs to change)". Roman's own photometric error table, `files/sigma_roman.txt` (the noise
+model every simulated Roman epoch uses), reaches 5 sigma at 25.52 mag and 3 sigma at 26.11, and
+ends at 27.0 -- beyond which `errRomanM()`'s nearest-neighbour lookup returns 0.83 mag, an
+underestimate for a 28-29 mag point. `RomanBaseline.dat`'s own `sig5` column says 24.0 and is unused.
+
+**Why it matters scientifically.** Three places read `thre[6]`: (1) the Step R1 image-resolution
+count (Deviation 48), which calls the faint minor image detectable down to 29 mag -- and resolution
+happens exactly as the minor image fades; (2) the "could Roman see it magnified" acceptance gate;
+(3) the per-epoch recording gate. Measured by `analysis/u2_resolution_depth.py` (Deviation 58):
+at a 25.52 mag depth Roman's P(resolvable) falls from 65.5 to 45.4% (bh, D=5), 14.9 to 2.9% (ns),
+5.1 to 1.4% (bulge); the overview report now quotes the corrected values. For detection it is
+small: 0.3-1% of Roman's detections have a baseline fainter than 25.5 mag, 0-0.02% fainter than 27.
+
+**Why deferred.** Changing `thre[6]` moves every Roman output (acceptance, recorded epochs,
+resolution) and needs a re-run of all three populations; the resolution numbers are corrected
+analytically meanwhile, validated to 99.5-100% per event against the simulator at 29 mag.
+
+**What the fix involves.** Set `thre[6]` to the error table's 5-sigma point (25.5) -- or better,
+derive it from the same table at run time so the two cannot drift -- extend or clamp
+`sigma_roman.txt` beyond 27 mag, re-run `fishertest`, and fold the change into the next production
+runs (it belongs with the Roman photometric-model item above, since both are the same curve).

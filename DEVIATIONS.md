@@ -4190,7 +4190,7 @@ overlaid, and the simulated Roman footprint overlaid on the real GBTDS layout
 regular to < 3 px; report builds clean (42 pp, 0 TODO, no overfull boxes); figures inspected as
 rendered in the PDF (cell seams in the vector PDF fixed with own-colour edges).
 
-**Commit:** not yet committed.
+**Commit:** `db2e616`.
 
 ## 60. What the footprint mismatch costs, why the scan is so large, and a corner cut on the wrong side (2026-09-29)
 
@@ -4244,4 +4244,4 @@ of the real 1.97 deg^2 (was 58% of 2.10).
 two-line caption distinction, the corner cut; new Section 5.4 with Table 10; modelling item 5 and
 next-steps item 3 updated. 44 pp, clean build.
 
-**Commit:** not yet committed.
+**Commit:** `db2e616`.

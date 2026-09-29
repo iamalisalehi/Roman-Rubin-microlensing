@@ -4245,3 +4245,50 @@ two-line caption distinction, the corner cut; new Section 5.4 with Table 10; mod
 next-steps item 3 updated. 44 pp, clean build.
 
 **Commit:** `db2e616`.
+
+## 61. The footprint effects do not cancel: the model's dust is too thin near the plane (2026-09-29)
+
+**What was asked (user).** "The southern area of the Roman survey the code missed is denser than
+the northern area. Doesn't that affect the numbers? Wouldn't it mean that they don't nearly cancel
+out?" (Deviation 60 had them cancelling: area +16.5%, latitude -10..-13%.) Also: what is Aladin.
+
+**What was found.** The user was right, for a reason deeper than the image. The Aladin image is
+optical (DSS), so it is not direct evidence for F146; but the model's gradient that produced the
+cancellation came from its DUST. Per footprint row the median A_r of drawn sources is ~4.2 at
+b = -1.44..-1.14 and DROPS to 2.6/2.3 at -1.04/-0.94; the GC field has A_V ~ 3 to 8 kpc. The
+extinction files come from optical 3D maps (Bayestar19 north of dec -30, DECaPS south; `maps.py`),
+which saturate near the plane. Against Marshall et al. (2006) (2MASS near-IR 3D map, local
+dustmaps copy), A_V(8 kpc) model/Marshall = 0.23 (|b| < 0.5), 0.38 (0.5-1.0), 1.14 / 1.31 / 1.22
+farther out; GC field 2.9 vs ~24. The dust-map switch at dec -30 is NOT the cause of the footprint
+jump (nearly the whole footprint is Bayestar); Bayestar's saturation is.
+
+**New: `analysis/u4_dust_check.py`** -> `figures/u1_20260929/u4_dust_check.csv`, `u4.log`.
+Part 1: per-sightline model vs Marshall and the yield shares affected. Part 2: footprint yields with
+the dust corrected -- each draw dimmed by the extra extinction (A_F146 = 0.197 A_V, A_r = 0.854 A_V),
+detection efficiency vs baseline magnitude measured from the same draws; per-sightline factor
+sum y eff(m + dA) / sum y eff(m); then U3's real/simulated ratio redone on corrected densities.
+Part 3: whole-scan Rubin, efficiency stratified by Rubin visit count, on all 12.2M bulge draws
+(new extract `runs/prod_bulge_20260924/test5_rubincols.dat`). New footprint extracts
+`runs/prod_{bulge,bh,ns}_20260924/test*_foot.dat` (all draws with ndw_R > 0, 147 x 300 each).
+
+**Results.** Roman footprint yields x0.758 / 0.811 / 0.783 (bulge/bh/ns); GC field x0.22-0.34;
+five-field x0.95-0.97. Rubin footprint x0.567 / 0.614 / 0.576. Dust-corrected five-field slopes
+0.21 / 0.51 / 0.39 per deg (were 0.72 / 0.87 / 0.91); GC field reversed. Real/simulated layout,
+dust-corrected: Roman 1.16 / 1.10 / 1.11, Rubin (footprint) 1.36 / 1.27 / 1.33 -- the effects ADD.
+Net vs reported Roman footprint yields ~0.88 / 0.89 / 0.87. Rubin whole scan (bulge) x0.561
+(1.749e5 -> 9.82e4); outside 0.562, inside 0.559 (Part 2's independent 0.567 agrees).
+
+**Checks.** Part 3 rebuilds the uncorrected Rubin whole-scan yield as 1.749e5, y1's value; its
+inside-footprint factor matches Part 2's; the extinction file per sightline is picked exactly as
+nearestSightline() does. Limits (in the report): 8-kpc sources (overcorrects foreground disc),
+efficiency depends on magnitude only within a class, A_Ks/A_V 0.10-0.114 (a steeper bulge law =
+more dust), Marshall's 15' resolution.
+
+**Report.** Section 5.4 rewritten (the cancellation is an artefact; Table 10 gains a dust-corrected
+block); new Section 5.5 "The dust near the Galactic plane"; modelling item 2; abstract, summary item
+9, what-to-believe row, next-steps item and roadmap updated; "the model's" dust where A_V 3.6 is
+quoted. Aladin explained and cited (Bonnarel et al. 2000) in the Fig. 7 caption; Marshall 2006
+added to refs.bib (both verified). 46 pp, clean build. User's own added sentence (Fig. 3 paragraph)
+kept.
+
+**Commit:** not yet committed.

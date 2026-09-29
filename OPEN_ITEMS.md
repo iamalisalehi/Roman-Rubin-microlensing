@@ -1898,3 +1898,36 @@ a point if it is within 1.75 + 1.75 + 0.30 deg of any Roman field centre, which 
 design intent), update the provenance line, and re-run with the next production set. The scan box
 itself (l1/l2/b1/b2) was built from an older field layout (l -0.219..1.413, b -1.64..-0.85) that
 excludes the current GC field; with the distance test that stops mattering.
+
+## CRITICAL: the dust is three to four times too thin within 1 deg of the Galactic plane (2026-09-29)
+
+**What is wrong.** `files/ext/` (maps.py) takes A_V(d) from Bayestar19 (dec > -30 deg) and DECaPS
+(dec < -30 deg), both built from OPTICAL photometry. Toward the inner bulge their stars cannot be
+seen through the dust lanes near the plane, the profiles saturate after a few kpc, and the
+extinction to bulge sources is a lower limit. Against the Marshall et al. (2006) near-infrared 3D
+map (2MASS; dustmaps' MarshallQuery, local copy in `dustmaps/marshall/`), at 8 kpc with
+A_Ks/A_V = 0.11, the model/Marshall A_V ratio (median over sightlines) is 0.23 for |b| < 0.5,
+0.38 for 0.5-1.0, and 1.1-1.3 farther out. Examples: Roman's Galactic-centre field A_V 2.9 vs ~24;
+b = -0.94: 2.1 vs 7.9. Found while checking the footprint-mismatch estimate (the model's event
+density rose toward the plane because its dust thinned toward the plane). Measured by
+`analysis/u4_dust_check.py` -> `figures/u1_20260929/u4_dust_check.csv` (Deviation 61).
+
+**Why it matters scientifically.** 45-47% of Roman's and 51-53% of Rubin's detected yield come from
+sightlines where the model has less than half Marshall's dust. Estimated with the dust corrected
+(each draw dimmed by the extra extinction, detection efficiency read off at the new magnitude):
+Roman footprint yields x0.76 (bulge) / 0.81 (bh) / 0.78 (ns) -- the GC field x0.22-0.34, the
+five-field block x0.95-0.97; Rubin footprint x0.57-0.61 (GC field -> 0); Rubin whole scan (bulge)
+x0.56 (1.75e5 -> 9.8e4); share of detections outside the footprint 64% -> ~57%. The extra dust
+costs 4.3x more in r than in F146, so every Roman-Rubin comparison moves in Roman's favour.
+Per-event results (Roman-for-Rubin, gap filling, precision fractions) were not recomputed; ~a
+quarter of the footprint events behind them are in the GC field.
+
+**Why deferred.** Fixing it means new extinction files and new production runs of all three
+populations; the report states the estimate and its limits (Section 5.5).
+
+**What the fix involves.** Build the extinction files from a near-infrared-calibrated map near the
+plane (Marshall 2006, or a VVV-based map), or at least rescale Bayestar/DECaPS profiles so the total
+to the bulge matches the NIR map where Bayestar's reliable distance is short (`maps.py` currently
+ignores Bayestar's `reliable_dist` flag). Re-run `make extinctiontest`, compare the new A_V(8 kpc)
+map against Marshall, then the production runs. Do it together with the Roman F146 depth fix and
+the adopted GBTDS layout, so the runs are repeated once.

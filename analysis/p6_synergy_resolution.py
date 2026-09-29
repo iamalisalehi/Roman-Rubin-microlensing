@@ -70,9 +70,10 @@ PAIR_COLS = ("lon lat tE u0 piE tetE du_sat okA_sat okA_nosat okB_sat okB_nosat 
 class Run:
     """One population's run: its table, its paired-satellite file, its weights."""
 
-    def __init__(self, name, directory, chunksize, unweighted=False):
+    def __init__(self, name, directory, chunksize, unweighted=False, detections_only=False):
         self.name = name
         self.dir = directory
+        self.detections_only = detections_only
         prov_path = os.path.join(directory, "files/MONTLMC/files/run_provenance.txt")
         self.prov = R.load_provenance(prov_path) if os.path.exists(prov_path) else {}
         self.population = R.assert_same_population([self.prov], what=f"run '{name}'")
@@ -86,6 +87,15 @@ class Run:
             tag = cands[0][len("test"):-len(".dat")]
         self.tag = tag
         self.table = os.path.join(directory, f"test{tag}.dat")
+        if detections_only:
+            # test<tag>_detJ.dat: the detJ == 1 rows, header kept (awk in u1_report_numbers.py).
+            # Exact for every number here, which is over detections only, because a detected
+            # row's weight depends on that row and its sightline's nsim, never on the other
+            # rows. What it is NOT is a draw count: the 'draws' line then counts detections.
+            self.table = os.path.join(directory, f"test{tag}_detJ.dat")
+            if not os.path.exists(self.table):
+                sys.exit(f"{self.table}: no detection-only table; build it or drop "
+                         "--detections-only")
         self.map = os.path.join(directory, f"files/MONTLMC/files/MapLMC{tag}.dat")
         self.logs = [os.path.join(directory, f) for f in ("run.log", "run2.log")
                      if os.path.exists(os.path.join(directory, f))]
@@ -558,8 +568,10 @@ def fig_resolution(runs, out):
     ax1.set_xticklabels(labels, fontsize=6)
     ax1.set_ylabel(r"$P(N_{\Delta\theta}\geq 3)$ [%]")
     ax1.set_yscale("log")
-    ps.panel_label(ax1, "(a)", loc="lower left")
-    ps.legend(ax1, loc="upper right")
+    ps.panel_label(ax1, "(a)", loc="upper left")
+    # Above the axes, not inside: with three populations an inside legend sat on the tallest
+    # (black-hole, Roman) bars, and headroom for it would stretch a percentage axis past 100.
+    ps.legend(ax1, loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=3, fontsize=6)
 
     # ---- (b) vs lens mass, most permissive bar ----
     xspan = [np.inf, -np.inf]
@@ -629,7 +641,8 @@ def summary(runs):
         w = d["W"].to_numpy(float)
         wd = w[det]
         print(f"\n=== {r.name}  ({r.population}) ===")
-        print(f"  draws {len(d):,} | detected {int(det.sum()):,} | N_eff {r.neff:,.0f}"
+        print(f"  {'rows (detections only)' if r.detections_only else 'draws'} {len(d):,}"
+              f" | detected {int(det.sum()):,} | N_eff {r.neff:,.0f}"
               f" | dropped barren {r.n_barren:,}")
 
         # --- who detects what ---
@@ -697,6 +710,12 @@ def main():
                     help="population name and its run directory; repeatable")
     ap.add_argument("-o", "--out", default="figures/p6")
     ap.add_argument("--chunksize", type=int, default=500_000)
+    ap.add_argument("--detections-only", action="store_true",
+                    help="read test<tag>_detJ.dat instead of the full table (exact, and ~50x "
+                         "less memory; see Run)")
+    ap.add_argument("--only", choices=("synergy", "astrometry", "parallax", "resolution"),
+                    action="append", default=None,
+                    help="make only these figures (repeatable); default: all four")
     ap.add_argument("--unweighted", action="store_true",
                     help="use the raw sample. Says you MEANT an unweighted number; there is "
                          "no silent fallback.")
@@ -711,15 +730,15 @@ def main():
         if "=" not in spec:
             sys.exit(f"--run wants NAME=DIR, got '{spec}'")
         name, directory = spec.split("=", 1)
-        runs.append(Run(name, directory, a.chunksize, a.unweighted))
+        runs.append(Run(name, directory, a.chunksize, a.unweighted, a.detections_only))
 
     summary(runs)
 
+    figs = {"synergy": fig_synergy, "astrometry": fig_astrometry,
+            "parallax": fig_parallax, "resolution": fig_resolution}
     written = []
-    written += fig_synergy(runs, a.out)
-    written += fig_astrometry(runs, a.out)
-    written += fig_parallax(runs, a.out)
-    written += fig_resolution(runs, a.out)
+    for key in (a.only or list(figs)):
+        written += figs[key](runs, a.out)
     for p in written:
         print(f"wrote {p}")
 

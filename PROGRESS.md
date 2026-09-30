@@ -259,7 +259,7 @@ Sajadian & Makler). Three steps, each approved before it starts:
     covers everything and is close to right except |b|<0.5); plus 78 empty (all-NaN) extinction
     tables read as zero dust (20 sightlines south of the footprint) -- both in OPEN_ITEMS. Section 5.5
     restructured (what is wrong / how we know / corrected results, Table 11 / how to correct it);
-    abstract, summary, Section 4 note updated. User's WIP commit 8e7d995; the rest not yet committed.
+    abstract, summary, Section 4 note updated. User's WIP commit 8e7d995, then e64a6f1.
   - **CRITICAL (Deviation 61): the model's dust is 3-4x too thin within 1 deg of the plane**
     (optical Bayestar/DECaPS saturate; checked against Marshall 2006 near-IR). Estimated
     corrections: Roman footprint yields x0.76-0.81 (GC field x0.22-0.34), Rubin whole scan x0.56,

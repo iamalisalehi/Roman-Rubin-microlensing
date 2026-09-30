@@ -4341,4 +4341,4 @@ does / what is wrong -- Bayestar and the rule, plus the empty tables / how we kn
 row / corrected results with Table 11 / what it does / limits / how to correct it, 5 steps);
 Section 2.1 dust item, modelling item 2 and next-steps items updated. 48 pp, clean build.
 
-**Commit:** not yet committed. (Deviation 61's batch was committed by the user as 8e7d995.)
+**Commit:** `e64a6f1`. (Deviation 61's batch was committed by the user as 8e7d995.)

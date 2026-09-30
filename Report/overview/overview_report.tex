@@ -99,7 +99,7 @@ Roman Space Telescope's Galactic Bulge Time Domain Survey and by the Vera C.\ Ru
 Legacy Survey of Space and Time, and how precisely each survey, and the two together, will measure
 them, for three lens populations: ordinary stars and stellar remnants, isolated black holes, and
 neutron stars. The simulation's dust is too thin near the Galactic plane; every number below is
-corrected for it, and its uncertainty combines the Monte Carlo error with the correction's own
+corrected for it unless stated, and its uncertainty combines the Monte Carlo error with the correction's own
 systematic error (Section~\ref{sec:dust}). Over the decade 2026--2036, inside Roman's footprint
 ($1.47$\,deg$^2$ as modelled), Roman is expected to detect $(5.04\pm0.29)\times10^4$ events by ordinary
 lenses and to measure $830\pm110$ of their lens masses to $10\%$; Rubin detects
@@ -112,15 +112,15 @@ which the simulated footprint does not follow exactly, would add roughly $15$--$
 yields. Inside its footprint Roman dominates, above all because of dust: at the median extinction of
 Roman's footprint detections, $A_V=7.2\pm0.3$, Rubin's $r$-band source is dimmed by $6.1$\,mag and
 Roman's F146 source by only $1.4$\,mag, and Roman detects eight to ten times as many events there. Rubin
-therefore changes Roman's precision on shared events by less than $0.4\%$ (median) and adds
-$9$--$13\%$ to the number of $10\%$ masses. \textbf{The gain in the other direction is far larger.}
+therefore changes Roman's precision on shared events by less than $0.4\%$ (median) and adds at
+most $9$--$13\%$ to the number of $10\%$ masses. \textbf{The gain in the other direction is far larger.}
 For the events Rubin detects inside the footprint, adding Roman's data sharpens the timescale a
-median $7$--$17$-fold, raises the fraction with both timescale and parallax measured from $5$--$12\%$
+median $8$--$17$-fold, raises the fraction with both timescale and parallax measured from $5$--$12\%$
 to $28$--$83\%$, and turns lens masses to $10\%$ from essentially none into $(8.1\pm1.5)\%$ of them for
 ordinary lenses, $(15.7\pm1.2)\%$ for neutron stars and $(53.3\pm1.8)\%$ for black holes. Rubin's own
 strengths are sky area, with $(59\pm5)\%$ of all detections outside Roman's footprint, and short
 events that fall wholly inside Roman's season gaps, whose timescale precision it improves by an order
-of magnitude. The Einstein radius, and so the mass, is Roman's astrometric measurement. Black-hole
+of magnitude as simulated (not corrected for the dust, which can only reduce this gain). The Einstein radius, and so the mass, is Roman's astrometric measurement. Black-hole
 centroid shifts (median $3.39\pm0.04$\,mas among Roman's detections) exceed a single exposure's
 precision; ordinary-lens shifts (median $0.123\pm0.002$\,mas)
 emerge only by averaging $\sim\!5\times10^4$ exposures, which assumes that Roman's $1.1$\,mas
@@ -681,8 +681,9 @@ Section~\ref{sec:certainty} and are larger.
 Galactic plane, which inflates the absolute yields; Section~\ref{sec:dust} corrects for it, and the
 abstract, the summary and Table~\ref{tab:corrected} quote the corrected values with their
 uncertainties. The corrections lower Roman's yields by a third and Rubin's by more than half, but
-leave the comparisons made in this
-section, and the per-event results, essentially as they are.
+leave the per-event results of Table~\ref{tab:corrected} essentially as they are. The gap-filling
+gains of Section~\ref{sec:gap} were not corrected: the extra dust dims Rubin's sources $4.3$ times as
+much as Roman's, so they are upper limits.
 
 % Source: runs/prod_*_20260924/run.log and the y1 logs (figures/yield_20260925/<pop>/y1.log).
 \begin{table}[h]
@@ -781,7 +782,12 @@ rising to $(7\pm3)\%$ ($10$--$30$\,d) and $(10\pm3)\%$ ($30$--$100$\,d) beyond $
 row of Table~\ref{tab:gap} rests on $\Neff=62$, which is why its errors are large. It also shows the
 limit of the wing detections noted in Section~\ref{sec:next}: $(72.8\pm5.5)\%$ of those events have no
 Roman exposure near the peak, yet $(66.5\pm6.1)\%$ still pass Roman's detection test, on a slow, faint
-brightening summed over tens of thousands of exposures.
+brightening summed over tens of thousands of exposures. All of these gains are as simulated. The
+dust correction of Section~\ref{sec:dust} cannot be applied to them, because for medians of per-event
+ratios it re-weights events only by whether they are still detected, not by how their precision
+changes; the extra dust dims Rubin's
+sources $4.3$ times as much as Roman's, so Rubin's share of the joint forecast, and with it every gain
+in this section, can only shrink. Only a run with the corrected dust will say by how much.
 
 \subsection{What Roman adds to Rubin}
 \label{sec:romanrubin}
@@ -1169,8 +1175,9 @@ would turn this bracket into a forecast.
 \begin{table}[h]
 \centering
 \caption{Yield per unit abundance $N_1$: expected events over the ten years at $F=1$, inside
-Roman's $1.47$\,deg$^2$ footprint unless stated, per resolved object. Multiply by $F$. Errors are
-Monte Carlo only. For ordinary lenses $F=1$ by definition, so their column is the yield itself.
+Roman's $1.47$\,deg$^2$ footprint unless stated, per resolved object. Multiply by $F$. As simulated,
+with the model's too-thin dust; Table~\ref{tab:corrected} gives the dust-corrected headline values.
+Errors are Monte Carlo only. For ordinary lenses $F=1$ by definition, so their column is the yield itself.
 Resolution rows use Roman's $5\sigma$ depth (Section~\ref{sec:resolve}).}
 \label{tab:n1}
 \small
@@ -1206,9 +1213,11 @@ is one event.}
 \label{fig:yieldF}
 \end{figure}
 
-For the literature range $F_{\rm BH}=0.005$--$0.03$, Roman detects $42$--$252$ black-hole events,
-$5$--$32$ of them with a $10\%$ mass; for $F_{\rm NS}=0.005$--$0.06$, $290$--$3{,}480$ neutron-star
-events and $11$--$137$ masses (Monte Carlo errors $1$--$4\%$ on each). Only $(66\pm5)\,F$ black-hole
+For the literature range $F_{\rm BH}=0.005$--$0.03$, Roman detects $42$--$252$ black-hole events as
+simulated, $5$--$32$ of them with a $10\%$ mass; for $F_{\rm NS}=0.005$--$0.06$, $290$--$3{,}480$
+neutron-star events and $11$--$137$ masses (Monte Carlo errors $1$--$4\%$ on each). With the dust
+corrected (Section~\ref{sec:dust}) these become $28$--$170$ black-hole events and $3$--$17$ masses,
+and $180$--$2{,}190$ neutron-star events and $6$--$66$ masses. Only $(66\pm5)\,F$ black-hole
 events in the footprint are detected by Rubin and not by Roman, and all of them peak outside Roman's
 mission: black-hole events are long enough to overlap a Roman season, and Roman then detects them.
 The combination adds $10$--$14\%$ to the number of Roman's $10\%$ masses in every population, while
@@ -1217,9 +1226,11 @@ $(896\pm28)\,F$ and $(1{,}726\pm80)\,F$ (Section~\ref{sec:romanrubin}). Per unit
 holes are poor lenses: the event rate grows only as $\sqrt{\Ml}$ while their number falls as
 $1/\Ml$, so at equal $F$ they give far fewer events than neutron stars. They are, however, the
 population whose masses are best measured, because a heavy lens gives a large $\tetE$: Roman measures
-$60\,F$ black-hole masses to $1\%$, against $12$ ordinary-lens masses. Near the footprint's latitude
-the model's event rate is $25$--$40\%$ below OGLE-IV's (Section~\ref{sec:certainty}), so these
-footprint yields are more likely under- than overstated.
+$60\,F$ black-hole masses to $1\%$, against $12$ ordinary-lens masses (with the dust corrected,
+$26\,F$ against $3$). Near the footprint's latitude the model's event rate per star is $25$--$40\%$
+below OGLE-IV's (Section~\ref{sec:certainty}), but that comparison was made through the model's
+too-thin dust and has to be repeated with the corrected dust before it can say whether the corrected
+yields are under- or overstated.
 
 % Source: figures/y2_20260925/y2_ss23.md.
 \paragraph{Against \citet{SajadianSahu2023}.} With their assumptions adopted (their $F_1=0.019$ is our
@@ -1400,8 +1411,10 @@ semi-analytic re-count of resolvable visits against the simulator's own count & 
 \item \textbf{The event rate is too flat in latitude} compared with OGLE-IV \citep{Mroz2019}: the
   model's rate per star is $1.38$ times the observed one at $b=-5.1^\circ$ and $0.48$ times it at
   $b=-0.1^\circ$, crossing unity near $b=-2.3^\circ$. Full-scan yields carry a systematic of tens of
-  per cent; at the footprint's latitude the model is $25$--$40\%$ low, so footprint yields are, if
-  anything, understated.
+  per cent; at the footprint's latitude the model is $25$--$40\%$ low. The comparison counts sources
+  brighter than $I=21$ as seen through the model's own dust, which is too thin near the plane
+  (item~2), so it must be repeated with the corrected dust before its effect on the corrected
+  footprint yields is known.
 \item \textbf{Mass functions are assumptions}: log-uniform black holes taken as the truth, a single
   Gaussian for neutron stars (the real distribution may be bimodal), and a simple initial--final mass
   relation for the remnants among ordinary lenses. Yields scale with $F$, which is uncertain by an
@@ -1494,7 +1507,8 @@ trend in any population, and extrapolated to the real fields' latitude it change
 The $10\%$-mass fraction changes by $-10\%$ to $+19\%$, within two standard errors of no change.
 The resolvable fraction does have a real trend, rising toward the plane by $\approx3\sigma$ for black
 holes and neutron stars, and on the real fields it would be $4$--$12\%$ lower, about $45\%\to44\%$
-for Roman's black holes at $\mathcal{D}=5$. So the ratios, the gap-filling result, and what each
+for Roman's black holes at $\mathcal{D}=5$. These per-event trends were measured with the model's
+dust. So the ratios, the gap-filling result, and what each
 survey adds to the other carry over to the real layout, and the footprint yields move by less than
 their other uncertainties.
 
@@ -1504,15 +1518,16 @@ $39\%$ of the real five-field area lies south of the last simulated row, and $30
 Galactic-centre field below its own. The exponential fits describe the rows well
 ($\chi^2$ per degree of freedom $0.2$--$4$; the fit errors are inflated where it exceeds one), but
 the extrapolation is untested. The model's
-latitude gradient is known to be too flat over the whole bulge (item~3 above). Within the
+latitude gradient is known to be too flat over the whole bulge (Section~\ref{sec:certainty}, item~4). Within the
 footprint's latitudes, however, its departure from OGLE-IV's is consistent with zero
 ($-0.08\pm0.19$ per degree), and adopting OGLE's gradient shifts the ratios by about $1\%$.
 Counting a patch observed in half the seasons as half the yield is an approximation; long events,
 which span several seasons, should lose less. The dust correction carries the assumptions listed in
 Section~\ref{sec:dust}. Taken together: the corrected dust lowers the simulated footprint's Roman
-yields by $33$--$38\%$ (Table~\ref{tab:corrected}), and the real layout then raises them by $15$--$24\%$, so the Roman footprint
-yields of Section~\ref{sec:results}, as simulated, are $\sim\!22$--$25\%$ too high for the real
-survey, and the corrected ones of the abstract $15$--$24\%$ too low. That is larger than their Monte
+yields by $33$--$38\%$ (Table~\ref{tab:corrected}), and the real layout then raises them by
+$15$--$24\%$, so the real survey should detect $22$--$25\%$ fewer events than the as-simulated Roman
+footprint yields of Section~\ref{sec:results}, and $15$--$24\%$ more than the corrected ones of the
+abstract. That is larger than their Monte
 Carlo errors and far smaller than the uncertainty in $F$. A run on the adopted layout with the right
 dust would remove both (Section~\ref{sec:next}).
 
@@ -1605,7 +1620,7 @@ reference used for the correction         & $0.98$ & $0.99$ & $0.96$ & $0.88$ & 
 Within $1^\circ$ of the plane the simulation has three to six times too little dust; farther out it
 agrees with VVV to $\sim\!10\%$. DECaPS falls far short only within $1^\circ$ of the plane, where
 its sensitivity limit is reached, and is within $12\%$ of VVV elsewhere. The near-infrared map is
-right near the plane and gives $10$--$25\%$ more dust than VVV far from it.
+right near the plane and gives $11$--$24\%$ more dust than VVV far from it.
 
 \paragraph{Corrected results.} Extra dust only makes a source fainter, so its effect can be estimated
 from the draws that exist. The reference dust is the combination the table above supports: DECaPS out
@@ -1687,16 +1702,23 @@ Rubin's footprint events that Roman makes characterisable is unchanged or larger
 $37\%$), and the share with a $10\%$ mass moves by less than four percentage points ($8.9\to8.1\%$,
 $49.5\to53.3\%$ and $14.9\to15.7\%$ for ordinary lenses, black holes and neutron stars). Roman sharpens
 Rubin's timescales by more than before (a median ten-fold for ordinary lenses, instead of six-fold).
-What Rubin adds to Roman's events is still under $0.4\%$ in timescale precision and $9$--$13\%$ in
-the number of $10\%$ masses, and the centroid shifts are unchanged. Every comparison between the
-surveys therefore survives, and those in Roman's favour strengthen. The fractions of Roman's
-detections whose two images are resolvable fall by a quarter to two fifths (black holes at
-$\mathcal{D}=5$: $45\to34\%$).
+What Rubin adds to Roman's events is still under $0.4\%$ in timescale precision and at most
+$9$--$13\%$ in the number of $10\%$ masses, and the centroid shifts are unchanged. Every comparison between the
+surveys therefore survives, and those in Roman's favour strengthen. The one gain in Rubin's favour
+inside the footprint, gap filling (Section~\ref{sec:gap}), could not be corrected this way and can
+only shrink. The fractions of Roman's detections whose two images are resolvable at
+$\mathcal{D}=5$ fall by a quarter for black holes ($45\to34\%$) and by $42$--$43\%$ for neutron
+stars and ordinary lenses.
 
 \paragraph{Limits of the estimate.} The correction assumes that dimming a source changes an event's
 outcomes only through the source's magnitude, with the probability of each outcome measured within a
-field block or visit class. For the median ratios and fractions, events are re-weighted by whether
-they are still detected, so any further loss of precision in the survivors is not included. The
+field block or visit class. Fractions are ratios of corrected yields, each outcome with its own
+probability, so they include the loss of precision; but for the medians of per-event ratios, events
+are re-weighted only by whether they are still detected, so any further loss of precision in the
+survivors is not included, and the joint $10\%$ masses are re-weighted with Roman's magnitude alone. That loss falls mostly on Rubin, whose
+sources are dimmed $4.3$ times as much, so the medians of $\sigma_{\rm joint}/\sigma_{\rm Rubin}$
+understate Roman's gain for Rubin, and what Rubin adds to Roman (the $<0.4\%$ in timescale, the
+$9$--$13\%$ in $10\%$ masses, and gap filling) are upper limits. The
 near-infrared map has a resolution of $15'$, so where it is used it smooths over the patchiness of the
 Galactic-centre dust; its median agrees with VVV's to $5\%$ there, but the spread between sightlines
 is not captured. Where DECaPS is used, its $A_V$ is converted to F146 and $r$ with the simulation's own
@@ -1749,14 +1771,23 @@ A further refinement, not needed for the fix: where the near-infrared map is use
 derived from $A_{K_s}$ with a near-infrared extinction law, instead of through $A_V$ and the
 \citet{Cardelli1989} law.
 
-\subsection{Unexplained tensions}
+\subsection{Comparisons with published forecasts}
+% Source: Roman detections per deg^2 of footprint per day of Roman coverage (693 d):
+% 81,860 / (1.47 x 693) as simulated, 50,350 +- 2,945 / (1.47 x 693) dust-corrected
+% (figures/u1_20260929/u5_corrected_numbers.md); Penny et al. 2019 Table 2 (OPEN_ITEMS).
 \begin{itemize}
-\item \textbf{Roman's detection rate is $(26\pm2)\%$ above \citet{Penny2019}'s} upper bracket:
-  $80.4\pm1.4$ against $63.8$ events per deg$^2$ per day of Roman coverage, at $|u_0|<3$. Four extra low-cadence
-  seasons and a different detection criterion push in this direction, but have not been shown to
-  account for it.
+\item \textbf{Roman's detection rate now falls within \citet{Penny2019}'s bracket.} Per deg$^2$ per day of Roman
+  coverage, their forecast gives $31.9$ events at $|u_0|<1$ and $63.8$ at $|u_0|<3$, and ours should
+  lie below the $|u_0|<3$ figure, since the $\Delta\chi^2$ cut rejects most low-magnification events.
+  As simulated it is $80.4\pm1.4$, $(26\pm2)\%$ above it. With the dust corrected it is $49.4\pm2.9$,
+  $(23\pm5)\%$ below it and inside their bracket, so the model's too-thin dust accounts for the
+  excess. The
+  remaining differences (four extra low-cadence seasons, the detection criterion, the field layout)
+  have not been quantified.
 \item \textbf{Roman's parallax precision is $\sim\!3\times$ worse than \citet{SajadianSahu2023}'s} on
-  matched assumptions; the extinction law has been ruled out as the main cause.
+  matched assumptions, and the cause is not known. The extinction law has been ruled out as the main
+  one, and correcting the dust does not close the gap: it lowers the fraction of Roman's black-hole
+  detections with a $10\%$ mass from $12.7\%$ to $(10.2\pm0.4)\%$.
 \end{itemize}
 
 \subsection{Summary: what to believe}
@@ -1772,12 +1803,12 @@ Roman turns Rubin's footprint detections into measurements ($6$--$8\times$ more 
   from $\sim\!0$ to $8$--$53\%$) & high & Roman photometric error model; astrometric floor \\
 about $60\%$ of detections are outside the footprint, Rubin's alone & high & latitude gradient \\
 gap filling only deep in gaps, for short events, an order of magnitude & medium & $\Neff=62$; $t_0$
-  offset \\
+  offset; not dust-corrected (an upper limit) \\
 satellite parallax $<1\%$ pooled & high & halo orbit (small) \\
 $\tetE$ is Roman's measurement; black-hole $\tetE$ robust & high (bh) & -- \\
 ordinary and neutron-star $\tetE$ and masses & medium--low & correlated astrometric floor \\
-absolute yields $N_1$ & medium--low & dust near the plane (corrected, $-33$ to $-71\%$), latitude gradient,
-  Penny tension \\
+absolute yields $N_1$ & medium--low & dust near the plane (corrected, $-33$ to $-71\%$); latitude
+  gradient, to be re-measured with the corrected dust \\
 yields $N(F)$ & low & $F$ unknown to $\times10$ \\
 $\piE$ and mass fractions against Sajadian \& Sahu & low & unexplained factor 3 \\
 resolving the images: black holes $0.3$--$34\%$ (Roman), others rare & low & the resolution criterion
@@ -1796,16 +1827,18 @@ resolving the images: black holes $0.3$--$34\%$ (Roman), others rare & low & the
   $830\pm110$ lens masses to $10\%$. Dust is the main reason: at the median extinction of
   Roman's footprint detections, $A_V=7.2\pm0.3$, F146 loses $1.4$\,mag where $r$ loses $6.1$.
 \item \textbf{Roman transforms the events Rubin detects inside its footprint.} Adding Roman's data
-  characterises $6$--$8$ times as many of them, sharpens their timescales a median $7$--$17$-fold,
+  characterises $6$--$8$ times as many of them, sharpens their timescales a median $8$--$17$-fold,
   and gives lens masses to $10\%$ for $8\%$ (ordinary lenses), $16\%$ (neutron stars) and $53\%$
-  (black holes) of them, where Rubin alone gives essentially none. The reverse gain is $9$--$13\%$.
+  (black holes) of them, where Rubin alone gives essentially none. The reverse gain is at most
+  $9$--$13\%$.
 \item \textbf{Rubin is the survey everywhere else}, supplying $(58.5\pm5.1)\%$ of all detections from
   outside Roman's footprint, and inside the footprint it matters only for short events that fall
-  wholly inside Roman's gaps, where it improves $\sigma(\tE)$ by an order of magnitude.
+  wholly inside Roman's gaps, where it improves $\sigma(\tE)$ by an order of magnitude as simulated;
+  this gain is not dust-corrected, and the corrected dust can only reduce it.
 \item \textbf{Roman's ten seasons give the parallax of long events on their own}; Rubin's
   longer baseline adds $<0.4\%$ even for multi-year black-hole events. Roman at L2 adds $<1\%$.
-\item \textbf{The combination} characterises events neither survey can alone and adds $9$--$13\%$ to
-  the number of Roman's $10\%$ mass measurements.
+\item \textbf{The combination} characterises events neither survey can alone and adds at most
+  $9$--$13\%$ to the number of Roman's $10\%$ mass measurements.
 \item \textbf{Compact objects.} Roman detects $(5{,}660\pm320)\,F$ black-hole events and
   $(36{,}500\pm2{,}300)\,F$ neutron-star events, measuring $(579\pm42)\,F$ and $(1{,}102\pm72)\,F$
   masses to $10\%$; at $F_{\rm BH}=0.01$ that is $57$ events and $6$ masses. Black-hole Einstein
@@ -1815,9 +1848,11 @@ resolving the images: black holes $0.3$--$34\%$ (Roman), others rare & low & the
   $5\%$ of its own at the most permissive one; for lighter lenses resolution is rare.
 \item \textbf{The astrometric masses of ordinary lenses and neutron stars rest on one assumption}:
   that Roman's centroiding floor averages down over $5\times10^4$ exposures.
-\item \textbf{All numbers here are corrected for the model's too-thin dust near the plane}
-  (Table~\ref{tab:corrected}), with a reference dust checked against the independent VVV reddening
-  map. The correction lowered Roman's footprint yields by $33$--$38\%$ (its $10\%$ masses by
+\item \textbf{The yields, fractions and medians here are corrected for the model's too-thin dust
+  near the plane} (Table~\ref{tab:corrected}), with a reference dust checked against the independent
+  VVV reddening map. The gap-filling gain is as simulated, and the corrected dust can only lower it;
+  Rubin's resolution figure is also as simulated. With the dust corrected, Roman's detection rate
+  falls inside the bracket of \citet{Penny2019}'s forecast, where as simulated it was $26\%$ above it. The correction lowered Roman's footprint yields by $33$--$38\%$ (its $10\%$ masses by
   $46$--$57\%$) and Rubin's by $54$--$71\%$, and left the comparisons between the surveys intact or
   strengthened. The proper fix is to rebuild the extinction tables from DECaPS, with near-infrared dust
   where DECaPS saturates, within $\sim\!1^\circ$ of the plane, and re-run; the adopted GBTDS layout
@@ -1869,8 +1904,8 @@ $0.02^\circ$ grid of about $3{,}700$ sightlines, for all three lens populations.
   the best-measured masses are, and whether there are patches where the dust is thin enough for
   Rubin to contribute more.
 \item \textbf{A sharper comparison with the literature.} Field-by-field yields could be set directly
-  against those of \citet{Penny2019}, which would help locate the $26\%$ excess in Roman's detection
-  rate.
+  against those of \citet{Penny2019}, which would test the agreement with their rate that the dust
+  correction restores.
 \end{itemize}
 
 What it would \emph{not} bring is a change in any result in expectation: a larger run shrinks the
@@ -1920,8 +1955,8 @@ These are the known limitations that most affect the results, roughly in order o
   adopted GBTDS fields, with Rubin's larger fields that only partly overlap Roman's handled
   properly, and Roman's start date revisited.
 \item \textbf{The event rate's latitude dependence.} The Galactic model's event rate is too flat in
-  latitude compared with OGLE-IV. This sets the absolute yields, and may be connected to the excess
-  over \citet{Penny2019}.
+  latitude compared with OGLE-IV. This sets the absolute yields. The comparison was made through the
+  model's too-thin dust, so it has to be repeated with the corrected dust first.
 \item \textbf{The parallax shortfall.} Roman's parallax precision is $\sim\!3$ times worse than
   \citet{SajadianSahu2023} find under matched assumptions, and the cause is not known. Since the
   parallax limits most mass measurements, this matters directly for the black-hole and

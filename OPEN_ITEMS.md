@@ -1617,6 +1617,12 @@ relabel the report's "detected events" row as the Monte Carlo sample size.
 
 ## The model's event rate is too flat in Galactic latitude
 
+**NOTE 2026-09-30 (Deviation 64):** the comparison counts I < 21 sources through the model's
+extinction tables, which are 3-6x too thin within 1 deg of the plane (Deviation 63). Its conclusion
+"footprint yields are more likely under- than over-stated" therefore does not carry over to the
+dust-corrected yields; the report no longer says it. Re-measure on the re-run with rebuilt tables
+(or with the U5 reference dust) before chasing the density model.
+
 **RE-MEASURED 2026-09-26 on the post-fix bulge run** (`figures/yield_20260925/bulge/y1_yields.md`):
 model/observed rate 1.38 at b = -5.1 falling to 0.48 at b = -0.1, crossing 1 near b = -2.3 (was
 1.47 -> 0.60, crossing -1.7). Still too shallow; at the footprint (b ~ -1.4) the model is 25-40% low.
@@ -1780,6 +1786,12 @@ and sigtetE, and checking which piE each partition's mass used.
 
 ## Roman's detection rate now exceeds Penny et al.'s |u0| < 3 figure (2026-09-26)
 
+**STATUS 2026-09-30 (Deviation 64): accounted for by the dust, pending the re-run.** With the U5
+dust correction the rate is 50,350 +- 2,945 / (1.47 x 693) = **49.4 +- 2.9** per deg^2 per day,
+(23 +- 5)% below Penny's |u0| < 3 figure and above the |u0| < 1 one -- where this entry says it should
+sit. The report now says so. Close this item once the re-run with rebuilt extinction tables confirms
+the rate; the "fix would involve" comparison below is then a refinement, not a tension.
+
 **What is wrong.** Per deg^2 of footprint per day of Roman coverage (693 d), Roman detections
 (u0 < 3, delta-chi2 >= 500) are 80.4 post-fix, against Penny et al. (2019) 31.9 (|u0| < 1) and
 63.8 (|u0| < 3). Pre-fix the figure was 40.4, inside that bracket, and the whitepaper called the
@@ -1914,7 +1926,7 @@ the simulator is 0.17 (|b| < 0.5), 0.31 (0.5-1), 0.88 (1-1.5), 1.02-1.11 farther
 the near-infrared map where it cannot. The dust-corrected numbers in the report
 (`figures/u1_20260929/u5_corrected_numbers.md`) use exactly that reference, which tracks VVV to
 0.88-0.99 in every |b| bin. Size of the effect with it: Roman footprint detections x0.62-0.67
-(five-field block x0.83-0.88, GC field x0.07-0.12), Roman 10% masses x0.43-0.54, Rubin footprint
+(five-field block x0.83-0.88, GC field x0.07-0.13 -- u4_hybrid.log 0.068/0.124/0.126), Roman 10% masses x0.43-0.54, Rubin footprint
 x0.29-0.38, Rubin whole scan x0.44-0.46; per-event fractions move by < 4 points. The numbers under
 "Why it matters" below are the Deviation 61 estimate (Marshall at 0.11) and are superseded. The
 concrete fix plan is under "What the fix involves" below.
@@ -1982,6 +1994,12 @@ reaches the results without re-running; U5 is the estimate until then.
    depth, corner cut, adopted GBTDS layout), so the runs are repeated once.
 5. **Check the new runs against U5's corrected numbers** (they should agree within U5's stated
    errors; if not, the efficiency re-weighting misses something -- understand it before use).
+   Then re-measure what U5 could NOT correct (Deviation 64): the gap-filling table (U5 re-weights
+   medians by survival only; Rubin's sources dim 4.3x as much as Roman's, so the reported gains are
+   upper limits), Rubin's image-resolution fractions, the joint/Roman 10%-mass ratio (re-weighted
+   with F146 alone, so an upper limit), the OGLE-IV latitude comparison (it selects I < 21 sources
+   through the dust), and the Penny et al. rate (dust-corrected estimate 49.4 +- 2.9 per deg^2 per
+   day, inside their bracket).
 Not part of this fix, stated in the report as a limit: the V-to-F146/r conversion stays CCM89 at
 R_V 2.5 for the bulge; a near-infrared law for F146 from A_Ks directly would be the next refinement.
 

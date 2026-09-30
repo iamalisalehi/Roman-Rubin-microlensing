@@ -4449,3 +4449,71 @@ Surot2020 (verified against arXiv/Crossref/VizieR). 49 pp, clean build.
 production runs yes. The plan is in OPEN_ITEMS (CRITICAL dust entry, "What the fix involves").
 
 **Commit:** `a96ac94`.
+
+## 64. Overview report audited against the final U5/U4/U6 outputs; conclusions the dust correction changes (2026-09-30)
+
+**Asked:** "is the report up to date with the best numbers and analyses we know as of now?"
+
+**Audit.** Every corrected number in the abstract, Table 11 (`tab:corrected`), Section 5.5, the
+Summary and the "what to believe" table was checked cell by cell against the final
+`figures/u1_20260929/u5_corrected_numbers.{md,csv}` (the 15:45 confirming re-run; the report was
+last edited 15:06, before it, but the re-run is bit-identical except the two new MC errors, which the
+report already carried). All match to rounding. The VVV numbers (contrasts 4.89/4.46/1.07/0.57;
+GC-field columns 33/31/7/2.7; the whole-scan table; b = -0.94: model 2.63, VVV 11.49, DECaPS 10.10;
+b = -1.44: model and VVV 4.82; >= 1,600 nodes per cell; DECaPS flagged reliable on 71.4% of the GC
+field) match `u6.log` / `u6_vvv_check.csv` / `u6_vvv_scan_ejk.csv`; the real-layout factors 1.24 /
+1.15 / 1.18 and slopes match `u4_hybrid.log`; the "45% -> 44%" per-event trend matches `u3.log`
+(real/sim 0.965).
+
+**Found, and changed in the report.**
+1. *Rounding:* "sharpens the timescale a median 7-17-fold" (abstract, Summary 2): 1/0.1331 = 7.5,
+   so 8-17. "The near-infrared map gives 10-25% more dust than VVV far from it": 11-24% (1.113, 1.235).
+   "Resolvable fractions fall by a quarter to two fifths": at D=5 they fall 25% (bh), 42% (ns), 43%
+   (ordinary; 0.799/1.390).
+2. *Penny et al. 2019 tension resolved by the dust.* The 80.4 per deg^2 per day was the AS-SIMULATED
+   rate (81,860 / (1.47 x 693)). Dust-corrected: 50,350 +- 2,945 / (1.47 x 693) = **49.4 +- 2.9**,
+   (23 +- 5)% BELOW Penny's |u0| < 3 figure (63.8) and above their |u0| < 1 one (31.9) -- where
+   OPEN_ITEMS said it should sit. "Unexplained tensions" renamed "Comparisons with published
+   forecasts" and rewritten; Next-steps and open-item 5 references to "the 26% excess" replaced; the
+   "what to believe" row no longer lists a Penny tension; Summary item 9 states it.
+3. *OGLE-IV latitude argument.* "Footprint yields are more likely under- than overstated" (Section
+   4 absolute-yields text; modelling-uncertainties item 4) ignored the dust. The OGLE comparison counts I < 21 sources
+   through the model's own too-thin dust (OPEN_ITEMS says so), so it must be re-measured with the
+   corrected dust before it says anything about the corrected yields. Text changed accordingly.
+4. *Gap filling was never dust-corrected*, and U5 cannot correct it: medians of per-event ratios are
+   re-weighted by survival only, not by precision loss. The extra dust dims r 4.3x as much as F146
+   (0.854/0.197), and Rubin's relative precision loss exceeds Roman's in either noise regime
+   (source-limited Rubin 10^(0.171 dA_V) vs sky-limited Roman 10^(0.079 dA_V)), so Rubin's share of
+   the joint forecast, and every gap-filling gain, can only shrink. The abstract ("every number below
+   is corrected") and Section 4's note ("per-event results essentially as they are") said otherwise.
+   Now labelled as simulated / an upper limit in the abstract, the Results note, the gap-filling
+   subsection, Section 5.5, Summary 3 and "what to believe".
+5. *Rubin-for-Roman numbers are upper limits.* U5 re-weights the joint 10% masses with F146 alone
+   (`f(mJ, F, dF)`), so Rubin's own dimming is not in them: "adds 9-13% to the 10% masses" is now
+   "at most 9-13%" (abstract, Summary 2 and 5, Section 5.5); Section 5.5 "Limits" says which way
+   each omission cuts (sigma_J/sigma_Rubin medians understate Roman's gain; Rubin's contributions
+   are upper limits).
+6. *Labelling:* the N_1 table (`tab:n1`) caption and the absolute-yields text now say "as simulated" and give the
+   corrected compact-object yields (28-170 bh events, 3-17 masses; 180-2,190 ns, 6-66; 1% masses
+   26 F bh vs 3 ordinary); Summary 9 no longer says "all numbers here are corrected"; Section 5.4's
+   per-event trends are marked as measured with the model's dust; the ambiguous "as simulated ...
+   22-25% too high" is now "the real survey should detect 22-25% fewer than as simulated, 15-24% more
+   than corrected" (0.615 x 1.239 = 0.762, 0.674 x 1.149 = 0.775, 0.630 x 1.184 = 0.747).
+7. *Stale cross-reference:* Section 5.4 cited the latitude item as "item 3"; it is item 4 of the
+   modelling-uncertainties list since the dust item was inserted.
+8. *SS23 parallax tension:* the dust correction does not close it (Roman bh 10%-mass fraction of
+   detections 12.7 -> 10.2 +- 0.4%); stated.
+9. *Section 5.5 "Limits" misdescribed U5:* it said fractions are re-weighted by survival only. They
+   are ratios of corrected yields, each with its own outcome efficiency; only the medians use the
+   survival-only weight (U5 docstring). Corrected.
+10. *Record only (not in the report):* Deviation 63 and OPEN_ITEMS gave the GC-field Roman factor as
+   x0.07-0.12; `u4_hybrid.log` has 0.068 / 0.124 / 0.126, i.e. x0.07-0.13. OPEN_ITEMS corrected.
+
+**Build and commit:** the Bash permission check failed repeatedly after the edits, so the PDF was not
+rebuilt in-session; the user was given the build and commit commands.
+
+**Not changed (checked, correct):** every Table 11 cell; abstract yields, errors, F ranges; the 8-10x
+Roman/Rubin footprint ratio (8.3-10.4); 6-8x characterised; 33-38% / 46-57% / 62-71% / 54-56% drops.
+
+**Open, for the user:** a quantitative dust correction of the gap-filling table needs either a
+per-event error rescaling (an approximation) or a run with rebuilt tables; not attempted.

@@ -251,30 +251,15 @@ Sajadian & Makler). Three steps, each approved before it starts:
     to the plane than the real layout** (five-field block b -1.2 vs -1.40); 83% of the simulated
     footprint lies on real detectors, covering 58% of the real tiles. Rubin covers 62.4 deg^2, of
     which 59.3 produce detections. Commit db2e616.
-  - **⏸ PAUSED 2026-09-29 ~19:00 (user had to leave), mid-task.** Task: the report's abstract,
-    summary etc. must quote the DUST-CORRECTED results with uncertainties, and Section 5.5 must say
-    clearly what is wrong with the extinction and how to fix it. State:
-    * **Diagnosis sharpened (user's question):** maps.py uses Bayestar for dec > -30 (almost all of
-      Roman's footprint, dec ~ -29) and DECaPS south of it. DECaPS covers ALL 1,829 sightlines and is
-      within ~10-25% of Marshall except |b| < 0.5 deg (0.75-0.81; GC field 7.9 vs 24). Bayestar part
-      of the model: 0.20 (|b|<0.5), 0.35 (0.5-1). So the fix = rebuild files/ext with DECaPS
-      everywhere (drop the dec rule) + near-IR (Marshall) within ~0.5 deg of the plane, check, re-run.
-      Report Section 5.5 (What the simulation does / What is wrong / How we know [new DECaPS row] /
-      How to correct it [5 steps]), Section 2.1 dust item, modelling item 2, next-steps item already
-      rewritten accordingly (NOT yet rebuilt/checked as PDF; NOT committed).
-    * **`analysis/u5_corrected_numbers.py` IN FLIGHT** (nohup, started ~18:45): every headline number
-      dust-corrected (per-draw distance, efficiency re-weighting, epoch-by-epoch resolution recount)
-      with mc + syst (A_Ks/A_V 0.10-0.114, pooled vs per-block efficiency, 8 kpc vs per-draw).
-      Output `figures/u1_20260929/u5_corrected_numbers.{md,csv}`, log `u5.log`; finished when u5.log
-      ends with `[memrun]`. Its "as simulated" column must reproduce the report (checked on bh in a
-      test run: it does). Needs extracts `runs/prod_{bh,ns}_20260924/test{bh,ns}_rubincols.dat` (made).
-    * **Next:** (1) check u5 output (as-simulated column == report; whole-scan Rubin not NaN);
-      (2) add a table in Section 5.5 "headline numbers, as simulated and dust-corrected" with
-      uncertainties; (3) put the corrected numbers (with total errors) in the abstract and the
-      summary list, and a note at the top of Section 4 that its numbers are as simulated; (4) build
-      the PDF, check pages; (5) DEVIATIONS 62 (DECaPS diagnosis + U5) and OPEN_ITEMS dust entry
-      update; (6) commit -- the Deviation-61 batch is ALSO still uncommitted (the auto-mode shell
-      check failed repeatedly); user asked: try to commit, and if it fails send the commands.
+  - **DONE 2026-09-30 (Deviation 62): report quotes DUST-CORRECTED results with uncertainties.**
+    `analysis/u5_corrected_numbers.py` -> `figures/u1_20260929/u5_corrected_numbers.md` (zero-correction
+    column reproduces every reported value). Headlines: Roman footprint detections 60,600+-2,300
+    (ordinary), (6,520+-270)F bh, (43,800+-1,800)F ns; 10% masses 1,060+-110, (744+-37)F, (1,441+-91)F;
+    Rubin whole scan 96,300+-7,300. Diagnosis: the fault is Bayestar + maps.py's dec=-30 rule (DECaPS
+    covers everything and is close to right except |b|<0.5); plus 78 empty (all-NaN) extinction
+    tables read as zero dust (20 sightlines south of the footprint) -- both in OPEN_ITEMS. Section 5.5
+    restructured (what is wrong / how we know / corrected results, Table 11 / how to correct it);
+    abstract, summary, Section 4 note updated. User's WIP commit 8e7d995; the rest not yet committed.
   - **CRITICAL (Deviation 61): the model's dust is 3-4x too thin within 1 deg of the plane**
     (optical Bayestar/DECaPS saturate; checked against Marshall 2006 near-IR). Estimated
     corrections: Roman footprint yields x0.76-0.81 (GC field x0.22-0.34), Rubin whole scan x0.56,

@@ -92,7 +92,14 @@ class Dust:
         i = int(np.argmin((self.pos[:, 0] - l) ** 2 + (self.pos[:, 1] - b) ** 2))
         if i not in self._model:
             a = np.loadtxt(self.files[i])
-            self._model[i] = np.interp(DGRID, a[:, 2], a[:, 3])
+            if not np.isfinite(a[:, 3]).any():
+                # A "total dropout" table (78 of 2,518, all just north of dec -30 where Bayestar
+                # has no data): every A_V is NaN. The simulator reads it with >>, the stream fails
+                # on the first "nan", and the sightline is simulated with ~zero dust (measured:
+                # median A_r 0.0002 mag on its detections). So the model's dust here IS zero.
+                self._model[i] = np.zeros(DGRID.size)
+            else:
+                self._model[i] = np.interp(DGRID, a[:, 2], a[:, 3])
         return self._model[i]
 
     def aks_profile(self, l, b):

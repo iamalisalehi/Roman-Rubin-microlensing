@@ -1901,6 +1901,14 @@ excludes the current GC field; with the distance test that stops mattering.
 
 ## CRITICAL: the dust is three to four times too thin within 1 deg of the Galactic plane (2026-09-29)
 
+**UPDATE 2026-09-30 (Deviation 62): the fault is Bayestar plus maps.py's dec = -30 rule, not the
+optical maps in general.** DECaPS covers all 1,829 sightlines and agrees with Marshall to ~10-25%
+except within ~0.5 deg of the plane (GC field 7.9 vs 24); where the model used Bayestar it has
+0.20x (|b|<0.5) and 0.35x (0.5-1) Marshall's dust. Fix: drop the rule, DECaPS everywhere, near-IR
+within ~0.5 deg; check against Marshall; re-run. Dust-corrected headline numbers with errors:
+`analysis/u5_corrected_numbers.py` -> `figures/u1_20260929/u5_corrected_numbers.md` (the report now
+quotes these).
+
 **What is wrong.** `files/ext/` (maps.py) takes A_V(d) from Bayestar19 (dec > -30 deg) and DECaPS
 (dec < -30 deg), both built from OPTICAL photometry. Toward the inner bulge their stars cannot be
 seen through the dust lanes near the plane, the profiles saturate after a few kpc, and the
@@ -1931,3 +1939,26 @@ to the bulge matches the NIR map where Bayestar's reliable distance is short (`m
 ignores Bayestar's `reliable_dist` flag). Re-run `make extinctiontest`, compare the new A_V(8 kpc)
 map against Marshall, then the production runs. Do it together with the Roman F146 depth fix and
 the adopted GBTDS layout, so the runs are repeated once.
+
+## 78 extinction tables are empty (all NaN) and the simulator silently reads them as zero dust (2026-09-30)
+
+**What is wrong.** 78 of the 2,518 `files/ext/bayestar_*.txt` tables hold `nan` at every distance
+("TOTAL DROPOUT -- needs neighbor fallback" in maps.py; the fallback was never written). All 78 lie
+at dec -30.0..-29.1, just north of maps.py's dec = -30 switch, so they were sent to Bayestar, whose
+southern edge is ragged there and has no data. `readBayestar()` (helper.cpp) reads each table with
+`>>` and never checks the stream: the first `nan` fails the read, the rest of the file is never read,
+and sources whose nearest table is one of these get essentially no dust. Measured on the production
+detections: median A_r 0.0002 mag (max 0.017; half exactly 0) against ~3 mag elsewhere.
+
+**Why it matters scientifically.** 20 scan sightlines use these tables -- a contiguous patch at
+l ~ 0.1-0.7+, b ~ -2.1..-2.9, just south of Roman's footprint -- carrying 1.3-1.7% of all simulated
+detections (none in Roman's footprint). Unextincted, their Rubin detections are strongly
+over-produced, so the whole-scan Rubin totals are inflated. The dust-corrected estimate
+(`analysis/u5_corrected_numbers.py`) now treats these sightlines as the zero-dust ones they were.
+
+**Why deferred.** Same fix and same re-run as the CRITICAL dust entry above.
+
+**What the fix involves.** (1) Rebuild the tables from DECaPS, which has data at all 1,829 scan
+sightlines (removes the dropouts). (2) In `readBayestar()`, check `fin` after each row and refuse a
+table that fails to parse or contains a non-finite value, instead of continuing on a failed stream.
+(3) Have maps.py exit on a total dropout rather than print a note.

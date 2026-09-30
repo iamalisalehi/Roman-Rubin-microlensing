@@ -4291,4 +4291,54 @@ quoted. Aladin explained and cited (Bonnarel et al. 2000) in the Fig. 7 caption;
 added to refs.bib (both verified). 46 pp, clean build. User's own added sentence (Fig. 3 paragraph)
 kept.
 
-**Commit:** not yet committed.
+**Commit:** `8e7d995` (committed by the user, WIP).
+
+## 62. The dust fault is Bayestar and the declination rule; 78 empty tables; the report now quotes dust-corrected numbers (2026-09-29/30)
+
+**What was asked (user).** The report must be clear about what is wrong with the extinction and what
+to do; the abstract and summary must report the CORRECTED results with uncertainties. And: "are you
+sure we need new dust maps and new production runs? maps.py used both Bayestar AND DECaPS."
+
+**Diagnosis sharpened (the user's question was right).** maps.py uses DECaPS only south of dec -30
+and Bayestar north of it; Roman's footprint (dec ~ -29) is almost entirely Bayestar. DECaPS covers
+ALL 1,829 scan sightlines. At 8 kpc against Marshall (A_Ks/A_V 0.11): the model where it used
+Bayestar is 0.20 (|b|<0.5), 0.35 (0.5-1), 1.09-1.35 farther out; DECaPS is 0.75-0.81, 1.06-1.13,
+0.97-1.25. So the optical-map problem is Bayestar's (it saturates behind the dust lanes), DECaPS is
+close to right except within ~0.5 deg of the plane (GC field: DECaPS 7.9 vs Marshall 24). Fix = the
+declination rule, not a new map: rebuild files/ext with DECaPS everywhere, near-IR within ~0.5 deg,
+check, re-run (the extinction is applied to every source inside the simulation, so the tables
+cannot be corrected without new runs; U5 is the estimate until then).
+
+**Second fault found: 78 empty tables.** All-NaN "total dropout" tables, all at dec -30.0..-29.1
+(Bayestar's ragged southern edge, reached only because of the rule). readBayestar() never checks the
+stream: the first `nan` fails it and the sightlines using those tables were simulated with ~zero dust
+(median A_r 0.0002 mag on their detections). 20 sightlines at l ~ 0.1-0.7, b ~ -2.1..-2.9, holding
+1.3-1.7% of detections, none in Roman's footprint. OPEN_ITEMS entry. (U4's Part 3 had left them
+uncorrected; U5 models them as the zero-dust sightlines they were.)
+
+**New: `analysis/u5_corrected_numbers.py`** -> `figures/u1_20260929/u5_corrected_numbers.{md,csv}`,
+`u5.log`. Per-draw dA_V at each source's own distance (model table as nearestSightline() picks it,
+empty tables = zero dust; Marshall profile per sightline); every outcome re-weighted by
+eff_S(m + dm)/eff_S(m) with eff measured per field block (footprint) or Rubin visit class (whole
+scan); composites use the product of the two surveys' factors; the resolution count redone per epoch
+with dimmed F146 at the 5-sigma depth. Errors: MC (Poisson / delta-method / bootstrap) (+) syst =
+A_Ks/A_V 0.10-0.114 half-range, per-block vs pooled efficiency, per-draw vs 8-kpc distance. The
+zero-correction column reproduces every reported value (Roman 81,860 / 8,398 / 57,940; masses
+1,930 / 1,068 / 2,286; Rubin whole scan 1.749e5 / 2.434e4 / 1.411e5; RfR fractions; ...).
+
+**Corrected headlines** (ordinary / bh / ns; N_1 per unit F): Roman detections 60,600+-2,300 /
+6,520+-270 / 43,800+-1,800; Roman 10% masses 1,060+-110 / 744+-37 / 1,441+-91; Rubin footprint
+9,540+-1,010 / 1,097+-74 / 6,510+-580; Rubin whole scan 96,300+-7,300 / 13,600+-970 / 76,500+-5,600;
+outside-footprint share 57.4+-1.0 / 65.6+-1.0 / 60.3+-0.8 %; RfR characterised alone->joint
+4.2->27.8 / 12.6->82.0 / 4.9->37.4 %; RfR 10% masses joint 6.9 / 53.5 / 15.1 %; median
+sigma_J/sigma_Rubin(tE) 0.115 / 0.061 / 0.133; Rubin's effect on Roman <0.4%; joint/Roman masses
+1.08 / 1.13 / 1.14; Roman P(resolvable) D=5 1.0 / 39.4 / 2.1 %; median A_V of Roman's footprint
+detections 5.3-5.4 (model 3.6-4.2).
+
+**Report.** Abstract and summary rewritten on the corrected numbers with total errors; Section 4
+opens with a note that its numbers are as simulated; Section 5.5 restructured (what the simulation
+does / what is wrong -- Bayestar and the rule, plus the empty tables / how we know, with a DECaPS
+row / corrected results with Table 11 / what it does / limits / how to correct it, 5 steps);
+Section 2.1 dust item, modelling item 2 and next-steps items updated. 48 pp, clean build.
+
+**Commit:** not yet committed. (Deviation 61's batch was committed by the user as 8e7d995.)

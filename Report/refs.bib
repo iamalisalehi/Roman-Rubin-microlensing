@@ -356,3 +356,55 @@
   url          = {https://roman-docs.stsci.edu/roman-instruments/the-wide-field-instrument/observing-with-the-wfi/wfi-quick-reference},
   note         = {Last updated 2025 January 2; accessed 2026 September 30}
 }
+
+% --- added 2026-09-30 (Deviation 67): the three uncited inputs of the overview report ---
+% baseline_v5.1.0 verified as the source of Baseline/BulgeBaseline.dat (23/23 sampled rows match
+% observationId, RA, Dec, fiveSigmaDepth); Naghib2019 via Crossref; RubinScheduler via DataCite
+% (concept DOI, all versions); layout_40395.centers read from the repository and identical to
+% FIELDS_L_B in Baseline/generateRomanBaseline.py; Kalirai2008 eq. (Mf = 0.109 Mi + 0.394) read in
+% arXiv:0706.3894 and matching helper.cpp.
+@article{Naghib2019,
+  author  = {Naghib, Elahesadat and Yoachim, Peter and Vanderbei, Robert J. and Connolly, Andrew J.
+             and Jones, R. Lynne},
+  title   = {A Framework for Telescope Schedulers: With Applications to the {Large Synoptic Survey
+             Telescope}},
+  journal = {The Astronomical Journal},
+  volume  = {157},
+  number  = {4},
+  pages   = {151},
+  year    = {2019},
+  doi     = {10.3847/1538-3881/aafece}
+}
+
+@misc{RubinScheduler,
+  author       = {Yoachim, Peter and Jones, Lynne and Neilsen, Jr., Eric H. and others},
+  title        = {rubin\_scheduler: the Feature Based Scheduler for the {Vera C. Rubin Observatory}},
+  howpublished = {Zenodo, software},
+  year         = {2026},
+  doi          = {10.5281/zenodo.10076770},
+  note         = {Concept DOI covering all versions; the survey simulation used here is
+                  \texttt{baseline\_v5.1.0\_10yrs}}
+}
+
+@misc{PennyGBTDSoptimizer,
+  author       = {Penny, Matthew T.},
+  title        = {gbtds\_optimizer: a tool for optimizing yields or metrics for the {Roman} {Galactic}
+                  {Bulge} {Time} {Domain} {Survey}},
+  howpublished = {GitHub repository},
+  year         = {2024},
+  url          = {https://github.com/mtpenny/gbtds_optimizer},
+  note         = {Field layout \texttt{field\_layouts/layout\_40395.centers}; accessed 2026 September 30}
+}
+
+@article{Kalirai2008,
+  author  = {Kalirai, Jasonjot S. and Hansen, Brad M. S. and Kelson, Daniel D. and Reitzel, David B.
+             and Rich, R. Michael and Richer, Harvey B.},
+  title   = {The Initial-Final Mass Relation: Direct Constraints at the Low-Mass End},
+  journal = {The Astrophysical Journal},
+  volume  = {676},
+  number  = {1},
+  pages   = {594--609},
+  year    = {2008},
+  doi     = {10.1086/527028},
+  note    = {arXiv:0706.3894}
+}

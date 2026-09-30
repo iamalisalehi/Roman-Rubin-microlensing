@@ -319,8 +319,9 @@ half turns the simulated sample into statements about the real sky.}
   dust near the plane and there gives three to six times too little dust (Section~\ref{sec:dust}).
 \item[Lenses.] Each run simulates one population. \emph{Ordinary lenses} are the present-day
   population of a $\sim\!10$\,Gyr-old bulge: masses drawn from the \citet{Kroupa2001} initial mass
-  function and evolved into what remains -- unevolved stars below $1\,\Msun$, white dwarfs,
-  $1.4\,\Msun$ neutron stars and $5$--$29\,\Msun$ black holes. \emph{Black holes} are drawn
+  function and evolved into what remains -- unevolved stars below $1\,\Msun$, white dwarfs (by the
+  initial--final mass relation of \citealt{Kalirai2008}), $1.4\,\Msun$ neutron stars and
+  $5$--$29\,\Msun$ black holes. \emph{Black holes} are drawn
   log-uniformly over $3$--$1000\,\Msun$. \emph{Neutron stars} follow a Gaussian distribution of
   $1.35\pm0.15\,\Msun$ truncated to $1.1$--$2.2\,\Msun$, one distribution standing in for the
   measured masses, which span $\approx1.1$--$2\,\Msun$ and which \citet{OzelFreire2016} describe,
@@ -328,11 +329,13 @@ half turns the simulated sample into statements about the real sky.}
   $0.09$--$0.23\,\Msun$. The lens distance is
   drawn along the sightline in proportion to the event rate, and the velocities from the Galactic
   kinematics of each component.
-\item[Schedules.] Rubin's visits are those of the LSST baseline cadence simulation, each with its own
-  time, band and $5\sigma$ depth. Roman's are generated from the published GBTDS design
-  \citep{ROTAC2025,STScIGBTDS} (Fig.~\ref{fig:timeline}). Its six fields are placed at a notional layout
-  (five contiguous fields at $b=-1.2^\circ$ and one on the Galactic centre, from M.\ Penny's GBTDS
-  field-layout tool) and each is modelled as a circle of the published per-field area,
+\item[Schedules.] Rubin's visits are those of the LSST baseline cadence simulation
+  \texttt{baseline\_v5.1.0}, made with the Feature-Based Scheduler
+  \citep{Naghib2019,RubinScheduler}, each with its own time, band and $5\sigma$ depth. Roman's are
+  generated from the published GBTDS design \citep{ROTAC2025,STScIGBTDS} (Fig.~\ref{fig:timeline}).
+  Its six fields are placed at a notional layout (five contiguous fields at $b=-1.2^\circ$ and one
+  on the Galactic centre: layout 40395 of M.\ Penny's GBTDS field-layout tool,
+  \citealt{PennyGBTDSoptimizer}) and each is modelled as a circle of the published per-field area,
   $0.28$\,deg$^2$; the circles overlap, so the modelled footprint is $1.47$\,deg$^2$ rather than
   the design's $1.7$. Roman observes from L2, Rubin from Earth.
 \item[Noise.] Rubin's photometric error follows the LSST model with each visit's own depth
@@ -1456,11 +1459,13 @@ semi-analytic re-count of resolvable visits against the simulator's own count & 
   (item~2), so it must be repeated with the corrected dust before its effect on the corrected
   footprint yields is known.
 \item \textbf{Mass functions are assumptions}: log-uniform black holes taken as the truth, a single
-  Gaussian for neutron stars (the real distribution may be bimodal), and a simple initial--final mass
+  Gaussian for neutron stars (the measured masses differ by class and may be bimodal;
+  \citealt{OzelFreire2016}), and a simple initial--final mass
   relation for the remnants among ordinary lenses. Yields scale with $F$, which is uncertain by an
   order of magnitude; this is why $N_1$ is quoted.
 \item \textbf{The GBTDS footprint is a notional layout}, not the adopted one: six fields placed
-  with M.\ Penny's field-layout tool and modelled as overlapping circles, $1.47$\,deg$^2$ against
+  with M.\ Penny's field-layout tool \citep{PennyGBTDSoptimizer} and modelled as overlapping
+  circles, $1.47$\,deg$^2$ against
   the design's $1.7$\,deg$^2$, and $\sim\!0.2^\circ$ closer to the plane than the real fields;
   $79\%$ of it lies on real detectors (Fig.~\ref{fig:footreal}). With realistic dust the real
   layout would give Roman $15$--$24\%$ more events (Section~\ref{sec:footunc}). The partial overlap of Rubin's wide pointings with Roman's

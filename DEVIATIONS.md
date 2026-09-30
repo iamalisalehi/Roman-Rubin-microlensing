@@ -4657,3 +4657,52 @@ misreading of Penny; the postfix report was not checked for it. Recorded in OPEN
 
 **Build.** `latexmk -pdf` clean, 49 pp, 0 TODO, 30 bibliography entries, no undefined citations,
 no BibTeX warnings. Commit `4ba5c07`.
+
+## 67. Three missing citations added to the overview report; the Penny misreading fixed in the populations report, postfix report and whitepaper (2026-09-30)
+
+**Asked:** "do citations and Penny fixes" -- the follow-ups Deviation 66 listed.
+
+**Citations (overview report, `Report/refs.bib`).**
+- *Rubin cadence simulation.* `Baseline/BulgeBaseline.dat` verified to come from
+  `baseline_v5.1.0_10yrs.db`: 23/23 sampled rows (first, second, last and 20 random) match its
+  `observationId`, `fieldRA`, `fieldDec` and `fiveSigmaDepth`; the first row is MJD 61141.31 =
+  2026-04-11, the simulation's day 0. Now named in the text and cited as Naghib et al. 2019 (AJ 157,
+  151, the Feature-Based Scheduler; Crossref) and rubin_scheduler (Zenodo concept DOI
+  10.5281/zenodo.10076770; DataCite). **The whitepaper's Table caption says `baseline_v5.3.0` --
+  wrong; not changed here.**
+- *Penny's field-layout tool.* It is `github.com/mtpenny/gbtds_optimizer`; its
+  `field_layouts/layout_40395.centers` is identical to `FIELDS_L_B` in
+  `Baseline/generateRomanBaseline.py`. Cited as `PennyGBTDSoptimizer` in the Schedules paragraph and
+  in Sec. 5 item 6. (The same repository holds the adopted layout, `gbtds_{spring,autumn}_2026.4.3`,
+  five fields at b = -1.400 and GC at (0.055, -0.221) -- consistent with the Aladin-derived centres in
+  Deviation 59.)
+- *White-dwarf initial-final mass relation.* Kalirai et al. 2008 (ApJ 676, 594) eq.:
+  Mf = (0.109 +- 0.007) Mi + 0.394, read in arXiv:0706.3894; matches `helper.cpp`. Cited where the
+  remnants are described. Sec. 5 item 5's "may be bimodal" now cites Ozel & Freire 2016.
+
+**Penny misreading fixed elsewhere** (both of Penny et al.'s figures are detections; Deviation 66):
+- `Report/populations/populations_report.tex`: abstract and Sec. 5 no longer call Penny a
+  validation; table reordered (63.8 is the like-for-like figure); the "bracket" paragraph replaced
+  (pre-fix 40.4 is 37% below 63.8; designs differ, unquantified; a factor-of-two check), with a
+  visible note that the earlier reading was wrong; "The OGLE row, by contrast," -> "The OGLE row".
+  SS23 section: N_e,tot = 27,000 is Penny's |u0| < 1 detections (was "total event count"); 7.2 ->
+  7.3; the u0 < 1 sample added as a cause of the factor 2.3, "exactly what the factor 2.3 is" ->
+  "the direction of ...; how it divides ... has not been measured"; abstract likewise.
+- `Report/postfix/postfix_report.tex`: 7.2 -> 7.3, factor 4.4 -> 4.3, sample caveat added.
+- `Whitepaper/whitepaper.tex`: the Penny paragraph (~l. 716) rewritten -- 80.4 is 1.26x the
+  like-for-like 63.8, pre-fix 40.4 was 0.63x, the bracket reading named as a misreading, and the
+  unsupported "both [differences] push this way" removed; the dust-corrected 49.4 is in a LaTeX
+  comment only (the whitepaper has no dust correction yet; Phase G). Open-items bullet (~l. 1222)
+  reworded. SS23 sentence: 7.3, factor 4.3, sample caveat.
+
+**Not changed, flagged:** the SS23 *characterisation* deficit is still presented as unexplained in
+the populations report (abstract, Sec. 7), postfix report and whitepaper (~l. 1196, "the parallax
+deficit has another cause"), although Deviation 65 traced it to the sample definition. Whitepaper
+bib: `Biswas2019OpSim` is garbled (the DOI 10.3847/1538-4365/ab4b44 does not exist; the arXiv ID
+1905.02887 is Biswas et al. 2020, ApJS, "Enabling Catalog Simulations of Transient and Variable
+Sources Based on LSST Cadence Strategies", doi 10.3847/1538-4365/ab72f2); the whitepaper bib has not
+been audited.
+
+**Build.** overview 50 pp, populations 15 pp, postfix 13 pp: 0 TODO, 0 undefined, 0 BibTeX
+warnings. Whitepaper 56 pp, 0 undefined; its one BibTeX warning (empty author in
+`RomanBHbinaries`) predates this change.

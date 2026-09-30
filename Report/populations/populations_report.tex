@@ -51,10 +51,12 @@ event rate and an assumed abundance $F$ to each draw, we also convert the Monte 
 into absolute yields: for $F_{\rm BH}=0.01$ Roman sees $\sim\!49$ black-hole events over a decade,
 of which $\sim\!4$ have their mass measured to $10\%$. Because the yield is exactly linear in $F$, we also give the yield per unit
 abundance for every selection, and the recipe that produces it, so that any $F$ can be used. The normalisation is validated against the
-code's own optical depth to $0.1\%$, against OGLE-IV, and against \citet{Penny2019}. Matched to
+code's own optical depth to $0.1\%$ and against OGLE-IV, and Roman's detection rate is compared with
+that of \citet{Penny2019}. Matched to
 the mass function and abundance of \citet{SajadianSahu2023}, we detect $\sim\!2.3\times$ more
-black holes per unit area and season than they do --- consistent with the final survey design
-filling the $2.3$-year season gap their forecast was built around --- but characterise a smaller
+black holes per unit area and season than they do --- in the direction expected from the final
+survey design, which fills the $2.3$-year season gap their forecast was built around, and from
+their narrower sample of events with $u_0<1$ --- but characterise a smaller
 fraction of them, a deficit concentrated on the parallax rather than on the astrometry.
 \end{abstract}
 
@@ -407,8 +409,8 @@ The rate constants in Eq.~(\ref{eq:gamma}) are checked three ways before being u
 from these constants, $\tau = (\pi/2u_{0,\max})\langle\gamma \tE\rangle$, is compared against the
 optical depth the C++ computes independently for every sightline, and agrees to $0.1\%$ in the
 pooled sum. The second is external: the event rate and optical depth for OGLE-like sources
-($I<21$, $u_0<1$) are compared against \citet{Mroz2019}. The third fixes the Roman
-normalisation against \citet{Penny2019}.
+($I<21$, $u_0<1$) are compared against \citet{Mroz2019}. The third compares Roman's detection
+rate with that of \citet{Penny2019}.
 
 \begin{table}[h]
 \centering
@@ -429,19 +431,28 @@ internal, $\tau$   & rebuilt $/$ C++ \texttt{opt\_1e6}, bulge run & 0.9985 \\
 OGLE-IV, $\Gamma$  & model $/$ observed at $b = -1.5^\circ$      & 0.97 \\
                    & model $/$ observed at $b = -5.1^\circ$      & 1.47 \\
 \midrule
-\citet{Penny2019} & events deg$^{-2}$ d$^{-1}$, $|u_0|<1$       & 31.9 \\
+\citet{Penny2019} & detections deg$^{-2}$ d$^{-1}$, $|u_0|<3$   & 63.8 \\
+                   & \quad (for reference, $|u_0|<1$)             & 31.9 \\
                    & \textbf{this work}, $u_0<3$, $\Delta\chi^2\ge500$ & \textbf{40.4} \\
-                   & events deg$^{-2}$ d$^{-1}$, $|u_0|<3$       & 63.8 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The Penny bracket is predicted rather than fitted, and is the reason it is persuasive: sampling
-$u_0<3$ obliges us to exceed the $|u_0|<1$ count, while the $\Delta\chi^2\ge500$ cut rejects most
-low-magnification events --- a $u_0=3$ light curve peaks at $A=1.017$ --- obliging us to fall
-below the $|u_0|<3$ count. We land between the two.
+% Corrected 2026-09-30 (Deviation 67). This paragraph used to read Penny et al.'s |u0| < 3 figure as
+% ALL events and claim a "predicted, not fitted" bracket; their Sec. 2 says both figures are
+% detections ("we can expect to detect ~27,000 microlensing events with |u0| < 1 and roughly
+% twice this with |u0| < 3").
+Both of Penny et al.'s figures are detections: they expect Roman to detect $\sim\!27{,}000$ events
+with $|u_0|<1$ and roughly twice that with $|u_0|<3$, while three times as many events occur at
+$|u_0|<3$. Our detections, with $u_0$ drawn up to $3$, therefore compare with the second figure,
+and fall $37\%$ below it. (An earlier version of this report read the $|u_0|<3$ figure as all
+events and our rate as bracketed by the two; that reading was wrong.) The two surveys are not
+simulated alike -- ten seasons here against six, four of ours at low cadence, and different
+detection criteria, field layouts and source counts -- and none of these differences has been
+quantified, so this row is a check that the normalisation is right to within a factor of two,
+not a validation at the level of tens of per cent.
 
-The OGLE row, by contrast, is a real discrepancy and is reported as one. The model reproduces the
+The OGLE row is a real discrepancy and is reported as one. The model reproduces the
 observed rate near the minor axis but overproduces events by $\sim\!40\%$ at $|b|=5^\circ$: its
 latitude gradient is too shallow. Yields quoted for the full $59\,\mathrm{deg}^2$ scan inherit
 that error and should be read as accurate to a few tens of per cent; yields inside Roman's
@@ -660,7 +671,8 @@ Fig.~\ref{fig:yieldF}:
 \subsection{Comparison with \texorpdfstring{\citet{SajadianSahu2023}}{Sajadian \& Sahu (2023)}}
 
 Their method is not ours and the two must be aligned before any number is compared. They take
-Roman's \emph{total} event count $N_{e,\rm tot}=27{,}000$ from \citet{Penny2019} as given, and
+$N_{e,\rm tot}=27{,}000$, \citet{Penny2019}'s forecast of Roman's detections with $|u_0|<1$, as
+given, and
 multiply it by two factors: $F_1 = 0.019$, the fraction of stellar mass in black holes, obtained
 from the Besan\c{c}on disc initial mass function by converting every star born above $20\,\Msun$
 into a remnant; and $F_2$, the ratio of $\langle\epsilon(\tE)/\tE\rangle$ for black holes to the
@@ -680,7 +692,7 @@ by a factor $\sim\!2.3$:
 \toprule
  & detections & deg$^2$ $\times$ seasons & per deg$^2$ per season \\
 \midrule
-\citet{SajadianSahu2023}, $\alpha=1$, $F_1=0.019$ & 86  & $1.96\times6$  & 7.2 \\
+\citet{SajadianSahu2023}, $\alpha=1$, $F_1=0.019$ & 86  & $1.96\times6$  & 7.3 \\
 this work, $3$--$50\,\Msun$, $F=0.019$           & 245 & $1.47\times10$ & 16.7 \\
 \bottomrule
 \end{tabular}
@@ -688,7 +700,9 @@ this work, $3$--$50\,\Msun$, $F=0.019$           & 245 & $1.47\times10$ & 16.7 \
 
 Part of the excess is a difference in the detection cut: they require
 $\Delta\chi^2 > 800$ \emph{and} at least three points $4\sigma_m$ above baseline, against our
-$\Delta\chi^2 \ge 500$, so their bar is the higher one. The rest is most likely the survey design
+$\Delta\chi^2 \ge 500$, so their bar is the higher one. Part is the sample: their count, scaled
+from Penny et al.'s $|u_0|<1$ figure, is of events with $u_0<1$, while ours counts every detection
+with $u_0$ up to $3$. The rest is most likely the survey design
 itself, and that is a point about vintage rather than about either calculation. \citet{Penny2019} describe the Cycle~7 architecture --
 $1.96\,\mathrm{deg}^2$ observed in $6\times72$ days -- and Sajadian \& Sahu adopt that observing
 strategy wholesale. Its defining feature, for them, is a $\sim\!2.3$-year gap between the first
@@ -697,8 +711,8 @@ characterisation, and which they patch by hand with one hour of observing every 
 patch alone raises their $F_2$ from $0.11$ to $0.15$, a $36\%$ gain in detections from
 approximately one day of extra telescope time. The design this simulator follows \citep{ROTAC2025}
 \emph{fills that gap as a matter of course}, with four low-cadence seasons between the six
-high-cadence ones. We therefore expect to detect more long events than they do, which is exactly
-what the factor $2.3$ is. Neither their number nor Penny's should be read as a forecast for the
+high-cadence ones. We therefore expect to detect more long events than they do, which is the
+direction of the factor $2.3$; how it divides between the three causes has not been measured. Neither their number nor Penny's should be read as a forecast for the
 survey as finally designed; both predate it.
 
 A caveat that runs the other way: their $F_1$ equates the progenitor mass with the remnant mass,

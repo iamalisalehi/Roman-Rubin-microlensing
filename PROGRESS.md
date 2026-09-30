@@ -27,6 +27,11 @@ the comparison is open again (OPEN_ITEMS). The populations report and whitepaper
 bracket argument. Also fixed: SS23 is AJ 165, 96 (not 119); SS23's rate 7.3 (not 7.2) per deg^2 per
 season; NS mass-function, Sanderson, Gould 2004, Marshall, Surot and per-resolved-object attributions;
 the literature F range now cited (Olejak, Lam, Gould 2000, Sweeney, SM26); three new web/JOSS refs.
+**Follow-up, same day (Deviation 67):** Rubin cadence (`baseline_v5.1.0`, verified row by row),
+Penny's layout tool (`mtpenny/gbtds_optimizer`, layout 40395, verified) and Kalirai 2008 now cited;
+the Penny misreading fixed in the populations report, postfix report and whitepaper. Still stale
+there: the SS23 characterisation deficit (resolved in Dev. 65), the whitepaper's "v5.3.0" and a
+garbled `Biswas2019OpSim` bib entry (OPEN_ITEMS, "Stale or wrong statements").
 
 **Newest (2026-09-21): Step series S -- sample light curves for illustrative figures.**
 Requested: per-band light curves and astrometric tracks, with and without parallax, with

@@ -1748,9 +1748,8 @@ et al. (2019, Sec. 2 and Table 2) give DETECTIONS at both |u0| < 1 (~27,000) and
 three times as many events *occur* at |u0| < 3. Our detections (u0 to 3) therefore compare with 63.8
 directly, not "below" it. As simulated 80.4 +- 1.4 = (26 +- 2)% above; dust-corrected 49.4 +- 2.9 =
 (23 +- 5)% below. The dust correction flips the sign; it does not resolve the comparison. The overview
-report now says this. **Still carrying the misreading:** `Report/populations/populations_report.tex`
-(Sec. 5, "The Penny bracket is predicted rather than fitted"), `Whitepaper/whitepaper.tex` (~l. 716
-and ~l. 1222), and Deviation 54's verification bullet (left as the historical record). The
+report now says this. The populations report, postfix report and whitepaper were corrected the
+same day (Deviation 67); Deviation 54's verification bullet is left as the historical record. The
 "fix would involve" below still stands and is now the only way to settle the comparison: restrict
 our count to Penny's six high-cadence seasons, their |u0| range and t0 window, and redo it with the
 corrected dust (or on the re-run).
@@ -1992,3 +1991,27 @@ over-produced, so the whole-scan Rubin totals are inflated. The dust-corrected e
 the tables from DECaPS, which has data at all 1,829 scan sightlines (removes the dropouts). (2) In `readBayestar()`, check `fin` after each row and refuse a
 table that fails to parse or contains a non-finite value, instead of continuing on a failed stream.
 (3) Have maps.py exit on a total dropout rather than print a note.
+
+## Stale or wrong statements left in the older documents (2026-09-30, found in Deviations 66-67)
+
+**What is wrong.** Three things the overview report now gets right are still wrong elsewhere:
+1. The Sajadian & Sahu *characterisation* deficit (~1/3 of theirs, "concentrated on the parallax")
+   is presented as unexplained in `Report/populations/populations_report.tex` (abstract, SS23
+   section), `Report/postfix/postfix_report.tex` (Characterisation paragraph) and
+   `Whitepaper/whitepaper.tex` (~l. 1200: "the parallax deficit has another cause"). Deviation 65
+   traced it to the sample definition (their u0 <= 1, on-mission, unweighted counting).
+2. The whitepaper's OpSim table caption names `baseline_v5.3.0_10yrs.db`; the Rubin visit list was
+   built from `baseline_v5.1.0_10yrs.db` (Deviation 67, 23/23 rows verified).
+3. `Whitepaper/refs.bib` `Biswas2019OpSim` is garbled: DOI 10.3847/1538-4365/ab4b44 does not exist;
+   arXiv:1905.02887 is Biswas et al. 2020, ApJS, doi 10.3847/1538-4365/ab72f2, with a different
+   title. The rest of the whitepaper bib has not been audited against Crossref.
+
+**Why it matters.** The populations and postfix reports may already have been read; the whitepaper
+is the eventual paper. Each states something a reader would take as a finding.
+
+**Why deferred.** Not asked for: the request was the overview report plus the Penny misreading.
+The whitepaper is due a full reconciliation anyway (JOINT_FIT_REFACTOR_PLAN Phase G).
+
+**Fix would involve.** For (1), a note in each older report pointing to the resolution, and a
+rewrite of the whitepaper's SS23 paragraph from the overview's. For (2), one word. For (3), a
+Crossref pass over `Whitepaper/refs.bib` as was done for `Report/refs.bib` in Deviation 66.

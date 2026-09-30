@@ -4705,4 +4705,4 @@ been audited.
 
 **Build.** overview 50 pp, populations 15 pp, postfix 13 pp: 0 TODO, 0 undefined, 0 BibTeX
 warnings. Whitepaper 56 pp, 0 undefined; its one BibTeX warning (empty author in
-`RomanBHbinaries`) predates this change.
+`RomanBHbinaries`) predates this change. Commit `7aa4338`.

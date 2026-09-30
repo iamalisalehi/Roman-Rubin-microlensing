@@ -276,7 +276,7 @@ Sajadian & Makler). Three steps, each approved before it starts:
     `u6_*.csv`, `u6.log`, `u4_dust_check_hybrid.csv`, `u4_hybrid.log`. Report Section 5.5 rewritten,
     5.4 / abstract / summary updated; 49 pp clean. **Fix plan (maps.py, readBayestar, validation,
     re-runs) in OPEN_ITEMS, CRITICAL dust entry.** Main-code answer: maps.py and readBayestar change,
-    the simulator's physics does not, new production runs are required.
+    the simulator's physics does not, new production runs are required. Commit a96ac94.
   - **DONE 2026-09-30 (Deviation 62, SUPERSEDED by 63): report quotes DUST-CORRECTED results with uncertainties.**
     `analysis/u5_corrected_numbers.py` -> `figures/u1_20260929/u5_corrected_numbers.md` (zero-correction
     column reproduces every reported value). Headlines: Roman footprint detections 60,600+-2,300

@@ -4447,3 +4447,5 @@ Surot2020 (verified against arXiv/Crossref/VizieR). 49 pp, clean build.
 **Code changes needed, answered for the user:** maps.py yes (the fix); helper.cpp readBayestar yes
 (robustness); Lensing.cpp / Bulge_LSST.cpp no; Bulge.h only if the table count changes; new
 production runs yes. The plan is in OPEN_ITEMS (CRITICAL dust entry, "What the fix involves").
+
+**Commit:** `a96ac94`.

@@ -222,9 +222,11 @@ $(\sigma_M/M)^2 = (\sigma_{\piE}/\piE)^2 + (\sigma_{\tetE}/\tetE)^2$.}
       near-infrared F146 filter. It observes only in ten seasons of
       $\sim\!70$ days, separated by $\sim\!110$-day gaps when the bulge is too close to the Sun:
       six high-cadence seasons (three at each end of the mission), in which every field is imaged
-      every $12.1$ minutes, and four low-cadence seasons in between, with one visit every five days.
+      every $12.1$ minutes, and four low-cadence seasons in between, with one visit every five days
+      \citep{STScIGBTDS}.
       Near-infrared light suffers little dust extinction, and Roman's diffraction-limited images
-      give per-exposure astrometry at the $\sim\!1$\,mas level for bright stars.
+      give per-exposure astrometry at the $\sim\!1$\,mas level for bright stars
+      \citep{Sanderson2019WFIRSTastrometry}.
 \item \textbf{Rubin's Legacy Survey of Space and Time (LSST)} \citep{Ivezic2019LSST} observes a
       far larger area in six optical bands ($ugrizy$), every few days while the bulge is up, for ten
       years, from the ground; the optical bands are heavily extincted toward the bulge.
@@ -260,7 +262,8 @@ draws many random source--lens pairs from a model of the Galaxy. For each pair i
 each telescope would actually record, on the surveys' real schedules and with their noise. It then
 decides whether each survey would detect the event, and forecasts how precisely each survey, and both
 together, would measure it. It builds on Dr.\ Sajadian's simulation of microlensing toward the
-Magellanic Clouds \citep{SajadianMakler2026}, extended to two observatories.
+Magellanic Clouds, the code lineage published with \citet{SajadianMakler2026}, extended to two
+observatories.
 
 \begin{figure}[h]
 \centering
@@ -319,12 +322,15 @@ half turns the simulated sample into statements about the real sky.}
   function and evolved into what remains -- unevolved stars below $1\,\Msun$, white dwarfs,
   $1.4\,\Msun$ neutron stars and $5$--$29\,\Msun$ black holes. \emph{Black holes} are drawn
   log-uniformly over $3$--$1000\,\Msun$. \emph{Neutron stars} follow a Gaussian distribution of
-  $1.35\pm0.15\,\Msun$ truncated to $1.1$--$2.2\,\Msun$ \citep{OzelFreire2016}. The lens distance is
+  $1.35\pm0.15\,\Msun$ truncated to $1.1$--$2.2\,\Msun$, one distribution standing in for the
+  measured masses, which span $\approx1.1$--$2\,\Msun$ and which \citet{OzelFreire2016} describe,
+  class by class, as Gaussians with means of $1.33$--$1.54\,\Msun$ and widths of
+  $0.09$--$0.23\,\Msun$. The lens distance is
   drawn along the sightline in proportion to the event rate, and the velocities from the Galactic
   kinematics of each component.
 \item[Schedules.] Rubin's visits are those of the LSST baseline cadence simulation, each with its own
   time, band and $5\sigma$ depth. Roman's are generated from the published GBTDS design
-  \citep{ROTAC2025} (Fig.~\ref{fig:timeline}). Its six fields are placed at a notional layout
+  \citep{ROTAC2025,STScIGBTDS} (Fig.~\ref{fig:timeline}). Its six fields are placed at a notional layout
   (five contiguous fields at $b=-1.2^\circ$ and one on the Galactic centre, from M.\ Penny's GBTDS
   field-layout tool) and each is modelled as a circle of the published per-field area,
   $0.28$\,deg$^2$; the circles overlap, so the modelled footprint is $1.47$\,deg$^2$ rather than
@@ -332,9 +338,10 @@ half turns the simulated sample into statements about the real sky.}
 \item[Noise.] Rubin's photometric error follows the LSST model with each visit's own depth
   \citep{Ivezic2019LSST}; its astrometric error follows an empirical precision--magnitude curve.
   Roman's photometric error comes from a tabulated F146 magnitude--error curve from
-  \citet{Penny2019}. Its per-exposure
-  astrometric error is $1.1$\,mas for bright stars, a centroiding systematic rather than photon noise
-  \citep{Sanderson2019WFIRSTastrometry}, and rises for fainter ones. It is $2.75\pm0.09$\,mas at the
+  \citet{Penny2019} (their W149, the same wide filter under its earlier name). Its per-exposure
+  astrometric error is $1.1$\,mas for bright stars, the $0.01$-pixel precision that
+  \citet{Sanderson2019WFIRSTastrometry} assume for well-exposed stars, a limit set by calibration
+  rather than by photon noise, and rises for fainter ones. It is $2.75\pm0.09$\,mas at the
   median baseline magnitude of footprint detections, F146\,$=21.82\pm0.04$.
 \end{description}
 
@@ -473,7 +480,8 @@ quote the fraction measured to better than $10\%$ (or $5\%$, $1\%$).
 \label{sec:sky}
 The simulation scans $67.94$\,deg$^2$ around Roman's fields with $1{,}829$ sightlines
 (Fig.~\ref{fig:footsim}), far more sky than Roman's $1.47$\,deg$^2$. The reason is Rubin's field of
-view. A Rubin exposure that contains part of a Roman field covers a circle $1.75^\circ$ in radius,
+view. A Rubin exposure that contains part of a Roman field covers a circle $1.75^\circ$ in radius
+($9.6$\,deg$^2$; \citealt{Ivezic2019LSST}),
 so its far edge can lie $3.5^\circ$ beyond the Roman field. Events there are detected in the same
 exposures, and a forecast that stopped at Roman's footprint would miss them. The scan is therefore
 the box around Roman's fields widened by a Rubin field diameter plus a margin, and it contains
@@ -575,7 +583,8 @@ the ten years. For black holes and neutron stars one more quantity is needed, th
 lens in a run is drawn from the population under test, as if the Galaxy's entire stellar mass were
 black holes, say. So the result is a yield per unit abundance, $N_1$, and the expected number is
 $N(F)=F\,N_1$ for a mass fraction $F$. Counts are per resolved source star: a blend of several stars
-counts as one monitored object, as in \citet{SajadianSahu2023}. The normalisation is checked by
+counts as one monitored object, the second detectability criterion of \citet{SajadianMakler2026},
+which the published code of \citet{SajadianSahu2023} also applies. The normalisation is checked by
 rebuilding the microlensing optical depth from the event-rate constants and comparing it with the
 simulator's independent integral over the density; they agree to $0.1\%$ in all three populations.
 
@@ -1089,7 +1098,8 @@ images: $\mathcal{D}\approx5$ at the detection limit, $\approx20$ at a signal-to
 images of similar brightness, and larger when one image is several magnitudes fainter. We record both
 anchors, $\mathcal{D}=5$ and $\mathcal{D}=20$. The criterion was built for Rubin's seeing-limited
 images. On Roman's $1.1$\,mas floor, $\mathcal{D}=5$ would mean separating two point sources
-$5.5$\,mas apart, a twentieth of its diffraction-limited point-spread function (FWHM $105$\,mas), and
+$5.5$\,mas apart, a twentieth of its diffraction-limited point-spread function (FWHM $105$\,mas in
+F146; \citealt{STScIWFIQuickRef}), and
 whether the shape of one blended image allows that is doubtful. A third, conservative bar is
 therefore recorded as well: $\Delta\theta$ at least the PSF width ($105$\,mas for Roman,
 $\approx1''$ for Rubin). For Roman the truth plausibly lies between the $\mathcal{D}$ bars and the
@@ -1213,8 +1223,15 @@ is one event.}
 \label{fig:yieldF}
 \end{figure}
 
-For the literature range $F_{\rm BH}=0.005$--$0.03$, Roman detects $42$--$252$ black-hole events as
-simulated, $5$--$32$ of them with a $10\%$ mass; for $F_{\rm NS}=0.005$--$0.06$, $290$--$3{,}480$
+The literature range runs, for black holes, from the $F_{\rm BH}=4$--$5\times10^{-3}$ adopted by
+\citet{SajadianMakler2026} to $\approx0.03$, which follows from the $\sim\!10^8$ black holes of
+population syntheses (\citealt{Olejak2020}: $1.2\times10^8$ at $\sim\!14\,\Msun$;
+\citealt{Lam2020}: $2.2\times10^8$ at $5$--$16\,\Msun$) in a Galaxy of $\sim\!6\times10^{10}\,\Msun$ of stars, and from
+the bulge census of \citet{Gould2000}, whose mass
+fractions of main-sequence stars, white dwarfs, neutron stars and black holes are $69\!:\!22\!:\!6\!:\!3$;
+that census also sets the neutron-star maximum, $F_{\rm NS}=0.06$. \citet{Sweeney2022} put neutron
+stars and black holes together at $\sim\!1\%$ of the Galaxy's mass. For $F_{\rm BH}=0.005$--$0.03$, Roman detects
+$42$--$252$ black-hole events as simulated, $5$--$32$ of them with a $10\%$ mass; for $F_{\rm NS}=0.005$--$0.06$, $290$--$3{,}480$
 neutron-star events and $11$--$137$ masses (Monte Carlo errors $1$--$4\%$ on each). With the dust
 corrected (Section~\ref{sec:dust}) these become $28$--$170$ black-hole events and $3$--$17$ masses,
 and $180$--$2{,}190$ neutron-star events and $6$--$66$ masses. Only $(66\pm5)\,F$ black-hole
@@ -1236,9 +1253,12 @@ yields are under- or overstated.
 % (counted their way; analysis/u7_ss23_factors.py, Deviation 65). Their code:
 % github.com/SSajadian54/AstrometryMicrolensing (BH_Roman_V1.cpp, Analyze_IMF1.py).
 \paragraph{Against \citet{SajadianSahu2023}.} With their assumptions adopted (their $F_1=0.019$ is our
-$F$; their $M^{-1}$ mass function is our log-uniform one, re-weighted to $3$--$50\,\Msun$), Roman
-detects $31.5\pm0.5$ black holes per deg$^2$ per season against their $7.2$; part of the difference
-is the final GBTDS design, whose low-cadence seasons fill the gap their forecast assumed. Counted our
+$F$; their $M^{-1}$ mass function, over $2$--$50\,\Msun$, is our log-uniform one re-weighted to
+$3$--$50\,\Msun$), Roman detects $31.5\pm0.5$ black holes per deg$^2$ per season against their $7.3$
+($\approx86$ detections over $1.96$\,deg$^2$ and six seasons). Part of the difference is the final
+GBTDS design, whose low-cadence seasons fill the gap their forecast assumed. Part is the sample,
+as for the fractions below: their count scales the $27{,}000$ detections with $|u_0|<1$ forecast by
+\citet{Penny2019}, while ours counts every detection over the decade with $u_0$ up to $3$. Counted our
 way -- every Roman detection, weighted by the event rate ($\Neff=4{,}894$) -- the fraction
 characterised to $10\%$ is, ours against theirs: $\tetE$ $(88.8\pm0.5)$ against $99.2\%$, $\tE$
 $(26.0\pm0.6)$ against $67.0\%$, $\piE$ $(10.0\pm0.4)$ against $30.0\%$, $\Ml$ $(9.3\pm0.4)$ against
@@ -1292,7 +1312,7 @@ around the peak; (d) the trajectories at closest approach; (e) the per-band ligh
 against time, with Roman's $1.1$\,mas floor; (h) the centroid ellipse on the sky; (i) the source's and
 lens's parallax loops. A point is drawn only if its error is below a third of the signal in that panel.
 \emph{``Without parallax'' is the geocentric model} matched to the true trajectory at the peak, the
-standard convention \citep{Gould2000Formalism}. The $u_{\rm min}$ in a header is the observed closest
+standard convention \citep{Gould2004}. The $u_{\rm min}$ in a header is the observed closest
 approach, and can differ slightly from the tabulated $u_0$.
 
 \paragraph{What the samples show.} Filling the classes was itself informative. The
@@ -1357,8 +1377,9 @@ only to $40\%$ -- the typical limit for black holes.}{fig:s_last}
 
 There are two kinds of uncertainty, of very different size: Monte Carlo noise, which is small and
 shrinks with more computing, and modelling assumptions, which are larger and do \emph{not} shrink with
-more computing. Comparisons with published forecasts test both; the two that once disagreed are now
-explained (Section~\ref{sec:compare}).
+more computing. Comparisons with published forecasts test both: the $\sim\!3\times$ disagreement
+with \citet{SajadianSahu2023} is explained, and Roman's detection rate is within about a quarter of
+\citet{Penny2019}'s (Section~\ref{sec:compare}).
 
 \subsection{Monte Carlo (statistical) uncertainty}
 Every number in Section~\ref{sec:results} carries its Monte Carlo $1\sigma$ error. For yields it is
@@ -1408,8 +1429,11 @@ semi-analytic re-count of resolvable visits against the simulator's own count & 
   and may be correlated between exposures; in the fully correlated limit most ordinary-lens $\tetE$
   values would be unmeasurable. Black holes are much less affected, since $90\%$ exceed the floor in a
   single exposure. \emph{This is the dominant caveat.} The remedy is a two-component error model,
-  with the split between correlated and independent parts taken from the Roman astrometry literature
-  \citep{Sanderson2019WFIRSTastrometry}.
+  with a part that averages down and a correlated part that does not. \citet{Sanderson2019WFIRSTastrometry}
+  note that such systematics are often time-dependent ``with unknown correlations'', and quote
+  the survey's requirement, as then drafted, of a $10\,\mu$as systematic precision over the full
+  survey (stretch goal $3\,\mu$as); they give no split between the two parts, which remains to be
+  established.
 \item \textbf{The dust is too thin near the Galactic plane.} North of declination $-30^\circ$, which
   includes almost all of Roman's footprint, the extinction tables come from Bayestar, which gives three
   to six times too little extinction within $1^\circ$ of the plane, measured against the independent
@@ -1559,7 +1583,7 @@ what has to be done to correct it.
 each, $A_V$ is tabulated against distance out to $20$\,kpc from one of two three-dimensional dust
 maps, chosen by declination: Bayestar19 \citep{Green2019Bayestar} north of $-30^\circ$, DECaPS
 \citep{Zucker2025DECaPS} south of it, the combination the documentation of the \texttt{dustmaps}
-software recommends. Roman's footprint lies at declination $\approx-29^\circ$, so $139$ of its $147$
+software \citep{Green2018dustmaps} recommends and the DECaPS authors describe. Roman's footprint lies at declination $\approx-29^\circ$, so $139$ of its $147$
 sightlines take Bayestar. Each simulated source then takes the table nearest to its sightline, reads
 $A_V$ at its own distance, and converts it to every band with the \citet{Cardelli1989} law. We
 checked that the simulation did exactly this: the tables match fresh queries of the two maps, and the
@@ -1570,13 +1594,14 @@ rest are sources equidistant from two tables).
 from stars cannot measure the dust behind which it sees no stars.
 \begin{itemize}
 \item \emph{Bayestar is used beyond the distance it vouches for.} Bayestar measures dust from stars in
-  the optical Pan-STARRS survey and reports, for every sightline, the distance out to which that
-  measurement is reliable. On all $139$ of Roman's sightlines that take Bayestar, that flag is false
+  the optical Pan-STARRS~1 survey, with 2MASS and Gaia \citep{Green2019Bayestar}, and reports, for
+  every sightline, the distance out to which that measurement is reliable (a flag returned by
+  \texttt{dustmaps}; \citealt{Green2018dustmaps}). On all $139$ of Roman's sightlines that take Bayestar, that flag is false
   beyond $4$\,kpc: toward the inner bulge the dust lanes hide the stars behind them, the map sees the
   dust in front of the lanes and not behind, and its profile goes flat. Every bulge source lies
   beyond that distance. The table-building script requests the flag but does not use it.
 \item \emph{DECaPS saturates in the most obscured field.} DECaPS, built from deeper DECam imaging
-  together with near-infrared photometry, has data at every one of the $1{,}829$ scanned sightlines,
+  together with near-infrared photometry from VVV and 2MASS \citep{Zucker2025DECaPS}, has data at every one of the $1{,}829$ scanned sightlines,
   including the part north of $-30^\circ$ that the declination rule never asks it about, and at
   $8$\,kpc its own flag calls it reliable on all of Roman's five-field block. But it is sensitive
   only up to $A_V\approx12$ \citep{Zucker2025DECaPS}, and toward Roman's Galactic-centre field the
@@ -1596,14 +1621,14 @@ in Roman's footprint, so they inflate only Rubin's totals.
 
 \paragraph{How we know.} Choosing between two maps needs a measurement independent of both. We
 use the VVV reddening map of \citet{Surot2020}: the $J-K_s$ colour of bulge red-clump and red-giant
-stars on a grid of $10''$ to $2'$, which measures the whole dust column to the bulge in the near
+stars at a resolution of $2'$ to $10''$, finest near the plane, which measures the whole dust column to the bulge in the near
 infrared, where even $A_V\approx30$ does not hide the stars. We took its median in each simulated
 sightline's $0.1^\circ$ cell (at least $1{,}600$ grid points per cell) and made two comparisons.
 
 The first needs no extinction law. Each map should reproduce how much more dust lies in front of the
 Galactic-centre field than in front of the five-field block, whatever its units. The ratio of the two
-columns is $4.89$ for VVV, $4.46$ for the near-infrared map of \citet{Marshall2006} (2MASS star
-counts), $1.07$ for DECaPS and $0.57$ for the simulation's tables. DECaPS misses four fifths of the
+columns is $4.89$ for VVV, $4.46$ for the near-infrared map of \citet{Marshall2006} (2MASS $J-K_s$
+colours set against the Besan\c{c}on model), $1.07$ for DECaPS and $0.57$ for the simulation's tables. DECaPS misses four fifths of the
 Galactic-centre column; the near-infrared map is within $10\%$ of VVV; the simulation's dust even
 \emph{decreases} toward the plane, the reverse of the real sky.
 
@@ -1662,8 +1687,8 @@ changes:
 \item the near-infrared map converted with $A_{K_s}/A_V=0.0734$ instead of $0.0805$, which raises
   its column by the $10\%$ by which its Galactic-centre contrast falls short of VVV's (the nominal
   Galactic-centre column is $5\%$ below VVV's, this one $4\%$ above), or with $0.102$, the
-  \citet{Cardelli1989} value at $R_V=2.5$ that the simulation itself uses (the larger of the two
-  shifts);
+  \citet{Cardelli1989} value for $K$ ($2.2\,\mu$m) at the $R_V=2.5$ that the simulation itself uses
+  (the larger of the two shifts);
 \item the efficiencies measured over the whole footprint, instead of per field block.
 \end{itemize}
 DECaPS alone is not counted as an alternative, because VVV rules it out in the Galactic-centre field.
@@ -1791,23 +1816,27 @@ derived from $A_{K_s}$ with a near-infrared extinction law, instead of through $
 \label{sec:compare}
 % Source: Roman detections per deg^2 of footprint per day of Roman coverage (693 d):
 % 81,860 / (1.47 x 693) as simulated, 50,350 +- 2,945 / (1.47 x 693) dust-corrected
-% (figures/u1_20260929/u5_corrected_numbers.md); Penny et al. 2019 Table 2 (OPEN_ITEMS).
+% (figures/u1_20260929/u5_corrected_numbers.md); Penny et al. 2019 Table 2 and Sec. 2 ("we can
+% expect to detect ~27,000 microlensing events with |u0| < 1 and roughly twice this with |u0| < 3"):
+% both figures are DETECTIONS, so ours (u0 <= 3) compares with the second; there is no bracket
+% (corrected 2026-09-30, Deviation 66).
 \begin{itemize}
-\item \textbf{Roman's detection rate now falls within \citet{Penny2019}'s bracket.} Per deg$^2$ per day of Roman
-  coverage, their forecast gives $31.9$ events at $|u_0|<1$ and $63.8$ at $|u_0|<3$, and ours should
-  lie below the $|u_0|<3$ figure, since the $\Delta\chi^2$ cut rejects most low-magnification events.
-  As simulated it is $80.4\pm1.4$, $(26\pm2)\%$ above it. With the dust corrected it is $49.4\pm2.9$,
-  $(23\pm5)\%$ below it and inside their bracket, so the model's too-thin dust accounts for the
-  excess. The
-  remaining differences (four extra low-cadence seasons, the detection criterion, the field layout)
-  have not been quantified.
+\item \textbf{Roman's detection rate is within about a quarter of \citet{Penny2019}'s.} They forecast
+  that Roman will detect $\sim\!27{,}000$ events with $|u_0|<1$ and roughly twice that with
+  $|u_0|<3$, over $1.96$\,deg$^2$ and six $72$-day seasons: $31.9$ and $63.8$ per deg$^2$ per day of
+  coverage. Both are detections, and ours, with $u_0$ drawn up to $3$, compares with the second. As
+  simulated it is $80.4\pm1.4$, $(26\pm2)\%$ above it; with the dust corrected it is $49.4\pm2.9$,
+  $(23\pm5)\%$ below it, so the correction turns an excess into a shortfall of similar size. The two
+  figures are not like for like: ours spreads over ten seasons, four of them low-cadence, and
+  includes events that peak outside the seasons, and the detection criterion, the field layout and
+  the source counts differ too. None of these differences has been quantified.
 \item \textbf{Roman's black-hole characterisation agrees with \citet{SajadianSahu2023}} once their
   sample is reproduced (Section~\ref{sec:yield}). Their fractions are of events with $u_0<1$ peaking
   inside Roman's mission, counted without the event-rate weight; counted that way ours are
   $1.1$--$1.4$ times theirs for $\tE$, $\piE$ and the mass, against $\sim\!1/3$ when every detection
-  is counted and weighted by the rate. The remaining difference, $\tetE$ ($0.8$ times theirs), follows
-  from their $1.6$--$8$ times smaller per-exposure astrometric errors and their simpler astrometric
-  fit.
+  is counted and weighted by the rate. The remaining difference, $\tetE$ ($0.8$ times theirs), is in
+  the direction of two known differences, their $1.6$--$8$ times smaller per-exposure astrometric
+  errors and their simpler astrometric fit; how much each contributes has not been tested.
 \end{itemize}
 
 \subsection{Summary: what to believe}
@@ -1873,7 +1902,8 @@ resolving the images: black holes $0.3$--$34\%$ (Roman), others rare & low & the
   near the plane} (Table~\ref{tab:corrected}), with a reference dust checked against the independent
   VVV reddening map. The gap-filling gain is as simulated, and the corrected dust can only lower it;
   Rubin's resolution figure is also as simulated. With the dust corrected, Roman's detection rate
-  falls inside the bracket of \citet{Penny2019}'s forecast, where as simulated it was $26\%$ above it. The correction lowered Roman's footprint yields by $33$--$38\%$ (its $10\%$ masses by
+  is $(23\pm5)\%$ below \citet{Penny2019}'s forecast for the same range of $u_0$, where as simulated
+  it was $26\%$ above it; the survey designs differ in ways not yet quantified. The correction lowered Roman's footprint yields by $33$--$38\%$ (its $10\%$ masses by
   $46$--$57\%$) and Rubin's by $54$--$71\%$, and left the comparisons between the surveys intact or
   strengthened. The proper fix is to rebuild the extinction tables from DECaPS, with near-infrared dust
   where DECaPS saturates, within $\sim\!1^\circ$ of the plane, and re-run; the adopted GBTDS layout
@@ -1924,9 +1954,10 @@ $0.02^\circ$ grid of about $3{,}700$ sightlines, for all three lens populations.
   grid resolves this only coarsely. A fine one would show where in the footprint the most events and
   the best-measured masses are, and whether there are patches where the dust is thin enough for
   Rubin to contribute more.
-\item \textbf{A sharper comparison with the literature.} Field-by-field yields could be set directly
-  against those of \citet{Penny2019}, which would test the agreement with their rate that the dust
-  correction restores.
+\item \textbf{A sharper comparison with the literature.} With the footprint finely sampled, the
+  yield can be restricted to the fields, seasons and impact parameters that \citet{Penny2019}
+  simulated, which would make the comparison with their detection rate like for like and locate the
+  remaining $\sim\!25\%$ difference.
 \end{itemize}
 
 What it would \emph{not} bring is a change in any result in expectation: a larger run shrinks the
@@ -1957,8 +1988,9 @@ These are the known limitations that most affect the results, roughly in order o
 \item \textbf{Roman's astrometric error.} Whether the $1.1$\,mas centroiding floor averages down
   over $5\times10^4$ exposures decides whether the Einstein radii, and so the masses, of ordinary
   lenses and neutron stars are measurable at all. The plan is a two-component error model, with a
-  correlated part that does not average down, and the split taken from the Roman astrometry
-  literature.
+  correlated part that does not average down. The published work gives no split between the two
+  parts, only the survey's $10\,\mu$as systematic requirement \citep{Sanderson2019WFIRSTastrometry}, so
+  the split has to be established, from simulated Roman images or from the Roman project.
 \item \textbf{The dust near the plane.} A declination rule gives almost all of Roman's footprint to
   Bayestar, which cannot see stars behind the dust lanes and gives three to six times too little
   extinction within $1^\circ$ of the plane, measured against the independent VVV reddening map

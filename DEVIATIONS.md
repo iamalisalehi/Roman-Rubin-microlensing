@@ -4580,3 +4580,80 @@ differences, the tetE cause); "Comparisons with published forecasts" item rewrit
 OPEN_ITEMS entry replaced by a resolved stub.
 
 **Commit:** `eebca7c`.
+
+## 66. Citation audit of the overview report: every cited claim checked against its source; the Penny et al. "bracket" was a misreading (2026-09-30)
+
+**What was asked.** "Read the whole report and check all of its citations. Make sure they are
+airtight." Not a plan step; recorded because it corrects a validation claim the project has used since
+Deviation 54.
+
+**How.** Every paper cited by `Report/overview/overview_report.tex` (22 keys) was downloaded from
+arXiv and read at the passage the report leans on; every `refs.bib` entry was checked against Crossref
+(title, journal, volume, issue, page, year, authors) and the arXiv API. Web pages cited or relied on
+(dustmaps docs, STScI roman-docs) were read on 2026-09-30. Papers and text extractions:
+`$CLAUDE_JOB_DIR/tmp/papers/` (scratch, not kept).
+
+**The one substantive error: Penny et al. (2019) give DETECTIONS at both |u0| < 1 and |u0| < 3.**
+Their Sec. 2 reads "we can expect to detect ~27,000 microlensing events with |u0| < 1 and roughly
+twice this with |u0| < 3 ... While there are three times as many events with |u0| < 3 compared to
+|u0| < 1, the maximum magnification ... at |u0| = 3 is only 1.017 ..., so only on brighter stars will it
+be possible for WFIRST to detect these low-magnification events." Their Table 2 lists the same two
+numbers. Deviation 54 (and the whitepaper, the populations report and, until now, this report) read
+the 54,000 as all events and argued our Delta-chi^2 cut must put us BELOW it -- the "predicted, not
+fitted" bracket. There is no bracket: ours (u0 drawn to 3, detections) compares with 63.8 directly.
+As simulated 80.4 +- 1.4 is (26 +- 2)% above; dust-corrected 49.4 +- 2.9 is (23 +- 5)% below. The dust
+correction turns an excess into a shortfall of similar size; it does not "account for" a tension, and
+the differences in survey design (ten seasons incl. four low-cadence, off-season peaks counted,
+criterion, layout, source counts) are unquantified. Sajadian & Sahu 2023 themselves use 27,000 as
+"the number of microlensing events that the Roman telescope will detect", consistent with this reading.
+
+**Other content corrections in the report.**
+| claim | source says | fix |
+|---|---|---|
+| NS Gaussian 1.35 +- 0.15 truncated 1.1-2.2 "(Ozel & Freire 2016)" | masses span ~1.1-2 Msun; per-class Gaussians 1.33+-0.09 (DNS), 1.54+-0.23 (recycled), 1.49+-0.19 (slow); no 1.35+-0.15 | reworded: our single Gaussian stands in for their per-class fits |
+| split of correlated/independent astrometric error "from" Sanderson et al. | systematics "time-dependent with unknown correlations"; requirement 10 uas systematic over full survey (stretch 3); no split | reworded in Sec. 5 item 1 and Next steps item 1 |
+| 1.1 mas "a centroiding systematic" (Sanderson) | "we assume ... single-exposure precision for well-exposed point sources is 0.01 pixel, or about 1.1 mas", calibration-limited | reworded |
+| geocentric "without parallax" model, "standard convention (Gould 2000)" | Gould 2000 is the pi_E/theta_E formalism; the geocentric frame is Gould 2004 (ApJ 606, 319) | cite Gould2004 |
+| per-resolved-object counting "as in Sajadian & Sahu 2023" | not in SS23's text; it is Sajadian & Makler 2026's criterion (ii), and SS23's code applies it (`BH_Roman_V1.cpp`: `if(test<=s.fb ...)`) | cite both, precisely |
+| SS23 detections "7.2" per deg^2 per season | ~86 (22 / 0.2561, their Table 1) / (1.96 x 6) = 7.3; their count scales Penny's |u0| < 1 total | 7.3, and the sample caveat added; their mass range 2-50 Msun stated |
+| SS23 tetE 0.8x "follows from" their smaller errors and 3-parameter fit | direction right, size never tested | "in the direction of ...; not tested" |
+| Marshall et al. 2006 "(2MASS star counts)" | 2MASS J-Ks colour excess against the Besancon model | fixed |
+| Surot et al. 2020 "grid of 10'' to 2'" | resolution 2' to 10'' (grid is regular per tile) | fixed |
+| A_Ks/A_V = 0.102 "the CCM89 value at R_V = 2.5" | CCM89 gives 0.102 at K (2.2 um), 0.105 at 2MASS Ks (2.16 um) | labelled "for K (2.2 um)" |
+| Penny "field-by-field yields" (Next steps) | Penny tabulates planet yields only, no per-field event yields | reworded |
+| code "builds on ... (Sajadian & Makler 2026)" | parent was the LSST+ELT LMC code; SM26's code is the same lineage (Deviation 39) | "the code lineage published with" |
+
+**Uncited external facts now cited.** Literature F range (SM26 4-5e-3; Olejak et al. 2020 1.2e8 BHs
+at ~14 Msun; Lam et al. 2020 2.2e8 at 5-16 Msun; Gould 2000 bulge 69:22:6:3 by mass -> F_BH 0.03,
+F_NS 0.06; Sweeney et al. 2022 NS+BH ~1%), each checked in the paper. GBTDS cadence and seasons:
+ROTAC says "every 3-5 days" in the low-cadence seasons, so the five-day figure now cites the STScI
+GBTDS page (new `STScIGBTDS`). Roman F146 PSF FWHM 105 mas: STScI WFI Quick Reference (new
+`STScIWFIQuickRef`). Rubin 9.6 deg^2 field: Ivezic et al. 2019. dustmaps' declination rule and
+reliable-distance flag: Green 2018 JOSS (new `Green2018dustmaps`); Bayestar's inputs (PS1 + 2MASS +
+Gaia) and DECaPS's (DECaPS2 + VVV + 2MASS + unWISE) named.
+
+**Verified and unchanged.** Paczynski 1986; Gould 2000 (kappa = 8.144, M = theta_E / kappa pi_E);
+Ivezic 2019 (eq. 5 error model); Kroupa 2001 (slopes 0.3/1.3/2.3 at 0.08/0.5, as in `Bulge.h`);
+Robin 2003; Choi 2016 (MIST BCs, `CMD/BolometricCorrection.py`); Kish 1965; Abrams 2025
+(characterised = tE > 2 sigma and piE > 2 sigma, their Sec. 2.4); Mroz 2019 Fig. 13 (four |l| < 2 bins
+23.4 +- 0.8, 25.0 +- 1.2, 22.7 +- 0.9, 25.4 +- 1.2 d; inverse-variance mean 23.8 +- 0.5, as quoted) and
+the southern latitude fit (Gamma0 14.3e-6, c 0.52); Penny 2019 Delta-chi^2 > 500 and W149 precision
+curve; SM26 D ~5 at SNR 5, ~20 at SNR 100, N >= 3 visits, 1.4 / 16.3% (LMC / SMC); SS23 Table 1
+(67.0 / 30.0 / 99.2 / 29.8), F1 = 0.019, Delta-chi^2 > 800 + 3 points at 4 sigma, Calchi Novati
+astrometric errors, 3-parameter astrometric fit; Zucker 2025 (A_V ~ 12 sensitivity, dec -30
+combination); Green 2019; Cardelli 1989 (F146 0.197, r 0.858 at 0.62 um); Bonnarel 2000; ROTAC
+(0.28 deg^2 fields, six 72-d high-cadence seasons at 12.1 min).
+
+**Bibliography.** SajadianSahu2023: AJ 165(3), **96** (was 119) and title "with" (was "by", the
+arXiv title) -- also fixed in `Whitepaper/refs.bib` and the `u7_ss23_factors.py` docstring.
+Mroz2019: author list was missing Soszynski and out of order. Wilson2023GBTDS: issue 1 (was 2), full
+authors. Sanderson2019WFIRSTastrometry: published in JATIS 5(4), 044005, title "Space" (was "Survey").
+DOIs added to Olejak2020 and Sweeney2022. New: Gould2004, Green2018dustmaps, STScIGBTDS,
+STScIWFIQuickRef. The whitepaper's own bib was not otherwise audited.
+
+**Not changed, flagged.** `Report/populations/populations_report.tex` (Sec. 5, "The Penny bracket is
+predicted rather than fitted") and `Whitepaper/whitepaper.tex` (lines ~716, ~1222) carry the same
+misreading of Penny; the postfix report was not checked for it. Recorded in OPEN_ITEMS.
+
+**Build.** `latexmk -pdf` clean, 49 pp, 0 TODO, 30 bibliography entries, no undefined citations,
+no BibTeX warnings.

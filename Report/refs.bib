@@ -1,6 +1,9 @@
-% Bibliography for populations_report.tex -- only the works the report actually uses.
+% Shared bibliography for the reports in Report/*/ -- only the works the reports actually use.
 % Journal references checked against arXiv / the publisher on 2026-09-23; entries shared with
 % the whitepaper are copied from ../Whitepaper/refs.bib.
+% 2026-09-30: every entry re-checked against Crossref (title, journal, volume, issue, page, year,
+% authors) and the arXiv API; SajadianSahu2023 (page 96, not 119; title "with"), Mroz2019 (author
+% list), Wilson2023GBTDS (issue 1) and Sanderson2019WFIRSTastrometry (published in JATIS) corrected.
 
 @article{Penny2019,
   author  = {Penny, Matthew T. and Gaudi, B. Scott and Kerins, Eamonn and Rattenbury, Nicholas J.
@@ -16,10 +19,10 @@
 }
 
 @article{Mroz2019,
-  author  = {Mr{\'o}z, Przemek and Udalski, Andrzej and Skowron, Jan and Poleski, Rados{\l}aw and
-             Koz{\l}owski, Szymon and Szyma{\'n}ski, Micha{\l} K. and Wyrzykowski, {\L}ukasz and
-             Pietrukowicz, Pawe{\l} and Ulaczyk, Krzysztof and Rybicki, Krzysztof and
-             Iwanek, Patryk},
+  author  = {Mr{\'o}z, Przemek and Udalski, Andrzej and Skowron, Jan and Szyma{\'n}ski, Micha{\l} K.
+             and Soszy{\'n}ski, Igor and Wyrzykowski, {\L}ukasz and Pietrukowicz, Pawe{\l} and
+             Koz{\l}owski, Szymon and Poleski, Rados{\l}aw and Ulaczyk, Krzysztof and
+             Rybicki, Krzysztof and Iwanek, Patryk},
   title   = {Microlensing Optical Depth and Event Rate toward the {Galactic} Bulge from 8 yr of
              {OGLE-IV} Observations},
   journal = {The Astrophysical Journal Supplement Series},
@@ -33,10 +36,11 @@
 
 @article{SajadianSahu2023,
   author  = {Sajadian, Sedighe and Sahu, Kailash C.},
-  title   = {Detecting Isolated Stellar-mass Black Holes by the {Roman} Telescope},
+  title   = {Detecting Isolated Stellar-mass Black Holes with the {Roman} Telescope},
   journal = {The Astronomical Journal},
   volume  = {165},
-  pages   = {119},
+  number  = {3},
+  pages   = {96},
   year    = {2023},
   doi     = {10.3847/1538-3881/acb20f},
   note    = {arXiv:2301.03812}
@@ -59,6 +63,7 @@
   volume  = {638},
   pages   = {A94},
   year    = {2020},
+  doi     = {10.1051/0004-6361/201936557},
   note    = {arXiv:1908.08775}
 }
 
@@ -83,6 +88,7 @@
   number  = {4},
   pages   = {4971--4979},
   year    = {2022},
+  doi     = {10.1093/mnras/stac2092},
   note    = {arXiv:2210.04241}
 }
 
@@ -180,20 +186,29 @@
 }
 
 @article{Sanderson2019WFIRSTastrometry,
-  author       = {Sanderson, Robyn E. and Bellini, Andrea and Casertano, Stefano and others},
-  title        = {Astrometry with the Wide-Field Infrared Survey Telescope},
-  journal      = {arXiv e-prints},
-  eprint       = {1712.05420},
-  archivePrefix= {arXiv},
-  year         = {2019}
+  author  = {Sanderson, Robyn E. and Bellini, Andrea and Casertano, Stefano and Lu, Jessica R. and
+             Melchior, Peter and Libralato, Mattia and Bennett, David and Shao, Michael and
+             Rhodes, Jason D. and Sohn, Sangmo Tony and Malhotra, Sangeeta and Gaudi, Scott and
+             Fall, S. Michael and Nelan, Edmund P. and Guhathakurta, Puragra and Anderson, Jay and
+             Ho, Shirley},
+  title   = {Astrometry with the Wide-Field Infrared Space Telescope},
+  journal = {Journal of Astronomical Telescopes, Instruments, and Systems},
+  volume  = {5},
+  number  = {4},
+  pages   = {044005},
+  year    = {2019},
+  doi     = {10.1117/1.JATIS.5.4.044005},
+  note    = {arXiv:1712.05420}
 }
 
 @article{Wilson2023GBTDS,
-  author  = {Wilson, Robert F. and others},
+  author  = {Wilson, Robert F. and Barclay, Thomas and Powell, Brian P. and Schlieder, Joshua and
+             Hedges, Christina and Montet, Benjamin T. and Quintana, Elisa and McDonald, Iain and
+             Penny, Matthew T. and Espinoza, N{\'e}stor and Kerins, Eamonn},
   title   = {Transiting Exoplanet Yields for the {R}oman {G}alactic Bulge Time Domain Survey Predicted from Pixel-level Simulations},
   journal = {The Astrophysical Journal Supplement Series},
   volume  = {269},
-  number  = {2},
+  number  = {1},
   pages   = {5},
   year    = {2023},
   doi     = {10.3847/1538-4365/acf3df}
@@ -297,4 +312,47 @@
   pages   = {A140},
   year    = {2020},
   doi     = {10.1051/0004-6361/202038346}
+}
+
+% --- added 2026-09-30 in the citation audit (Deviation 66); each verified against Crossref or the
+% --- page itself on that date ---
+@article{Gould2004,
+  author  = {Gould, Andrew},
+  title   = {Resolution of the {MACHO-LMC-5} Puzzle: The Jerk-Parallax Microlens Degeneracy},
+  journal = {The Astrophysical Journal},
+  volume  = {606},
+  number  = {1},
+  pages   = {319--325},
+  year    = {2004},
+  doi     = {10.1086/382782},
+  note    = {arXiv:astro-ph/0311548}
+}
+
+@article{Green2018dustmaps,
+  author  = {Green, Gregory M.},
+  title   = {dustmaps: A {Python} interface for maps of interstellar dust},
+  journal = {The Journal of Open Source Software},
+  volume  = {3},
+  number  = {26},
+  pages   = {695},
+  year    = {2018},
+  doi     = {10.21105/joss.00695}
+}
+
+@misc{STScIGBTDS,
+  author       = {{Space Telescope Science Institute}},
+  title        = {Galactic Bulge Time-Domain Survey},
+  howpublished = {Roman User Documentation},
+  year         = {2026},
+  url          = {https://roman-docs.stsci.edu/roman-community-defined-surveys/galactic-bulge-time-domain-survey},
+  note         = {Last updated 2026 August 24; accessed 2026 September 30}
+}
+
+@misc{STScIWFIQuickRef,
+  author       = {{Space Telescope Science Institute}},
+  title        = {{WFI} Quick Reference},
+  howpublished = {Roman User Documentation},
+  year         = {2025},
+  url          = {https://roman-docs.stsci.edu/roman-instruments/the-wide-field-instrument/observing-with-the-wfi/wfi-quick-reference},
+  note         = {Last updated 2025 January 2; accessed 2026 September 30}
 }

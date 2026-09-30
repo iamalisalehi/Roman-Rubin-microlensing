@@ -1741,13 +1741,23 @@ row is inspected.
 row (relMl_J > relMl_R, both valid), printing its per-partition sigpiE (photometric and astrometric)
 and sigtetE, and checking which piE each partition's mass used.
 
-## Roman's detection rate now exceeds Penny et al.'s |u0| < 3 figure (2026-09-26)
+## Roman's detection rate differs from Penny et al.'s |u0| < 3 figure by ~25% (2026-09-26; re-read 2026-09-30)
 
-**STATUS 2026-09-30 (Deviation 64): accounted for by the dust, pending the re-run.** With the U5
-dust correction the rate is 50,350 +- 2,945 / (1.47 x 693) = **49.4 +- 2.9** per deg^2 per day,
-(23 +- 5)% below Penny's |u0| < 3 figure and above the |u0| < 1 one -- where this entry says it should
-sit. The report now says so. Close this item once the re-run with rebuilt extinction tables confirms
-the rate; the "fix would involve" comparison below is then a refinement, not a tension.
+**STATUS 2026-09-30, later (Deviation 66): the "bracket" below is a misreading -- still open.** Penny
+et al. (2019, Sec. 2 and Table 2) give DETECTIONS at both |u0| < 1 (~27,000) and |u0| < 3 (~54,000);
+three times as many events *occur* at |u0| < 3. Our detections (u0 to 3) therefore compare with 63.8
+directly, not "below" it. As simulated 80.4 +- 1.4 = (26 +- 2)% above; dust-corrected 49.4 +- 2.9 =
+(23 +- 5)% below. The dust correction flips the sign; it does not resolve the comparison. The overview
+report now says this. **Still carrying the misreading:** `Report/populations/populations_report.tex`
+(Sec. 5, "The Penny bracket is predicted rather than fitted"), `Whitepaper/whitepaper.tex` (~l. 716
+and ~l. 1222), and Deviation 54's verification bullet (left as the historical record). The
+"fix would involve" below still stands and is now the only way to settle the comparison: restrict
+our count to Penny's six high-cadence seasons, their |u0| range and t0 window, and redo it with the
+corrected dust (or on the re-run).
+
+**Superseded STATUS 2026-09-30 (Deviation 64), kept for the record:** "accounted for by the dust,
+pending the re-run ... (23 +- 5)% below Penny's |u0| < 3 figure and above the |u0| < 1 one -- where
+this entry says it should sit."
 
 **What is wrong.** Per deg^2 of footprint per day of Roman coverage (693 d), Roman detections
 (u0 < 3, delta-chi2 >= 500) are 80.4 post-fix, against Penny et al. (2019) 31.9 (|u0| < 1) and

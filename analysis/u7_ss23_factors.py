@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Step U7: which differences in SAMPLE DEFINITION separate our Roman black-hole characterisation
-fractions from Sajadian & Sahu (2023, AJ 165, 119; arXiv:2301.03812), one at a time.
+fractions from Sajadian & Sahu (2023, AJ 165, 96; arXiv:2301.03812), one at a time.
 
 WHY THIS EXISTS. y2_ss23_compare.py matched SS23 on mass range (3-50 Msun, log-flat) and on the
 denominator (fraction of Roman's detections) and still found ours at ~1/3 of theirs for tE, piE and

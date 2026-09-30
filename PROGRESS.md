@@ -9,8 +9,9 @@ Marshall, harden readBayestar, validate against VVV with `analysis/u6_vvv_check.
 the three populations together with the F146 depth, corner-cut and GBTDS-layout fixes.** Status
 details: the U-series entries further down (search "Deviation 63").
 **Report audit, same day (Deviation 64):** every corrected number checked against the final U5/U4/U6
-outputs (all match); conclusions drawn from as-simulated numbers fixed -- the Penny et al. excess is
-gone with the dust corrected (49.4 +- 2.9 per deg^2 per day, inside their bracket); the OGLE
+outputs (all match); conclusions drawn from as-simulated numbers fixed -- the Penny et al. excess
+becomes a shortfall with the dust corrected (49.4 +- 2.9 per deg^2 per day, (23 +- 5)% below their
+63.8; the "bracket" was a misreading, see the citation audit below); the OGLE
 "yields understated" argument withdrawn (it is measured through the model's dust); gap filling and
 Rubin's additions to Roman labelled as not dust-corrected upper limits; four rounding/wording
 fixes. What the re-run must re-measure is listed in OPEN_ITEMS (CRITICAL dust entry, step 5).
@@ -19,6 +20,13 @@ published code counts u0 <= 1 events peaking inside Roman's mission, unweighted 
 counted that way our bh fractions to 10% are tE 71.9 / piE 42.1 / Ml 38.1% against their 67.0 / 30.0
 / 29.8 (`analysis/u7_ss23_factors.py`, `figures/u7_20260930/`). Only tetE stays lower (80.2 vs 99.2%):
 their astrometric errors are 1.6-8x smaller and their fit fixes piE. Report and OPEN_ITEMS updated.
+**Citation audit, same day (Deviation 66):** every cited claim in the overview report checked against
+the paper; every refs.bib entry against Crossref. Main finding: Penny et al.'s 27,000 / 54,000 are
+both DETECTIONS, so there is no bracket -- ours is 26% above as simulated and 23% below corrected, and
+the comparison is open again (OPEN_ITEMS). The populations report and whitepaper still carry the
+bracket argument. Also fixed: SS23 is AJ 165, 96 (not 119); SS23's rate 7.3 (not 7.2) per deg^2 per
+season; NS mass-function, Sanderson, Gould 2004, Marshall, Surot and per-resolved-object attributions;
+the literature F range now cited (Olejak, Lam, Gould 2000, Sweeney, SM26); three new web/JOSS refs.
 
 **Newest (2026-09-21): Step series S -- sample light curves for illustrative figures.**
 Requested: per-band light curves and astrometric tracks, with and without parallax, with
@@ -109,7 +117,7 @@ Sajadian & Makler). Three steps, each approved before it starts:
   report's "<sqrt M>/<M> suppresses 33x, efficiency returns 4x" argument independently (4/33 =
   0.12). The report gained §8.3 (N_1 table, figure), §8.4 (step-by-step recipe, commands,
   re-weighting to another mass function, combining populations) and a real natbib bibliography
-  (`Report/refs.bib`, 13 entries, checked against arXiv/publishers; SS23 is AJ 165, 119).
+  (`Report/refs.bib`, 13 entries, checked against arXiv/publishers; SS23 is AJ 165, 96 -- corrected from 119 in Deviation 66).
   PDF rebuilt: 15 pages, no undefined references. Commit 63dc530 (pushed).
   **Report template:** `Report/TEMPLATE_report.tex` (builds as is; red `\TODO`s that are also
   logged) + `Report/README.md` (where every number comes from, pre-share checklist). The

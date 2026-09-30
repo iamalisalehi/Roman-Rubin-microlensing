@@ -4509,8 +4509,8 @@ field) match `u6.log` / `u6_vvv_check.csv` / `u6_vvv_scan_ejk.csv`; the real-lay
 10. *Record only (not in the report):* Deviation 63 and OPEN_ITEMS gave the GC-field Roman factor as
    x0.07-0.12; `u4_hybrid.log` has 0.068 / 0.124 / 0.126, i.e. x0.07-0.13. OPEN_ITEMS corrected.
 
-**Build and commit:** the Bash permission check failed repeatedly after the edits, so the PDF was not
-rebuilt in-session; the user was given the build and commit commands.
+**Build:** run by the user after the in-session permission check failed repeatedly: 49 pp, 0 TODO,
+no undefined references. **Commit:** `2d94860`.
 
 **Not changed (checked, correct):** every Table 11 cell; abstract yields, errors, F ranges; the 8-10x
 Roman/Rubin footprint ratio (8.3-10.4); 6-8x characterised; 33-38% / 46-57% / 62-71% / 54-56% drops.

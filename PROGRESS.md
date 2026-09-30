@@ -1,5 +1,14 @@
 # PROGRESS.md — where this project stands
 
+**Newest (2026-09-30): the overview report quotes dust-corrected numbers on a VVV-verified dust
+reference (Deviation 63).** The extinction tables are wrong near the plane: maps.py's documented
+Bayestar/DECaPS declination rule puts Bayestar, beyond its own reliable distance, on 139 of Roman's
+147 sightlines, and DECaPS itself saturates on the Galactic-centre field. **Next step for the code:
+the dust fix plan in OPEN_ITEMS (CRITICAL dust entry) -- rebuild files/ext from DECaPS + calibrated
+Marshall, harden readBayestar, validate against VVV with `analysis/u6_vvv_check.py`, then re-run
+the three populations together with the F146 depth, corner-cut and GBTDS-layout fixes.** Status
+details: the U-series entries further down (search "Deviation 63").
+
 **Newest (2026-09-21): Step series S -- sample light curves for illustrative figures.**
 Requested: per-band light curves and astrometric tracks, with and without parallax, with
 instrument error bars, both telescopes, across physics and detection classes (after
@@ -251,7 +260,24 @@ Sajadian & Makler). Three steps, each approved before it starts:
     to the plane than the real layout** (five-field block b -1.2 vs -1.40); 83% of the simulated
     footprint lies on real detectors, covering 58% of the real tiles. Rubin covers 62.4 deg^2, of
     which 59.3 produce detections. Commit db2e616.
-  - **DONE 2026-09-30 (Deviation 62): report quotes DUST-CORRECTED results with uncertainties.**
+  - **DONE 2026-09-30 (Deviation 63): the dust diagnosis re-verified; reference replaced; report
+    re-done on it.** User doubted Deviation 62 ("DECaPS covers some sightlines, Bayestar the rest").
+    Verified: that IS what maps.py does (the documented dustmaps rule); Bayestar's own reliable_dist
+    flag is false at >= 4 kpc on all 139 Roman sightlines it serves; DECaPS covers all 1,829 scan
+    sightlines but is SATURATED on the GC field despite its flag. Settled with the independent VVV
+    reddening map (Surot+2020; `analysis/u6_vvv_check.py`): GC/five-field contrast VVV 4.89, Marshall
+    4.46, DECaPS 1.07, simulator 0.57. New U5 nominal = DECaPS + Marshall calibrated to it
+    (A_Ks/A_V = 0.0805) where DECaPS saturates; tracks VVV to 0.88-0.99 in every |b| bin.
+    **Corrected headlines (ordinary / bh F / ns F):** Roman footprint detections 50,400+-2,900 /
+    5,660+-320 / 36,500+-2,300; Roman 10% masses 830+-110 / 579+-42 / 1,102+-72; Rubin whole scan
+    78,000+-12,000 / 11,200+-1,500 / 62,000+-9,000; RfR 10% masses (joint) 8.1 / 53.3 / 15.7 %; Roman
+    P(resolvable) D=5 0.8 / 34.2 / 1.7 %; real GBTDS layout adds 15-24% to Roman. Outputs:
+    `figures/u1_20260929/u5_corrected_numbers.{md,csv}`, `u5.log`, `u5_dust_summary.csv`,
+    `u6_*.csv`, `u6.log`, `u4_dust_check_hybrid.csv`, `u4_hybrid.log`. Report Section 5.5 rewritten,
+    5.4 / abstract / summary updated; 49 pp clean. **Fix plan (maps.py, readBayestar, validation,
+    re-runs) in OPEN_ITEMS, CRITICAL dust entry.** Main-code answer: maps.py and readBayestar change,
+    the simulator's physics does not, new production runs are required.
+  - **DONE 2026-09-30 (Deviation 62, SUPERSEDED by 63): report quotes DUST-CORRECTED results with uncertainties.**
     `analysis/u5_corrected_numbers.py` -> `figures/u1_20260929/u5_corrected_numbers.md` (zero-correction
     column reproduces every reported value). Headlines: Roman footprint detections 60,600+-2,300
     (ordinary), (6,520+-270)F bh, (43,800+-1,800)F ns; 10% masses 1,060+-110, (744+-37)F, (1,441+-91)F;

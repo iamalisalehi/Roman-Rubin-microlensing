@@ -137,7 +137,10 @@ def efficiency(mag, det, y, bins):
     return lambda m: np.interp(m, centres[ok], eff[ok], left=eff[ok][0], right=0.0)
 
 
-def part2(dust, name, directory, mean_mass_dir, realpix, out):
+def part2(dust, name, directory, mean_mass_dir, realpix, out, dust5=None):
+    """dust5: a u5_corrected_numbers.Dust -- if given, the extra dust is U5's nominal reference
+    (DECaPS + calibrated near-infrared where DECaPS saturates; Deviation 63) at each draw's own
+    distance, instead of Marshall at 8 kpc with A_Ks/A_V = 0.11 (Deviation 61)."""
     tag = R.load_provenance(os.path.join(directory, "files/MONTLMC/files/run_provenance.txt")
                             ).get("population_tag", "5")
     path = os.path.join(directory, f"test{tag}_foot.dat")
@@ -149,8 +152,13 @@ def part2(dust, name, directory, mean_mass_dir, realpix, out):
     y = T * R.RATE_UNIT * w.to_numpy() / d["struc"].map(mm).to_numpy(float)
     key = pd.Series(list(zip(d["lon"].round(3), d["lat"].round(3))))
     sl = sorted(set(key))
-    dav = {k: dust.marshall_av(k[0], k[1])[0] - dust.model_av(*k) for k in sl}
-    dA = key.map(dav).to_numpy(float)
+    if dust5 is None:
+        dav = {k: dust.marshall_av(k[0], k[1])[0] - dust.model_av(*k) for k in sl}
+        dA = key.map(dav).to_numpy(float)
+    else:
+        import u5_corrected_numbers as U5
+        dA = dust5.delta_av(d["lon"].to_numpy(float), d["lat"].to_numpy(float),
+                            d["Ds"].to_numpy(float), "hybrid", U5.AKS_AV["nominal"])
     for surv, mcol, dcol, coef in (("Roman", "magb_F146", "detR", AF146_AV),
                                    ("Rubin", "magb_r", "detL", AR_AV)):
         mag = d[mcol].to_numpy(float)
@@ -306,23 +314,34 @@ def main():
     ap.add_argument("-o", "--out", required=True)
     ap.add_argument("--whole-scan", action="append", default=[], metavar="NAME=FILE",
                     help="all-draws column extract (lon lat w_area Ml Vt Ds struc magb_r detL detJ)")
+    ap.add_argument("--parts", default="123", help="which parts to run (default all)")
+    ap.add_argument("--reference", choices=["marshall", "hybrid"], default="marshall",
+                    help="Part 2's reference dust: Marshall at 8 kpc, A_Ks/A_V 0.11 (Deviation 61), "
+                         "or U5's nominal DECaPS + calibrated near-infrared (Deviation 63); "
+                         "'hybrid' writes u4_dust_check_hybrid.csv")
     a = ap.parse_args()
     dust = Dust()
+    dust5 = None
+    if a.reference == "hybrid":
+        import u5_corrected_numbers as U5
+        dust5 = U5.Dust()
     out, runs = [], []
     specs = [s.split("=", 1) for s in a.run]
-    for name, directory in specs:
-        runs.append(U.Run(name, directory, a.mean_mass))
-    part1(dust, runs, out)
-    del runs
+    if "1" in a.parts:
+        for name, directory in specs:
+            runs.append(U.Run(name, directory, a.mean_mass))
+        part1(dust, runs, out)
+        del runs
     realpix = U3.real_pixels()
-    for name, directory in specs:
-        part2(dust, name, directory, a.mean_mass, realpix, out)
+    for name, directory in specs if "2" in a.parts else []:
+        part2(dust, name, directory, a.mean_mass, realpix, out, dust5)
     dirs = dict(specs)
-    for spec in a.whole_scan:
+    for spec in a.whole_scan if "3" in a.parts else []:
         name, path = spec.split("=", 1)
         part3(dust, name, dirs[name], path, a.mean_mass, None, out)
     t = pd.DataFrame(out)
-    t.to_csv(os.path.join(a.out, "u4_dust_check.csv"), index=False)
+    suffix = "_hybrid" if a.reference == "hybrid" else ""
+    t.to_csv(os.path.join(a.out, f"u4_dust_check{suffix}.csv"), index=False)
     with pd.option_context("display.width", 200, "display.max_colwidth", 90, "display.max_rows", 200):
         print(t.to_string(index=False))
 

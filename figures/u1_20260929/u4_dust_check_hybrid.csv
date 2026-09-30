@@ -1,0 +1,37 @@
+part,population,quantity,value,n,err
+2,bulge,"Roman detections, simulated footprint: dust-corrected / model",0.6221483037279942,147,
+2,bulge,"Roman detections, five-field: dust-corrected / model",0.826685864756809,119,
+2,bulge,"Roman detections, GC field: dust-corrected / model",0.06802230216267756,28,
+2,bulge,"Roman: dust-corrected slope d ln(rho)/db, five-field",-0.14153099665575242,6,0.11277450501073565
+2,bulge,"Roman: dust-corrected slope d ln(rho)/db, GC field",-1.9846756646749435,6,0.31272765075791364
+2,bulge,"Roman detections: real/simulated footprint, dust-corrected",1.2392679523429966,147,
+2,bulge,"Rubin detections, simulated footprint: dust-corrected / model",0.2991138525482233,147,
+2,bulge,"Rubin detections, five-field: dust-corrected / model",0.41044988472236055,119,
+2,bulge,"Rubin detections, GC field: dust-corrected / model",9.600871223188828e-06,28,
+2,bulge,"Rubin: dust-corrected slope d ln(rho)/db, five-field",-2.583624808527421,6,0.6853277238751787
+2,bulge,"Rubin: dust-corrected slope d ln(rho)/db, GC field",-3.565055372043702,6,2.0984624836061934
+2,bulge,"Rubin detections: real/simulated footprint, dust-corrected",2.2346265091555138,147,
+2,bh,"Roman detections, simulated footprint: dust-corrected / model",0.687028522452747,147,
+2,bh,"Roman detections, five-field: dust-corrected / model",0.8762472729816156,119,
+2,bh,"Roman detections, GC field: dust-corrected / model",0.12387442421311681,28,
+2,bh,"Roman: dust-corrected slope d ln(rho)/db, five-field",0.2598643611065119,6,0.10348980612296768
+2,bh,"Roman: dust-corrected slope d ln(rho)/db, GC field",-1.9690430961165724,6,0.5040634175972964
+2,bh,"Roman detections: real/simulated footprint, dust-corrected",1.1488507339103367,147,
+2,bh,"Rubin detections, simulated footprint: dust-corrected / model",0.38315729401241894,147,
+2,bh,"Rubin detections, five-field: dust-corrected / model",0.5346258001023492,119,
+2,bh,"Rubin detections, GC field: dust-corrected / model",1.1112806112225383e-05,28,
+2,bh,"Rubin: dust-corrected slope d ln(rho)/db, five-field",-1.8631121700791424,6,0.39663947742552313
+2,bh,"Rubin: dust-corrected slope d ln(rho)/db, GC field",-4.942814115661838,6,3.0416789345279387
+2,bh,"Rubin detections: real/simulated footprint, dust-corrected",1.846077689191928,147,
+2,ns,"Roman detections, simulated footprint: dust-corrected / model",0.6444066755313861,147,
+2,ns,"Roman detections, five-field: dust-corrected / model",0.832531778879579,119,
+2,ns,"Roman detections, GC field: dust-corrected / model",0.1263489352857663,28,
+2,ns,"Roman: dust-corrected slope d ln(rho)/db, five-field",0.06772990654148962,6,0.07681581792736988
+2,ns,"Roman: dust-corrected slope d ln(rho)/db, GC field",-1.2225642625206299,6,0.16618963260598413
+2,ns,"Roman detections: real/simulated footprint, dust-corrected",1.1843196492692554,147,
+2,ns,"Rubin detections, simulated footprint: dust-corrected / model",0.32571518502576496,147,
+2,ns,"Rubin detections, five-field: dust-corrected / model",0.45138885584106975,119,
+2,ns,"Rubin detections, GC field: dust-corrected / model",1.414033502468047e-05,28,
+2,ns,"Rubin: dust-corrected slope d ln(rho)/db, five-field",-2.205671662607492,6,0.4416511034680678
+2,ns,"Rubin: dust-corrected slope d ln(rho)/db, GC field",-4.647544176692791,6,3.484511087381685
+2,ns,"Rubin detections: real/simulated footprint, dust-corrected",2.0185171613067956,147,

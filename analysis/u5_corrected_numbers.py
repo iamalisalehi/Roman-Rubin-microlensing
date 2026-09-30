@@ -8,8 +8,22 @@ and summary to report the CORRECTED results, with uncertainties. This script pro
 every number the abstract and summary quote, each with a Monte Carlo error and a systematic error
 of the correction itself.
 
-THE CORRECTION. For every simulated draw i, dA_V,i = A_V,Marshall(l, b, Ds_i) - A_V,model(l, b, Ds_i)
-at the source's OWN distance (Step U4 used 8 kpc for every source). The extra dust only dims the
+THE DIAGNOSIS IT RESTS ON (Deviation 63, all checked, not assumed): maps.py follows the dustmaps
+documentation's combination rule, Bayestar north of dec -30 and DECaPS south. 139 of Roman's 147
+sightlines are north of -30, and Bayestar's OWN reliable-distance flag is false at >= 4 kpc on every
+one of them: the tables hold Bayestar values beyond the range Bayestar vouches for, for every bulge
+source. DECaPS (Zucker et al. 2025; 239 < l < 6, |b| < 10, which contains the whole scan) has data at
+every sightline and table position, and its flag is true at 8 kpc on all of Roman's five-field block
+and 71% of the Galactic-centre field. But DECaPS is sensitive to A_V ~ 12 only, and on the
+Galactic-centre field it is saturated despite its flag: its column there is 1.07 times its
+five-field column, where the VVV reddening map (Surot et al. 2020) measures 4.89 and Marshall 4.46
+(Step U6, analysis/u6_vvv_check.py; the ratio is independent of the extinction law). 78 tables are
+empty (Bayestar has no data there) and were simulated with zero dust.
+
+THE CORRECTION. For every simulated draw i, dA_V,i = A_V,reference(l, b, Ds_i) - A_V,model(l, b, Ds_i)
+at the source's OWN distance, the reference being the nominal "hybrid" dust of the Dust class
+(DECaPS where it is reliable and not saturated; the near-infrared map, calibrated onto DECaPS's
+scale where both are valid, where it is not). The extra dust only dims the
 source: dF146 = 0.197 dA_V, dr = 0.854 dA_V (CCM89, R_V = 2.5). For an outcome S (detected by Roman,
 mass to 10%, ...) that depends on the source brightness through a survey's magnitude m, the
 efficiency eff_S(m) is measured from the same draws, and each draw with S_i = 1 is re-weighted by
@@ -25,10 +39,14 @@ THE UNCERTAINTY of every corrected number is
     MC   : Poisson on the draws, sqrt(sum (y s)^2), for yields; a Poisson bootstrap for fractions
            and medians;
     syst : the spread of the correction under its own choices, added in quadrature --
-           A_Ks/A_V = 0.10 vs 0.114 (nominal 0.11; half the difference),
-           efficiency measured per field block (nominal) vs pooled over the footprint,
-           per-draw distance (nominal) vs every source at 8 kpc.
-What it does NOT cover: that a surviving event's PRECISION also degrades when its source dims. For
+           reference dust: the shift of the near-infrared-only variant (a DECaPS-only variant is
+           computed and reported, but not counted: VVV rules it out on the Galactic-centre field),
+           A_Ks/A_V: the larger shift of 0.0734 (VVV contrast) and 0.102 (CCM89, R_V 2.5) from the
+           nominal 0.0805,
+           efficiency measured per field block (nominal) vs pooled over the footprint.
+What it does NOT cover: the law converting A_V to A_F146 and A_r is the simulator's CCM89 at
+R_V = 2.5 throughout; its own uncertainty is not included.
+Nor: that a surviving event's PRECISION also degrades when its source dims. For
 yields of precision outcomes (masses to 10%) that is included, because they use their own
 efficiency; for re-weighted medians of per-event ratios it is not.
 
@@ -56,7 +74,29 @@ import romanlib as R                  # noqa: E402
 import u1_report_numbers as U         # noqa: E402
 
 AF146_AV, AR_AV = 0.197, 0.854
-AKS_AV = {"nominal": 0.11, "aks_lo": 0.10, "aks_hi": 0.114}
+# A_Ks/A_V puts the near-infrared (Marshall) map on the A_V scale; it matters only where the
+# reference uses that map, i.e. where DECaPS cannot see (Step U6, analysis/u6_vvv_check.py):
+#   nominal 0.0805: the median A_Ks(Marshall)/A_V(DECaPS) over Roman's five-field block at 8 kpc,
+#                   where DECaPS is flagged reliable on all 119 sightlines -- the near-infrared map
+#                   calibrated onto DECaPS's scale where both are valid (16-84%: 0.068-0.093);
+#   aks_lo  0.0734: 0.0805 x 4.46/4.89, i.e. Marshall's column raised by the ~10% by which its
+#                   Galactic-centre/five-field contrast (4.46) falls short of the VVV reddening
+#                   map's (4.89, Surot et al. 2020) -- more dust; the GC-field column is then 4%
+#                   above VVV's calibrated one, the nominal 5% below it;
+#   aks_hi  0.102 : CCM89 at R_V 2.5, the law the simulator applies to bulge sources -- the
+#                   uncalibrated alternative, less dust.
+AKS_AV = {"nominal": 0.0805, "aks_lo": 0.0734, "aks_hi": 0.102}
+# DECaPS's stated sensitivity limit (Zucker et al. 2025): beyond the distance at which the
+# (calibrated) near-infrared column passes it, DECaPS no longer sees the stars behind the dust.
+DECAPS_AV_MAX = 12.0
+# (reference variant, A_Ks/A_V, pooled efficiency): nominal first; the rest set the systematic error,
+# except "decaps", which is kept for the record only: VVV rules it out on the Galactic-centre field.
+VARIANTS = {"nominal": ("hybrid", AKS_AV["nominal"], False),
+            "marshall": ("marshall", AKS_AV["nominal"], False),
+            "decaps": ("decaps", AKS_AV["nominal"], False),
+            "aks_lo": ("hybrid", AKS_AV["aks_lo"], False),
+            "aks_hi": ("hybrid", AKS_AV["aks_hi"], False),
+            "pooled": ("hybrid", AKS_AV["nominal"], True)}
 DEPTH_5SIG = 25.52
 T_S = (3652.43 - 2 * R.T0_MARGIN_DAYS) * 86400.0
 EFF_BINS = np.arange(10.0, 34.01, 0.25)
@@ -68,49 +108,72 @@ FOOT_COLS = ["lon", "lat", "w_area", "Ml", "Vt", "Ds", "struc", "detL", "detR", 
              "sigtetE_J", "sigtetE_L", "sigtetE_R", "relMl_J", "relMl_L", "relMl_R",
              "ndw_R", "Ai_r"]
 ROWS = []
+LOG_FOR_SUMMARY = None
 
 
 # ---------------------------------------------------------------------------------------------
 # Dust
 # ---------------------------------------------------------------------------------------------
 class Dust:
-    """Model (the simulator's extinction tables) and near-infrared (Marshall) A_V(d) profiles."""
+    """The simulator's extinction (its own tables, chosen exactly as the C++ chooses them) and the
+    reference dust the correction moves each source to.
+
+    MODEL. readBayestar() walks files/ext/ in directory order and takes each table's l, b from its
+    first line; nearestSightline() keeps the first table with the strictly smallest flat distance.
+    os.scandir() returns the same (readdir) order, and np.argmin returns the first minimum, so the
+    choice is identical, ties included (verified: 99.92% of 300,000 draws' recorded A_r agree to the
+    0.017-mag scatter the simulator adds; the rest were a tie this now reproduces). An empty table
+    (all NaN; 78 of them) fails the C++ read and gives zero dust, and is modelled as zero.
+
+    REFERENCE, three variants (nir = Marshall's A_Ks / A_Ks/A_V):
+      "hybrid"   (nominal) -- what the fixed pipeline would use: DECaPS (A_V = 3.32 E(B-V), the
+                 dustmaps convention) out to the largest distance its own flag calls reliable at
+                 that sightline; beyond it, DECaPS's last reliable value plus nir's further increase;
+                 and from the first distance at which nir reaches DECAPS_AV_MAX on, nir itself --
+                 DECaPS is saturated there (on the Galactic-centre field it reads A_V ~ 7 at 8 kpc,
+                 flat from ~3 kpc, while nir and the VVV reddening map read ~31-33; Step U6);
+      "decaps"   DECaPS at every distance, ignoring its reliability flag and its saturation;
+      "marshall" nir at every distance.
+    self.dsat[(l, b, A_Ks/A_V)] records the distance at which the nominal switches to nir (inf if
+    it never does), for the summary.
+    """
 
     def __init__(self):
         from dustmaps.config import config
         config["data_dir"] = "dustmaps"
         from dustmaps.marshall import MarshallQuery
+        from dustmaps.decaps import DECaPSQueryLite
         self.mq = MarshallQuery()
-        files = sorted(glob.glob("files/ext/bayestar_*.txt"))
-        self.files = files
-        self.pos = np.array([[float(x) for x in re.findall(r"bayestar_(-?[\d.]+)_(-?[\d.]+)\.txt", f)[0]]
-                             for f in files])
-        self._model, self._aks = {}, {}
+        self.dq = DECaPSQueryLite(mean_only=True)
+        self.files = [e.path for e in os.scandir("files/ext")
+                      if e.is_file() and e.name.endswith(".txt")]
+        self.pos = np.array([np.loadtxt(f, max_rows=1, usecols=(0, 1)) for f in self.files])
+        self._model, self._aks, self._dec = {}, {}, {}
+        self.dsat = {}
 
-    def model_profile(self, l, b):
-        """A_V on DGRID from the table nearestSightline() would pick."""
-        i = int(np.argmin((self.pos[:, 0] - l) ** 2 + (self.pos[:, 1] - b) ** 2))
+    def _nearest(self, l, b):
+        return int(np.argmin((self.pos[:, 0] - l) ** 2 + (self.pos[:, 1] - b) ** 2))
+
+    def model_av(self, l, b, d):
+        """A_V at distances d on the table the simulator used for sightline (l, b)."""
+        i = self._nearest(l, b)
         if i not in self._model:
-            a = np.loadtxt(self.files[i])
-            if not np.isfinite(a[:, 3]).any():
-                # A "total dropout" table (78 of 2,518, all just north of dec -30 where Bayestar
-                # has no data): every A_V is NaN. The simulator reads it with >>, the stream fails
-                # on the first "nan", and the sightline is simulated with ~zero dust (measured:
-                # median A_r 0.0002 mag on its detections). So the model's dust here IS zero.
-                self._model[i] = np.zeros(DGRID.size)
-            else:
-                self._model[i] = np.interp(DGRID, a[:, 2], a[:, 3])
-        return self._model[i]
+            a = np.loadtxt(self.files[i], usecols=(2, 3))
+            self._model[i] = None if not np.isfinite(a[:, 1]).any() else a
+        t = self._model[i]
+        return np.zeros(np.size(d)) if t is None else np.interp(d, t[:, 0], t[:, 1])
+
+    def _coords(self, l, b):
+        import astropy.units as u
+        from astropy.coordinates import SkyCoord
+        return SkyCoord(l=np.full(DGRID.size, l) * u.deg, b=np.full(DGRID.size, b) * u.deg,
+                        distance=DGRID * u.kpc, frame="galactic")
 
     def aks_profile(self, l, b):
         """Marshall A_Ks on DGRID; NaN beyond its coverage is held at the last valid value."""
         k = (round(l, 3), round(b, 3))
         if k not in self._aks:
-            import astropy.units as u
-            from astropy.coordinates import SkyCoord
-            c = SkyCoord(l=np.full(DGRID.size, l) * u.deg, b=np.full(DGRID.size, b) * u.deg,
-                         distance=DGRID * u.kpc, frame="galactic")
-            a = np.asarray(self.mq(c), float)
+            a = np.asarray(self.mq(self._coords(l, b)), float)
             ok = np.isfinite(a)
             if ok.sum() >= 2:
                 a = np.interp(DGRID, DGRID[ok], a[ok])
@@ -121,23 +184,51 @@ class Dust:
             self._aks[k] = a
         return self._aks[k]
 
-    def delta_av(self, lon, lat, ds, aks_av, fixed_d=None, codes=None, keys=None):
-        """Per-draw A_V,Marshall - A_V,model; 0 where Marshall has no value. Pass the
-        sightline codes/keys (romanlib.sightline_index) for large tables."""
+    def decaps_profile(self, l, b):
+        """(A_V on DGRID, reliable mask) from DECaPS, A_V = 3.32 E(B-V)."""
+        k = (round(l, 3), round(b, 3))
+        if k not in self._dec:
+            v, fl = self.dq(self._coords(l, b), mode="mean", return_flags=True)
+            self._dec[k] = (3.32 * np.asarray(v, float), np.asarray(fl["reliable_dist"], bool))
+        return self._dec[k]
+
+    def reference_profile(self, l, b, variant, aks_av):
+        aks = self.aks_profile(l, b)
+        nir = aks / aks_av
+        if variant == "marshall":
+            return nir
+        dav, rel = self.decaps_profile(l, b)
+        if not np.isfinite(dav).any():
+            return nir                                # outside DECaPS (not the case in this scan)
+        dav = np.interp(DGRID, DGRID[np.isfinite(dav)], dav[np.isfinite(dav)])
+        if variant == "decaps":
+            return dav
+        if np.all(np.isnan(aks)):
+            return dav
+        if not rel.any():
+            return nir
+        imax = int(np.flatnonzero(rel).max())
+        prof = dav.copy()
+        beyond = np.arange(DGRID.size) > imax
+        prof[beyond] = dav[imax] + np.maximum(aks[beyond] - aks[imax], 0.0) / aks_av
+        hit = np.flatnonzero(nir >= DECAPS_AV_MAX)
+        self.dsat[(round(l, 3), round(b, 3), aks_av)] = DGRID[hit[0]] if hit.size else np.inf
+        if hit.size:
+            prof[hit[0]:] = nir[hit[0]:]
+        return prof
+
+    def delta_av(self, lon, lat, ds, variant, aks_av, codes=None, keys=None):
+        """Per-draw A_V,reference - A_V,model at each source's own distance."""
         lon, lat, ds = map(np.asarray, (lon, lat, ds))
         out = np.zeros(lon.size)
         if codes is None:
-            s = pd.Series(list(zip(np.round(lon, 3), np.round(lat, 3))))
-            groups = [(k, np.asarray(p)) for k, p in s.groupby(s).groups.items()]
+            sr = pd.Series(list(zip(np.round(lon, 3), np.round(lat, 3))))
+            groups = [(k, np.asarray(p)) for k, p in sr.groupby(sr).groups.items()]
         else:
             groups = [(keys[c], pos) for c, pos in R.sightline_groups(codes)]
         for k, pos in groups:
-            d = np.full(pos.size, fixed_d) if fixed_d else ds[pos]
-            mod = np.interp(d, DGRID, self.model_profile(*k))
-            aks = self.aks_profile(*k)
-            if np.all(np.isnan(aks)):
-                continue
-            out[pos] = np.interp(d, DGRID, aks) / aks_av - mod
+            ref = np.interp(ds[pos], DGRID, self.reference_profile(*k, variant, aks_av))
+            out[pos] = ref - self.model_av(*k, ds[pos])
         return out
 
 
@@ -264,7 +355,10 @@ def resolution_variant(d, y, dav, sR):
     out = {}
     for bar in ("5", "20", "PSF"):
         res = cnt[(DEPTH_5SIG, bar)] >= U.RESOLVE_MIN_EPOCHS
-        out[f"P(resolvable) Roman D={bar} [%]"] = (100 * float(w[res].sum() / w.sum()), np.nan)
+        # MC error of the weighted fraction by the delta method, as ratio() in footprint_variant
+        rho = float(w[res].sum() / w.sum())
+        mc = float(np.sqrt(np.sum((w * res - rho * w) ** 2)) / w.sum())
+        out[f"P(resolvable) Roman D={bar} [%]"] = (100 * rho, 100 * mc)
         out[f"Roman resolves, D={bar}, N_1"] = (float(w[res].sum()), float(np.sqrt((w[res] ** 2).sum())))
     return out
 
@@ -311,11 +405,11 @@ def whole_scan_context(name, directory, mean_mass_dir):
                 r=d["magb_r"].to_numpy(float))
 
 
-def whole_scan(ctx, dust, aks_av, pooled, fixed_d):
+def whole_scan(ctx, dust, variant, aks_av, pooled):
     """Rubin's whole-scan yield with the dust corrected, for one variant of the correction."""
     y, detL, ft = ctx["y"], ctx["detL"], ctx["ft"]
     groups = np.zeros(y.size, int) if pooled else ctx["vis_group"]
-    dav = dust.delta_av(ctx["lon"], ctx["lat"], ctx["Ds"], aks_av, fixed_d,
+    dav = dust.delta_av(ctx["lon"], ctx["lat"], ctx["Ds"], variant, aks_av,
                         codes=ctx["codes"], keys=ctx["keys"])
     s = survival(ctx["r"], AR_AV * dav, detL.astype(float), y, groups)
     tot0 = float(y[detL].sum())
@@ -324,6 +418,53 @@ def whole_scan(ctx, dust, aks_av, pooled, fixed_d):
                inside=float((y * s)[ft].sum()), uncorrected=tot0,
                outside_uncorrected=float(y[detL & ~ft].sum()))
     return res
+
+
+def dust_summary(dust, out_dir):
+    """Model vs DECaPS vs near-infrared vs nominal reference on Roman's sightlines, with each map's
+    own reliability flag at 8 kpc -- the evidence the report's dust table quotes."""
+    import subprocess
+    import astropy.units as u
+    from astropy.coordinates import SkyCoord
+    from dustmaps.bayestar import BayestarQuery
+    lines = subprocess.run(["grep", "-E", r"^longtitude:|^ndd \(Roman", LOG_FOR_SUMMARY],
+                           capture_output=True, text=True).stdout.splitlines()
+    rom, key = [], None
+    for ln in lines:
+        if ln.startswith("longtitude:"):
+            p = ln.split(); key = (float(p[1]), float(p[3]))
+        elif key is not None:
+            if int(ln.split()[2]) > 0:
+                rom.append(key)
+            key = None
+    rom = np.array(rom)
+    c8 = SkyCoord(l=rom[:, 0] * u.deg, b=rom[:, 1] * u.deg, distance=np.full(len(rom), 8.0) * u.kpc,
+                  frame="galactic")
+    _, fb = BayestarQuery(max_samples=1)(c8, mode="mean", return_flags=True)
+    rows = []
+    for (l, b), brel in zip(rom, fb["reliable_dist"]):
+        dav, drel = dust.decaps_profile(l, b)
+        i8 = int(np.argmin(np.abs(DGRID - 8.0)))
+        rows.append(dict(l=l, b=b, block="GC field" if b > -0.8 else "five-field",
+                         model=float(dust.model_av(l, b, np.array([8.0]))[0]),
+                         decaps=float(np.interp(8.0, DGRID, dav)),
+                         aks=float(np.interp(8.0, DGRID, dust.aks_profile(l, b))),
+                         nir=float(np.interp(8.0, DGRID, dust.aks_profile(l, b))) / AKS_AV["nominal"],
+                         nominal=float(np.interp(8.0, DGRID, dust.reference_profile(l, b, "hybrid",
+                                                                                      AKS_AV["nominal"]))),
+                         nir_from_kpc=dust.dsat.get((round(l, 3), round(b, 3), AKS_AV["nominal"]),
+                                                    np.nan),
+                         bayestar_reliable_8kpc=bool(brel), decaps_reliable_8kpc=bool(drel[i8])))
+    t = pd.DataFrame(rows)
+    t.to_csv(os.path.join(out_dir, "u5_dust_summary.csv"), index=False)
+    g = t.groupby("block").agg(n=("l", "size"), model=("model", "median"), decaps=("decaps", "median"),
+                               nir=("nir", "median"), nominal=("nominal", "median"),
+                               saturated_by_8kpc=("nir_from_kpc", lambda x: float((x <= 8.0).mean())),
+                               bayestar_reliable=("bayestar_reliable_8kpc", "mean"),
+                               decaps_reliable=("decaps_reliable_8kpc", "mean"))
+    print("Dust at 8 kpc on Roman's sightlines (median A_V; reliable = fraction flagged reliable):\n"
+          + g.round(3).to_string(), flush=True)
+    return g
 
 
 # ---------------------------------------------------------------------------------------------
@@ -335,6 +476,9 @@ def main():
     ap.add_argument("--no-resolution", action="store_true")
     a = ap.parse_args()
     dust = Dust()
+    global LOG_FOR_SUMMARY
+    LOG_FOR_SUMMARY = os.path.join(a.run[0].split("=", 1)[1], "run.log")
+    dust_summary(dust, a.out)
     for spec in a.run:
         name, directory = spec.split("=", 1)
         tag = R.load_provenance(os.path.join(directory, "files/MONTLMC/files/run_provenance.txt")
@@ -351,30 +495,24 @@ def main():
               f"(must equal y1's footprint 'Roman detects')", flush=True)
         blocks = (d["lat"].to_numpy() >= -0.8).astype(int)
         lon, lat, ds = (d[c].to_numpy(float) for c in ("lon", "lat", "Ds"))
-        variants = {
-            "nominal": (dust.delta_av(lon, lat, ds, AKS_AV["nominal"]), blocks),
-            "aks_lo": (dust.delta_av(lon, lat, ds, AKS_AV["aks_lo"]), blocks),
-            "aks_hi": (dust.delta_av(lon, lat, ds, AKS_AV["aks_hi"]), blocks),
-            "pooled": (dust.delta_av(lon, lat, ds, AKS_AV["nominal"]), np.zeros(len(d), int)),
-            "d8kpc": (dust.delta_av(lon, lat, ds, AKS_AV["nominal"], fixed_d=8.0), blocks),
-        }
+        variants = {k: (dust.delta_av(lon, lat, ds, ref, aks), np.zeros(len(d), int) if pooled else blocks)
+                    for k, (ref, aks, pooled) in VARIANTS.items()}
         res = {k: footprint_variant(d, y, dav, g) for k, (dav, g) in variants.items()}
         zero = footprint_variant(d, y, np.zeros(len(d)), blocks)      # must reproduce as simulated
         if not a.no_resolution:
-            for k in ("nominal", "aks_lo", "aks_hi", "d8kpc"):
+            for k in VARIANTS:
+                if k == "pooled":
+                    continue
                 res[k].update(resolution_variant(d, y, variants[k][0], res[k]["_sR"]))
             zero.update(resolution_variant(d, y, np.zeros(len(d)), zero["_sR"]))
-            for k in ("pooled",):
-                res[k].update({q: res["nominal"][q] for q in res["nominal"] if q.startswith(("P(res", "Roman resolves"))})
+            res["pooled"].update({q: res["nominal"][q] for q in res["nominal"]
+                                  if q.startswith(("P(res", "Roman resolves"))})
         # whole scan
         ws_path = os.path.join(directory, f"test{tag}_rubincols.dat")
         if os.path.exists(ws_path):
             ctx = whole_scan_context(name, directory, a.mean_mass)
-            wsv = {"nominal": whole_scan(ctx, dust, 0.11, False, None),
-                   "aks_lo": whole_scan(ctx, dust, 0.10, False, None),
-                   "aks_hi": whole_scan(ctx, dust, 0.114, False, None),
-                   "pooled": whole_scan(ctx, dust, 0.11, True, None),
-                   "d8kpc": whole_scan(ctx, dust, 0.11, False, 8.0)}
+            wsv = {k: whole_scan(ctx, dust, ref, aks, pooled)
+                   for k, (ref, aks, pooled) in VARIANTS.items()}
             print(f"[{name}] whole-scan Rubin: uncorrected {wsv['nominal']['uncorrected']:.4g} "
                   f"(must equal y1), corrected {wsv['nominal']['total'][0]:.4g}", flush=True)
             del ctx
@@ -382,8 +520,13 @@ def main():
                 res[k]["Rubin detects, whole scan"] = v["total"]
                 res[k]["Rubin detects, outside footprint"] = v["outside"]
                 tot_in = res[k]["Roman detects"][0] + res[k]["Rubin only (footprint)"][0]
+                # MC: the outside and footprint draws are independent, and Roman's detections and
+                # Rubin-only ones are disjoint, so the three Poisson variances simply add.
+                o, so = v["outside"]
+                si2 = res[k]["Roman detects"][1] ** 2 + res[k]["Rubin only (footprint)"][1] ** 2
+                mc = float(np.sqrt((tot_in * so) ** 2 + o ** 2 * si2) / (o + tot_in) ** 2)
                 res[k]["share of detections outside the footprint [%]"] = (
-                    100 * v["outside"][0] / (v["outside"][0] + tot_in), np.nan)
+                    100 * o / (o + tot_in), 100 * mc)
             zero["Rubin detects, whole scan"] = (wsv["nominal"]["uncorrected"], np.nan)
         # collect
         for q in res["nominal"]:
@@ -391,22 +534,35 @@ def main():
                 continue
             v0, mc = res["nominal"][q]
             get = lambda k: res[k].get(q, (np.nan,))[0]
-            syst = np.sqrt(((get("aks_hi") - get("aks_lo")) / 2) ** 2 + (get("pooled") - v0) ** 2
-                           + (get("d8kpc") - v0) ** 2)
+            # reference map: the near-infrared-only variant's shift (DECaPS-only is excluded by
+            # VVV, Step U6); A_Ks/A_V: the larger shift of its two alternatives (the nominal is not
+            # central between them); efficiency modelling: the pooled variant's shift
+            s_map = abs(get("marshall") - v0)
+            s_aks = max(abs(get("aks_hi") - v0), abs(get("aks_lo") - v0))
+            s_eff = abs(get("pooled") - v0)
+            syst = float(np.sqrt(np.nansum([s_map ** 2, s_aks ** 2, s_eff ** 2])))
             ROWS.append(dict(population=name, quantity=q, corrected=v0, mc=mc, syst=syst,
                              total=np.sqrt(np.nan_to_num(mc) ** 2 + syst ** 2),
                              as_simulated=zero.get(q, (np.nan,))[0],
-                             aks_lo=get("aks_lo"), aks_hi=get("aks_hi"), pooled=get("pooled"),
-                             d8kpc=get("d8kpc")))
+                             s_map=s_map, s_aks=s_aks, s_eff=s_eff,
+                             marshall=get("marshall"), decaps=get("decaps"), aks_lo=get("aks_lo"),
+                             aks_hi=get("aks_hi"), pooled=get("pooled")))
         print(pd.DataFrame([r for r in ROWS if r["population"] == name]).to_string(index=False),
               flush=True)
         del d
+    ds = {k[:2]: v for k, v in dust.dsat.items() if k[2] == AKS_AV["nominal"]}
+    v = np.array(list(ds.values()))
+    print(f"Nominal reference over all {v.size} sightlines met: switches to the near-infrared map "
+          f"(DECaPS saturated) by 8 kpc on {(v <= 8).sum()}, by 20 kpc on {np.isfinite(v).sum()}",
+          flush=True)
     t = pd.DataFrame(ROWS)
     t.to_csv(os.path.join(a.out, "u5_corrected_numbers.csv"), index=False)
     lines = ["# Headline numbers with the dust corrected (Step U5)", "",
              "Generated by `analysis/u5_corrected_numbers.py`. corrected = nominal correction; "
-             "mc = Monte Carlo; syst = spread of the correction (A_Ks/A_V 0.10-0.114, efficiency "
-             "per block vs pooled, per-draw distance vs 8 kpc); total = quadrature sum; "
+             "mc = Monte Carlo; syst = quadrature sum of: reference dust (shift of the "
+             "near-infrared-only variant from the nominal DECaPS + near-infrared where DECaPS is "
+             "saturated), A_Ks/A_V (larger shift of 0.0734 and 0.102 from 0.0805), efficiency per "
+             "block vs pooled; total = quadrature sum; "
              "as_simulated = the same code with zero extra dust (must reproduce the report).", ""]
     for pop, g in t.groupby("population", sort=False):
         lines += [f"## {pop}", "", "| quantity | corrected | mc | syst | total | as simulated |",

@@ -91,7 +91,8 @@
 % figures/u1_20260929/u2_resolution_depth.csv (image resolution at Roman's 5-sigma depth);
 % extinctiontest (A_r/A_V 0.854, A_F146/A_V 0.197 at R_V = 2.5).
 % ABSTRACT NUMBERS ARE DUST-CORRECTED: figures/u1_20260929/u5_corrected_numbers.md (total error =
-% Monte Carlo (+) correction systematic); real-layout factor from u4_dust_check.csv Part 2.
+% Monte Carlo (+) correction systematic; Deviation 63); real-layout factor from
+% u4_dust_check_hybrid.csv Part 2.
 \begin{abstract}
 We forecast which microlensing events toward the Galactic bulge will be detected by the Nancy Grace
 Roman Space Telescope's Galactic Bulge Time Domain Survey and by the Vera C.\ Rubin Observatory's
@@ -100,34 +101,35 @@ them, for three lens populations: ordinary stars and stellar remnants, isolated 
 neutron stars. The simulation's dust is too thin near the Galactic plane; every number below is
 corrected for it, and its uncertainty combines the Monte Carlo error with the correction's own
 systematic error (Section~\ref{sec:dust}). Over the decade 2026--2036, inside Roman's footprint
-($1.47$\,deg$^2$ as modelled), Roman is expected to detect $(6.06\pm0.23)\times10^4$ events by ordinary
-lenses and to measure $1{,}060\pm110$ of their lens masses to $10\%$; Rubin detects
-$(9.5\pm1.0)\times10^3$ there and $(9.6\pm0.7)\times10^4$ across the $59$\,deg$^2$ of bulge simulated.
+($1.47$\,deg$^2$ as modelled), Roman is expected to detect $(5.04\pm0.29)\times10^4$ events by ordinary
+lenses and to measure $830\pm110$ of their lens masses to $10\%$; Rubin detects
+$(4.9\pm0.5)\times10^3$ there and $(7.8\pm1.2)\times10^4$ across the $59$\,deg$^2$ of bulge simulated.
 Compact-object yields scale with the fraction $F$ of the Galaxy's stellar mass the population holds.
-Roman detects $(6{,}520\pm270)\,F$ black-hole events ($3$--$1000\,\Msun$), i.e.\ $33$--$196$ for
-$F=0.005$--$0.03$, with $4$--$22$ masses measured to $10\%$; and $(43{,}800\pm1{,}800)\,F$ neutron-star
-events, i.e.\ $220$--$2{,}630$ for $F=0.005$--$0.06$, with $7$--$86$ masses. The adopted GBTDS layout,
-which the simulated footprint does not follow exactly, would add roughly $10$--$16\%$ to Roman's
+Roman detects $(5{,}660\pm320)\,F$ black-hole events ($3$--$1000\,\Msun$), i.e.\ $28$--$170$ for
+$F=0.005$--$0.03$, with $3$--$17$ masses measured to $10\%$; and $(36{,}500\pm2{,}300)\,F$ neutron-star
+events, i.e.\ $180$--$2{,}190$ for $F=0.005$--$0.06$, with $6$--$66$ masses. The adopted GBTDS layout,
+which the simulated footprint does not follow exactly, would add roughly $15$--$24\%$ to Roman's
 yields. Inside its footprint Roman dominates, above all because of dust: at the median extinction of
-Roman's footprint detections, $A_V=5.3\pm0.3$, Rubin's $r$-band source is dimmed by $4.6$\,mag and
-Roman's F146 source by only $1.1$\,mag. Rubin therefore changes Roman's precision on shared events by
-less than $0.4\%$ (median) and adds $8$--$14\%$ to the number of $10\%$ masses. \textbf{The gain in the
-other direction is far larger.} For the events Rubin detects inside the footprint, adding Roman's data
-sharpens the timescale a median $7$--$16$-fold, raises the fraction with both timescale and parallax
-measured from $4$--$13\%$ to $28$--$82\%$, and turns lens masses to $10\%$ from essentially none into
-$(6.9\pm0.8)\%$ of them for ordinary lenses, $(15.1\pm0.9)\%$ for neutron stars and $(53.5\pm1.5)\%$
-for black holes. Rubin's own strengths are sky area, with $(57.4\pm1.0)\%$ of all detections outside
-Roman's footprint, and short events that fall wholly inside Roman's season gaps, whose timescale
-precision it improves by an order of magnitude. The Einstein radius, and so the mass, is Roman's
-astrometric measurement. Black-hole centroid shifts (median $3.39\pm0.03$\,mas among Roman's
-detections) exceed a single exposure's precision; ordinary-lens shifts (median $0.123\pm0.002$\,mas)
+Roman's footprint detections, $A_V=7.2\pm0.3$, Rubin's $r$-band source is dimmed by $6.1$\,mag and
+Roman's F146 source by only $1.4$\,mag, and Roman detects eight to ten times as many events there. Rubin
+therefore changes Roman's precision on shared events by less than $0.4\%$ (median) and adds
+$9$--$13\%$ to the number of $10\%$ masses. \textbf{The gain in the other direction is far larger.}
+For the events Rubin detects inside the footprint, adding Roman's data sharpens the timescale a
+median $7$--$17$-fold, raises the fraction with both timescale and parallax measured from $5$--$12\%$
+to $28$--$83\%$, and turns lens masses to $10\%$ from essentially none into $(8.1\pm1.5)\%$ of them for
+ordinary lenses, $(15.7\pm1.2)\%$ for neutron stars and $(53.3\pm1.8)\%$ for black holes. Rubin's own
+strengths are sky area, with $(59\pm5)\%$ of all detections outside Roman's footprint, and short
+events that fall wholly inside Roman's season gaps, whose timescale precision it improves by an order
+of magnitude. The Einstein radius, and so the mass, is Roman's astrometric measurement. Black-hole
+centroid shifts (median $3.39\pm0.04$\,mas among Roman's detections) exceed a single exposure's
+precision; ordinary-lens shifts (median $0.123\pm0.002$\,mas)
 emerge only by averaging $\sim\!5\times10^4$ exposures, which assumes that Roman's $1.1$\,mas
 astrometric floor averages down, the largest remaining uncertainty in these results. Heavy lenses can
 also split the source into two images that a telescope resolves. With the criterion of
-\citet{SajadianMakler2026}, Roman could separate them in $(39.4\pm0.8)\%$ of its black-hole detections
-if a separation of five times the astrometric error suffices, $(18.1\pm0.4)\%$ at twenty times, and
-$(0.29\pm0.03)\%$ if the width of its point-spread function is required; for neutron stars and
-ordinary lenses the most permissive figures are $(2.1\pm0.1)\%$ and $(1.0\pm0.2)\%$. Rubin resolves
+\citet{SajadianMakler2026}, Roman could separate them in $(34.2\pm1.2)\%$ of its black-hole detections
+if a separation of five times the astrometric error suffices, $(15.3\pm0.9)\%$ at twenty times, and
+$(0.25\pm0.04)\%$ if the width of its point-spread function is required; for neutron stars and
+ordinary lenses the most permissive figures are $(1.7\pm0.2)\%$ and $(0.8\pm0.3)\%$. Rubin resolves
 the images of about $5\%$ of the black-hole events it detects (a figure not corrected for the dust)
 and of essentially no others.
 \end{abstract}
@@ -306,12 +308,12 @@ half turns the simulated sample into statements about the real sky.}
   come from the Besan\c{c}on model \citep{Robin2003}, and source stars are drawn from its synthetic
   colour--magnitude diagram, with MIST bolometric corrections \citep{Choi2016MIST} giving magnitudes
   in Rubin's six bands and Roman's F146.
-\item[Dust.] Three-dimensional maps \citep[Bayestar and DECaPS;][]{Green2019Bayestar} give $A_V$ as a
+\item[Dust.] Three-dimensional maps \citep[Bayestar and DECaPS;][]{Green2019Bayestar,Zucker2025DECaPS} give $A_V$ as a
   function of distance along each sightline, and the \citet{Cardelli1989} law ($R_V=2.5$ in the
   bulge, $3.1$ elsewhere) converts it to each band: $A_r/A_V=0.85$ but $A_{\rm F146}/A_V=0.20$.
   Toward the bulge this single ratio decides much of the comparison between the two surveys. A
-  declination rule gives almost all of Roman's footprint to Bayestar, which saturates near the plane
-  and there gives three to five times too little dust (Section~\ref{sec:dust}).
+  declination rule gives almost all of Roman's footprint to Bayestar, which cannot see through the
+  dust near the plane and there gives three to six times too little dust (Section~\ref{sec:dust}).
 \item[Lenses.] Each run simulates one population. \emph{Ordinary lenses} are the present-day
   population of a $\sim\!10$\,Gyr-old bulge: masses drawn from the \citet{Kroupa2001} initial mass
   function and evolved into what remains -- unevolved stars below $1\,\Msun$, white dwarfs,
@@ -533,7 +535,7 @@ detectors, but the modelled fields sit about $0.2^\circ$ closer to the Galactic 
 adopted layout, and the real fields cover $16\%$ more sky per season. Section~\ref{sec:footunc}
 estimates what this does to the results. In the model the extra area and the lower event density
 farther from the plane nearly cancel, but only because the model's dust near the plane is too thin
-(Section~\ref{sec:dust}); with realistic dust the real layout gives Roman $10$--$16\%$ more events
+(Section~\ref{sec:dust}); with realistic dust the real layout gives Roman $15$--$24\%$ more events
 than the simulated one.
 
 \paragraph{The corner cut.} The scan box has one corner removed, $l<-0.94^\circ$, $b>0.31^\circ$
@@ -678,7 +680,8 @@ Section~\ref{sec:certainty} and are larger.
 \textbf{The numbers in this section are as simulated.} The simulation's dust is too thin near the
 Galactic plane, which inflates the absolute yields; Section~\ref{sec:dust} corrects for it, and the
 abstract, the summary and Table~\ref{tab:corrected} quote the corrected values with their
-uncertainties. The corrections lower the yields by $22$--$45\%$ but leave the comparisons made in this
+uncertainties. The corrections lower Roman's yields by a third and Rubin's by more than half, but
+leave the comparisons made in this
 section, and the per-event results, essentially as they are.
 
 % Source: runs/prod_*_20260924/run.log and the y1 logs (figures/yield_20260925/<pop>/y1.log).
@@ -1382,10 +1385,12 @@ semi-analytic re-count of resolvable visits against the simulator's own count & 
   \citep{Sanderson2019WFIRSTastrometry}.
 \item \textbf{The dust is too thin near the Galactic plane.} North of declination $-30^\circ$, which
   includes almost all of Roman's footprint, the extinction tables come from Bayestar, which gives three
-  to five times too little extinction within $1^\circ$ of the plane compared with a near-infrared map
-  (Section~\ref{sec:dust}). DECaPS, already in the pipeline, is close to right there except within
-  $0.5^\circ$ of the plane. The corrected headline numbers are those quoted in the abstract and summary;
-  the direction of every Roman--Rubin comparison is unchanged or strengthened.
+  to six times too little extinction within $1^\circ$ of the plane, measured against the independent
+  VVV reddening map (Section~\ref{sec:dust}). DECaPS, already in the pipeline, is within $12\%$ of VVV
+  farther from the plane but also saturates within $1^\circ$ of it, most of all in the Galactic-centre
+  field; there only near-infrared dust is right. The corrected headline numbers are those quoted in
+  the abstract and summary; the direction of every Roman--Rubin comparison is unchanged or
+  strengthened.
 \item \textbf{Roman's photometric error model is provisional}: a tabulated curve not yet checked
   against the F146 noise model of \citet{Wilson2023GBTDS}. Every Roman photometric forecast inherits
   it. Its single-exposure depth in the simulator is a $29$\,mag placeholder, against the curve's own
@@ -1405,7 +1410,7 @@ semi-analytic re-count of resolvable visits against the simulator's own count & 
   with M.\ Penny's field-layout tool and modelled as overlapping circles, $1.47$\,deg$^2$ against
   the design's $1.7$\,deg$^2$, and $\sim\!0.2^\circ$ closer to the plane than the real fields;
   $79\%$ of it lies on real detectors (Fig.~\ref{fig:footreal}). With realistic dust the real
-  layout would give Roman $10$--$16\%$ more events (Section~\ref{sec:footunc}). The partial overlap of Rubin's wide pointings with Roman's
+  layout would give Roman $15$--$24\%$ more events (Section~\ref{sec:footunc}). The partial overlap of Rubin's wide pointings with Roman's
   fields is not modelled either, and Roman's start date is a choice (Fig.~\ref{fig:timeline}).
 \item \textbf{Resolving the images depends on a criterion no one has calibrated for Roman.} The
   $\mathcal{D}\sigma_a$ bar of \citet{SajadianMakler2026} was built for Rubin's seeing-limited images;
@@ -1440,15 +1445,15 @@ patch weighted by the fraction of seasons in which it is observed. Its ratio to 
 over the simulated cells splits into an area factor and a latitude factor.
 
 % Source: figures/u1_20260929/u3_footprint_offset.csv (analysis/u3_footprint_offset.py) for the
-% model's dust, with the 16--84% range from the fit; figures/u1_20260929/u4_dust_check.csv
-% (analysis/u4_dust_check.py) for the corrected dust.
+% model's dust, with the 16--84% range from the fit; figures/u1_20260929/u4_dust_check_hybrid.csv
+% (analysis/u4_dust_check.py --parts 2 --reference hybrid; Deviation 63) for the corrected dust.
 \begin{table}[h]
 \centering
 \caption{Estimated yield on the real GBTDS layout over the yield on the simulated one. Upper block:
 with the model's own dust, which is too thin near the plane (Section~\ref{sec:dust}); in brackets
-the $16$--$84\%$ range from the latitude fit. Lower block: with the dust corrected to the
-near-infrared map. Area factor $1.165$ throughout (season-weighted real area over simulated area);
-the rest is the latitude dependence.}
+the $16$--$84\%$ range from the latitude fit. Lower block: with the dust corrected to the reference
+of Section~\ref{sec:dust}. Area factor $1.165$ throughout (season-weighted real area over simulated
+area); the rest is the latitude dependence.}
 \label{tab:footunc}
 \small
 \begin{tabular}{lccc}
@@ -1461,8 +1466,8 @@ Roman, $\sigma(\Ml)/\Ml<10\%$     & $1.08$ ($0.94$--$1.22$) & $1.03$ ($1.00$--$1
 Rubin detections in the footprint & $0.91$ ($0.87$--$0.95$) & $0.99$ ($0.96$--$1.03$) & $0.90$ ($0.88$--$0.93$) \\
 \midrule
 \multicolumn{4}{l}{\emph{with the dust corrected}} \\
-Roman detections                  & $1.16$ & $1.10$ & $1.11$ \\
-Rubin detections in the footprint & $1.36$ & $1.27$ & $1.33$ \\
+Roman detections                  & $1.24$ & $1.15$ & $1.18$ \\
+Rubin detections in the footprint & $2.2$ & $1.8$ & $2.0$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1471,15 +1476,18 @@ Rubin detections in the footprint & $1.36$ & $1.27$ & $1.33$ \\
 (Table~\ref{tab:footunc}, upper block). The real fields have $16.5\%$ more area, but in the model
 they lie where the event density is $10$--$13\%$ lower for Roman, so Roman's detections would
 change by only $+1\%$ to $+5\%$. \textbf{That cancellation is an artefact of the model's dust.} The
-model's event density rises toward the plane mainly because its dust there is far too thin: the
-dust map it uses gives $A_V\approx2$ to the bulge at $b=-0.94^\circ$, where an independent
-near-infrared map gives $\approx8$, while south of $b=-1.3^\circ$ the model has slightly more dust
-than that map (Section~\ref{sec:dust}). With the dust corrected, Roman's event density across the
-five-field block is almost flat in latitude ($0.2$--$0.5$ per degree in $\ln$, instead of
-$0.7$--$0.9$), and in the Galactic-centre field it falls toward the plane. The denser southern sky
-the simulation missed then more than makes up for the northern rows it included, and the area and
-position effects add (lower block): on the real layout Roman detects $10$--$16\%$ more, and Rubin
-$27$--$36\%$ more inside the footprint, than on the simulated layout with the same corrected dust.
+model's event density rises toward the plane mainly because its dust there is far too thin: in
+front of the bulge at $b=-0.94^\circ$ it has $A_V\approx2.6$, where VVV gives $11.5$ (DECaPS $10.1$),
+while at $b=-1.44^\circ$ it has $4.8$, as VVV does (Section~\ref{sec:dust}). With the dust corrected,
+Roman's event density across the five-field block is flat in latitude ($-0.14$ to $+0.26$ per degree
+in $\ln$, instead of $0.7$--$0.9$), and in the Galactic-centre field it falls toward the plane. The
+denser southern sky the simulation missed then more than makes up for the northern rows it included,
+and the area and position effects add (lower block): on the real layout Roman detects $15$--$24\%$
+more than on the simulated layout with the same corrected dust. Rubin's corrected density falls
+steeply toward the plane ($-1.9$ to $-2.6$ per degree in $\ln$ across the five-field block), so on the
+real layout, which reaches farther south, it would detect about twice as many events inside the
+footprint; this rests on extrapolating that steep fit, and is the least certain number in the
+table.
 The per-event quantities, the ones most of this report's conclusions rest on, hardly move. Across the
 simulated rows the fraction of Roman's detections that it characterises has no measurable latitude
 trend in any population, and extrapolated to the real fields' latitude it changes by $1$--$2\%$.
@@ -1501,12 +1509,12 @@ footprint's latitudes, however, its departure from OGLE-IV's is consistent with 
 ($-0.08\pm0.19$ per degree), and adopting OGLE's gradient shifts the ratios by about $1\%$.
 Counting a patch observed in half the seasons as half the yield is an approximation; long events,
 which span several seasons, should lose less. The dust correction carries the assumptions listed in
-Section~\ref{sec:dust}. Taken together: the real layout raises Roman's footprint yields by roughly
-$10$--$15\%$ over the simulated one, while the corrected dust lowers the simulated footprint's yields
-by roughly $20$--$25\%$, so the reported Roman footprint yields are likely $\sim\!10$--$15\%$ too
-high for the real survey. That is comparable to the Monte Carlo error on the ordinary-lens mass
-yields and far smaller than the uncertainty in $F$. A run on the adopted layout with better dust
-would remove both (Section~\ref{sec:next}).
+Section~\ref{sec:dust}. Taken together: the corrected dust lowers the simulated footprint's Roman
+yields by $33$--$38\%$ (Table~\ref{tab:corrected}), and the real layout then raises them by $15$--$24\%$, so the Roman footprint
+yields of Section~\ref{sec:results}, as simulated, are $\sim\!22$--$25\%$ too high for the real
+survey, and the corrected ones of the abstract $15$--$24\%$ too low. That is larger than their Monte
+Carlo errors and far smaller than the uncertainty in $F$. A run on the adopted layout with the right
+dust would remove both (Section~\ref{sec:next}).
 
 \subsection{The dust near the Galactic plane: what is wrong and how to correct it}
 \label{sec:dust}
@@ -1518,21 +1526,34 @@ what has to be done to correct it.
 
 \paragraph{What the simulation does.} The extinction is pre-computed once per Rubin pointing. For
 each, $A_V$ is tabulated against distance out to $20$\,kpc from one of two three-dimensional dust
-maps, chosen by declination: Bayestar19 \citep{Green2019Bayestar} north of $-30^\circ$, DECaPS south
-of it. Roman's footprint lies at declination $\approx-29^\circ$, so almost all of it takes
-Bayestar. Each simulated source then takes the table nearest to its sightline, reads $A_V$ at its own
-distance, and converts it to every band with the \citet{Cardelli1989} law.
+maps, chosen by declination: Bayestar19 \citep{Green2019Bayestar} north of $-30^\circ$, DECaPS
+\citep{Zucker2025DECaPS} south of it, the combination the documentation of the \texttt{dustmaps}
+software recommends. Roman's footprint lies at declination $\approx-29^\circ$, so $139$ of its $147$
+sightlines take Bayestar. Each simulated source then takes the table nearest to its sightline, reads
+$A_V$ at its own distance, and converts it to every band with the \citet{Cardelli1989} law. We
+checked that the simulation did exactly this: the tables match fresh queries of the two maps, and the
+extinction recorded for $300{,}000$ simulated sources matches the tables in $99.9\%$ of cases (the
+rest are sources equidistant from two tables).
 
-\paragraph{What is wrong.} The fault is in Bayestar, and in the rule that picks it. Bayestar measures
-dust from the colours of stars in the optical Pan-STARRS survey. Toward the inner bulge, within about
-$1^\circ$ of the plane, the dust lanes are so thick that beyond the first few kpc no star is bright
-enough in those images to be measured, so the map sees the dust in front of the lanes and not the
-dust behind them, and its profiles flatten. Its tables therefore hold the extinction to the lanes,
-not to the bulge, where the sources are. DECaPS, built from deeper DECam imaging, covers the entire
-scanned region too, including the part north of $-30^\circ$, and sees much more of the dust; but the
-declination rule never asks it there. Nothing in the pipeline catches this: the table-building
-script requests Bayestar's own flag for the distance out to which the map is reliable, but does not
-use it, and it fills missing distances by holding the last value.
+\paragraph{What is wrong.} Each of the two maps fails somewhere, for the same reason: a map built
+from stars cannot measure the dust behind which it sees no stars.
+\begin{itemize}
+\item \emph{Bayestar is used beyond the distance it vouches for.} Bayestar measures dust from stars in
+  the optical Pan-STARRS survey and reports, for every sightline, the distance out to which that
+  measurement is reliable. On all $139$ of Roman's sightlines that take Bayestar, that flag is false
+  beyond $4$\,kpc: toward the inner bulge the dust lanes hide the stars behind them, the map sees the
+  dust in front of the lanes and not behind, and its profile goes flat. Every bulge source lies
+  beyond that distance. The table-building script requests the flag but does not use it.
+\item \emph{DECaPS saturates in the most obscured field.} DECaPS, built from deeper DECam imaging
+  together with near-infrared photometry, has data at every one of the $1{,}829$ scanned sightlines,
+  including the part north of $-30^\circ$ that the declination rule never asks it about, and at
+  $8$\,kpc its own flag calls it reliable on all of Roman's five-field block. But it is sensitive
+  only up to $A_V\approx12$ \citep{Zucker2025DECaPS}, and toward Roman's Galactic-centre field the
+  dust in front of the bulge amounts to $A_V\approx30$. There DECaPS reads $A_V\approx7$, no more than
+  it reads a degree farther from the plane, even though its flag is still set on $71\%$ of that
+  field's sightlines. Replacing Bayestar by DECaPS everywhere would therefore fix most of the scan,
+  but not the Galactic-centre field.
+\end{itemize}
 
 The same rule causes a second, smaller fault. Just north of $-30^\circ$ Bayestar's coverage is
 ragged, and $78$ of the $2{,}518$ tables came out empty, with no valid value at any distance. The
@@ -1542,53 +1563,84 @@ $20$ such sightlines, a patch at $l\approx0.1^\circ$--$0.7^\circ$, $b\approx-2.1
 just south of Roman's footprint, holding $1.3$--$1.7\%$ of all simulated detections. None of them is
 in Roman's footprint, so they inflate only Rubin's totals.
 
-\paragraph{How we know.} The independent check is the three-dimensional map of \citet{Marshall2006},
-built from 2MASS near-infrared star counts, which see through far more dust than any optical survey.
-Comparing at $8$\,kpc, with $A_{K_s}/A_V=0.11$, sightline by sightline over the whole scan:
+\paragraph{How we know.} Choosing between two maps needs a measurement independent of both. We
+use the VVV reddening map of \citet{Surot2020}: the $J-K_s$ colour of bulge red-clump and red-giant
+stars on a grid of $10''$ to $2'$, which measures the whole dust column to the bulge in the near
+infrared, where even $A_V\approx30$ does not hide the stars. We took its median in each simulated
+sightline's $0.1^\circ$ cell (at least $1{,}600$ grid points per cell) and made two comparisons.
 
-% Source: figures/u1_20260929/u4_dust_check.csv (analysis/u4_dust_check.py), Part 1, and a
-% direct DECaPS query of all 1,829 sightlines (Deviation 62).
+The first needs no extinction law. Each map should reproduce how much more dust lies in front of the
+Galactic-centre field than in front of the five-field block, whatever its units. The ratio of the two
+columns is $4.89$ for VVV, $4.46$ for the near-infrared map of \citet{Marshall2006} (2MASS star
+counts), $1.07$ for DECaPS and $0.57$ for the simulation's tables. DECaPS misses four fifths of the
+Galactic-centre column; the near-infrared map is within $10\%$ of VVV; the simulation's dust even
+\emph{decreases} toward the plane, the reverse of the real sky.
+
+The second puts every map on DECaPS's $A_V$ scale, by matching it to DECaPS on the five-field block,
+where DECaPS is reliable and far from saturation ($A_{K_s}/A_V=0.0805$ for the near-infrared map,
+$E(J-K_s)/A_V=0.133$ for VVV), and compares each with VVV sightline by sightline over the whole scan.
+On this scale the Galactic-centre field has $A_V\approx33$ (VVV) and $31$ (near-infrared map) in front
+of the bulge, against $7$ (DECaPS) and $2.7$ (the simulation). Across the scan:
+
+% Source: figures/u1_20260929/u6_vvv_scan.csv (analysis/u6_vvv_check.py --scan-log): median over
+% sightlines of A_V(8 kpc)/A_V,VVV; A_V,VVV = E(J-Ks)/0.133.
 \begin{center}
 \small
 \begin{tabular}{lccccc}
 \toprule
 $|b|$ & $0$--$0.5^\circ$ & $0.5$--$1^\circ$ & $1$--$1.5^\circ$ & $1.5$--$2.5^\circ$ & $2.5$--$6^\circ$ \\
 \midrule
-model, where it used Bayestar / near-infrared & $0.20$ & $0.35$ & $1.09$ & $1.35$ & $1.35$ \\
-DECaPS / near-infrared                        & $0.75$--$0.81$ & $1.06$--$1.13$ & $1.24$ & $1.06$--$1.13$ & $0.97$--$0.98$ \\
+sightlines                                & $239$ & $215$ & $269$ & $385$ & $721$ \\
+$A_V$ in front of the bulge (VVV)         & $24$  & $14$  & $7.6$ & $5.5$ & $2.1$ \\
+\midrule
+\multicolumn{6}{l}{\emph{ratio to VVV}} \\
+the simulation's tables                   & $0.17$ & $0.31$ & $0.88$ & $1.02$ & $1.11$ \\
+DECaPS                                    & $0.57$ & $0.86$ & $0.95$ & $0.88$ & $0.89$ \\
+near-infrared map                         & $0.98$ & $1.03$ & $1.04$ & $1.11$ & $1.24$ \\
+reference used for the correction         & $0.98$ & $0.99$ & $0.96$ & $0.88$ & $0.89$ \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-Where the model used Bayestar, it has three to five times too little dust within $1^\circ$ of the
-plane. Roman's Galactic-centre field gets $A_V\approx3$ where the near-infrared map gives $\approx24$,
-and the northern edge of the five-field block ($b=-0.94^\circ$) gets $2.1$ against $7.9$ (DECaPS:
-$10.5$). The model's dust even decreases toward the plane across the footprint, the reverse of the
-real sky. DECaPS agrees with the near-infrared map to $\sim\!10$--$25\%$ everywhere except within
-$0.5^\circ$ of the plane, where it too falls short, most of all in the Galactic-centre field
-($7.9$ against $24$). Farther from the plane both optical maps give $10$--$35\%$ more dust than the
-near-infrared one, part of which may be the conversion from $A_{K_s}$. The error matters because the
-thin-dust sightlines are where the model places much of its yield: $45$--$47\%$ of Roman's detected
-yield and $51$--$53\%$ of Rubin's come from sightlines where the model has less than half the
-near-infrared map's dust.
+Within $1^\circ$ of the plane the simulation has three to six times too little dust; farther out it
+agrees with VVV to $\sim\!10\%$. DECaPS falls far short only within $1^\circ$ of the plane, where
+its sensitivity limit is reached, and is within $12\%$ of VVV elsewhere. The near-infrared map is
+right near the plane and gives $10$--$25\%$ more dust than VVV far from it.
 
 \paragraph{Corrected results.} Extra dust only makes a source fainter, so its effect can be estimated
-from the draws that exist. For every simulated source the difference between the near-infrared
-map's extinction and the model's is taken at the source's own distance, and the source is dimmed by
-it ($A_{\rm F146}=0.197\,A_V$, $A_r=0.854\,A_V$). The probability of each outcome -- detection by
-Roman or Rubin, a mass to $10\%$, a characterised event -- is measured from the same draws as a
-function of magnitude, and each event is re-weighted by how that probability changes at its dimmed
-magnitude. Rubin's probabilities are measured separately for sightlines with different numbers of
-Rubin visits; the two-image resolution count is redone visit by visit with the dimmed magnitudes. With
-no extra dust the procedure reproduces every number of Section~\ref{sec:results} exactly. Each
-corrected number carries two errors: Monte Carlo, and the correction's own systematic error, the
-spread of its result when $A_{K_s}/A_V$ is varied over $0.10$--$0.114$, when the efficiencies are
-measured over the whole footprint instead of per field block, and when every source is placed at
-$8$\,kpc instead of its own distance. Table~\ref{tab:corrected} gives the headline numbers; the
-abstract and the summary quote the corrected ones.
+from the draws that exist. The reference dust is the combination the table above supports: DECaPS out
+to the distance its own flag calls reliable, and the near-infrared map on DECaPS's scale from the
+distance at which it passes DECaPS's limit of $A_V=12$. It follows VVV to within $12\%$ in every
+latitude band (last row of the table), and it switches to the near-infrared map before $8$\,kpc on
+$444$ of the $1{,}829$ sightlines, $403$ of them within $1^\circ$ of the plane and none beyond
+$2.2^\circ$. For every
+simulated source the difference between the reference and the simulation's extinction is taken at the
+source's own distance, and the source is dimmed by it ($A_{\rm F146}=0.197\,A_V$, $A_r=0.854\,A_V$,
+the simulation's own conversion). The probability of each outcome -- detection by Roman or Rubin, a
+mass to $10\%$, a characterised event -- is measured from the same draws as a function of magnitude,
+and each event is re-weighted by how that probability changes at its dimmed magnitude. Rubin's
+probabilities are measured separately for sightlines with different numbers of Rubin visits; the
+two-image resolution count is redone visit by visit with the dimmed magnitudes. With no extra dust the
+procedure reproduces every number of Section~\ref{sec:results} exactly.
 
-% Source: figures/u1_20260929/u5_corrected_numbers.{md,csv} (analysis/u5_corrected_numbers.py).
-% Each cell: as simulated -> dust-corrected +- (Monte Carlo (+) correction systematic).
+Each corrected number carries two errors. The Monte Carlo error comes from the finite number of
+draws. The correction's own systematic error adds in quadrature the shift of its result under three
+changes:
+\begin{itemize}
+\item the near-infrared map used at every distance, instead of DECaPS;
+\item the near-infrared map converted with $A_{K_s}/A_V=0.0734$ instead of $0.0805$, which raises
+  its column by the $10\%$ by which its Galactic-centre contrast falls short of VVV's (the nominal
+  Galactic-centre column is $5\%$ below VVV's, this one $4\%$ above), or with $0.102$, the
+  \citet{Cardelli1989} value at $R_V=2.5$ that the simulation itself uses (the larger of the two
+  shifts);
+\item the efficiencies measured over the whole footprint, instead of per field block.
+\end{itemize}
+DECaPS alone is not counted as an alternative, because VVV rules it out in the Galactic-centre field.
+Table~\ref{tab:corrected} gives the headline numbers; the abstract and the summary quote the corrected
+ones.
+
+% Source: figures/u1_20260929/u5_corrected_numbers.{md,csv} (analysis/u5_corrected_numbers.py,
+% Deviation 63). Each cell: as simulated -> dust-corrected +- (Monte Carlo (+) correction systematic).
 \begin{table}[h]
 \centering
 \caption{Headline numbers as simulated $\to$ with the dust corrected, $\pm$ the total $1\sigma$
@@ -1604,76 +1656,98 @@ detections.}
 \toprule
  & ordinary lenses & black holes & neutron stars \\
 \midrule
-Roman detections, $N_1$ [$10^3$] & $81.9\to60.6\pm2.3$ & $8.40\to6.52\pm0.27$ & $57.9\to43.8\pm1.8$ \\
-Roman, $\sigma(\Ml)/\Ml<10\%$, $N_1$ & $1930\to1060\pm110$ & $1068\to744\pm37$ & $2286\to1441\pm91$ \\
-Roman, $\sigma(\Ml)/\Ml<1\%$, $N_1$ & $11.7\to7.6\pm6.6$ & $59.8\to33.8\pm5.7$ & $40.5\to26.9\pm4.6$ \\
-joint over Roman, $\sigma(\Ml)/\Ml<10\%$ & $1.10\to1.08\pm0.03$ & $1.14\to1.13\pm0.01$ & $1.14\to1.14\pm0.02$ \\
-Rubin, footprint, $N_1$ [$10^3$] & $16.8\to9.5\pm1.0$ & $1.81\to1.10\pm0.07$ & $11.6\to6.5\pm0.6$ \\
-Rubin, whole scan, $N_1$ [$10^3$] & $175\to96\pm7$ & $24.3\to13.6\pm1.0$ & $141\to76\pm6$ \\
-detections outside footprint [\%] & $63.8\to57.4\pm1.0$ & $72.7\to65.6\pm1.0$ & $67.5\to60.3\pm0.8$ \\
+Roman detections, $N_1$ [$10^3$] & $81.9\to50.4\pm2.9$ & $8.40\to5.66\pm0.32$ & $57.9\to36.5\pm2.3$ \\
+Roman, $\sigma(\Ml)/\Ml<10\%$, $N_1$ & $1930\to830\pm110$ & $1068\to579\pm42$ & $2286\to1102\pm72$ \\
+Roman, $\sigma(\Ml)/\Ml<1\%$, $N_1$ & $11.7\to3.2\pm2.0$ & $59.8\to25.9\pm3.9$ & $40.5\to20.4\pm3.3$ \\
+joint over Roman, $\sigma(\Ml)/\Ml<10\%$ & $1.10\to1.09\pm0.03$ & $1.14\to1.13\pm0.02$ & $1.14\to1.13\pm0.02$ \\
+Rubin, footprint, $N_1$ [$10^3$] & $16.8\to4.9\pm0.5$ & $1.81\to0.69\pm0.07$ & $11.6\to3.6\pm0.4$ \\
+Rubin, whole scan, $N_1$ [$10^3$] & $175\to78\pm12$ & $24.3\to11.2\pm1.5$ & $141\to62\pm9$ \\
+detections outside footprint [\%] & $63.8\to58.5\pm5.1$ & $72.7\to65.0\pm4.1$ & $67.5\to60.9\pm4.7$ \\
 \midrule
 \multicolumn{4}{l}{\emph{Rubin's footprint detections, Rubin alone / joint (Section~\ref{sec:romanrubin})}} \\
-characterised [\%] & $4.2\pm1.0$ / $27.8\pm2.3$ & $12.6\pm0.9$ / $82.0\pm1.1$ & $4.9\pm0.4$ / $37.4\pm1.4$ \\
-$\Ml$ to $10\%$, joint [\%] & $8.9\to6.9\pm0.8$ & $49.5\to53.5\pm1.5$ & $14.9\to15.1\pm0.9$ \\
-median $\sigma_{\rm joint}/\sigma_{\rm Rubin}$, $\tE$ & $0.157\to0.115\pm0.018$ & $0.065\to0.061\pm0.004$ & $0.132\to0.133\pm0.014$ \\
+characterised [\%] & $4.6\pm1.4$ / $28.2\pm2.5$ & $11.9\pm1.1$ / $82.9\pm1.4$ & $4.8\pm0.4$ / $37.2\pm1.6$ \\
+$\Ml$ to $10\%$, joint [\%] & $8.9\to8.1\pm1.5$ & $49.5\to53.3\pm1.8$ & $14.9\to15.7\pm1.2$ \\
+median $\sigma_{\rm joint}/\sigma_{\rm Rubin}$, $\tE$ & $0.157\to0.097\pm0.020$ & $0.065\to0.059\pm0.003$ & $0.132\to0.133\pm0.023$ \\
 \midrule
-median $\sigma_{\rm joint}/\sigma_{\rm Roman}$, $\tE$ & $0.9988\to0.9985\pm0.0002$ & $0.9971\to0.9963\pm0.0004$ & $0.9989\to0.9988\pm0.0002$ \\
-median centroid shift [mas] & $0.125\to0.123\pm0.002$ & $3.38\to3.39\pm0.03$ & $0.254\to0.252\pm0.002$ \\
-$P$(resolvable), Roman, $\mathcal{D}=5$ [\%] & $1.4\to1.0\pm0.2$ & $45.4\to39.4\pm0.8$ & $2.9\to2.1\pm0.1$ \\
-\quad $\mathcal{D}=20$ / PSF width [\%] & $<0.01$ / $0$ & $18.1\pm0.4$ / $0.29\pm0.03$ & $0.02$ / $<10^{-4}$ \\
-median $A_V$, Roman's detections & $3.6\to5.3\pm0.3$ & $4.2\to5.4\pm0.4$ & $3.7\to5.4\pm0.4$ \\
+median $\sigma_{\rm joint}/\sigma_{\rm Roman}$, $\tE$ & $0.9988\to0.9988\pm0.0002$ & $0.9971\to0.9965\pm0.0005$ & $0.9989\to0.9988\pm0.0001$ \\
+median centroid shift [mas] & $0.125\to0.123\pm0.002$ & $3.38\to3.39\pm0.04$ & $0.254\to0.252\pm0.002$ \\
+$P$(resolvable), Roman, $\mathcal{D}=5$ [\%] & $1.4\to0.8\pm0.3$ & $45.4\to34.2\pm1.2$ & $2.9\to1.7\pm0.2$ \\
+\quad $\mathcal{D}=20$ / PSF width [\%] & $<0.001$ / $0$ & $15.3\pm0.9$ / $0.25\pm0.04$ & $0.017\pm0.006$ / $<10^{-4}$ \\
+median $A_V$, Roman's detections & $3.6\to7.2\pm0.3$ & $4.2\to7.5\pm0.4$ & $3.7\to7.3\pm0.3$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{What it does to the conclusions.} Absolute yields drop, Rubin's (by $\sim\!45\%$) more
-than Roman's ($\sim\!22$--$26\%$ for detections, $30$--$45\%$ for masses to $10\%$), because the
-extra dust costs $4.3$ times more in $r$ than in F146. The per-event results barely move: the share
-of Rubin's events that Roman makes characterisable is unchanged or slightly larger, the share with a
-$10\%$ mass falls for ordinary lenses ($8.9\to6.9\%$) and rises for black holes, what Rubin adds to
-Roman's events is still well under $1\%$, and the centroid shifts are unchanged. Every comparison between the surveys therefore
-survives, and those in Roman's favour strengthen. The yields that fall most are the $10\%$ masses of
-ordinary lenses, which came disproportionately from the Galactic-centre field and from bright
-sources, exactly what the extra dust removes.
+\paragraph{What it does to the conclusions.} Absolute yields drop, Rubin's more than Roman's, because
+the extra dust costs $4.3$ times more in $r$ than in F146. Roman's footprint detections fall by
+$33$--$38\%$ and its $10\%$ masses by $46$--$57\%$; Rubin's footprint detections fall by $62$--$71\%$
+and its whole-scan detections by $54$--$56\%$. Inside the footprint Roman now detects ten times as many
+ordinary-lens events as Rubin, instead of five. The per-event results barely move. The share of
+Rubin's footprint events that Roman makes characterisable is unchanged or larger ($28$, $83$ and
+$37\%$), and the share with a $10\%$ mass moves by less than four percentage points ($8.9\to8.1\%$,
+$49.5\to53.3\%$ and $14.9\to15.7\%$ for ordinary lenses, black holes and neutron stars). Roman sharpens
+Rubin's timescales by more than before (a median ten-fold for ordinary lenses, instead of six-fold).
+What Rubin adds to Roman's events is still under $0.4\%$ in timescale precision and $9$--$13\%$ in
+the number of $10\%$ masses, and the centroid shifts are unchanged. Every comparison between the
+surveys therefore survives, and those in Roman's favour strengthen. The fractions of Roman's
+detections whose two images are resolvable fall by a quarter to two fifths (black holes at
+$\mathcal{D}=5$: $45\to34\%$).
 
 \paragraph{Limits of the estimate.} The correction assumes that dimming a source changes an event's
 outcomes only through the source's magnitude, with the probability of each outcome measured within a
 field block or visit class. For the median ratios and fractions, events are re-weighted by whether
 they are still detected, so any further loss of precision in the survivors is not included. The
-near-infrared map has its own $15'$ resolution, and the correction takes it as the truth; rebuilding
-the tables from DECaPS (below) would put slightly less dust within $0.5^\circ$ of the plane. The
-Rubin resolution figures of Section~\ref{sec:resolve} were not corrected. The numbers in
-Table~\ref{tab:corrected} are therefore best estimates with stated errors, not a replacement for a
-simulation with the right dust.
+near-infrared map has a resolution of $15'$, so where it is used it smooths over the patchiness of the
+Galactic-centre dust; its median agrees with VVV's to $5\%$ there, but the spread between sightlines
+is not captured. Where DECaPS is used, its $A_V$ is converted to F146 and $r$ with the simulation's own
+\citet{Cardelli1989} law at $R_V=2.5$, whose uncertainty is not included. Far from the plane the
+reference follows DECaPS, which has $11\%$ less dust than VVV there, while the simulation's own dust
+is within $2$--$11\%$ above it; the correction there therefore brightens the sources slightly, an
+effect the near-infrared variant bounds from the other side. The Rubin resolution figures of
+Section~\ref{sec:resolve} were not corrected. The numbers in Table~\ref{tab:corrected} are therefore
+best estimates with stated errors, not a replacement for a simulation with the right dust.
 
-\paragraph{How to correct it.} No new survey data are needed for most of the sky: DECaPS, which the
-pipeline already uses, covers the whole scan and is close to right there. The fix is in how the input
-tables are built, not in the simulator's physics, but because the extinction enters every simulated
-source's magnitudes, it needs new production runs:
+\paragraph{How to correct it.} No new survey data are needed: DECaPS and the near-infrared map are
+already available through the same software the pipeline uses, and together they reproduce VVV
+(last row of the table above). What has to change, and what does not:
+\begin{itemize}
+\item \emph{The table-building script} (\texttt{maps.py}) must change; it is the fault.
+\item \emph{The table reader} (\texttt{readBayestar}) must change, to refuse bad tables; this is a
+  safeguard, not physics.
+\item \emph{The simulator's physics does not change}: the way a source is dimmed, $A_V$ at its distance
+  converted to each band, is not at fault.
+\item \emph{New production runs are needed}, because the simulator reads the tables and dims every
+  source as it runs, so no change to the tables reaches the results without re-running. The
+  corrected numbers above stand in until then.
+\end{itemize}
+The steps, in order:
 \begin{enumerate}
-\item \emph{Rebuild the extinction tables with DECaPS for every sightline.} This is a one-line change
-  in the table-building script (drop the declination rule that sends everything north of $-30^\circ$
-  to Bayestar); Bayestar is then used only where DECaPS has no data, which in this scan is nowhere.
-  It also removes the $78$ empty tables, since DECaPS has data at all $1{,}829$ sightlines.
-\item \emph{Within $\sim\!0.5^\circ$ of the plane, where DECaPS also falls short, use near-infrared
-  dust.} This mainly concerns Roman's Galactic-centre field. The profile there can be taken from
-  \citet{Marshall2006}, whose coverage contains the entire scan, or DECaPS's profile can be kept for
-  the nearby distances it measures and scaled beyond them to the near-infrared total. The near-infrared
-  map gives $A_{K_s}$, so F146 is best derived from it with a near-infrared extinction law rather
-  than through an assumed $A_{K_s}/A_V$.
+\item \emph{Rebuild every extinction table from the reference used for the correction.} Take DECaPS
+  for every sightline, dropping the declination rule. Keep DECaPS out to the distance its own flag
+  calls reliable, and beyond that add the near-infrared map's further increase. From the distance at
+  which the near-infrared map, put on DECaPS's scale ($A_{K_s}/A_V=0.0805$), reaches DECaPS's limit of
+  $A_V=12$, take the near-infrared map itself. Bayestar is then needed only where DECaPS has no data,
+  which in this scan is nowhere, and only within its own reliable distance. This also removes the $78$
+  empty tables. The code that computed the correction already implements this rule, so it can be
+  reused as it stands.
 \item \emph{Make the pipeline refuse bad tables instead of using them.} The table-building script
-  should use the maps' reliable-distance flags and stop on an empty table rather than print a note,
-  and the simulator should check every value it reads and refuse a table that fails to parse or holds
-  a non-number, instead of continuing silently with no dust.
-\item \emph{Check the new tables before any run.} Repeat the comparison of this section over the whole
-  scan; the ratio to the near-infrared map should then be close to one at every latitude, with no
-  decrease toward the plane.
+  should stop on any table with a missing value rather than print a note. The simulator should check
+  every value it reads and refuse a table that fails to parse or holds a non-number, instead of
+  continuing silently with no dust.
+\item \emph{Check the new tables against VVV before any run.} Repeat this section's comparison on
+  the new tables. The ratio to VVV should be $0.9$--$1.0$ in every latitude band (it is now $0.17$ in
+  the band nearest the plane), with no fall toward the plane, and the Galactic-centre to five-field
+  contrast should be $\approx4.5$--$4.9$ (now $0.57$). Then run a short pilot and confirm that the
+  extinction the simulated sources receive matches the new tables.
 \item \emph{Re-run the three production runs}, together with the other fixes that need new runs
   (Roman's single-exposure depth, the scan's corner cut, the adopted GBTDS layout), so that the runs
-  are repeated once. The new yields should then agree with the corrected numbers above to within the
-  limits just listed; if they do not, the efficiency-based estimate is missing something and should be
-  understood before the results are used.
+  are repeated once. The new yields should then agree with the corrected numbers above within their
+  errors; if they do not, the efficiency-based estimate is missing something and should be understood
+  before the results are used.
 \end{enumerate}
+A further refinement, not needed for the fix: where the near-infrared map is used, F146 could be
+derived from $A_{K_s}$ with a near-infrared extinction law, instead of through $A_V$ and the
+\citet{Cardelli1989} law.
 
 \subsection{Unexplained tensions}
 \begin{itemize}
@@ -1692,21 +1766,21 @@ source's magnitudes, it needs new production runs:
 \toprule
 result & confidence & main risk \\
 \midrule
-Roman dominates inside its footprint; Rubin adds $<0.3\%$ there & high & Roman photometric error
+Roman dominates inside its footprint; Rubin adds $<0.4\%$ there & high & Roman photometric error
   model \\
-Roman turns Rubin's footprint detections into measurements ($5$--$8\times$ more characterised; masses
-  from $\sim\!0$ to $9$--$50\%$) & high & Roman photometric error model; astrometric floor \\
-two thirds of detections are outside the footprint, Rubin's alone & high & latitude gradient \\
+Roman turns Rubin's footprint detections into measurements ($6$--$8\times$ more characterised; masses
+  from $\sim\!0$ to $8$--$53\%$) & high & Roman photometric error model; astrometric floor \\
+about $60\%$ of detections are outside the footprint, Rubin's alone & high & latitude gradient \\
 gap filling only deep in gaps, for short events, an order of magnitude & medium & $\Neff=62$; $t_0$
   offset \\
 satellite parallax $<1\%$ pooled & high & halo orbit (small) \\
 $\tetE$ is Roman's measurement; black-hole $\tetE$ robust & high (bh) & -- \\
 ordinary and neutron-star $\tetE$ and masses & medium--low & correlated astrometric floor \\
-absolute yields $N_1$ & medium--low & dust near the plane ($-20$ to $-45\%$), latitude gradient,
+absolute yields $N_1$ & medium--low & dust near the plane (corrected, $-33$ to $-71\%$), latitude gradient,
   Penny tension \\
 yields $N(F)$ & low & $F$ unknown to $\times10$ \\
 $\piE$ and mass fractions against Sajadian \& Sahu & low & unexplained factor 3 \\
-resolving the images: black holes $0.3$--$45\%$ (Roman), others rare & low & the resolution criterion
+resolving the images: black holes $0.3$--$34\%$ (Roman), others rare & low & the resolution criterion
   for Roman \\
 \bottomrule
 \end{tabular}
@@ -1718,35 +1792,36 @@ resolving the images: black holes $0.3$--$45\%$ (Roman), others rare & low & the
 
 \begin{enumerate}
 \item \textbf{Roman is the survey inside its footprint.} Over the decade it detects
-  $(6.06\pm0.23)\times10^4$ ordinary-lens events there, six times Rubin's, and measures
-  $1{,}060\pm110$ lens masses to $10\%$. Dust is the main reason: at the median extinction of
-  Roman's footprint detections, $A_V=5.3\pm0.3$, F146 loses $1.1$\,mag where $r$ loses $4.6$.
+  $(5.04\pm0.29)\times10^4$ ordinary-lens events there, ten times Rubin's, and measures
+  $830\pm110$ lens masses to $10\%$. Dust is the main reason: at the median extinction of
+  Roman's footprint detections, $A_V=7.2\pm0.3$, F146 loses $1.4$\,mag where $r$ loses $6.1$.
 \item \textbf{Roman transforms the events Rubin detects inside its footprint.} Adding Roman's data
-  characterises $6.5$--$8$ times as many of them, sharpens their timescales a median $7$--$16$-fold,
-  and gives lens masses to $10\%$ for $7\%$ (ordinary lenses), $15\%$ (neutron stars) and $54\%$
-  (black holes) of them, where Rubin alone gives essentially none. The reverse gain is $8$--$14\%$.
-\item \textbf{Rubin is the survey everywhere else}, supplying $(57.4\pm1.0)\%$ of all detections from
+  characterises $6$--$8$ times as many of them, sharpens their timescales a median $7$--$17$-fold,
+  and gives lens masses to $10\%$ for $8\%$ (ordinary lenses), $16\%$ (neutron stars) and $53\%$
+  (black holes) of them, where Rubin alone gives essentially none. The reverse gain is $9$--$13\%$.
+\item \textbf{Rubin is the survey everywhere else}, supplying $(58.5\pm5.1)\%$ of all detections from
   outside Roman's footprint, and inside the footprint it matters only for short events that fall
   wholly inside Roman's gaps, where it improves $\sigma(\tE)$ by an order of magnitude.
 \item \textbf{Roman's ten seasons give the parallax of long events on their own}; Rubin's
   longer baseline adds $<0.4\%$ even for multi-year black-hole events. Roman at L2 adds $<1\%$.
-\item \textbf{The combination} characterises events neither survey can alone and adds $8$--$14\%$ to
+\item \textbf{The combination} characterises events neither survey can alone and adds $9$--$13\%$ to
   the number of Roman's $10\%$ mass measurements.
-\item \textbf{Compact objects.} Roman detects $(6{,}520\pm270)\,F$ black-hole events and
-  $(43{,}800\pm1{,}800)\,F$ neutron-star events, measuring $(744\pm37)\,F$ and $(1{,}441\pm91)\,F$
-  masses to $10\%$; at $F_{\rm BH}=0.01$ that is $65$ events and $7$ masses. Black-hole Einstein
+\item \textbf{Compact objects.} Roman detects $(5{,}660\pm320)\,F$ black-hole events and
+  $(36{,}500\pm2{,}300)\,F$ neutron-star events, measuring $(579\pm42)\,F$ and $(1{,}102\pm72)\,F$
+  masses to $10\%$; at $F_{\rm BH}=0.01$ that is $57$ events and $6$ masses. Black-hole Einstein
   radii are measured in single exposures; their masses are limited by the parallax.
 \item \textbf{The two images of a black-hole lens are often resolvable in principle.} Roman separates
-  them in $0.3$--$39\%$ of its black-hole detections depending on the criterion, and Rubin in about
+  them in $0.3$--$34\%$ of its black-hole detections depending on the criterion, and Rubin in about
   $5\%$ of its own at the most permissive one; for lighter lenses resolution is rare.
 \item \textbf{The astrometric masses of ordinary lenses and neutron stars rest on one assumption}:
   that Roman's centroiding floor averages down over $5\times10^4$ exposures.
 \item \textbf{All numbers here are corrected for the model's too-thin dust near the plane}
-  (Table~\ref{tab:corrected}). The correction lowered Roman's footprint yields by $22$--$26\%$ (its
-  $10\%$ masses by $30$--$45\%$) and Rubin's by $\sim\!45\%$, and left the comparisons between the
-  surveys intact or strengthened. The proper fix is to rebuild the extinction tables from DECaPS, with
-  near-infrared dust closest to the plane, and re-run; the adopted GBTDS layout would then add
-  $10$--$16\%$ to Roman's yields.
+  (Table~\ref{tab:corrected}), with a reference dust checked against the independent VVV reddening
+  map. The correction lowered Roman's footprint yields by $33$--$38\%$ (its $10\%$ masses by
+  $46$--$57\%$) and Rubin's by $54$--$71\%$, and left the comparisons between the surveys intact or
+  strengthened. The proper fix is to rebuild the extinction tables from DECaPS, with near-infrared dust
+  where DECaPS saturates, within $\sim\!1^\circ$ of the plane, and re-run; the adopted GBTDS layout
+  would then add $15$--$24\%$ to Roman's yields.
 \end{enumerate}
 
 % =================================================================================================
@@ -1816,7 +1891,7 @@ it.
 \item \textbf{Getting the order right.} Because computing does not touch the modelling, the model
   improvements below should come first; a whole-footprint run made before them would have to be
   repeated. In particular the run should use the adopted GBTDS footprint rather than the older
-  design, and extinction tables rebuilt from DECaPS, with near-infrared dust closest to the plane.
+  design, and extinction tables rebuilt from DECaPS, with near-infrared dust where DECaPS saturates.
 \end{itemize}
 
 \subsection{The most important open items}
@@ -1829,13 +1904,13 @@ These are the known limitations that most affect the results, roughly in order o
   correlated part that does not average down, and the split taken from the Roman astrometry
   literature.
 \item \textbf{The dust near the plane.} A declination rule gives almost all of Roman's footprint to
-  Bayestar, which cannot see stars behind the dust lanes and gives three to five times too little
-  extinction within $1^\circ$ of the plane (Section~\ref{sec:dust}). The extinction tables should be
-  rebuilt from DECaPS, which the pipeline already uses and which covers the whole scan, with
-  near-infrared dust \citep{Marshall2006} within $\sim\!0.5^\circ$ of the plane; then checked against
-  the near-infrared map and the runs repeated. The five steps are listed at the end of
-  Section~\ref{sec:dust}. This moves the absolute yields by $20$--$45\%$, more than any other open
-  item except the astrometric floor.
+  Bayestar, which cannot see stars behind the dust lanes and gives three to six times too little
+  extinction within $1^\circ$ of the plane, measured against the independent VVV reddening map
+  (Section~\ref{sec:dust}). The extinction tables should be rebuilt from DECaPS, which the pipeline
+  already uses and which covers the whole scan, with near-infrared dust \citep{Marshall2006} where
+  DECaPS saturates, within $\sim\!1^\circ$ of the plane; then checked against VVV and the runs
+  repeated. The four steps are listed at the end of Section~\ref{sec:dust}. This moves the absolute
+  yields by $33$--$71\%$, more than any other open item except the astrometric floor.
 \item \textbf{Roman's photometric noise.} The present tabulated curve should be replaced by a
   noise model derived from simulated GBTDS images \citep{Wilson2023GBTDS}; every Roman photometric
   forecast depends on it.

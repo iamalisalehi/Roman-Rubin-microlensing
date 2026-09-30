@@ -4342,3 +4342,108 @@ row / corrected results with Table 11 / what it does / limits / how to correct i
 Section 2.1 dust item, modelling item 2 and next-steps items updated. 48 pp, clean build.
 
 **Commit:** `e64a6f1`. (Deviation 61's batch was committed by the user as 8e7d995.)
+
+## 63. The dust diagnosis re-verified: DECaPS covers everything but saturates on the Galactic-centre field; the reference becomes DECaPS + calibrated near-infrared, checked against VVV (2026-09-30)
+
+**What was asked (user).** "I remember at the beginning we checked that DECaPS covers some of the
+sightlines while Bayestar covers the rest ... recheck this, quantify the results, apply them to the
+report; be sure whether we need changes to the main code, maps.py and new production runs ... I
+don't want any guesses." And: look at DECaPS's coverage in the dustmaps library, as that is what we use.
+
+**What was checked, and how (nothing assumed).**
+1. *What maps.py does.* `maps.py` queries Bayestar19 (x0.884 x3.1) where dec > -30 and DECaPS
+   (x3.32) south of it -- exactly the combination the dustmaps documentation recommends. The
+   whitepaper records the same rule. So the earlier memory ("DECaPS covers some sightlines, Bayestar
+   the rest") is right: that is what the tables contain. 139 of Roman's 147 sightlines are north of
+   -30 and took Bayestar.
+2. *DECaPS's coverage in dustmaps.* From the installed data file itself (`DECaPSQueryLite`, nside
+   8192; pixels span l = -121.3..6.1, b = -12..12.6), the library code and docs (239 < l < 6,
+   |b| < 10) and Zucker et al. 2025: DECaPS has converged, non-infilled data at all 1,829 scan
+   sightlines, all 147 Roman sightlines (the 28 Galactic-centre-field ones included) and all 2,518
+   table positions. The dec rule, not coverage, is why Bayestar was used.
+3. *Bayestar's own verdict.* Its `reliable_dist` flag is FALSE at >= 4 kpc on all 139 Roman
+   sightlines it serves: the tables hold Bayestar values beyond the range Bayestar vouches for, for
+   every bulge source. maps.py requests the flag and never uses it.
+4. *What the simulator actually applied.* The tables match fresh Bayestar/DECaPS queries exactly;
+   the per-draw A_r recorded in the production output matches a reconstruction (nearest table as
+   `nearestSightline()` picks it, CCM89, the 0.017-mag scatter) on 99.92% of 300,000 draws; the rest
+   are a tie in the nearest-table choice, now reproduced by walking files/ext in directory order.
+   The 78 empty tables give zero dust (Deviation 62).
+5. *Is DECaPS right where it has data? No, not on the Galactic-centre field.* DECaPS's own flag
+   says reliable at 8 kpc on 100% of the five-field block and 71% of the GC field, but DECaPS reads
+   A_V ~ 7 at 8 kpc on the GC field (|b| < 0.35), no more than on the five-field block 1 deg
+   further from the plane, and its profiles there go flat from ~3 kpc while Marshall's jump to
+   A_V ~ 15-25 between 2 and 3 kpc. Zucker et al. give DECaPS's sensitivity as A_V ~ 12. To settle
+   it without assuming either map, a third, independent measurement: the VVV E(J-Ks) map of Surot
+   et al. 2020 (A&A 644, A140; VizieR J/A+A/644/A140; red clump + RGB, 10"-2' nodes), median in each
+   0.1-deg cell (1,640-3,091 nodes per Roman sightline; box queries -- VizieR's cone search returns
+   nothing at l < 0). The contrast GC field / five-field block, which does not depend on the
+   extinction law: **VVV 4.89, Marshall 4.46, DECaPS 1.07, the simulator's tables 0.57.** DECaPS is
+   saturated on the GC field; Marshall is right to ~10%. `analysis/u6_vvv_check.py` ->
+   `figures/u1_20260929/u6_vvv_check.csv`, `u6_vvv_ejk.csv`.
+6. *Calibration.* Where both are valid (five-field block), median A_Ks(Marshall)/A_V(DECaPS) at
+   8 kpc = 0.0805 (16-84%: 0.068-0.093; ratio of medians 0.0835); E(J-Ks)(VVV)/A_V(DECaPS) = 0.133.
+   GC-field column to 8 kpc on DECaPS's scale: Marshall-calibrated 31.3, VVV-calibrated 32.9,
+   DECaPS 7.2, the simulator 2.7. 0.0734 = 0.0805 x 4.46/4.89 raises Marshall's column by the 10%
+   its contrast falls short of VVV's; the GC-field column is then 34.3, 4% above VVV's 32.9 (the
+   nominal 31.3 is 5% below), so the two conversions bracket VVV there.
+
+**What changed in the correction (U5).** The previous reference (Deviation 62) was Marshall
+everywhere at A_Ks/A_V = 0.11, i.e. ~27% LESS dust than the calibrated scale on the GC field and a
+different scale from DECaPS elsewhere. New nominal "hybrid": DECaPS out to its own last reliable
+distance, DECaPS's value there plus Marshall's further increase beyond it, and Marshall itself
+(A_Ks/A_V = 0.0805) from the first distance at which Marshall's calibrated A_V reaches 12 (DECaPS's
+stated limit). Systematic: Marshall-only (calibrated) for the map; A_Ks/A_V 0.0734 (VVV contrast) and
+0.102 (CCM89 R_V 2.5, the simulator's own law), the larger shift; pooled vs per-block efficiency.
+DECaPS-only is computed and kept in the CSV but not counted -- VVV rules it out on the GC field.
+Not covered: the V-to-F146/r law itself (CCM89 R_V 2.5 throughout).
+
+**Whole-scan check against VVV** (`u6_vvv_check.py --scan-log`, all 1,829 sightlines, 1,600-4,180
+VVV nodes each; `figures/u1_20260929/u6_vvv_scan.csv`, `u6.log`). Median A_V(8 kpc)/A_V,VVV, all on
+DECaPS's scale, by |b| = 0-0.5 / 0.5-1 / 1-1.5 / 1.5-2.5 / 2.5-6 (n = 239/215/269/385/721; VVV A_V
+24 / 14 / 7.6 / 5.5 / 2.1): simulator 0.17 / 0.31 / 0.88 / 1.02 / 1.11; DECaPS 0.57 / 0.86 / 0.95 /
+0.88 / 0.89; Marshall 0.98 / 1.03 / 1.04 / 1.11 / 1.24; **new nominal 0.98 / 0.99 / 0.96 / 0.88 /
+0.89**. The nominal switches to Marshall on 444 sightlines (403 within |b| < 1, none beyond 2.14).
+Row by row on the five-field block DECaPS tracks VVV (b = -1.44: 4.9 vs 4.8; -0.94: 10.1 vs 11.5)
+while the simulator falls toward the plane (5.1 -> 2.6).
+
+**U5 re-run, all populations** (`figures/u1_20260929/u5_corrected_numbers.{md,csv}`, `u5.log`,
+`u5_dust_summary.csv`; 45.7 min, no warnings; the zero-correction column reproduces 81,860 / 8,398 /
+57,940 and 1.749e5 / 2.434e4 / 1.411e5 exactly). Ordinary / bh / ns, as simulated -> corrected +-
+total: Roman detections 81.9k -> 50.4k+-2.9k / 8.40k -> 5.66k+-0.32k / 57.9k -> 36.5k+-2.3k; Roman
+10% masses 1,930 -> 830+-110 / 1,068 -> 579+-42 / 2,286 -> 1,102+-72; Rubin footprint 16.8k ->
+4.9k+-0.5k / 1.81k -> 0.69k+-0.07k / 11.6k -> 3.6k+-0.4k; Rubin whole scan 175k -> 78k+-12k /
+24.3k -> 11.2k+-1.5k / 141k -> 62k+-9k; outside-footprint share 63.8 -> 58.5+-5.1 / 72.7 -> 65.0+-4.1
+/ 67.5 -> 60.9+-4.7 %; RfR characterised alone/joint 4.6/28.2, 11.9/82.9, 4.8/37.2 %; RfR 10%
+masses joint 8.9 -> 8.1+-1.5 / 49.5 -> 53.3+-1.8 / 14.9 -> 15.7+-1.2 %; median sigma_J/sigma_Rubin(tE)
+0.157 -> 0.097 / 0.065 -> 0.059 / 0.132 -> 0.133; joint/Roman 10% masses 1.09 / 1.13 / 1.13; Roman
+P(resolvable) D=5 1.4 -> 0.8+-0.3 / 45.4 -> 34.2+-1.2 / 2.9 -> 1.7+-0.2 %; median A_V of Roman's
+footprint detections 3.6-4.2 -> 7.2-7.5. Against Deviation 62 (Marshall at 0.11 everywhere): Roman
+yields 13-17% lower, Rubin whole scan 18-19% lower -- the GC field now carries A_V ~ 31 instead of ~24,
+and far from the plane the reference follows DECaPS. Dust factors: Roman x0.62-0.67 (five-field
+x0.83-0.88, GC field x0.07-0.12), Rubin footprint x0.29-0.38, whole scan x0.44-0.46.
+
+**Two error-bar omissions found and fixed in U5.** P(resolvable) had no Monte Carlo error (the
+report's "39.4 +- 0.8" was systematic only) and the outside-footprint share neither. Both now use the
+delta method (as `ratio()` does); the Monte Carlo part dominates for ordinary lenses (0.27 of 0.27).
+The numbers in the report were computed from the run's own columns with the identical closed form
+(sigma_R^2 (1 - 2p) + p^2 sigma_D^2) / D^2 and confirmed by a re-run of the fixed script (bit-identical in every other column; the shipped
+outputs are that re-run).
+
+**U4 Part 2 on the new reference** (`u4_dust_check.py --parts 2 --reference hybrid` ->
+`u4_dust_check_hybrid.csv`, `u4_hybrid.log`; the original Marshall-0.11 `u4_dust_check.csv` is kept):
+real/simulated footprint with corrected dust, Roman 1.24 / 1.15 / 1.18 (was 1.16 / 1.10 / 1.11),
+Rubin 2.2 / 1.8 / 2.0 (steep extrapolation of Rubin's corrected density, slope -1.9..-2.6 per deg);
+Roman's corrected five-field density is flat (-0.14..+0.26 per deg in ln).
+
+**Report.** Section 5.5 rewritten: what the simulation does (the documented rule; the simulator was
+checked to apply its tables); what is wrong (Bayestar used beyond its own reliable distance; DECaPS
+saturates on the GC field); how we know (VVV, law-free contrast, whole-scan table); corrected results
+(new reference, variants, Table 11); what it does; limits; how to correct it (what must and must not
+change, four steps). Section 5.4 lower block and text, abstract, summary, "what to believe" table,
+Section 2 dust item, modelling item, next steps and open items updated. New refs Zucker2025DECaPS,
+Surot2020 (verified against arXiv/Crossref/VizieR). 49 pp, clean build.
+
+**Code changes needed, answered for the user:** maps.py yes (the fix); helper.cpp readBayestar yes
+(robustness); Lensing.cpp / Bulge_LSST.cpp no; Bulge.h only if the table count changes; new
+production runs yes. The plan is in OPEN_ITEMS (CRITICAL dust entry, "What the fix involves").

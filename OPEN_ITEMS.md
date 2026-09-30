@@ -1901,8 +1901,26 @@ excludes the current GC field; with the distance test that stops mattering.
 
 ## CRITICAL: the dust is three to four times too thin within 1 deg of the Galactic plane (2026-09-29)
 
-**UPDATE 2026-09-30 (Deviation 62): the fault is Bayestar plus maps.py's dec = -30 rule, not the
-optical maps in general.** DECaPS covers all 1,829 sightlines and agrees with Marshall to ~10-25%
+**CURRENT STATE 2026-09-30 (Deviation 63; supersedes the Deviation 62 update below).** Verified,
+not assumed: maps.py follows the dustmaps-documented rule (Bayestar19 north of dec -30, DECaPS
+south); 139 of Roman's 147 sightlines took Bayestar, whose OWN reliable_dist flag is false at
+>= 4 kpc on all 139 -- every bulge source sits beyond the range Bayestar vouches for. DECaPS has
+data at all 1,829 scan sightlines, but it is sensitive to A_V ~ 12 only and is SATURATED on the
+Galactic-centre field even where its flag says reliable. Independent check, the VVV E(J-Ks) map
+(Surot+2020, `analysis/u6_vvv_check.py`): GC-field/five-field contrast VVV 4.89, Marshall 4.46,
+DECaPS 1.07, simulator 0.57; over the whole scan (A_V at 8 kpc / VVV's, all on DECaPS's scale)
+the simulator is 0.17 (|b| < 0.5), 0.31 (0.5-1), 0.88 (1-1.5), 1.02-1.11 farther out; DECaPS
+0.57 / 0.86 / 0.95 / 0.88-0.89. So neither map alone is right: the fix is DECaPS where it can see,
+the near-infrared map where it cannot. The dust-corrected numbers in the report
+(`figures/u1_20260929/u5_corrected_numbers.md`) use exactly that reference, which tracks VVV to
+0.88-0.99 in every |b| bin. Size of the effect with it: Roman footprint detections x0.62-0.67
+(five-field block x0.83-0.88, GC field x0.07-0.12), Roman 10% masses x0.43-0.54, Rubin footprint
+x0.29-0.38, Rubin whole scan x0.44-0.46; per-event fractions move by < 4 points. The numbers under
+"Why it matters" below are the Deviation 61 estimate (Marshall at 0.11) and are superseded. The
+concrete fix plan is under "What the fix involves" below.
+
+**UPDATE 2026-09-30 (Deviation 62; partly superseded -- DECaPS is NOT close to right on the GC
+field): the fault is Bayestar plus maps.py's dec = -30 rule, not the optical maps in general.** DECaPS covers all 1,829 sightlines and agrees with Marshall to ~10-25%
 except within ~0.5 deg of the plane (GC field 7.9 vs 24); where the model used Bayestar it has
 0.20x (|b|<0.5) and 0.35x (0.5-1) Marshall's dust. Fix: drop the rule, DECaPS everywhere, near-IR
 within ~0.5 deg; check against Marshall; re-run. Dust-corrected headline numbers with errors:
@@ -1933,12 +1951,39 @@ quarter of the footprint events behind them are in the GC field.
 **Why deferred.** Fixing it means new extinction files and new production runs of all three
 populations; the report states the estimate and its limits (Section 5.5).
 
-**What the fix involves.** Build the extinction files from a near-infrared-calibrated map near the
-plane (Marshall 2006, or a VVV-based map), or at least rescale Bayestar/DECaPS profiles so the total
-to the bulge matches the NIR map where Bayestar's reliable distance is short (`maps.py` currently
-ignores Bayestar's `reliable_dist` flag). Re-run `make extinctiontest`, compare the new A_V(8 kpc)
-map against Marshall, then the production runs. Do it together with the Roman F146 depth fix and
-the adopted GBTDS layout, so the runs are repeated once.
+**What the fix involves (plan, 2026-09-30, Deviation 63).** Does it need code changes and new
+runs? maps.py: yes (the fix itself). helper.cpp `readBayestar`: yes (robustness, not physics).
+Lensing.cpp / Bulge_LSST.cpp: no -- the way extinction is applied (A_V(Ds) x CCM89(R_V) + scatter)
+is not the fault. Bulge.h: only if the number of tables changes (NFILES = 2518). New production
+runs: yes -- the simulator reads the tables and dims every source at run time, so no table change
+reaches the results without re-running; U5 is the estimate until then.
+1. **maps.py -- build every table from the reference U5 uses.** `Dust.reference_profile(...,
+   "hybrid", 0.0805)` in `analysis/u5_corrected_numbers.py` is the reference implementation:
+   (a) query DECaPS (`DECaPSQueryLite`, A_V = 3.32 E(B-V)) for EVERY sightline -- drop the dec rule;
+   Bayestar only as a fallback where DECaPS has no data (none in this scan), and then only within
+   its own reliable_dist; (b) keep DECaPS out to its last `reliable_dist` distance, beyond it add
+   Marshall's further increase; (c) from the first distance at which Marshall's A_Ks/0.0805
+   reaches 12 (DECaPS's stated limit), use Marshall's A_Ks/0.0805 itself; (d) 0.0805 = median
+   A_Ks(Marshall)/A_V(DECaPS) at 8 kpc over Roman's five-field block, re-measure it with
+   `u6_vvv_check.py` if anything changes; (e) exit non-zero if any finished table has a non-finite
+   value (no more "TOTAL DROPOUT" notes); (f) write the provenance (maps, calibration, date) to a
+   file that is NOT `.txt` (`readBayestar` reads every `.txt` in files/ext/ as a table).
+2. **helper.cpp `readBayestar` -- refuse bad tables.** Check the stream after every row; exit
+   with the file name on a failed parse, a non-finite value, a row count != NROWS, or l, b that
+   change within a file (the check exists, commented out). Optional, for reproducibility: sort the
+   paths before reading -- `directory_iterator` order is filesystem-dependent, and it decides ties
+   in `nearestSightline()` (0.08% of draws in the current runs).
+3. **Validate before any run.** (a) Re-run the u6 comparison on the NEW tables: A_V(8 kpc)/VVV
+   should be ~0.9-1.0 in every |b| bin (currently 0.17 at |b| < 0.5), with no fall toward the
+   plane, and GC/five-field contrast ~4.5-4.9 (currently 0.57); (b) `make extinctiontest &&
+   ./extinctiontest`; (c) a short pilot, then the U4 reconstruction check that per-draw A_r matches
+   the new tables.
+4. **Re-run bulge, bh and ns production** together with the other fixes that need new runs (F146
+   depth, corner cut, adopted GBTDS layout), so the runs are repeated once.
+5. **Check the new runs against U5's corrected numbers** (they should agree within U5's stated
+   errors; if not, the efficiency re-weighting misses something -- understand it before use).
+Not part of this fix, stated in the report as a limit: the V-to-F146/r conversion stays CCM89 at
+R_V 2.5 for the bulge; a near-infrared law for F146 from A_Ks directly would be the next refinement.
 
 ## 78 extinction tables are empty (all NaN) and the simulator silently reads them as zero dust (2026-09-30)
 
@@ -1958,7 +2003,7 @@ over-produced, so the whole-scan Rubin totals are inflated. The dust-corrected e
 
 **Why deferred.** Same fix and same re-run as the CRITICAL dust entry above.
 
-**What the fix involves.** (1) Rebuild the tables from DECaPS, which has data at all 1,829 scan
-sightlines (removes the dropouts). (2) In `readBayestar()`, check `fin` after each row and refuse a
+**What the fix involves.** Part of the CRITICAL dust entry's plan above (Deviation 63). (1) Rebuild
+the tables from DECaPS, which has data at all 1,829 scan sightlines (removes the dropouts). (2) In `readBayestar()`, check `fin` after each row and refuse a
 table that fails to parse or contains a non-finite value, instead of continuing on a failed stream.
 (3) Have maps.py exit on a total dropout rather than print a note.

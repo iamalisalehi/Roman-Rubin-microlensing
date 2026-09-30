@@ -1,0 +1,130 @@
+Loading meta pixel info...
+Meta pixel info loaded!
+[bulge] Roman: per-row yield density, model -> dust-corrected (median factor)
+        n       rho0       rho1      c
+lat                                   
+-1.44  17  42924.897  42117.026  0.981
+-1.34  22  44953.996  41559.788  0.954
+-1.24  22  48370.790  43706.836  0.933
+-1.14  22  50362.255  42671.501  0.884
+-1.04  21  51832.841  38503.126  0.719
+-0.94  15  66650.797  40242.344  0.562
+-0.34   4  88160.229   9289.577  0.102
+-0.24   5  84084.364   5552.780  0.064
+-0.14   6  81723.479   5569.965  0.064
+-0.04   6  72413.215   4290.246  0.068
+ 0.06   5  73835.115   3931.698  0.041
+ 0.16   2  69963.865   3191.160  0.043
+[bulge] Rubin: per-row yield density, model -> dust-corrected (median factor)
+        n       rho0      rho1      c
+lat                                  
+-1.44  17   5911.562  5574.152  0.921
+-1.34  22   7784.817  5437.712  0.792
+-1.24  22  10479.033  6185.015  0.677
+-1.14  22   8893.198  3803.640  0.611
+-1.04  21  12155.038  2205.442  0.143
+-0.94  15  18230.439  1535.278  0.024
+-0.34   4  19491.075     0.145  0.000
+-0.24   5  16379.804     0.126  0.000
+-0.14   6  15582.584     0.322  0.000
+-0.04   6  13900.655     0.184  0.000
+ 0.06   5  17427.028     0.019  0.000
+ 0.16   2  16352.556     0.023  0.000
+[bh] Roman: per-row yield density, model -> dust-corrected (median factor)
+        n      rho0      rho1      c
+lat                                 
+-1.44  17  4401.022  4348.535  0.988
+-1.34  22  4526.799  4297.816  0.971
+-1.24  22  5014.074  4661.918  0.949
+-1.14  22  5242.406  4716.240  0.918
+-1.04  21  6156.069  5046.319  0.809
+-0.94  15  6619.971  4670.869  0.689
+-0.34   4  8367.316  1616.949  0.204
+-0.24   5  8074.843   971.202  0.133
+-0.14   6  7171.018   838.846  0.120
+-0.04   6  7091.932   957.602  0.133
+ 0.06   5  7236.675   633.279  0.080
+ 0.16   2  7806.403   447.770  0.062
+[bh] Rubin: per-row yield density, model -> dust-corrected (median factor)
+        n      rho0     rho1      c
+lat                                
+-1.44  17   836.313  791.158  0.968
+-1.34  22   894.450  680.358  0.830
+-1.24  22   965.066  683.682  0.780
+-1.14  22   997.133  584.017  0.716
+-1.04  21  1252.090  427.699  0.294
+-0.94  15  1764.356  274.534  0.083
+-0.34   4  2711.791    0.054  0.000
+-0.24   5  1830.842    0.009  0.000
+-0.14   6  1673.006    0.020  0.000
+-0.04   6  1719.015    0.029  0.000
+ 0.06   5  1561.506    0.002  0.000
+ 0.16   2  1580.802    0.000  0.000
+[ns] Roman: per-row yield density, model -> dust-corrected (median factor)
+        n       rho0       rho1      c
+lat                                   
+-1.44  17  30115.489  29721.623  0.985
+-1.34  22  30634.378  28485.186  0.955
+-1.24  22  33214.323  30070.238  0.929
+-1.14  22  34946.436  29988.082  0.877
+-1.04  21  40407.931  30539.409  0.736
+-0.94  15  47786.476  29626.031  0.577
+-0.34   4  54301.484   9393.431  0.172
+-0.24   5  58455.856   7944.626  0.160
+-0.14   6  55173.212   6648.731  0.117
+-0.04   6  52706.652   6671.921  0.119
+ 0.06   5  55943.797   5731.005  0.107
+ 0.16   2  53569.918   4579.680  0.085
+[ns] Rubin: per-row yield density, model -> dust-corrected (median factor)
+        n       rho0      rho1      c
+lat                                  
+-1.44  17   4945.809  4758.044  0.927
+-1.34  22   5155.819  3755.940  0.803
+-1.24  22   5625.760  3633.811  0.733
+-1.14  22   6708.475  3171.928  0.601
+-1.04  21   8874.406  2119.131  0.190
+-0.94  15  11942.047  1258.151  0.061
+-0.34   4   9780.255     0.341  0.000
+-0.24   5  12988.628     0.138  0.000
+-0.14   6  11390.320     0.251  0.000
+-0.04   6  11264.663     0.160  0.000
+ 0.06   5  11909.222     0.007  0.000
+ 0.16   2  11199.961     0.000  0.000
+part population                                                      quantity     value   n      err
+   2      bulge Roman detections, simulated footprint: dust-corrected / model  0.622148 147      NaN
+   2      bulge          Roman detections, five-field: dust-corrected / model  0.826686 119      NaN
+   2      bulge            Roman detections, GC field: dust-corrected / model  0.068022  28      NaN
+   2      bulge          Roman: dust-corrected slope d ln(rho)/db, five-field -0.141531   6 0.112775
+   2      bulge            Roman: dust-corrected slope d ln(rho)/db, GC field -1.984676   6 0.312728
+   2      bulge    Roman detections: real/simulated footprint, dust-corrected  1.239268 147      NaN
+   2      bulge Rubin detections, simulated footprint: dust-corrected / model  0.299114 147      NaN
+   2      bulge          Rubin detections, five-field: dust-corrected / model  0.410450 119      NaN
+   2      bulge            Rubin detections, GC field: dust-corrected / model  0.000010  28      NaN
+   2      bulge          Rubin: dust-corrected slope d ln(rho)/db, five-field -2.583625   6 0.685328
+   2      bulge            Rubin: dust-corrected slope d ln(rho)/db, GC field -3.565055   6 2.098462
+   2      bulge    Rubin detections: real/simulated footprint, dust-corrected  2.234627 147      NaN
+   2         bh Roman detections, simulated footprint: dust-corrected / model  0.687029 147      NaN
+   2         bh          Roman detections, five-field: dust-corrected / model  0.876247 119      NaN
+   2         bh            Roman detections, GC field: dust-corrected / model  0.123874  28      NaN
+   2         bh          Roman: dust-corrected slope d ln(rho)/db, five-field  0.259864   6 0.103490
+   2         bh            Roman: dust-corrected slope d ln(rho)/db, GC field -1.969043   6 0.504063
+   2         bh    Roman detections: real/simulated footprint, dust-corrected  1.148851 147      NaN
+   2         bh Rubin detections, simulated footprint: dust-corrected / model  0.383157 147      NaN
+   2         bh          Rubin detections, five-field: dust-corrected / model  0.534626 119      NaN
+   2         bh            Rubin detections, GC field: dust-corrected / model  0.000011  28      NaN
+   2         bh          Rubin: dust-corrected slope d ln(rho)/db, five-field -1.863112   6 0.396639
+   2         bh            Rubin: dust-corrected slope d ln(rho)/db, GC field -4.942814   6 3.041679
+   2         bh    Rubin detections: real/simulated footprint, dust-corrected  1.846078 147      NaN
+   2         ns Roman detections, simulated footprint: dust-corrected / model  0.644407 147      NaN
+   2         ns          Roman detections, five-field: dust-corrected / model  0.832532 119      NaN
+   2         ns            Roman detections, GC field: dust-corrected / model  0.126349  28      NaN
+   2         ns          Roman: dust-corrected slope d ln(rho)/db, five-field  0.067730   6 0.076816
+   2         ns            Roman: dust-corrected slope d ln(rho)/db, GC field -1.222564   6 0.166190
+   2         ns    Roman detections: real/simulated footprint, dust-corrected  1.184320 147      NaN
+   2         ns Rubin detections, simulated footprint: dust-corrected / model  0.325715 147      NaN
+   2         ns          Rubin detections, five-field: dust-corrected / model  0.451389 119      NaN
+   2         ns            Rubin detections, GC field: dust-corrected / model  0.000014  28      NaN
+   2         ns          Rubin: dust-corrected slope d ln(rho)/db, five-field -2.205672   6 0.441651
+   2         ns            Rubin: dust-corrected slope d ln(rho)/db, GC field -4.647544   6 3.484511
+   2         ns    Rubin detections: real/simulated footprint, dust-corrected  2.018517 147      NaN
+[memrun] peak RSS 1480 MB, wall 2.1 min

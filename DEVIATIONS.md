@@ -4578,3 +4578,5 @@ differences, the tetE cause); "Comparisons with published forecasts" item rewrit
 `sec:compare`); Section 5 intro no longer promises unexplained tensions; "what to believe" row now
 "agree on their sample, medium"; open item 6 ("the parallax shortfall") removed. 49 pp, clean build.
 OPEN_ITEMS entry replaced by a resolved stub.
+
+**Commit:** `eebca7c`.

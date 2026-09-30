@@ -4656,4 +4656,4 @@ predicted rather than fitted") and `Whitepaper/whitepaper.tex` (lines ~716, ~122
 misreading of Penny; the postfix report was not checked for it. Recorded in OPEN_ITEMS.
 
 **Build.** `latexmk -pdf` clean, 49 pp, 0 TODO, 30 bibliography entries, no undefined citations,
-no BibTeX warnings.
+no BibTeX warnings. Commit `4ba5c07`.

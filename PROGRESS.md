@@ -14,6 +14,11 @@ gone with the dust corrected (49.4 +- 2.9 per deg^2 per day, inside their bracke
 "yields understated" argument withdrawn (it is measured through the model's dust); gap filling and
 Rubin's additions to Roman labelled as not dust-corrected upper limits; four rounding/wording
 fixes. What the re-run must re-measure is listed in OPEN_ITEMS (CRITICAL dust entry, step 5).
+**Sajadian & Sahu gap RESOLVED, same day (Deviation 65):** it was the sample definition. Their
+published code counts u0 <= 1 events peaking inside Roman's mission, unweighted by the event rate;
+counted that way our bh fractions to 10% are tE 71.9 / piE 42.1 / Ml 38.1% against their 67.0 / 30.0
+/ 29.8 (`analysis/u7_ss23_factors.py`, `figures/u7_20260930/`). Only tetE stays lower (80.2 vs 99.2%):
+their astrometric errors are 1.6-8x smaller and their fit fixes piE. Report and OPEN_ITEMS updated.
 
 **Newest (2026-09-21): Step series S -- sample light curves for illustrative figures.**
 Requested: per-band light curves and astrometric tracks, with and without parallax, with

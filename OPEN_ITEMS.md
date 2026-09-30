@@ -1671,55 +1671,12 @@ explicitly does not trust it. Diagnosing it means reading the legacy `Neven` acc
 **What the fix would involve.** Either derive `Neven` from the same weighted sum Step Y uses and
 delete the legacy accumulator, or find the missing normalisation. Do not "fix" it in passing.
 
-## Roman's forecast parallax precision is ~4x worse than Sajadian & Sahu's, and nothing found explains it
+## RESOLVED 2026-09-30: the Sajadian & Sahu (2023) characterisation gap was the sample definition (Deviation 65)
 
-**UPDATE 2026-09-26: re-measured on the post-fix bh run, and the extinction law is ruled out as the
-main cause.** Matched 3-50 Msun, 10% threshold, ours/theirs: tetE 0.90 (was 0.69), tE 0.39 (0.32),
-piE 0.33 (0.25), Ml 0.31 (0.21) -- `figures/y2_20260925/y2_ss23.md`. The astrometric gap mostly
-closed; the photometric one did not. Candidates (ii) and (iii) below remain.
-
-Measured in Step Y (Deviation 54a) by `analysis/y2_ss23_compare.py`, on matched assumptions --
-their denominator (fraction of DETECTIONS), their mass range (3-50 Msun, the closest we can get to
-their 2-50), and the mass-function row that matches ours. At the 10% threshold, ours / theirs:
-
-| parameter | SS23 [%] | this work [%] | ratio |
-|---|---|---|---|
-| sigma(tetE)/tetE | 99.2 | 68.6 | 0.69 |
-| sigma(tE)/tE     | 67.0 | 21.7 | 0.32 |
-| sigma(piE)/piE   | 30.0 |  7.4 | 0.25 |
-| sigma(Ml)/Ml     | 29.8 |  6.2 | 0.21 |
-
-**Why it matters.** The lens mass is the headline science product and it needs piE:
-Ml = tetE/(kappa piE). If our piE is pessimistic by ~4x, every mass-precision statement in the
-report and the whitepaper is correspondingly pessimistic, and the "Roman characterises, Rubin
-does not" conclusion is understated rather than overstated.
-
-**What has been ruled out.**
-- *The astrometric error model.* tetE is the purely astrometric parameter and the one
-  ROMAN_AST_FLOOR controls; it is the LEAST deficient of the four at 0.69. If the 1.1 mas
-  per-exposure floor were the problem, tetE would be the worst, not the best.
-- *The mass function.* Restricting 3-1000 -> 3-50 Msun leaves tE (20.1 -> 21.7%) and piE
-  (8.3 -> 7.4%) unchanged. It lowers tetE (84.0 -> 68.6%), as tetE ~ sqrt(M) requires.
-- *Photometric parametrisation.* Our Roman partition fits the same seven parameters as theirs
-  (t0, u0, tE, xi, fb, mbase, piE), via activePhotParams.
-- *Astrometric parametrisation.* Theirs has 3 parameters, ours 4 (we fit piE astrometrically too).
-  That should IMPROVE piE, not degrade it -- unless the two matrices are not being combined for
-  piE the way they are for tetE, which has not been checked.
-
-**Candidates not yet tested.** (i) The inverted extinction law (Deviation 53) made F146 sources
-too faint in exactly these data, which degrades the photometric Fisher and so piE -- this must be
-re-measured on post-fix data BEFORE anything else is chased, and may account for much of it.
-(ii) Whether the astrometric piE and the photometric piE are combined at all, or whether the
-reported sigma(piE) is the photometric one alone. (iii) Their parallax may benefit from the
-1-hour-per-10-days gap observations they add by hand, which span the 2.3-yr gap and give a very
-long parallax baseline; our low-cadence seasons are denser but differently distributed.
-
-**Why deferred.** The first candidate is the extinction fix, whose re-runs are already scheduled.
-Chasing a Fisher-level discrepancy on data known to have wrong magnitudes would be wasted work.
-
-**What the fix would involve.** Re-run `y2_ss23_compare.py` on the post-fix black-hole table; if
-the gap survives, read the piE path through FisherM/ErrorCal for the SROMAN partition and check
-whether the astrometric information on piE reaches the reported sigma.
+Not a forecast difference. SS23's published code counts u0 <= 1 events peaking inside Roman's mission,
+UNWEIGHTED by the event rate; counted that way ours are 1.07 (tE), 1.40 (piE), 1.28 (Ml) times theirs.
+Left: tetE 0.81x, from their 1.6-8x smaller per-exposure astrometric errors (a modelling choice,
+covered by the astrometric-floor items). Full record, numbers and code references: DEVIATIONS 65.
 
 ## One DET_ANOMALY event in the post-extinction-fix bulge run (2026-09-24)
 

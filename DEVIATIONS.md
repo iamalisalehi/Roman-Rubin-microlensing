@@ -4517,3 +4517,64 @@ Roman/Rubin footprint ratio (8.3-10.4); 6-8x characterised; 33-38% / 46-57% / 62
 
 **Open, for the user:** a quantitative dust correction of the gap-filling table needs either a
 per-event error rescaling (an approximation) or a run with rebuilt tables; not attempted.
+
+## 65. The Sajadian & Sahu (2023) characterisation gap is the sample definition, not the forecast (2026-09-30)
+
+**What was believed.** Deviation 54a / OPEN_ITEMS: on "matched assumptions" (3-50 Msun log-flat, their
+denominator = fraction of Roman detections) our black-hole fractions characterised to 10% were ~1/3 of
+SS23's Table 1 (dN/dM ~ M^-1, sparse observations): tE 26.0 vs 67.0%, piE 10.0 vs 30.0, Ml 9.3 vs
+29.8, tetE 88.8 vs 99.2 (post-extinction-fix, `figures/y2_20260925/y2_ss23.md`). Cause "not known";
+the report carried it as an unexplained factor 3 and as open item 6 ("the parallax shortfall").
+
+**What their code does** (github.com/SSajadian54/AstrometryMicrolensing, cloned 2026-09-30, head
+763c9cc; the paper links it). Read in full for the relevant parts:
+- `BH_Roman_V1.cpp` func_lens: `l.u0=RandR(0.0,1.0)` -- **u0 only on [0, 1]** (paper Fig. 3 agrees);
+  `l.t0=RandR(2.0,5.0*year-2.0)` -- **t0 only inside the 5-yr Roman mission**; Dl rejection-sampled
+  from rho(Dl) sqrt(Dl (Ds-Dl)/Ds) and Ml from the mass function, **no sqrt(M) v_t factor** -- the
+  sampler this simulator inherited (our Lensing.cpp: identical Dl rule; u0 on [0.001, 3]; t0 on
+  [2 d, 10 yr - 2 d]).
+- `Analyze_IMF1.py`: Table 1 fractions are **unweighted counts** (`numc[j]+= 1.0`) over the detected
+  sample; full covariance by `np.mat(F).I` (marginalised, as ours).
+- Detection: dchi2 > 800 AND 3 consecutive points 4 sigma above baseline AND ndw > 5 (ours dchi2 >= 500).
+- Photometric Fisher: 7 params (t0, u0, tE, xi, fb, mbs, piE), products of central first
+  differences (the paper's Eq. 10 writes a second derivative; that is notation only). Steps are the
+  legacy large ones (t0 10 d, u0 0.1, tE 5 d, fb 0.1, piE 0.01 absolute ~ 40-140% of a BH piE) --
+  the kind Deviation 10 found biases sigma LOW; not re-tested here because the gap closes without it.
+- Astrometric Fisher: 3 params (tetE, mus1, mus2) with t0, u0, tE, xi fixed at truth (ours 4, +piE).
+- Error tables: `sigma_WFIRST.txt` is **byte-identical** to our `files/sigma_roman.txt` (photometry
+  ruled out). `roman_astro2.txt` (log10 arcsec; S. Calchi Novati's simulations) gives 0.39 / 0.61 /
+  0.93 / 1.55 / 2.82 / 4.34 / 5.11 mas at W149 18.5 / 20 / 21 / 22 / 23 / 24 / 25; our errRomanA
+  1.10 / 1.10 / 1.47 / 3.17 / 6.82 / 15.85 / 39.81 mas -- ours 1.6-7.8x larger.
+
+**Test** (`analysis/u7_ss23_factors.py` -> `figures/u7_20260930/u7_ss23_factors.{md,csv}`, `u7.log`;
+`runs/prod_bh_20260924/testbh_detJ.dat`, 3-50 Msun, one factor at a time; % of Roman detections with
+sigma/X < 10%, tE / piE / tetE / Ml):
+| sample | tE | piE | tetE | Ml |
+|---|---|---|---|---|
+| ours: rate-weighted, u0 <= 3 (reproduces y2 exactly) | 26.0 | 10.0 | 88.8 | 9.3 |
+| u0 <= 1 only | 51.7 | 19.0 | 77.3 | 17.3 |
+| t0 on Roman's mission only (t0zone 0/1) | 33.6 | 12.3 | 88.0 | 11.2 |
+| unweighted only | 27.8 | 19.1 | 91.1 | 18.4 |
+| **SS23's sample: unweighted, u0 <= 1, t0 on mission (3,170 detections)** | **71.9** | **42.1** | **80.2** | **38.1** |
+| SS23 Table 1 | 67.0 | 30.0 | 99.2 | 29.8 |
+Binomial errors on the SS23-sample row: +-0.8 / 0.9 / 0.7 / 0.9. Of our Roman 3-50 Msun detections
+(unweighted) 55.2% have u0 > 1 and 36.2% peak off-mission (our t0 spans the decade, Roman's mission
+half of it). The SS23 sample has tE mean 396 -> 380 d, median 237 -> 186 d, u0 mean 1.21 -> 0.48;
+fb(F146) median 1.000 in both.
+
+**Conclusion.** Counted their way, our photometric forecasts are 1.07 (tE), 1.40 (piE), 1.28 (Ml)
+times theirs: no shortfall. The first comparison compared different samples. What remains: (i) tetE
+0.81x, explained by their 1.6-8x smaller per-exposure astrometric errors (helped further by their
+3-parameter astrometric fit, which fixes piE where ours frees it); (ii) our piE/Ml being HIGHER on
+their sample --
+candidates, untested: our 10 seasons (4 low-cadence ones filling their 2.3-yr gap) vs their 6 + 1 h
+per 10 d; blending (their F146 PSF footprint FWHM 0.33"); their stricter detection cut would move it
+the other way. SS23's own numbers carry two biases this project already found in the shared
+ancestor: no event-rate weight (Deviation 41; favours long events, whose parallax is easiest) and
+legacy finite-difference steps (Deviation 10; sigma biased low). Neither is needed to explain the gap.
+
+**Report.** "Against Sajadian & Sahu" paragraph rewritten (both countings, the three sample
+differences, the tetE cause); "Comparisons with published forecasts" item rewritten (now labelled
+`sec:compare`); Section 5 intro no longer promises unexplained tensions; "what to believe" row now
+"agree on their sample, medium"; open item 6 ("the parallax shortfall") removed. 49 pp, clean build.
+OPEN_ITEMS entry replaced by a resolved stub.

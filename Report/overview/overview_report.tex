@@ -1232,15 +1232,30 @@ below OGLE-IV's (Section~\ref{sec:certainty}), but that comparison was made thro
 too-thin dust and has to be repeated with the corrected dust before it can say whether the corrected
 yields are under- or overstated.
 
-% Source: figures/y2_20260925/y2_ss23.md.
+% Source: figures/y2_20260925/y2_ss23.md (counted our way); figures/u7_20260930/u7_ss23_factors.md
+% (counted their way; analysis/u7_ss23_factors.py, Deviation 65). Their code:
+% github.com/SSajadian54/AstrometryMicrolensing (BH_Roman_V1.cpp, Analyze_IMF1.py).
 \paragraph{Against \citet{SajadianSahu2023}.} With their assumptions adopted (their $F_1=0.019$ is our
 $F$; their $M^{-1}$ mass function is our log-uniform one, re-weighted to $3$--$50\,\Msun$), Roman
 detects $31.5\pm0.5$ black holes per deg$^2$ per season against their $7.2$; part of the difference
-is the final GBTDS design, whose low-cadence seasons fill the gap their forecast assumed. On their
-denominator ($\Neff=4{,}894$), the fraction characterised to $10\%$ is, ours against theirs: $\tetE$
-$(88.8\pm0.5)$ against $99.2\%$, $\tE$ $(26.0\pm0.6)$ against $67.0\%$, $\piE$ $(10.0\pm0.4)$ against
-$30.0\%$, $\Ml$ $(9.3\pm0.4)$ against $29.8\%$.
-The astrometry nearly agrees; the parallax is $\sim\!3\times$ short, and the cause is not yet known.
+is the final GBTDS design, whose low-cadence seasons fill the gap their forecast assumed. Counted our
+way -- every Roman detection, weighted by the event rate ($\Neff=4{,}894$) -- the fraction
+characterised to $10\%$ is, ours against theirs: $\tetE$ $(88.8\pm0.5)$ against $99.2\%$, $\tE$
+$(26.0\pm0.6)$ against $67.0\%$, $\piE$ $(10.0\pm0.4)$ against $30.0\%$, $\Ml$ $(9.3\pm0.4)$ against
+$29.8\%$. Their published code counts a different sample: $u_0$ is drawn only up to $1$ (ours to
+$3$), $t_0$ only inside Roman's five-year mission (ours across the decade), and events are counted
+without the $\sqrt{\Ml}\,v_t$ of the event rate. Of our Roman black-hole detections, $55\%$ have
+$u_0>1$ and $36\%$ peak outside Roman's mission, seen on their wings; both are poorly characterised,
+and the rate weight favours fast, short events, whose parallax is hardest. Counted their way
+($3{,}170$ simulated detections), ours are $\tE$ $(71.9\pm0.8)$ against $67.0\%$, $\piE$
+$(42.1\pm0.9)$ against $30.0\%$ and $\Ml$ $(38.1\pm0.9)$ against $29.8\%$. The photometric
+forecasts therefore agree, ours somewhat better (their stricter detection cut, not reproduced here,
+would if anything raise ours further). The $\sim\!3\times$ shortfall of the first comparison came
+from comparing two different samples, not from the forecasts; both codes use the same Roman
+photometric error curve. The one real difference left is $\tetE$, $(80.2\pm0.7)$ against $99.2\%$:
+their per-exposure astrometric errors, from simulations by S.~Calchi Novati, are $1.6$--$8$ times
+smaller than ours over F146\,$=18.5$--$25$, and their astrometric fit holds $\piE$ fixed where ours
+fits it.
 
 % =================================================================================================
 \FloatBarrier
@@ -1340,9 +1355,10 @@ only to $40\%$ -- the typical limit for black holes.}{fig:s_last}
 \section{How certain are these results?}
 \label{sec:certainty}
 
-There are three kinds of uncertainty, of very different size: Monte Carlo noise, which is small and
-shrinks with more computing; modelling assumptions, which are larger and do \emph{not} shrink with
-more computing; and unexplained tensions with the literature.
+There are two kinds of uncertainty, of very different size: Monte Carlo noise, which is small and
+shrinks with more computing, and modelling assumptions, which are larger and do \emph{not} shrink with
+more computing. Comparisons with published forecasts test both; the two that once disagreed are now
+explained (Section~\ref{sec:compare}).
 
 \subsection{Monte Carlo (statistical) uncertainty}
 Every number in Section~\ref{sec:results} carries its Monte Carlo $1\sigma$ error. For yields it is
@@ -1772,6 +1788,7 @@ derived from $A_{K_s}$ with a near-infrared extinction law, instead of through $
 \citet{Cardelli1989} law.
 
 \subsection{Comparisons with published forecasts}
+\label{sec:compare}
 % Source: Roman detections per deg^2 of footprint per day of Roman coverage (693 d):
 % 81,860 / (1.47 x 693) as simulated, 50,350 +- 2,945 / (1.47 x 693) dust-corrected
 % (figures/u1_20260929/u5_corrected_numbers.md); Penny et al. 2019 Table 2 (OPEN_ITEMS).
@@ -1784,10 +1801,13 @@ derived from $A_{K_s}$ with a near-infrared extinction law, instead of through $
   excess. The
   remaining differences (four extra low-cadence seasons, the detection criterion, the field layout)
   have not been quantified.
-\item \textbf{Roman's parallax precision is $\sim\!3\times$ worse than \citet{SajadianSahu2023}'s} on
-  matched assumptions, and the cause is not known. The extinction law has been ruled out as the main
-  one, and correcting the dust does not close the gap: it lowers the fraction of Roman's black-hole
-  detections with a $10\%$ mass from $12.7\%$ to $(10.2\pm0.4)\%$.
+\item \textbf{Roman's black-hole characterisation agrees with \citet{SajadianSahu2023}} once their
+  sample is reproduced (Section~\ref{sec:yield}). Their fractions are of events with $u_0<1$ peaking
+  inside Roman's mission, counted without the event-rate weight; counted that way ours are
+  $1.1$--$1.4$ times theirs for $\tE$, $\piE$ and the mass, against $\sim\!1/3$ when every detection
+  is counted and weighted by the rate. The remaining difference, $\tetE$ ($0.8$ times theirs), follows
+  from their $1.6$--$8$ times smaller per-exposure astrometric errors and their simpler astrometric
+  fit.
 \end{itemize}
 
 \subsection{Summary: what to believe}
@@ -1810,7 +1830,8 @@ ordinary and neutron-star $\tetE$ and masses & medium--low & correlated astromet
 absolute yields $N_1$ & medium--low & dust near the plane (corrected, $-33$ to $-71\%$); latitude
   gradient, to be re-measured with the corrected dust \\
 yields $N(F)$ & low & $F$ unknown to $\times10$ \\
-$\piE$ and mass fractions against Sajadian \& Sahu & low & unexplained factor 3 \\
+$\piE$ and mass fractions agree with Sajadian \& Sahu on their sample & medium & sample definition;
+  astrometric error model ($\tetE$) \\
 resolving the images: black holes $0.3$--$34\%$ (Roman), others rare & low & the resolution criterion
   for Roman \\
 \bottomrule
@@ -1957,10 +1978,6 @@ These are the known limitations that most affect the results, roughly in order o
 \item \textbf{The event rate's latitude dependence.} The Galactic model's event rate is too flat in
   latitude compared with OGLE-IV. This sets the absolute yields. The comparison was made through the
   model's too-thin dust, so it has to be repeated with the corrected dust first.
-\item \textbf{The parallax shortfall.} Roman's parallax precision is $\sim\!3$ times worse than
-  \citet{SajadianSahu2023} find under matched assumptions, and the cause is not known. Since the
-  parallax limits most mass measurements, this matters directly for the black-hole and
-  neutron-star results.
 \item \textbf{The lens mass functions.} The remnants among ordinary lenses use a simple
   initial--final mass relation, the neutron stars a single Gaussian where the real distribution may
   be bimodal, and the black holes a log-uniform prior. These are scientific choices as much as

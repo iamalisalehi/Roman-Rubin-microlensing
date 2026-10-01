@@ -23,9 +23,6 @@
 # Sample-event dump specs (Step S1): which illustrative events ./roman should write
 # full light curves for. Source, not data -- the .dat files they produce stay ignored.
 !**/*.spec
-# The adopted GBTDS field centres and detector layout (Step 1, vendored from Penny's
-# gbtds_optimizer): small, source-of-truth inputs, not generated data.
-!Baseline/gbtds_layout/*
 !LICENSE
 
 # -------------------------
@@ -106,3 +103,8 @@ Whitepaper/*.gz
 # Local scratch report (not part of the record)
 # -------------------------
 STATUS_REPORT.md
+
+# The adopted GBTDS field centres and detector layout (Deviation 69, vendored from Penny's
+# gbtds_optimizer): small, source-of-truth inputs, not generated data. Must come AFTER the
+# data rules above (**/*.txt), since the last matching rule wins.
+!Baseline/gbtds_layout/*

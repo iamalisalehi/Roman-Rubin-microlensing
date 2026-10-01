@@ -69,6 +69,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import dustref                        # noqa: E402
 import galaxy_model as G              # noqa: E402
 import romanlib as R                  # noqa: E402
 import u1_report_numbers as U         # noqa: E402
@@ -100,7 +101,9 @@ VARIANTS = {"nominal": ("hybrid", AKS_AV["nominal"], False),
 DEPTH_5SIG = 25.52
 T_S = (3652.43 - 2 * R.T0_MARGIN_DAYS) * 86400.0
 EFF_BINS = np.arange(10.0, 34.01, 0.25)
-DGRID = np.arange(0.05, 20.0, 0.05)          # kpc, for per-sightline dust profiles
+DGRID = dustref.DGRID                         # kpc, for per-sightline dust profiles
+# The tables the pre-Deviation-70 runs read, archived when maps.py rebuilt files/ext (Deviation 70).
+LEGACY_EXT = "files/ext_bayestar_v1"
 FOOT_COLS = ["lon", "lat", "w_area", "Ml", "Vt", "Ds", "struc", "detL", "detR", "detJ",
              "magb_F146", "magb_r", "blend_F146", "tE", "piE", "tetE", "u0", "t0",
              "okA_J", "okA_L", "okA_R", "okB_J", "okB_L", "okB_R",
@@ -114,42 +117,32 @@ LOG_FOR_SUMMARY = None
 # ---------------------------------------------------------------------------------------------
 # Dust
 # ---------------------------------------------------------------------------------------------
-class Dust:
-    """The simulator's extinction (its own tables, chosen exactly as the C++ chooses them) and the
-    reference dust the correction moves each source to.
+class Dust(dustref.ReferenceDust):
+    """The simulator's extinction as the pre-Deviation-70 runs had it (their own tables, chosen
+    exactly as the C++ chose them) and the reference dust the correction moves each source to.
 
-    MODEL. readBayestar() walks files/ext/ in directory order and takes each table's l, b from its
+    MODEL. readBayestar() walked files/ext/ in directory order and took each table's l, b from its
     first line; nearestSightline() keeps the first table with the strictly smallest flat distance.
     os.scandir() returns the same (readdir) order, and np.argmin returns the first minimum, so the
-    choice is identical, ties included (verified: 99.92% of 300,000 draws' recorded A_r agree to the
-    0.017-mag scatter the simulator adds; the rest were a tie this now reproduces). An empty table
-    (all NaN; 78 of them) fails the C++ read and gives zero dust, and is modelled as zero.
+    choice was identical, ties included (verified: 99.92% of 300,000 draws' recorded A_r agree to the
+    0.017-mag scatter the simulator adds; the rest were a tie this reproduced). An empty table
+    (all NaN; 78 of them) failed the C++ read and gave zero dust, and is modelled as zero.
+    Since Deviation 70 those tables live in LEGACY_EXT; the move may have changed the directory
+    order, and with it the tie-breaking at the 0.08% of draws that sit at a tie.
 
-    REFERENCE, three variants (nir = Marshall's A_Ks / A_Ks/A_V):
-      "hybrid"   (nominal) -- what the fixed pipeline would use: DECaPS (A_V = 3.32 E(B-V), the
-                 dustmaps convention) out to the largest distance its own flag calls reliable at
-                 that sightline; beyond it, DECaPS's last reliable value plus nir's further increase;
-                 and from the first distance at which nir reaches DECAPS_AV_MAX on, nir itself --
-                 DECaPS is saturated there (on the Galactic-centre field it reads A_V ~ 7 at 8 kpc,
-                 flat from ~3 kpc, while nir and the VVV reddening map read ~31-33; Step U6);
-      "decaps"   DECaPS at every distance, ignoring its reliability flag and its saturation;
-      "marshall" nir at every distance.
-    self.dsat[(l, b, A_Ks/A_V)] records the distance at which the nominal switches to nir (inf if
-    it never does), for the summary.
+    REFERENCE: analysis/dustref.py (the profile maps.py now builds the tables from), with
+    monotone=False here so the published U5 numbers reproduce (the running maximum changes ~3% of
+    sightlines below the switch distance; Deviation 70). Variants "hybrid" (nominal), "decaps",
+    "marshall". self.dsat[(l, b, A_Ks/A_V)] records the distance at which the nominal switches to
+    the near-infrared map (inf if it never does), for the summary.
     """
 
     def __init__(self):
-        from dustmaps.config import config
-        config["data_dir"] = "dustmaps"
-        from dustmaps.marshall import MarshallQuery
-        from dustmaps.decaps import DECaPSQueryLite
-        self.mq = MarshallQuery()
-        self.dq = DECaPSQueryLite(mean_only=True)
-        self.files = [e.path for e in os.scandir("files/ext")
+        super().__init__()
+        self.files = [e.path for e in os.scandir(LEGACY_EXT)
                       if e.is_file() and e.name.endswith(".txt")]
         self.pos = np.array([np.loadtxt(f, max_rows=1, usecols=(0, 1)) for f in self.files])
-        self._model, self._aks, self._dec = {}, {}, {}
-        self.dsat = {}
+        self._model = {}
 
     def _nearest(self, l, b):
         return int(np.argmin((self.pos[:, 0] - l) ** 2 + (self.pos[:, 1] - b) ** 2))
@@ -163,59 +156,8 @@ class Dust:
         t = self._model[i]
         return np.zeros(np.size(d)) if t is None else np.interp(d, t[:, 0], t[:, 1])
 
-    def _coords(self, l, b):
-        import astropy.units as u
-        from astropy.coordinates import SkyCoord
-        return SkyCoord(l=np.full(DGRID.size, l) * u.deg, b=np.full(DGRID.size, b) * u.deg,
-                        distance=DGRID * u.kpc, frame="galactic")
-
-    def aks_profile(self, l, b):
-        """Marshall A_Ks on DGRID; NaN beyond its coverage is held at the last valid value."""
-        k = (round(l, 3), round(b, 3))
-        if k not in self._aks:
-            a = np.asarray(self.mq(self._coords(l, b)), float)
-            ok = np.isfinite(a)
-            if ok.sum() >= 2:
-                a = np.interp(DGRID, DGRID[ok], a[ok])
-            elif ok.sum() == 1:
-                a = np.full(DGRID.size, a[ok][0])
-            else:
-                a = np.full(DGRID.size, np.nan)
-            self._aks[k] = a
-        return self._aks[k]
-
-    def decaps_profile(self, l, b):
-        """(A_V on DGRID, reliable mask) from DECaPS, A_V = 3.32 E(B-V)."""
-        k = (round(l, 3), round(b, 3))
-        if k not in self._dec:
-            v, fl = self.dq(self._coords(l, b), mode="mean", return_flags=True)
-            self._dec[k] = (3.32 * np.asarray(v, float), np.asarray(fl["reliable_dist"], bool))
-        return self._dec[k]
-
-    def reference_profile(self, l, b, variant, aks_av):
-        aks = self.aks_profile(l, b)
-        nir = aks / aks_av
-        if variant == "marshall":
-            return nir
-        dav, rel = self.decaps_profile(l, b)
-        if not np.isfinite(dav).any():
-            return nir                                # outside DECaPS (not the case in this scan)
-        dav = np.interp(DGRID, DGRID[np.isfinite(dav)], dav[np.isfinite(dav)])
-        if variant == "decaps":
-            return dav
-        if np.all(np.isnan(aks)):
-            return dav
-        if not rel.any():
-            return nir
-        imax = int(np.flatnonzero(rel).max())
-        prof = dav.copy()
-        beyond = np.arange(DGRID.size) > imax
-        prof[beyond] = dav[imax] + np.maximum(aks[beyond] - aks[imax], 0.0) / aks_av
-        hit = np.flatnonzero(nir >= DECAPS_AV_MAX)
-        self.dsat[(round(l, 3), round(b, 3), aks_av)] = DGRID[hit[0]] if hit.size else np.inf
-        if hit.size:
-            prof[hit[0]:] = nir[hit[0]:]
-        return prof
+    def reference_profile(self, l, b, variant, aks_av, monotone=False):
+        return super().reference_profile(l, b, variant, aks_av, monotone=monotone)
 
     def delta_av(self, lon, lat, ds, variant, aks_av, codes=None, keys=None):
         """Per-draw A_V,reference - A_V,model at each source's own distance."""

@@ -4833,3 +4833,71 @@ mission started on sim day 730 (2028-04-10). Plan: `/home/ali/.claude/plans/i-wa
   reference for the autumn roll.
 
 **Commit:** `078756b` (the two `sca_layout_*.txt` files followed in the next commit: a later `**/*.txt` rule in `.gitignore` overrode the allow-list, now moved to the end).
+
+## 70. Extinction tables rebuilt from DECaPS + Marshall (dustmaps), one file on a regular grid; hardened reader (2026-10-01; pre-production Step 2)
+
+**What the code had.** `maps.py` wrote one table per Rubin pointing centre (2,518 files x 3,686
+rows), A_V(d) from Bayestar19 north of dec -30 and DECaPS south (the dustmaps documentation's rule).
+139 of Roman's 147 sightlines took Bayestar beyond its own reliable distance; 78 tables were all-NaN;
+`readBayestar` stopped at the first `nan` without noticing (zero dust there) and never checked a
+row. Within 1 deg of the plane the dust was 3-6x too thin against VVV (Deviations 61-63; OPEN_ITEMS
+CRITICAL dust entry, whose fix plan this follows).
+
+**What was done.**
+- `analysis/dustref.py`: the reference profile in one place, imported by `maps.py` and by U5 (so
+  the tables and their check cannot drift): DECaPS (A_V = 3.32 E(B-V)) out to its last reliable
+  distance, then + Marshall's further increase / k, and Marshall / k outright from where it reaches
+  A_V 12 (DECaPS's limit). Verified identical to U5's `reference_profile` on 360 profiles (120
+  sightlines x 3 variants). **New: forced non-decreasing** (running maximum): the outright switch
+  to Marshall could step DOWN (3 of 120 sightlines in that check, by up to 1.7 mag below the switch
+  distance; 811 of 15,965 table positions in the build). U5 keeps `monotone=False` so its published
+  numbers reproduce.
+- `maps.py` rewritten. Positions: a regular lattice over the scan region + 0.15 deg -- 0.1 deg
+  everywhere, 0.05 deg within |b| < 1.5 and over the footprint outlines: **15,965 positions x 399
+  distances** (0.05-19.95 kpc). Bayestar not used; no declination rule. **k = A_Ks/A_V re-measured
+  on the adopted five-field block: 0.0830** (16-84%: 0.0712-0.0959; 580 of 580 positions reliable
+  at 8 kpc), against 0.0805 on the notional block. Marshall used outright at 8,470 positions (median
+  from 4.5 kpc). Output: ONE file `files/ext/ext_tables.dat` (47.5 MB; one line per position, the
+  distance grid and provenance in `#` header lines) + `ext_provenance.json`. Exits non-zero, writing
+  nothing, on a non-finite or decreasing profile. DECaPS costs ~0.13 s per sky position (~30 min);
+  the raw maps are cached in `files/ext_raw/raw_899b8b0c531d.npz`, so a rebuild with another k is
+  seconds. Build log `files/ext_build_20261001.log`. dustmaps 1.0.14 (the latest release).
+- C++: `readExtinction` (helper.cpp) replaces `readBayestar`; `struct extin` holds one shared
+  distance grid and float A_V, sized from the header (NFILES/NROWS deleted): ~25 MB resident
+  against 148 MB. It refuses, naming file and line: a missing header field, a short or long row, a
+  non-finite or negative A_V, a decreasing profile, a wrong row count. File order is the file's,
+  so `nearestSightline` ties no longer depend on the filesystem. `nearestSightline` and the
+  interpolation keep their interfaces (Lensing.cpp unchanged). The run provenance records the
+  table file, its size, k and build stamp.
+- `extinctiontest` gains 11 checks of the reader: sizes, values at grid points, interpolation, flat
+  hold outside the grid, nearest-table choice, and refusal (forked child exits non-zero) of a NaN,
+  a decreasing profile, a short row, an extra value and a wrong row count. `tests/ext_nans.py` now
+  QCs the single file (header, finiteness, monotonicity, A_V(8 kpc) by |b|).
+- The old 2,518 tables were MOVED to `files/ext_bayestar_v1/` (not deleted): U4 and U5 model the
+  pre-Deviation-70 runs' dust from them (paths updated). Their directory order may differ after the
+  move, which can change U5's tie-breaking at the 0.08% of draws that sit at a tie.
+
+**Verification.**
+- `tests/ext_nans.py`: all checks held. Median A_V(8 kpc) by |b|: 22.66 (0-0.5), 15.05 (0.5-1), 7.71
+  (1-1.5), 4.94 (1.5-2.5), 2.33 (2.5-6).
+- **Against VVV** (`analysis/v1_ext_vvv.py` -> `figures/ext_20261001/v1_ext_vvv.{md,csv}`; 2,013
+  sightlines of the new production scan, the table the simulator would pick for each -- at 0.000
+  deg, the scan lattice lies on the table lattice; VVV put on the tables' scale on the five-field
+  block, E(J-Ks)/A_V = 0.1347): A_V(8 kpc) tables / VVV per |b| bin **0.988 / 0.979 / 0.985 / 0.905
+  / 0.883** (old tables: 0.17 / 0.31 / 0.88 / 1.02-1.11). No fall toward the plane.
+  GC-field / five-field contrast (law-free): **tables 4.74, VVV 5.52** on the adopted fields (the
+  plan's target 4.5-4.9 was VVV's contrast on the NOTIONAL fields, 4.89; old tables 0.57). So a
+  residual remains on the Galactic-centre field: tables/VVV there 0.87 (7.5 kpc), 0.90 (8 kpc), 0.92
+  (8.5), 0.94 (9), 0.99 (10) -- about 10% (~2.6 mag of A_V ~ 26, i.e. ~0.5 mag in F146) at the
+  bulge, Marshall's own known contrast shortfall (U6: 4.46 vs VVV 4.89). Not tuned away: VVV is 2D
+  and not in dustmaps, and a hand calibration on one field would be a free parameter. OPEN_ITEMS.
+- `extinctiontest` all held (CCM89 + 11 reader checks); `fishertest` byte-identical.
+- **Pilot** (`--stub --population bulge --events 10 --lenses 2 --maxdraws 1000`, 36 sightlines, 2 min
+  44 s): the run loads the file ("Loaded 15965 extinction tables x 399 distances (k = 0.083023)") and
+  records it in `run_provenance.txt`. Per-draw check (the U4 reconstruction): every one of 590
+  draws' recorded A_r equals A_V(table, Ds) x CCM89 A_r/A_V (R_V 2.5 or 3.1) to within 0.017 mag,
+  the simulator's own scatter; median recorded 4.93 vs predicted 4.88.
+- Start-up, dry run with the production flags: 26 s (35 s with the 2,518 files, before the Rubin
+  visit list grew 3.3x in Deviation 69).
+
+**Commit:** not yet committed (awaiting the user).

@@ -1892,7 +1892,16 @@ design intent), update the provenance line, and re-run with the next production 
 itself (l1/l2/b1/b2) was built from an older field layout (l -0.219..1.413, b -1.64..-0.85) that
 excludes the current GC field; with the distance test that stops mattering.
 
-## CRITICAL: the dust is three to four times too thin within 1 deg of the Galactic plane (2026-09-29)
+## FIXED IN CODE 2026-10-01 (Deviation 70); results pre-fix until the re-runs -- CRITICAL: the dust is three to four times too thin within 1 deg of the Galactic plane (2026-09-29)
+
+**STATUS 2026-10-01.** Plan steps 1-3 below are done (Deviation 70): `maps.py` builds
+`files/ext/ext_tables.dat` from DECaPS + Marshall (k re-measured 0.0830) on a regular grid;
+`readExtinction` replaces `readBayestar` and refuses bad tables; validated against VVV (A_V(8 kpc)
+tables/VVV 0.88-0.99 in every |b| bin, was 0.17 near the plane) and on a pilot (every draw's A_r
+matches the tables). A ~10% residual remains on the Galactic-centre field (new entry below).
+**Still open: steps 4-5** -- the production re-runs, and checking them against U5's corrected
+numbers. Every number in the existing reports remains pre-fix until then. Remove this entry when
+the re-runs are checked.
 
 **CURRENT STATE 2026-09-30 (Deviation 63; supersedes the Deviation 62 update below).** Verified,
 not assumed: maps.py follows the dustmaps-documented rule (Bayestar19 north of dec -30, DECaPS
@@ -1984,7 +1993,11 @@ reaches the results without re-running; U5 is the estimate until then.
 Not part of this fix, stated in the report as a limit: the V-to-F146/r conversion stays CCM89 at
 R_V 2.5 for the bulge; a near-infrared law for F146 from A_Ks directly would be the next refinement.
 
-## 78 extinction tables are empty (all NaN) and the simulator silently reads them as zero dust (2026-09-30)
+## FIXED IN CODE 2026-10-01 (Deviation 70); existing runs affected -- 78 extinction tables are empty (all NaN) and the simulator silently reads them as zero dust (2026-09-30)
+
+**STATUS 2026-10-01.** The rebuilt tables come from DECaPS, which covers every position (no
+dropouts), `maps.py` exits rather than write a non-finite value, and `readExtinction` refuses one.
+The 2026-09-24 runs still carry the zero-dust patch; it disappears with the re-runs.
 
 **What is wrong.** 78 of the 2,518 `files/ext/bayestar_*.txt` tables hold `nan` at every distance
 ("TOTAL DROPOUT -- needs neighbor fallback" in maps.py; the fallback was never written). All 78 lie
@@ -2058,4 +2071,28 @@ approximation, and the user asked for the minor items after those three.
 predicate built from the LSSTCam raft/sensor layout (rubin_sim/`lsst.obs.lsst` geometry) rotated per
 visit; the predicate interface in `matchVisibleEpochs` already allows it. Then the readbaselineBulge
 reach must use the outline's maximum radius (~2.1 deg) instead of 1.75.
+
+## The rebuilt dust is ~10% thin on the Galactic-centre field against VVV (2026-10-01, from Deviation 70)
+
+**What is wrong.** On the adopted GC field the rebuilt tables give A_V(8 kpc) ~ 26, against VVV's
+~29 on the same scale: tables/VVV 0.90 at 8 kpc (0.87 at 7.5, 0.92 at 8.5, 0.94 at 9). The
+GC-field/five-field contrast is 4.74 in the tables and 5.52 in VVV (law-free). Everywhere else the
+tables track VVV to 0.88-0.99 (`figures/ext_20261001/v1_ext_vvv.md`). The tables use Marshall's
+near-infrared map there (DECaPS saturates), and Marshall's own contrast is known to fall ~10% short of
+VVV's (U6: 4.46 vs 4.89 on the notional fields).
+
+**Why it matters scientifically.** ~2.6 mag of A_V is ~0.5 mag in F146 (A_F146/A_V = 0.197) on the
+GC field: Roman's GC-field yields are somewhat overstated. Rubin is unaffected in practice (A_r ~ 22
+already). The five-field block, which carries most of Roman's yield, is unaffected (calibrated
+there).
+
+**Why deferred.** The remaining reference, VVV, is a 2D column map not in the dustmaps library (the
+user asked for maps built with dustmaps), and calibrating Marshall to it on one field would add a
+free parameter fitted to 37 sightlines. The residual is stated instead.
+
+**What the fix involves.** Either scale the near-infrared part of the profile by the local VVV/
+Marshall column ratio at the bulge distance (a 2D correction applied to a 3D shape: needs VVV at
+every table position, ~16,000 VizieR boxes, and a choice of how to distribute the extra dust in
+distance), or bracket it: U5's `aks_lo` variant (k 0.0734, +10% Marshall) gives the size of the
+effect on the yields without rebuilding.
 

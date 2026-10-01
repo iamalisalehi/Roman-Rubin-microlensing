@@ -41,7 +41,15 @@ then new bulge/bh/ns production runs and a NEW overview report.** Plan (approved
   deleted runs (e.g. `figures/prod_20260918/`, `figures/yield_prefix_20260922/`) remain.
   NOTE: the 09-24 run dirs symlink `Baseline/` and `files/ext` to the live ones, which Steps 1-2
   change; their original visit lists are in `Baseline/legacy_layout40395/`.
-- **Next: Step 2** (extinction tables from DECaPS + Marshall via dustmaps), awaiting the user's go.
+- **Step 2 ✅ extinction (Deviation 70; NOT yet committed).** `files/ext/ext_tables.dat` (47.5 MB,
+  15,965 positions x 399 distances, ~25 MB in RAM) built by the rewritten `maps.py` from DECaPS +
+  Marshall via dustmaps (`analysis/dustref.py`, shared with U5; profiles forced non-decreasing);
+  k = 0.0830 on the adopted five-field block. Raw maps cached `files/ext_raw/raw_899b8b0c531d.npz`.
+  C++ `readExtinction` (single file, refuses bad input; 11 new `extinctiontest` checks). **VVV:
+  tables/VVV 0.88-0.99 in every |b| bin** (was 0.17 near the plane) -- `analysis/v1_ext_vvv.py` ->
+  `figures/ext_20261001/`; **residual: GC field ~10% thin** (contrast 4.74 vs VVV 5.52; new
+  OPEN_ITEMS entry). Pilot: every draw's A_r matches the tables to 0.017 mag. Old tables archived in
+  `files/ext_bayestar_v1/` (U4/U5 read them).
 
 **Newest (2026-09-30): the overview report quotes dust-corrected numbers on a VVV-verified dust
 reference (Deviation 63).** The extinction tables are wrong near the plane: maps.py's documented

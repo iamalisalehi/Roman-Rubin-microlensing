@@ -26,7 +26,7 @@ Plan these notes follow: `/home/ali/.claude/plans/i-want-to-do-resilient-humming
 | Step | Change | Deviation | Commit | Moves which results |
 |---|---|---|---|---|
 | 1 | Adopted GBTDS layout (spring/autumn, 18-SCA detectors); scan region by distance rule; Roman start day 730 -> 306 (2027-02-11); Rubin visit list 3,686 -> 12,308; footprint area post-stratified | 69 | 078756b | Roman footprint yields, Rubin whole-scan totals, gap geometry (timeline vs Rubin seasons) |
-| 2 | Extinction tables rebuilt from DECaPS + Marshall (dustmaps); hardened reader | | | everything, most near the plane (U5 estimated x0.4-0.9) |
+| 2 | Extinction tables rebuilt from DECaPS + Marshall (dustmaps), regular grid, one file; hardened reader | 70 | (pending) | everything, most near the plane (U5 estimated x0.4-0.9) |
 | 3 | Astrometric reference position audit; correlated-floor bracket | | | every theta_E / mass number |
 
 ## Section by section
@@ -107,4 +107,22 @@ make_sample_table.py). Pooled numbers: `analysis/u1_report_numbers.py`.
 - Supersedes: old Sec. 5.3 "simulated footprint against the real one" (Deviation 59/60, U3) --
   becomes a short validation paragraph; Table 10 (U3 estimate +1..+5% Roman) can be compared
   with the actual change once the runs exist.
+
+### Step 2 -- extinction (2026-10-01, Deviation 70)
+- **What the new report should say (Sec. 2.1 inputs, and Sec. 5's dust subsection becomes a
+  validation):** A_V(d) from DECaPS (Zucker+2025) where it is reliable and unsaturated, and from
+  Marshall+2006's near-infrared 3D map, calibrated onto DECaPS's scale (k = A_Ks/A_V = 0.0830,
+  median over the five-field block at 8 kpc), where DECaPS cannot see -- within ~1 deg of the plane,
+  from ~4.5 kpc. Both through dustmaps 1.0.14. On a 0.05/0.1-deg grid (15,965 positions).
+- **Validation numbers to quote** (`figures/ext_20261001/v1_ext_vvv.md`): A_V(8 kpc) / VVV per |b|
+  bin 0.99 / 0.98 / 0.99 / 0.91 / 0.88 (|b| 0-0.5 / 0.5-1 / 1-1.5 / 1.5-2.5 / 2.5-6); GC/five-field
+  contrast 4.74 vs VVV 5.52 -> the GC field ~10% thin (known Marshall shortfall). Old tables were
+  0.17 near the plane: one sentence of history, no more (advisor audience).
+- **A figure worth making:** A_V(8 kpc) map of the new tables over the scan, with Roman's
+  detectors, and/or tables vs VVV scatter by |b| (data: `v1_ext_vvv.csv`).
+- **Old-vs-new to show once the runs exist:** the new runs against U5's dust-corrected predictions
+  (`figures/u1_20260929/u5_corrected_numbers.md`), which used k 0.0805 on the old fields -- expect
+  agreement within U5's errors, and explain any difference (new footprint too).
+- Supersedes old Sec. 5.5 ("The dust near the Galactic plane: what is wrong and how to correct it")
+  and the dust row of Sec. 5.2's uncertainty list; the GC residual becomes a small row.
 

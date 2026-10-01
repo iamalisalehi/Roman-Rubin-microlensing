@@ -939,8 +939,7 @@ int main(int argc, char** argv) {
               << sched.missionStart << " - " << sched.missionEnd << " ****\n";
 
     // --------------------- Read extinction ------------------------
-    readBayestar(*ex,"./files/ext/");
-    std::cout << "**** File extinctionf.txt was read ****\n";
+    readExtinction(*ex, "./files/ext/ext_tables.dat");
 
     // --------------------- Call read_cmd --------------------------
     read_cmd(*cm);
@@ -1587,6 +1586,8 @@ int main(int argc, char** argv) {
              << "# Nl                  " << Nl << "\n"
              << "# NlRoman             " << NlRoman << "\n"
              << "# FoV_rubin_deg       " << FoV << "\n"
+             << "# extinction          files/ext/ext_tables.dat: " << ex->nTables << " x "
+             << ex->nDist << ", k " << ex->k << " --" << ex->built << "\n"
 
              << "# rng_seed            " << seed << "\n"
              // Step H1. 1 = Roman at Sun-Earth L2 (physical); 0 = Roman at the centre of the

@@ -6,9 +6,41 @@
 // monotonically from u to F146; (3) A_lambda/A_V at the seven survey bands for R_V = 2.5,
 // against an independent Python evaluation of the CCM89 polynomials (O'Donnell 1994 is NOT used;
 // the code implements the original 1989 optical coefficients). Exit 0 = all held.
+//
+// Deviation 70 added the extinction TABLE reader, readExtinction(): a small fixture file is read
+// and its interpolation and nearest-table choice checked; then five malformed files (a NaN, a
+// decreasing profile, a short row, an extra value, a wrong row count) must each make it exit
+// non-zero -- run in a forked child, since refusing means exiting. The old reader accepted all of
+// these silently.
 #include "Bulge.h"
 #include <cstdio>
 #include <cmath>
+#include <sys/wait.h>
+#include <unistd.h>
+
+static const char* FIX = "extinction_test_fixture.tmp";
+
+static void writeFixture(const std::string& body, int nTables) {
+    std::ofstream f(FIX);
+    f << "# ext_tables v1 -- test fixture\n# k 0.08\n# n_tables " << nTables
+      << "\n# n_dist 3\n# dist 1.0 2.0 4.0\n" << body;
+}
+
+static bool readerRefuses(const std::string& body, int nTables) {
+    writeFixture(body, nTables);
+    std::fflush(nullptr);
+    pid_t pid = fork();
+    if (pid == 0) {
+        std::freopen("/dev/null", "w", stdout);
+        std::freopen("/dev/null", "w", stderr);
+        extin ex;
+        readExtinction(ex, FIX);
+        std::_Exit(0);                         // accepted: the test fails
+    }
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return WIFEXITED(status) and WEXITSTATUS(status) != 0;
+}
 
 int main()
 {
@@ -39,6 +71,35 @@ int main()
             check(v < prev, buf, v, prev);
         }
     }
+    // ---- the table reader ----
+    writeFixture("0.0 -1.0 1.0 2.0 6.0\n0.5 -1.0 0.5 0.5 1.5\n", 2);
+    {
+        extin ex;
+        readExtinction(ex, FIX);
+        check(ex.nTables == 2 and ex.nDist == 3, "reader: 2 tables x 3 distances", ex.nTables * 10 + ex.nDist, 23);
+        check(std::fabs(interpExtinctionAlongSightline(ex, 0, 2.0) - 2.0) < 1e-6, "reader: A_V at a grid distance",
+              interpExtinctionAlongSightline(ex, 0, 2.0), 2.0);
+        check(std::fabs(interpExtinctionAlongSightline(ex, 0, 3.0) - 4.0) < 1e-6, "reader: A_V interpolated",
+              interpExtinctionAlongSightline(ex, 0, 3.0), 4.0);
+        check(std::fabs(interpExtinctionAlongSightline(ex, 1, 9.0) - 1.5) < 1e-6, "reader: held beyond the grid",
+              interpExtinctionAlongSightline(ex, 1, 9.0), 1.5);
+        check(std::fabs(interpExtinctionAlongSightline(ex, 0, 0.1) - 1.0) < 1e-6, "reader: held before the grid",
+              interpExtinctionAlongSightline(ex, 0, 0.1), 1.0);
+        check(nearestSightline(ex, 0.4, -1.1) == 1, "reader: nearest table", nearestSightline(ex, 0.4, -1.1), 1);
+    }
+    const struct { const char* what; const char* body; int n; } bad[] = {
+        {"refuses: a NaN",             "0.0 -1.0 1.0 nan 6.0\n", 1},
+        {"refuses: decreasing A_V",    "0.0 -1.0 1.0 3.0 2.0\n", 1},
+        {"refuses: a short row",       "0.0 -1.0 1.0 2.0\n", 1},
+        {"refuses: an extra value",    "0.0 -1.0 1.0 2.0 3.0 4.0\n", 1},
+        {"refuses: wrong row count",   "0.0 -1.0 1.0 2.0 3.0\n", 2},
+    };
+    for (const auto& c : bad) {
+        const bool refused = readerRefuses(c.body, c.n);
+        check(refused, c.what, refused, 1);
+    }
+    std::remove(FIX);
+
     std::printf("%s\n", fail ? "extinction_test: FAILED" : "extinction_test: all held");
     return fail ? 1 : 0;
 }

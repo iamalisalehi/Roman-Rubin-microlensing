@@ -62,7 +62,7 @@ FOOT_COLS = ["lon", "lat", "w_area", "Ml", "Vt", "Ds", "struc", "detL", "detR", 
 
 
 def ext_files():
-    files = sorted(glob.glob("files/ext/bayestar_*.txt"))
+    files = sorted(glob.glob("files/ext_bayestar_v1/bayestar_*.txt"))   # pre-Deviation-70 tables
     pos = np.array([[float(x) for x in re.findall(r"bayestar_(-?[\d.]+)_(-?[\d.]+)\.txt", f)[0]]
                     for f in files])
     return files, pos

@@ -517,9 +517,9 @@ int nearestSightline(const extin& ex, double lon, double lat) {
 
     double bestD2 = std::numeric_limits<double>::max();
 
-    for (int k = 0; k < NFILES; k++) {
-        double dl = ex.sightlines[k].l - lon;
-        double db = ex.sightlines[k].b - lat;
+    for (int k = 0; k < ex.nTables; k++) {
+        double dl = ex.l[k] - lon;
+        double db = ex.b[k] - lat;
 
         double d2 = dl * dl + db * db;
 
@@ -534,86 +534,113 @@ int nearestSightline(const extin& ex, double lon, double lat) {
     return best;
 }
 
-// Linearly interpolates extinction at distance `dist` (kpc) along sightline k.
-// Assumes ex.dist[row..row+nlines) is sorted ascending within the block.
+// Linearly interpolates A_V at distance `dist` (kpc) along table k; held flat beyond the grid.
 double interpExtinctionAlongSightline(const extin& ex, int k, double dist) {
-    const auto& profile = ex.sightlines[k].profile;
+    const float* ext = ex.ext.data() + size_t(k) * size_t(ex.nDist);
+    const int n = ex.nDist;
 
-    if(dist <= profile.dist[0])
-        return profile.ext[0];
+    if(dist <= ex.dist[0])
+        return ext[0];
 
-    if(dist >= profile.dist[NROWS-1])
-        return profile.ext[NROWS-1];
+    if(dist >= ex.dist[n-1])
+        return ext[n-1];
 
     int lo = 0;
-    int hi = NROWS-1;
+    int hi = n-1;
 
     while(hi-lo > 1){
         int mid = lo + (hi-lo)/2;
 
-        if(profile.dist[mid] <= dist)
+        if(ex.dist[mid] <= dist)
             lo = mid;
         else
             hi = mid;
     }
 
-    double t = (profile.dist[hi] > profile.dist[lo]) ? (dist - profile.dist[lo]) / (profile.dist[hi] - profile.dist[lo]) : 0.0;
+    double t = (dist - ex.dist[lo]) / (ex.dist[hi] - ex.dist[lo]);
 
-    return profile.ext[lo] + t*(profile.ext[hi]-profile.ext[lo]);
+    return double(ext[lo]) + t*(double(ext[hi])-double(ext[lo]));
 }
 
-//////////////////////////////////////////////////
-void readBayestar(extin& ex, const std::string& folder) {
-    int k = 0;
+// ---------------------------------------------------------------------------------------
+// readExtinction (Deviation 70; replaces readBayestar). Reads files/ext/ext_tables.dat line by
+// line -- never the whole file -- straight into `ex`. Format, written by maps.py:
+//     # ext_tables v1 -- built by maps.py <date> ...      (provenance)
+//     # k <A_Ks/A_V>
+//     # n_tables <N>
+//     # n_dist <M>
+//     # dist d_1 ... d_M                                   (kpc, strictly increasing)
+//     l b A_V(d_1) ... A_V(d_M)                            (N lines)
+// It refuses -- exits naming the file and line -- anything readBayestar silently accepted: a
+// missing header field, a row with too few or too many numbers, a non-finite or negative A_V, a
+// profile that decreases with distance, or a row count that differs from the header. The old
+// reader stopped at the first `nan` without noticing and gave 78 sightlines zero dust.
+// ---------------------------------------------------------------------------------------
+void readExtinction(extin& ex, const std::string& path) {
+    auto fail = [&](long line, const std::string& why) {
+        std::cerr << "ERROR: " << path << (line > 0 ? ":" + std::to_string(line) : std::string())
+                  << ": " << why << ". Rebuild with maps.py.\n";
+        std::exit(EXIT_FAILURE);
+    };
+    std::ifstream fin(path);
+    if (!fin) fail(0, "cannot open the extinction tables");
 
-    for(const auto& entry : fs::directory_iterator(folder)) {
-        if(!entry.is_regular_file() || entry.path().extension() != ".txt")
-            continue;
-
-        std::ifstream fin(entry.path());
-
-        if(!fin) {
-            std::cerr
-                << "Cannot open "
-                << entry.path()
-                << "\n";
-
-            continue;
-        }
-
-//        std::cout << "k = " << k << "\tNFILES = " << NFILES << endl;
-        CHECK(k < NFILES);
-        Sightline& s = ex.sightlines[k];
-
-        fin >> s.l
-            >> s.b
-            >> s.profile.dist[0]
-            >> s.profile.ext[0];
-        
-        double l, b;
-        
-        for (int i = 1; i < NROWS; ++i) {
-            fin >> l
-                >> b
-                >> s.profile.dist[i]
-                >> s.profile.ext[i];
-/*
-            if (l != s.l || b != s.b) {
-                std::cerr << "Inconsistent l,b in file "
-                          << entry.path() << '\n';
-                std::exit(EXIT_FAILURE);
+    std::string line;
+    long lineNo = 0, rows = 0;
+    ex = extin();
+    while (std::getline(fin, line)) {
+        ++lineNo;
+        if (line.empty()) continue;
+        if (line[0] == '#') {
+            std::istringstream ss(line.substr(1));
+            std::string key;
+            ss >> key;
+            if (key == "ext_tables") ex.built = line.substr(1);
+            else if (key == "k") ss >> ex.k;
+            else if (key == "n_tables") ss >> ex.nTables;
+            else if (key == "n_dist") ss >> ex.nDist;
+            else if (key == "dist") {
+                double d;
+                while (ss >> d) ex.dist.push_back(d);
             }
-*/
+            continue;
         }
-    k++;
+        if (rows == 0) {                                  // header complete: check, then allocate
+            if (ex.nTables <= 0 or ex.nDist < 2) fail(lineNo, "header lacks n_tables / n_dist");
+            if (int(ex.dist.size()) != ex.nDist) fail(lineNo, "'# dist' does not have n_dist values");
+            for (int i = 1; i < ex.nDist; ++i)
+                if (!(ex.dist[i] > ex.dist[i - 1])) fail(lineNo, "distance grid not increasing");
+            ex.l.resize(ex.nTables);
+            ex.b.resize(ex.nTables);
+            ex.ext.resize(size_t(ex.nTables) * size_t(ex.nDist));
+        }
+        if (rows >= ex.nTables) fail(lineNo, "more table rows than n_tables");
+        const char* p = line.c_str();
+        char* end = nullptr;
+        ex.l[rows] = std::strtod(p, &end);
+        if (end == p) fail(lineNo, "cannot parse l");
+        p = end;
+        ex.b[rows] = std::strtod(p, &end);
+        if (end == p) fail(lineNo, "cannot parse b");
+        p = end;
+        float* row = ex.ext.data() + size_t(rows) * size_t(ex.nDist);
+        for (int i = 0; i < ex.nDist; ++i) {
+            const double v = std::strtod(p, &end);
+            if (end == p) fail(lineNo, "row has fewer than n_dist values");
+            if (!std::isfinite(v) or v < 0.0) fail(lineNo, "non-finite or negative A_V");
+            if (i > 0 and float(v) < row[i - 1]) fail(lineNo, "A_V decreases with distance");
+            row[i] = float(v);
+            p = end;
+        }
+        while (*p == ' ' or *p == '\t' or *p == '\r') ++p;
+        if (*p != '\0') fail(lineNo, "row has more than n_dist values");
+        ++rows;
     }
-//    std::cout << "k = " << k << "\tNFILES = " << NFILES << endl;
-    CHECK(k == NFILES);
+    if (rows != ex.nTables)
+        fail(0, "read " + std::to_string(rows) + " table rows, header says " + std::to_string(ex.nTables));
 
-    std::cout
-        << "Loaded "
-        << k
-        << " sightlines\n";
+    std::cout << "Loaded " << ex.nTables << " extinction tables x " << ex.nDist
+              << " distances (k = " << ex.k << ") from " << path << "\n";
 }
 
 double CCM89_a(double lambda_um)

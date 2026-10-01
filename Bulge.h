@@ -190,8 +190,8 @@ constexpr double cade1 = 3.0 ;//LSST[days]
 //constexpr int nfiles = 2518;
 //constexpr int nlines = 3686;
 //constexpr int nex = 2518 * 3686; //number of ext files * lines in each file
-constexpr int NFILES = 2518; //number of extinction files
-constexpr int NROWS = 3686; //number of rows in extintion files
+// NFILES/NROWS (the 2,518 x 3,686 per-pointing extinction tables) are gone: the single table file
+// carries its own sizes (Deviation 70; struct extin).
 constexpr int nrd = 10000; //rows in "convert_coordinate_2.dat"
 constexpr int Na = 96;     //rows in "sigmaA_LSST.txt"
 constexpr int NaRoman = 123;  // rows in sigma_roman.txt
@@ -776,40 +776,21 @@ struct CMD {
     {}
 };
 
-// One extinction curve for one line of sight
-struct ExtinctionProfile
-{
-    std::array<double, NROWS> dist;
-    std::array<double, NROWS> ext;
-};
-
-// One Galactic line of sight
-struct Sightline
-{
-    double l;
-    double b;
-
-    ExtinctionProfile profile;
-};
-
-// Whole Bayestar dataset
+// The extinction tables (Deviation 70): files/ext/ext_tables.dat, built by maps.py from DECaPS and
+// Marshall through dustmaps. One shared distance grid; per table position its (l, b) and A_V on that
+// grid, row-major in `ext`. Sizes come from the file's header at run time -- no NFILES/NROWS to keep
+// in step -- and A_V is stored as float (the maps' own errors are tenths of a magnitude), so the
+// ~16,000 positions x 399 distances take ~25 MB, against 148 MB for the 2,518 per-pointing tables
+// with their own distance columns before.
 struct extin
 {
-    std::array<Sightline,NFILES> sightlines;
+    std::vector<double> dist;    // n_dist, kpc, strictly increasing
+    std::vector<double> l, b;    // n_tables
+    std::vector<float>  ext;     // n_tables * n_dist, A_V [mag]
+    int nTables = 0, nDist = 0;
+    std::string built, k;        // provenance, from the header ("# ext_tables ...", "# k ...")
 };
 
-/*
-struct extin {
-    std::vector<double> l;
-    std::vector<double> b;
-    std::vector<double> dist;
-    std::vector<double> ext;
-
-    extin()
-        : l(nex), b(nex), dist(nex), ext(nex)
-    {}
-};
-*/
 struct lsst {
     std::vector<double> mag;   // Na
     std::vector<double> err;   // Na
@@ -1275,7 +1256,7 @@ int    FuncFb(lens & l, double);
 int    nearestSightline(const extin& ex, double lon, double lat);
 
 void   read_cmd(CMD & cm);
-void   readBayestar(extin& ex, const std::string& folder); // Read files
+void   readExtinction(extin& ex, const std::string& path); // files/ext/ext_tables.dat; exits on bad input
 void   optical_depth(source & s);
 void   func_source(source & s, CMD & cm, const extin& ex, int sightlineIdx);
 void   func_lens( lens & l, source & s);

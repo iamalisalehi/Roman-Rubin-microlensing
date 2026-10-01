@@ -25,7 +25,7 @@ Plan these notes follow: `/home/ali/.claude/plans/i-want-to-do-resilient-humming
 
 | Step | Change | Deviation | Commit | Moves which results |
 |---|---|---|---|---|
-| 1 | Adopted GBTDS layout (spring/autumn, 18-SCA detectors); scan region by distance rule; Roman start day 730 -> 306 (2027-02-11); Rubin visit list 3,686 -> 12,308; footprint area post-stratified | 69 | (pending) | Roman footprint yields, Rubin whole-scan totals, gap geometry (timeline vs Rubin seasons) |
+| 1 | Adopted GBTDS layout (spring/autumn, 18-SCA detectors); scan region by distance rule; Roman start day 730 -> 306 (2027-02-11); Rubin visit list 3,686 -> 12,308; footprint area post-stratified | 69 | 078756b | Roman footprint yields, Rubin whole-scan totals, gap geometry (timeline vs Rubin seasons) |
 | 2 | Extinction tables rebuilt from DECaPS + Marshall (dustmaps); hardened reader | | | everything, most near the plane (U5 estimated x0.4-0.9) |
 | 3 | Astrometric reference position audit; correlated-floor bracket | | | every theta_E / mass number |
 

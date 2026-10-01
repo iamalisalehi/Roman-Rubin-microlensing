@@ -4832,4 +4832,4 @@ mission started on sim day 730 (2028-04-10). Plan: `/home/ali/.claude/plans/i-wa
   autumn centre STScI states. The simulator follows STScI and Penny; the screenshot is not a
   reference for the autumn roll.
 
-**Commit:** not yet committed (awaiting the user).
+**Commit:** `078756b` (the two `sca_layout_*.txt` files followed in the next commit: a later `**/*.txt` rule in `.gitignore` overrode the allow-list, now moved to the end).

@@ -21,7 +21,7 @@ then new bulge/bh/ns production runs and a NEW overview report.** Plan (approved
   exposure then "measures" tetE from the source's absolute position. A real fit frees (x0, y0),
   which removes that and also makes a time-CONSTANT correlated error harmless. Step 3a measures it
   in the fixture before anything else in Step 3.
-- **Step 1 ✅ footprint (Deviation 69; NOT yet committed).** Adopted GBTDS layout vendored in
+- **Step 1 ✅ footprint (Deviation 69; commit 078756b).** Adopted GBTDS layout vendored in
   `Baseline/gbtds_layout/` (18 detectors/field, spring + autumn rolls; STScI confirms the autumn
   centre l 0.35 vs spring 0.5); coverage = "on a detector" per visit; scan region = within 3.944 deg
   of any of 12 placements (box + corner cut gone); Roman mission days 306-2024 on the real windows;

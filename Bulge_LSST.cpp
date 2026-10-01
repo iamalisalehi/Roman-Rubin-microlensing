@@ -94,22 +94,18 @@ int matchVisibleEpochs(const char* label, Covers covers,
 
     return ndd;
 }
-// TODO(Ali): PLACEHOLDER. errlsstM interpolates against a per-visit `sig5` (5-sigma
-// depth), which varies visit-to-visit for a ground-based survey (airmass, sky
-// brightness, seeing). Roman is space-based with far more uniform per-visit depth,
-// so a simple mag-vs-error lookup (no per-visit depth term) may be all you need —
-// but confirm that's actually what sigma_roman.txt encodes before trusting this.
-// This does nearest-neighbor lookup in ro.mag; swap in linear interpolation if
-// sigma_roman.txt's mag sampling is coarse.
+// Roman's per-exposure F146 photometric error [mag] at AB magnitude `mag` (Deviation 72): the
+// Penny et al. 2019 curve, anchored at load time to the 66-s 5-sigma depth (see Bulge.h), with
+// log(err) interpolated linearly in magnitude. Brighter than the table: its first value (the 1 mmag
+// floor dominates there); fainter: extrapolated along the last segment (the recording gate stops at
+// the 5-sigma depth, well inside the table, so this branch only serves diagnostics).
 double errRomanM(const roman& ro, double mag)
 {
-    int    best = 0;
-    double bestDiff = std::fabs(ro.mag[0] - mag);
-    for (int i = 1; i < NaRoman; ++i) {
-        double diff = std::fabs(ro.mag[i] - mag);
-        if (diff < bestDiff) { bestDiff = diff; best = i; }
-    }
-    return ro.err[best];
+    if (mag <= ro.mag[0]) return ro.err[0];
+    int i = 1;
+    while (i < NaRoman - 1 and ro.mag[i] < mag) ++i;
+    const double f = (mag - ro.mag[i - 1]) / (ro.mag[i] - ro.mag[i - 1]);
+    return std::exp(std::log(ro.err[i - 1]) + f * (std::log(ro.err[i]) - std::log(ro.err[i - 1])));
 }
 
 ///==============================================================//
@@ -875,11 +871,33 @@ int main(int argc, char** argv) {
 
     for (int i = 0; i < NaRoman; ++i) {
         fil >> ro->mag[i] >> ro->err[i];
+        if (!fil) { std::cerr << "sigma_roman.txt: read failed at row " << i << "\n"; return 1; }
         CHECK(ro->mag[i] > 12.0);
         CHECK(ro->err[i] > 0.0);
+        if (i > 0) CHECK(ro->mag[i] > ro->mag[i - 1]);
     }
     fil.close();
-    std::cout << "**** File sigma_roman.txt was read ****\n";
+    {
+        // Deviation 72: anchor the curve's 5-sigma point to ROMAN_DEPTH5_AB (see Bulge.h).
+        const double e5 = 1.0857 / 5.0;
+        double m5 = -1.0;
+        for (int i = 1; i < NaRoman; ++i)
+            if (ro->err[i - 1] < e5 and ro->err[i] >= e5) {
+                const double f = (std::log(e5) - std::log(ro->err[i - 1]))
+                               / (std::log(ro->err[i]) - std::log(ro->err[i - 1]));
+                m5 = ro->mag[i - 1] + f * (ro->mag[i] - ro->mag[i - 1]);
+                break;
+            }
+        if (m5 < 0.0) { std::cerr << "sigma_roman.txt never reaches 5 sigma\n"; return 1; }
+        const double shift = ROMAN_DEPTH5_AB - m5;
+        for (int i = 0; i < NaRoman; ++i) {
+            const double phot2 = std::max(ro->err[i] * ro->err[i] - ROMAN_PHOT_FLOOR * ROMAN_PHOT_FLOOR, 0.0);
+            ro->mag[i] += shift;
+            ro->err[i]  = std::sqrt(phot2 + ROMAN_PHOT_FLOOR * ROMAN_PHOT_FLOOR);
+        }
+        std::cout << "**** File sigma_roman.txt was read: Penny+2019 5-sigma point " << m5
+                  << " AB shifted by " << shift << " mag to " << ROMAN_DEPTH5_AB << " ****\n";
+    }
  
     // --------------------- Read RomanBaseline.dat -------------------
     // TODO(Ali): generate this file from the ROTAC 2025 overguide season/cadence design
@@ -985,12 +1003,7 @@ int main(int argc, char** argv) {
     double fdetRubin, testL, testR; // Step B2: per-survey pre-selection (fdet retired)
     bool   rubinDetectable, romanDetectable, acceptRubin, acceptRoman;
     double mincR, cadeR, errgR; // Roman-side cadence/error tracking, parallel to minc/cade/errg
-    // PLACEHOLDER: no Roman astrometric error model exists yet — see the TODO(Ali) on
-    // errsR's use in the Roman branch below, and JOINT_FIT_REFACTOR_PLAN.md's Deferred
-    // section ("The Roman astrometric error model decision"). errsR/magnioR are scratch
-    // for the placeholder computation, standing in until a real errRomanA()-style
-    // function + F146 astrometric-error dataset exist.
-    double errsR, magnioR; // Roman-side astrometric-error placeholder / noisy-magnitude scratch
+    double errsR, magnioR; // Roman's per-exposure astrometric error (errRomanA) / noisy magnitude
     double magnio, test, deltaA; // dist,
     double Astar0, As1,  As0;
     double initial;
@@ -1591,6 +1604,10 @@ int main(int argc, char** argv) {
              << "# Nl                  " << Nl << "\n"
              << "# NlRoman             " << NlRoman << "\n"
              << "# FoV_rubin_deg       " << FoV << "\n"
+             << "# roman_noise         ast: errRomanA(m_AB - " << F146_AB_MINUS_VEGA
+             << ") [Vega anchors]; phot: Penny+2019 curve anchored to 5-sigma "
+             << ROMAN_DEPTH5_AB << " AB (66 s); depth " << thre[6] << ", saturation "
+             << satu[6] << " AB   # Deviation 72\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex->nTables << " x "
              << ex->nDist << ", k " << ex->k << " --" << ex->built << "\n"
 
@@ -2077,9 +2094,7 @@ int main(int argc, char** argv) {
                             }
 
                             if (magni[fiR] >= satu[fiR] and magni[fiR] <= thre[fiR]) {
-                                // TODO(Ali): confirm this matches how sigma_roman.txt / ro->mag,ro->err
-                                // are meant to be interpolated (see errRomanM stub near matchVisibleEpochs).
-                                errgR = errRomanM(*ro, magni[fiR]); //[mag]
+                                errgR = errRomanM(*ro, magni[fiR]); //[mag] (Deviation 72)
 
                                 magnioR = magni[fiR] + RandN(errgR, 3.0);
                                 chi1 += std::fabs((magnioR -   magni[fiR]) * (magnioR -   magni[fiR]) / (errgR * errgR));

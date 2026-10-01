@@ -163,8 +163,17 @@ constexpr std::array<double, M> km     = {0.451, 0.163, 0.087, 0.065, 0.043, 0.1
 
 
 constexpr std::array<double, M> sigma = {0.022, 0.02, 0.017, 0.017, 0.027, 0.027, 0.04}; // PLACEHOLDER: K-band value, not F146
-constexpr std::array<double, M> thre  = {23.4, 24.6, 24.3, 23.6, 22.9, 21.7, 29.0}; //depth of single visit in ugrizy + F146 Filter (value needs to change)
-constexpr std::array<double, M> satu  = {15.2, 16.3, 16.0, 15.3, 14.6, 13.4, 12.0}; //saturation limit of single visit in ugrizy + F146 Filter (value needs to change)
+// thre / satu: single-visit 5-sigma depth and saturation, AB. ugrizy are the SRD minimum depths
+// (Ivezic et al. 2019 Table 1, "min.") and depth - 8.3 (M1b replaces their use in the Rubin gate
+// by each visit's own depth). F146 (Deviation 72): depth 25.45 = STScI's 5-sigma point-source
+// sensitivity in 57 s, 25.37 AB (roman-technical-information, AB_mag_limiting_sensitivity.ecsv,
+// 2x minimum zodi), scaled to the GBTDS's 66-s exposure, +1.25 log10(66/57); saturation 14.8 =
+// Penny et al. 2019 Table 3 ("W149 saturation ~14.8", brightest pixel 1e5 e- before the first read,
+// usable up-the-ramp). Both were placeholders (29.0, 12.0) until Deviation 72.
+constexpr double ROMAN_DEPTH5_AB = 25.37 + 1.25 * 0.06368;   // log10(66/57) = 0.06368 -> 25.4496
+constexpr double ROMAN_SATU_AB   = 14.8;
+constexpr std::array<double, M> thre  = {23.4, 24.6, 24.3, 23.6, 22.9, 21.7, ROMAN_DEPTH5_AB};
+constexpr std::array<double, M> satu  = {15.2, 16.3, 16.0, 15.3, 14.6, 13.4, ROMAN_SATU_AB};
 constexpr std::array<double, M> FWHM  = {1.22087, 1.10136, 0.993103, 0.967076, 0.951766, 0.936578, 0.105}; //LSST [arcsec] ugrizy + F146 Filter
 //constexpr std::array<double, M> a0    = {0.9429, 1.0138, 0.94027, 0.8139, 0.6641, 0.5703, 0.1615}; //for calculating the extinction + F146 Filter (value needs to change)
 //constexpr std::array<double, M> b0    = {1.9788, 0.5575, -0.2197, -0.4982, -0.6097, -0.5236, -0.1483}; // PLACEHOLDER: K-band value, not F146
@@ -195,6 +204,15 @@ constexpr double cade1 = 3.0 ;//LSST[days]
 constexpr int nrd = 10000; //rows in "convert_coordinate_2.dat"
 constexpr int Na = 96;     //rows in "sigmaA_LSST.txt"
 constexpr int NaRoman = 123;  // rows in sigma_roman.txt
+// Roman's photometric error (Deviation 72). files/sigma_roman.txt is Penny et al. 2019 Fig. 4: single-
+// epoch precision vs W149 (= F146) AB magnitude for a 46.8-s Cycle-7 exposure, with a 1 mmag floor.
+// At load time its photon-noise part, sqrt(err^2 - floor^2), is shifted in magnitude so that the
+// 5-sigma point (err = 1.0857/5) falls at ROMAN_DEPTH5_AB, the current STScI depth for the GBTDS's
+// 66-s exposure, and the floor is re-added; errRomanM then interpolates log(err) linearly in
+// magnitude (was nearest neighbour). Penny's curve rescaled by exposure time alone would sit at
+// ~25.71 (0.26 mag deeper than STScI's current figure), because it was made for an older design;
+// anchoring to STScI's number moves it by only ~-0.07 mag.
+constexpr double ROMAN_PHOT_FLOOR = 0.001;   //mag, Penny et al. 2019 Table 2 "Error floor 1.0 mmag"
 constexpr int nq = 15;     //resu
 constexpr int N1 = 396593, N2 = 3568010, N3 = 646090, N4 = 3171; //CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo
 // Data rows in BulgeBaseline.dat, EXCLUDING the header. Regenerated 2026-10-01 (Deviation 69:
@@ -286,6 +304,14 @@ constexpr double L2_OFFSET_AU = L2_KM / AU_KM;   // ~0.01003
 // fields = 302,406 = NlRoman). So 1.1 mas is the right floor here. Using 0.1 would overstate
 // Roman's astrometry tenfold and flatter every tetE and lens-mass forecast in the project.
 // ---------------------------------------------------------------------------------------
+// MAGNITUDE SYSTEM (Deviation 72). [2]'s anchors (20.62, 23.5) are F146 VEGA magnitudes; the
+// simulator's magnitudes are AB (the MIST bolometric-correction tables in CMD/ are "Roman (AB)").
+// errRomanA therefore converts first: m_Vega = m_AB - F146_AB_MINUS_VEGA. The offset is synphot's
+// AB magnitude of Vega (CALSPEC alpha_lyr_stis_011) through STScI's F146 effective area
+// (roman-technical-information Roman_effarea_v8_SCA01_20240301): 1.0324 mag (EXOZIPPy #313 gets
+// 1.037; it lies between STScI-000825's 2MASS J 0.913 and H 1.391, as F146 spans both). Before
+// Deviation 72 the AB magnitude was used as if Vega: every Roman astrometric error ~2.2-2.6x too big.
+constexpr double F146_AB_MINUS_VEGA = 1.0324;
 constexpr double ROMAN_PIX_MAS   = 110.0;  //0.11 arcsec pixels [2]
 constexpr double ROMAN_AST_FLOOR = 0.01 * ROMAN_PIX_MAS;  //1.1 mas: 1% centroiding [1][2]
 constexpr double ROMAN_AST_MFLR  = 20.62;  //mag below which the floor dominates [2]

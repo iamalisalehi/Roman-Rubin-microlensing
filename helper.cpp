@@ -253,8 +253,10 @@ double errlsstA(lsst & ls, double ghadr){ //LSST Astrometric Error  //Change it!
 // Unlike errlsstA this reads no data file and needs no instrument struct, so it takes the
 // magnitude alone. Its photometric sibling errRomanM() lives in Bulge_LSST.cpp instead,
 // because that one needs the roman struct.
-double errRomanA(double magF146){
+double errRomanA(double magF146AB){
 
+    // The anchors below are VEGA magnitudes; the simulator's are AB (Deviation 72).
+    const double magF146 = magF146AB - F146_AB_MINUS_VEGA;
     double error = ROMAN_AST_FLOOR;
 
     if (magF146 > ROMAN_AST_MBKG) {

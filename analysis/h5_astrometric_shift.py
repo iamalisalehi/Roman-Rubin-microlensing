@@ -98,15 +98,12 @@ ROMAN_AST_SLOPE_BKG = 0.4
 U_AST_PEAK = np.sqrt(2.0)    # the separation at which the centroid shift is maximal
 
 
+AB_MINUS_VEGA = 0.0     # set in main() from the run's provenance (Deviation 72)
+
+
 def roman_ast_error(mag):
-    """errRomanA() from Bulge.h/helper.cpp, vectorized. Per EXPOSURE, in mas."""
-    mag = np.asarray(mag, dtype=float)
-    out = np.full(mag.shape, ROMAN_AST_FLOOR)
-    mid = (mag > ROMAN_AST_MFLR) & (mag <= ROMAN_AST_MBKG)
-    out[mid] = ROMAN_AST_FLOOR * 10.0 ** (ROMAN_AST_SLOPE_SRC * (mag[mid] - ROMAN_AST_MFLR))
-    hi = mag > ROMAN_AST_MBKG
-    out[hi] = ROMAN_AST_SBKG * 10.0 ** (ROMAN_AST_SLOPE_BKG * (mag[hi] - ROMAN_AST_MBKG))
-    return out
+    """errRomanA() via romanlib (AB -> Vega offset as the run applied it). Per EXPOSURE, in mas."""
+    return R.roman_ast_error(mag, AB_MINUS_VEGA)
 
 
 def centroid_shift(theta_e, u):
@@ -390,6 +387,9 @@ def main():
     print(stamp)
 
     prov_path = R.find_provenance(args.provenance, near=args.events)
+    global AB_MINUS_VEGA
+    AB_MINUS_VEGA = R.roman_ast_vega_offset(prov_path)
+    print(f"errRomanA magnitude offset (AB - Vega) as the run applied it: {AB_MINUS_VEGA}")
     prov = R.load_provenance(prov_path) if prov_path else {}
     pre_h4 = "satellite_parallax" not in prov
     if pre_h4:

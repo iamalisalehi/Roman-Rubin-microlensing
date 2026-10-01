@@ -733,6 +733,32 @@ PROVENANCE_SEARCH = ("run_provenance.txt",
                      "files/MONTLMC/files/run_provenance.txt")
 
 
+# Roman's per-exposure astrometric error, mirrored from helper.cpp errRomanA (Step H4, Deviation 72).
+# The anchors are F146 VEGA magnitudes (Lam et al. 2026); the simulator's magnitudes are AB. Runs from
+# Deviation 72 on convert (m_Vega = m_AB - 1.0324) and say so in their provenance ("# roman_noise");
+# earlier runs used the AB magnitude as if Vega, and their analyses must keep doing so to reproduce.
+F146_AB_MINUS_VEGA = 1.0324
+ROMAN_AST = dict(floor=1.1, mflr=20.62, mbkg=23.5, sbkg=10.0, slope_src=0.33285, slope_bkg=0.4)
+
+
+def roman_ast_vega_offset(prov_path):
+    """AB - Vega offset the run that wrote `prov_path` applied before errRomanA (0 for old runs)."""
+    if prov_path and os.path.exists(prov_path):
+        if "# roman_noise" in open(prov_path).read():
+            return F146_AB_MINUS_VEGA
+    return 0.0
+
+
+def roman_ast_error(mag_ab, ab_minus_vega=F146_AB_MINUS_VEGA):
+    """errRomanA, vectorised: per-exposure, per-coordinate astrometric error [mas] at F146 AB."""
+    a = ROMAN_AST
+    m = np.asarray(mag_ab, dtype=float) - ab_minus_vega
+    out = np.where(m > a["mbkg"], a["sbkg"] * 10.0 ** (a["slope_bkg"] * (m - a["mbkg"])),
+                   np.where(m > a["mflr"], a["floor"] * 10.0 ** (a["slope_src"] * (m - a["mflr"])),
+                            a["floor"]))
+    return np.maximum(out, a["floor"])
+
+
 def find_provenance(explicit=None, near=None):
     """Locate run_provenance.txt: an explicit path, then beside the events file, then the
     standard locations. Returns None if there is none -- callers must say so on the figure

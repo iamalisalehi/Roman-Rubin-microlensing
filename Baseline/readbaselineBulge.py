@@ -39,18 +39,29 @@ assert len(idx) == len(nam1), "idx and new_names must match"
 assert max(idx) < len(nam0), "idx out of range"
 
 
-# Roman field centres, kept for reference only -- num/lon/lat are not used below;
-# the bulge region is set by the l0..b2 constants. Path corrected: the file lives
-# in Baseline/polygon/, while this script runs from Baseline/.
-num, lon, lat = np.loadtxt('./polygon/layout_7f_3.centers', unpack=True) ## Bulge
-# Numbers below may change based on the Roman Bulge survey details
-l0 = -0.219 - 0.2 - 3.5 / 2
-l1 = 1.4134 + 0.2 + 3.5 / 2
-l2 = 1.0053 - 0.2 - 3.5 / 2
+# WHICH POINTINGS (Deviation 69). The simulator scans every sky point within
+# gbtds_geometry.scan_reach() (= 2 x 1.75 deg + the field reach) of a Roman field centre,
+# spring or autumn roll. A Rubin visit images a sightline if its pointing centre is within
+# FoV = 1.75 deg of it, so EVERY pointing centred within scan_reach() + FoV of a field centre
+# can image some scanned sightline and must be in the list -- otherwise sightlines near the
+# region's edge silently undercount their Rubin visits. Until Deviation 69 the list was cut by
+# a box (l0..l1, b0..b1, minus an l2/b2 corner) on the pointing CENTRES around an older layout:
+# 3,686 visits, against 12,348 by this rule (every one of the old 3,686 is among them).
+# Bulge_LSST.cpp refuses a list with a pointing outside this reach.
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "analysis"))
+import gbtds_geometry as G          # noqa: E402
+REACH = G.scan_reach() + G.FOV_RUBIN
 
-b0 = -1.64  - 0.2 - 3.5 / 2
-b1 = -0.85  + 0.2 + 3.5 / 2
-b2 = -1.64  + 0.2 + 3.5 / 2
+# DAY 0 OF THE SIMULATION CLOCK, PINNED. It used to be "the earliest selected visit", which
+# made the clock depend on the selection: the rule above reaches pointings observed from MJD
+# 60981.0 (2025-11-01), which would have moved day 0 back by 160 d and silently shifted
+# Roman's placement on the clock with it. Day 0 stays MJD 61141.312002288 = 2026-04-11, the
+# first visit of the original selection (observationId 74334), on which every run, document
+# and the generator's MISSION_START_DAY are defined. Visits before it, or after Tobs, fall
+# outside the simulated window and are dropped (40 before day 0, none after, on v5.1.0).
+TIME0_MJD = 61141.312002288
+TOBS_DAYS = 10.0 * 365.2425          # Bulge.h Tobs
 
 #RA0, RA1, DEC0, DEC1 = float(75.0 - 3.5 / 2.0), float(90.0 + 3.5 / 2.0),  float(-75.0 -3.5 / 2.0), float(-60.0 + 3.5 / 2.0)##Bulge
 #fil = open("./Bulgebaseline.dat", "w")
@@ -92,13 +103,19 @@ df["b"] = coords.galactic.b.deg
 l = df["l"].values
 b = df["b"].values
 
-nvis = int(20000)
+nvis = int(len(df))
 tstA = np.zeros((nvis, 13))
 nfil = 0
 nr   = 0
 
+reach_dist = np.min([np.hypot(l - fl, b - fb) for fl, fb, _ in G.placements()], axis=0)
+t_sim = df["t"].values - TIME0_MJD
+in_reach = reach_dist <= REACH
+in_clock = (t_sim >= 0.0) & (t_sim <= TOBS_DAYS)
+print(f"pointings within {REACH:.4f} deg of a Roman field: {in_reach.sum()}; "
+      f"dropped outside the clock [0, {TOBS_DAYS:.1f}] d: {(in_reach & ~in_clock).sum()}")
 for i in range(nm):   
-    if (l[i] >= l0 and l[i] <= l1 and b[i] >= b0 and b[i] <= b1) and not (l[i] < l2 and b[i] > b2): 
+    if in_reach[i] and in_clock[i]: 
         #print(df["RA"][i], df["DEC"][i], df['l'][i], df['b'][i], df['t'][i], df['filter'][i]) 
         #print(df['air'][i], df['see'][i], df['skyB'][i] )
         #print(df['Tv'][i],  df['sig5'][i], df['target'][i],   df['ID'][i] , df['texp'][i] )
@@ -130,7 +147,7 @@ print(f"BulgeBaseline.dat: writing {nr} visit rows -- set Nl = {nr} in Bulge.h")
 tst   = np.zeros((nr, 14))
 idx   = np.argsort(tstA[:nr, 5])
 
-time0 = float(tstA[int(idx[0]), 5])
+time0 = TIME0_MJD
 
 for i in range(nr):
     tst[i,:-1] = tstA[int(idx[i]), :]

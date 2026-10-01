@@ -439,6 +439,79 @@ void read_cmd(CMD & cm)
 
 // Finds the sightline (one of `nfiles` unique l,b pointings) closest to
 // (lon, lat). Call this ONCE per field pointing, not once per star.
+// ---------------------------------------------------------------------------------------
+// GBTDS detector layout (Deviation 69). Each file lists 18 detector outlines as 5 vertices
+// `sca dl db` (the fifth closes the rectangle), offsets in deg from the field centre, in the
+// convention of the upstream tool: the sky outline is the offset ADDED to the field's (l, b).
+// Every detector must be an axis-aligned rectangle in (l, b); anything else is refused rather
+// than approximated, because the coverage test below assumes it.
+// ---------------------------------------------------------------------------------------
+GbtdsLayout readGbtdsLayout() {
+    GbtdsLayout g;
+    g.scaSide = std::numeric_limits<double>::max();
+    for (int k = 0; k < GBTDS_NLAYOUT; ++k) {
+        const char* path = GBTDS_SCA_FILES[k];
+        std::ifstream fin(path);
+        if (!fin) {
+            std::cerr << "ERROR: cannot read the GBTDS detector layout " << path << "\n";
+            std::exit(EXIT_FAILURE);
+        }
+        std::map<int, std::vector<std::pair<double,double>>> vert;
+        std::string line;
+        while (std::getline(fin, line)) {
+            std::istringstream ss(line);
+            int id; double dl, db;
+            if (!(ss >> id)) continue;                         // blank separator line
+            if (!(ss >> dl >> db) or !std::isfinite(dl) or !std::isfinite(db)) {
+                std::cerr << "ERROR: malformed line in " << path << ": '" << line << "'\n";
+                std::exit(EXIT_FAILURE);
+            }
+            vert[id].emplace_back(dl, db);
+        }
+        if (int(vert.size()) != GBTDS_NSCA) {
+            std::cerr << "ERROR: " << path << " has " << vert.size() << " detectors, expected "
+                      << GBTDS_NSCA << "\n";
+            std::exit(EXIT_FAILURE);
+        }
+        g.dlMin[k] = g.dbMin[k] =  std::numeric_limits<double>::max();
+        g.dlMax[k] = g.dbMax[k] = -std::numeric_limits<double>::max();
+        for (const auto& [id, v] : vert) {
+            double l0 = v[0].first, l1 = l0, b0 = v[0].second, b1 = b0;
+            for (const auto& p : v) {
+                l0 = std::min(l0, p.first);  l1 = std::max(l1, p.first);
+                b0 = std::min(b0, p.second); b1 = std::max(b1, p.second);
+            }
+            // Axis-aligned: every vertex sits on one of the four edges' coordinates.
+            const double tol = 1e-6;
+            for (const auto& p : v) {
+                const bool onL = std::fabs(p.first - l0) < tol or std::fabs(p.first - l1) < tol;
+                const bool onB = std::fabs(p.second - b0) < tol or std::fabs(p.second - b1) < tol;
+                if (!(onL and onB)) {
+                    std::cerr << "ERROR: detector " << id << " in " << path
+                              << " is not an axis-aligned rectangle in (l, b)\n";
+                    std::exit(EXIT_FAILURE);
+                }
+            }
+            g.sca[k].push_back({l0, l1, b0, b1});
+            g.dlMin[k] = std::min(g.dlMin[k], l0); g.dlMax[k] = std::max(g.dlMax[k], l1);
+            g.dbMin[k] = std::min(g.dbMin[k], b0); g.dbMax[k] = std::max(g.dbMax[k], b1);
+            g.scaSide  = std::min({g.scaSide, l1 - l0, b1 - b0});
+            for (double cl : {l0, l1})
+                for (double cb : {b0, b1})
+                    g.rField = std::max(g.rField, std::hypot(cl, cb));
+        }
+    }
+    return g;
+}
+
+bool inDetector(const GbtdsLayout& g, int layout, double dl, double db) {
+    if (dl < g.dlMin[layout] or dl > g.dlMax[layout] or db < g.dbMin[layout] or db > g.dbMax[layout])
+        return false;
+    for (const ScaRect& r : g.sca[layout])
+        if (dl >= r.l0 and dl <= r.l1 and db >= r.b0 and db <= r.b1) return true;
+    return false;
+}
+
 int nearestSightline(const extin& ex, double lon, double lat) {
     int best = -1;
 

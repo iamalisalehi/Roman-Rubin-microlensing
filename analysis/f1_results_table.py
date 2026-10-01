@@ -22,9 +22,13 @@ Characterization criterion: tE > 2*sigma_tE AND piE > 2*sigma_piE, deliberately 
 
 Fields
 ------
-Events are assigned to the nearest of the six Roman GBTDS field centres read from
-RomanBaseline.dat, within one Roman FoV radius. Everything else is "outside" -- Rubin-only
-sky, which is most of the survey region and must not be pooled with the Roman fields.
+Events are assigned to the GBTDS field whose detectors image their sightline, from the visit
+list given by --baseline, with the simulator's own coverage test (gbtds_geometry): 'F<i>', or
+'F<i>/F<j>' where the spring and autumn rolls put a different field there. Everything else is
+"outside" -- Rubin-only sky (including chip gaps), which must not be pooled with the Roman
+fields. For a run made before Deviation 69, pass that run's visit list
+(Baseline/legacy_layout40395/RomanBaseline.dat): it is recognised and the old rule applied
+(nearest of six centres within 0.3003 deg).
 """
 
 import argparse
@@ -36,27 +40,17 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import romanlib as R
+import gbtds_geometry as G
 
-FOV_ROMAN = 0.3003          # deg, radius -- Bulge.h
 DEFAULT_EDGES = "10,30,100,300,inf"
 
 
-def roman_fields(path):
-    lb = pd.read_csv(path, sep=r"\s+", comment="#", header=None,
-                     names=["ID", "RA", "Dec", "l", "b", "time", "sig5"])
-    return lb[["l", "b"]].drop_duplicates().reset_index(drop=True)
-
-
-def assign_field(df, fields):
-    """Nearest field centre within one Roman FoV radius, else 'outside'."""
-    name = pd.Series("outside", index=df.index, dtype=object)
-    best = pd.Series(np.inf, index=df.index)
-    for i, row in fields.iterrows():
-        d = np.hypot(df["lon"] - row["l"], df["lat"] - row["b"])
-        hit = (d < FOV_ROMAN) & (d < best)
-        best = best.where(~hit, d)
-        name = name.where(~hit, f"F{i}({row['l']:+.3f},{row['b']:+.3f})")
-    return name
+def assign_field(df, visits):
+    """Field label per event, from its sightline (gbtds_geometry.field_label)."""
+    keys = df[["lon", "lat"]].drop_duplicates()
+    lab = dict(zip(zip(keys["lon"], keys["lat"]),
+                   G.field_label(keys["lon"].to_numpy(), keys["lat"].to_numpy(), visits)))
+    return pd.Series([lab[k] for k in zip(df["lon"], df["lat"])], index=df.index, dtype=object)
 
 
 def summarise(g):
@@ -153,7 +147,7 @@ def main():
     edges = [float(x) for x in a.te_edges.split(",")]
     labels = [f"{edges[i]:g}-{edges[i+1]:g} d" for i in range(len(edges) - 1)]
     df["teBin"] = pd.cut(df["tE"], edges, labels=labels, right=False)
-    df["field"] = assign_field(df, roman_fields(a.baseline))
+    df["field"] = assign_field(df, G.read_roman_visits(a.baseline))
 
     # A binning that dumps nearly everything in one bin describes the population badly and
     # makes every per-bin number a restatement of the whole sample. Say so rather than let

@@ -5,7 +5,11 @@ Generates RomanBaseline.dat: a synthetic per-visit observation log for Roman's
 Galactic Bulge Time Domain Survey (GBTDS), F146 filter only. Output columns match
 what Bulge_LSST.cpp's new Roman-baseline read block expects:
 
-    ID  RA  Dec  l  b  time  sig5
+    ID  RA  Dec  l  b  time  sig5  field  layout
+
+`field` is the GBTDS field index (0-4 the contiguous block west to east in the layout file's
+order, 5 the Galactic Centre field) and `layout` the roll angle the visit was taken at (0 =
+spring, 1 = autumn), which selects the detector layout Bulge_LSST.cpp places at (l, b).
 
 (all reused from the existing BulgeBaseline.dat convention: `time` is in days
 from a common survey t=0, RA/Dec in degrees, l/b Galactic in degrees.)
@@ -27,11 +31,12 @@ SOURCES (verify against these before treating any number below as final):
   galactic-bulge-time-domain-survey): confirms 6 fields covering 1.7 deg^2 total,
   6 seasons "three early on, and three toward the end", each field observed every
   ~12 min in high-cadence seasons.
-- Field centers: mtpenny/gbtds_optimizer, field_layouts/layout_40395.centers
-  (M. Penny's GBTDS field-layout tool) — 5 contiguous fields at b=-1.2 deg plus
-  1 Galactic Center field at (l,b)=(0,-0.125). This is a notional/community
-  layout, NOT necessarily the final flight-adopted field centers — confirm
-  against the ROTAC Fig. 4 field layout or later mission documentation.
+- Field centers: the ADOPTED GBTDS layout, mtpenny/gbtds_optimizer
+  field_layouts/gbtds_{spring,autumn}_2026.4.3.centers, vendored with its detector
+  layout in Baseline/gbtds_layout/ (README there: commit, checks). Five contiguous
+  fields at b = -1.400 plus the Galactic Centre field at b = -0.221; the l centres
+  differ between the spring and autumn rolls. (Until 2026-10-01 this used the
+  notional layout_40395: b = -1.2, GC at (0, -0.125). Deviation 69.)
 
 -------------------------------------------------------------------------------
 ASSUMPTIONS YOU SHOULD VALIDATE BEFORE TREATING THIS AS FINAL (flagged inline
@@ -59,8 +64,9 @@ with TODO(Ali) below too):
    errRomanM() in Bulge_LSST.cpp currently ignores this column entirely (it only
    uses ro->mag/ro->err) — it's carried here for symmetry with BulgeBaseline.dat
    and in case you later want a per-visit-depth-dependent Roman error model.
-5. No dithering, detector gaps, or per-field position angle are modeled — every
-   visit to a field uses that field's exact center coordinates.
+5. No dithering is modelled. Detector gaps and the roll angle ARE: each visit carries
+   its field's centre for that season's roll plus the roll (`layout` column), and
+   Bulge_LSST.cpp tests a sightline against the 18 detector rectangles placed there.
 6. F087/F213 are NOT generated here — only F146 (filter index 6 in Bulge.h).
    Add a second generator (or a `filter` column + loop) if you extend the
    Fisher/light-curve code to use Roman's other bands.
@@ -126,27 +132,39 @@ LOW_CADENCE_DAYS  = 5.0
 # that clock is the first Rubin bulge visit, MJD 61141.312 = 2026-04-11 (set by
 # readbaselineBulge.py, which subtracts the earliest bulge visit's MJD).
 #
-# 730 d = 2028-04-10: Rubin has already begun its survey and Roman has not, so Roman
-# must start later. This leaves ~2.0 yr of Rubin-only baseline before Roman and ~3.3 yr
-# after -- not wasted coverage, but the control arm for "how much does adding Roman
-# help", and the span over which long-tE events accumulate their parallax baseline.
+# 306 d = 2027-02-11: the real start of the GBTDS, the first published high-cadence window
+# (user's decision 2026-10-01, Deviation 69; it was 730 d = 2028-04-10 before). With the
+# adopted layout the two rolls put the fields in different places, so the seasons must fall
+# on the real spring/autumn dates for the roll to mean anything: SEASON_PATTERN's offsets
+# then reproduce the published windows (spring from Feb 11, autumn from Aug 15). Leaves
+# ~0.8 yr of Rubin-only baseline before Roman and ~4.5 yr after -- the control arm for "how
+# much does adding Roman help", and parallax baseline for long-tE events.
 #
-# This is a modelling choice, not a physical constant, and it is expected to change:
-# override at run time with --mission-start DAYS.
-MISSION_START_DAY = 730.0
+# Still a modelling choice; override at run time with --mission-start DAYS.
+MISSION_START_DAY = 306.0
 TOBS_DAYS = 10.0 * YEAR_DAYS  # must match Tobs in Bulge.h -- the C++ read CHECKs against it
 
-# 6 GBTDS fields: 5 contiguous "bulge" fields (b=-1.2 deg) + 1 Galactic Center field.
-# Source: mtpenny/gbtds_optimizer, field_layouts/layout_40395.centers (notional layout —
-# confirm against ROTAC Fig. 4 / later mission docs before publication).
-FIELDS_L_B = [
-    (-0.417948, -1.200),
-    (-0.008974, -1.200),
-    ( 0.400000, -1.200),
-    ( 0.808974, -1.200),
-    ( 1.217948, -1.200),
-    ( 0.000000, -0.125),  # Galactic Center field
-]
+# The adopted GBTDS fields, one list per roll (layout 0 = spring, 1 = autumn), read from the
+# vendored layout files so the numbers live in one place (Baseline/gbtds_layout/README.md).
+LAYOUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gbtds_layout")
+CENTERS_FILES = ("gbtds_spring_2026.4.3.centers", "gbtds_autumn_2026.4.3.centers")
+
+
+def read_centers(name):
+    """[(l, b), ...] in the file's order: fields 1-5 (the contiguous block), then GC."""
+    out = []
+    with open(os.path.join(LAYOUT_DIR, name)) as f:
+        next(f)                                  # header: field l b fixed
+        for line in f:
+            p = line.split()
+            if p:
+                out.append((float(p[1]), float(p[2])))
+    if len(out) != 6:
+        raise SystemExit(f"{name}: expected 6 GBTDS fields, found {len(out)}")
+    return out
+
+
+FIELDS_BY_LAYOUT = [read_centers(n) for n in CENTERS_FILES]
 
 SIG5_PLACEHOLDER = 24.0  # TODO(Ali): replace with a real per-visit depth model if needed
 
@@ -196,36 +214,39 @@ def main():
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     windows = build_season_windows(args.mission_start)
 
-    rows = []  # [ID, RA, Dec, l, b, time, sig5]
-    for l, b in FIELDS_L_B:
-        ra, dec = galactic_to_radec(l, b)
-        for season_idx, start, end, cadence in windows:
+    rows = []  # [ID, RA, Dec, l, b, time, sig5, field, layout]
+    for season_idx, start, end, cadence in windows:
+        # Seasons alternate spring, autumn (SEASON_PATTERN), and so does Roman's roll.
+        layout = season_idx % len(SEASON_PATTERN)
+        for field, (l, b) in enumerate(FIELDS_BY_LAYOUT[layout]):
+            ra, dec = galactic_to_radec(l, b)
             t = start
             while t <= end:
-                rows.append([0, ra, dec, l, b, t, SIG5_PLACEHOLDER])
+                rows.append([0, ra, dec, l, b, t, SIG5_PLACEHOLDER, field, layout])
                 t += cadence
 
     rows = np.array(rows)
 
     # Sort by time — matchVisibleEpochs()/main() in Bulge_LSST.cpp assume the
     # baseline file's `tim` column is pre-sorted, same convention as BulgeBaseline.dat.
-    order = np.argsort(rows[:, 5])
+    order = np.argsort(rows[:, 5], kind="stable")
     rows = rows[order]
     rows[:, 0] = np.arange(len(rows))  # renumber IDs after sorting
 
     with open(OUTPUT_PATH, "w") as f:
-        f.write("#ID  RA  Dec  l  b  time  sig5\n")
+        f.write("#ID  RA  Dec  l  b  time  sig5  field  layout\n")
         for row in rows:
             f.write(
                 f"{int(row[0])}  {row[1]:.6f}  {row[2]:.6f}  "
-                f"{row[3]:.6f}  {row[4]:.6f}  {row[5]:.6f}  {row[6]:.3f}\n"
+                f"{row[3]:.6f}  {row[4]:.6f}  {row[5]:.6f}  {row[6]:.3f}  "
+                f"{int(row[7])}  {int(row[8])}\n"
             )
 
     print(f"Wrote {len(rows)} Roman F146 visits to {OUTPUT_PATH}")
     print(f"NlRoman = {len(rows)}   <-- set this constant in Bulge.h")
     print(f"Time span: {rows[:, 5].min():.1f} to {rows[:, 5].max():.1f} days "
           f"(mission start = {args.mission_start:g} d on the Rubin clock)")
-    print(f"Fields: {len(FIELDS_L_B)} | Seasons: {N_SEASONS} "
+    print(f"Fields: {len(FIELDS_BY_LAYOUT[0])} per roll, 2 rolls | Seasons: {N_SEASONS} "
           f"({len(HIGH_CADENCE_SEASONS)} high-cadence, {N_SEASONS - len(HIGH_CADENCE_SEASONS)} low-cadence)")
 
 

@@ -15,8 +15,12 @@ FILE * _randStream;
 ///==============================================================//
 // Extracted from the sky-position loop in main() so it can be called once per
 // instrument instead of being hardwired to `ls`. Behavior is unchanged for LSST;
-// calling it a second time with Roman's own l/b/tim arrays and its own FoV is what
-// gives Roman its own epoch list instead of inheriting LSST's cadence.
+// calling it a second time with Roman's own visits and coverage test is what gives Roman its
+// own epoch list instead of inheriting LSST's cadence.
+//
+// `covers(i)` says whether visit i images the current sky position. Rubin's is the circle
+// sqrt(dl^2 + db^2) <= FoV about the pointing centre (unchanged arithmetic); Roman's is "on one
+// of the 18 detectors of visit i's layout, placed at the field centre" (Deviation 69).
 //
 // `label` is purely diagnostic ("LSST" / "Roman") — it identifies which call
 // printed a given warning, since both calls share this one function.
@@ -24,16 +28,15 @@ FILE * _randStream;
 // Two visits can legitimately share an identical recorded timestamp for a given
 // sky position — most commonly two different fields/pointings whose FoV circles
 // overlap and which happen to share the same observing schedule (this is exactly
-// what can happen between adjacent Roman fields: FoVRoman=0.28 vs ~0.41 field
-// spacing means neighboring fields' circles overlap). There is no meaningful
+// what can happen between adjacent Roman fields, whose detector mosaics interlock and can
+// overlap at the edges). There is no meaningful
 // cadence between two simultaneous visits, so rather than treat this as fatally
 // corrupt data, we keep the first and skip the duplicate — but we log it, because
 // if this fires constantly (not just occasionally near field boundaries) that's a
 // sign of a genuine sorting/data problem in the baseline file that needs fixing at
 // the source, not papering over here.
-int matchVisibleEpochs(const char* label, double lon, double lat, double fov,
-                       const std::vector<double>& l_arr,
-                       const std::vector<double>& b_arr,
+template <typename Covers>
+int matchVisibleEpochs(const char* label, Covers covers,
                        const std::vector<double>& tim_arr,
                        int nEpochs,
                        std::vector<int>& ct,
@@ -46,9 +49,7 @@ int matchVisibleEpochs(const char* label, double lon, double lat, double fov,
     for (int i = 0; i < ctCap; ++i) ct[i] = -1;
 
     for (int i = 0; i < nEpochs; ++i) {
-        double dl = lon - l_arr[i];
-        double db = lat - b_arr[i];
-        if (std::sqrt(dl * dl + db * db) <= fov) {
+        if (covers(i)) {
 
             if (ndd > 0) {
                 double cade = tim_arr[i] - tim_arr[ct[ndd - 1]];
@@ -179,7 +180,7 @@ struct RunConfig {
     // Sightline grid INSIDE Roman's footprint, in the same units (Step E1). Roman covers
     // ~2.6% of the scan region, so a uniform grid spends 97% of its wall clock on sky where
     // the joint fit is Rubin's matrix and nothing can be learned about the combination. This
-    // is the second stride: sightlines within FoVRoman of a GBTDS field centre are visited on
+    // is the second stride: sightlines within a GBTDS field's detector outline are visited on
     // a `strideRoman * dd` grid, everything else stays on the coarse `stride * dd` grid, and
     // every sightline carries the sky area it stands for so survey-wide totals are recoverable.
     //
@@ -256,8 +257,9 @@ static void printUsage(const char* prog) {
     std::cout
         << "usage: " << prog << " [options]\n"
         << "  --stride N     sightline grid step, in units of dd=" << dd << " deg (default 10)\n"
-        << "                 grid spacing is N*dd deg; must be <= " << FoVRoman * 1.41421356
-        << " deg or Roman fields can be missed\n"
+        << "                 grid spacing is N*dd deg. If the footprint grid (see\n"
+        << "                 --stride-roman) would be coarser than one Roman detector, it\n"
+        << "                 is refined automatically when --stride-roman is not given.\n"
         << "  --start-index N   skip the first N sightlines of the scan and resume there.\n"
         << "                 The scan vector is deterministic for a given --stride/\n"
         << "                 --stride-roman/--stub, and the output files are opened in\n"
@@ -295,7 +297,7 @@ static void printUsage(const char* prog) {
         << "  --lenses N     per-sightline characterised-event target, nlens (default 150)\n"
         << "  --nerr X       per-sightline Fisher-error target (default 2.0)\n"
         << "  --maxdraws X   per-sightline cap on drawn stars (default 5e4)\n"
-        << "  --stub         scan the old 0.1x0.1 deg patch instead of the full region\n"
+        << "  --stub         scan a 0.1x0.1 deg test patch inside GBTDS field 3 (both rolls)\n"
         << "  --population N which lens population to simulate (default 'bulge').\n"
         << "                 Every output file is named from the population's tag, so two\n"
         << "                 populations never overwrite each other: 'bulge' writes\n"
@@ -733,17 +735,28 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    // A square grid of spacing h is only guaranteed to place a point inside a disk
-    // of radius r when h <= r*sqrt(2). Beyond that the grid can step clean over a
-    // Roman field, and the run then silently becomes Rubin-only while still
-    // reporting joint-detection columns -- the same class of failure as the ct
-    // truncation. The stronger per-field check, against the actual field centres
-    // read from RomanBaseline.dat, runs once the baseline is loaded.
+    // The GBTDS detector layout (Deviation 69), read first: the footprint grid is checked
+    // against the real detector size, and the scan region is built from the field outline.
+    const GbtdsLayout gl = readGbtdsLayout();
+    std::cout << "**** GBTDS layout read: " << GBTDS_NSCA << " detectors x " << GBTDS_NLAYOUT
+              << " rolls, detector side " << gl.scaSide << " deg, field reach " << gl.rField
+              << " deg ****\n";
     const double gridStep = cfg.stride * dd;
 
-    // Step E1. strideRoman = 0 means "unstratified": the footprint grid IS the coarse grid,
-    // kSub = 1, and every expression below collapses to what it was before this step.
-    if (cfg.strideRoman == 0) cfg.strideRoman = cfg.stride;
+    // Step E1. strideRoman = 0 means "not given": the footprint grid is the coarse grid, kSub
+    // = 1 -- unless that grid is coarser than one Roman detector (Deviation 69), in which case
+    // it is refined to the largest divisor of --stride that is not, so that which sightlines
+    // fall on a detector and which in a chip gap is sampled at all.
+    if (cfg.strideRoman == 0) {
+        cfg.strideRoman = cfg.stride;
+        if (not cfg.stubPatch and cfg.stride * dd > gl.scaSide) {
+            for (int k = cfg.stride; k >= 1; --k)
+                if (cfg.stride % k == 0 and k * dd <= gl.scaSide) { cfg.strideRoman = k; break; }
+            std::cout << "NOTE: --stride " << cfg.stride << " (" << cfg.stride * dd << " deg) is "
+                      << "coarser than one Roman detector (" << gl.scaSide << " deg); using "
+                      << "--stride-roman " << cfg.strideRoman << " inside the footprint.\n";
+        }
+    }
     if (cfg.strideRoman < 1 or cfg.strideRoman > cfg.stride) {
         std::cerr << "ERROR: --stride-roman (" << cfg.strideRoman << ") must be between 1 and "
                   << "--stride (" << cfg.stride << "). It refines the grid inside Roman's "
@@ -762,19 +775,14 @@ int main(int argc, char** argv) {
     const int    kSub     = cfg.stride / cfg.strideRoman; // fine cells per coarse cell, per axis
     const double fineStep = cfg.strideRoman * dd;
 
-    // The field-coverage bar applies to the grid that actually samples the footprint, which
-    // under stratification is the FINE one. This is what lets the outside stratum be coarsened
-    // past FoVRoman*sqrt(2) without the run silently becoming Rubin-only: the footprint is
-    // still sampled at fineStep, and the per-field guard below re-checks it against the real
-    // field centres.
-    if (fineStep > FoVRoman * 1.41421356 and not cfg.stubPatch) {
-        std::cerr << "ERROR: --stride" << (kSub > 1 ? "-roman " : " ")
-                  << cfg.strideRoman << " gives a footprint grid step of "
-                  << fineStep << " deg, which exceeds FoVRoman*sqrt(2) = "
-                  << FoVRoman * 1.41421356 << " deg. The grid could miss Roman "
-                  << "fields entirely and the run would look joint but be "
-                  << "Rubin-only. Use a step <= "
-                  << int(FoVRoman * 1.41421356 / dd) << ".\n";
+    // The footprint grid must not step over whole detectors: with a step wider than one, the
+    // grid's point-sampled Roman area is noise and a field can be missed outright. The per-field
+    // guard below then re-checks every (field, roll) placement against the detectors.
+    if (fineStep > gl.scaSide and not cfg.stubPatch) {
+        std::cerr << "ERROR: --stride" << (kSub > 1 ? "-roman " : " ") << cfg.strideRoman
+                  << " gives a footprint grid step of " << fineStep << " deg, wider than one "
+                  << "Roman detector (" << gl.scaSide << " deg). Use --stride-roman <= "
+                  << int(gl.scaSide / dd + 1e-9) << ".\n";
         return 2;
     }
 
@@ -832,10 +840,6 @@ int main(int argc, char** argv) {
         CHECK(airm >= 0.0);
         CHECK(ls->filter[i] >= 0);
         CHECK(ls->filter[i] < 6);
-        CHECK(ls->l[i] >= l1 - FoV);
-        CHECK(ls->l[i] <= l2 + FoV);
-        CHECK(ls->b[i] >= b1 - FoV);
-        CHECK(ls->b[i] <= b2 + FoV);
         CHECK(ls->tim[i] >= 0.0);
         CHECK(ls->tim[i] <= Tobs);
         CHECK(texp >= 0.0);
@@ -885,7 +889,8 @@ int main(int argc, char** argv) {
     }
     std::getline(fil, header); // skip header line
     for (int i = 0; i < NlRoman; ++i) {
-        fil >> ID >> ro->RA[i] >> ro->DEC[i] >> ro->l[i] >> ro->b[i] >> ro->tim[i] >> ro->sig5[i];
+        fil >> ID >> ro->RA[i] >> ro->DEC[i] >> ro->l[i] >> ro->b[i] >> ro->tim[i] >> ro->sig5[i]
+            >> ro->field[i] >> ro->layout[i];
         // Same silent zero-fill failure mode as the Rubin read above.
         if (!fil) {
             std::cerr << "RomanBaseline.dat: read failed at row " << i << " of " << NlRoman
@@ -895,6 +900,8 @@ int main(int argc, char** argv) {
 
         CHECK(ro->tim[i] >= 0.0);
         CHECK(ro->tim[i] <= Tobs);
+        CHECK(ro->layout[i] >= 0 and ro->layout[i] < GBTDS_NLAYOUT);
+        CHECK(ro->field[i] >= 0 and ro->field[i] < 6);
         // Deliberately no filter CHECK here — Roman is single-band (F146, index 6) for now.
     }
     fil.close();
@@ -1191,33 +1198,68 @@ int main(int argc, char** argv) {
 
     save = 0;
 
-    // Scan bounds. The full region is what l1/l2/b1/b2/wid in Bulge.h describe;
-    // the stub patch is the 0.1x0.1 deg corner every pre-Step-4 run used, kept
-    // only for comparison against those numbers.
-    const double lonMin = cfg.stubPatch ?  0.5 : l1 - wid;
-    const double lonMax = cfg.stubPatch ?  0.6 : l2 + wid;
-    const double latMin = cfg.stubPatch ? -1.0 : b1 - wid;
-    const double latMax = cfg.stubPatch ? -0.9 : b2 + wid;
-
     // ----------------------------------------------------------------------
-    // Roman field-coverage guard.
+    // Roman field placements and the coverage guard.
     //
-    // RomanBaseline.dat repeats a small set of distinct (l,b) pointings -- the six
-    // GBTDS fields -- once per visit. Collect them, then verify the sightline grid
-    // actually places at least one sightline inside each. A grid that steps over a
-    // field produces a run with zero Roman epochs there, which does not crash and
-    // does not warn: it just quietly reports Rubin-only results in joint-labelled
-    // columns. Roman covers only ~2.6% of the scan region, so this is easy to do
-    // by accident and impossible to spot afterwards.
+    // RomanBaseline.dat repeats a small set of distinct pointings once per visit: the six
+    // GBTDS fields at each of the two rolls, i.e. 12 (centre, layout) placements. Collect them,
+    // then verify the sightline grid puts at least one sightline ON A DETECTOR of each. A grid
+    // that misses a placement produces a run with no Roman epochs there, which does not crash
+    // and does not warn: it quietly reports Rubin-only results in joint-labelled columns.
     // ----------------------------------------------------------------------
-    std::vector<std::pair<double,double>> romanFields;
+    std::vector<FieldPlacement> romanFields;
     for (int i = 0; i < NlRoman; ++i) {
         bool seen = false;
         for (const auto& f : romanFields)
-            if (std::fabs(f.first - ro->l[i]) < 1e-6 and std::fabs(f.second - ro->b[i]) < 1e-6) {
+            if (std::fabs(f.l - ro->l[i]) < 1e-6 and std::fabs(f.b - ro->b[i]) < 1e-6
+                and f.layout == ro->layout[i]) {
                 seen = true; break;
             }
-        if (!seen) romanFields.emplace_back(ro->l[i], ro->b[i]);
+        if (!seen) romanFields.push_back({ro->l[i], ro->b[i], ro->layout[i]});
+    }
+
+    // Scan bounds (Deviation 69). The region is every point within scanReach of a field centre
+    // (see SCAN_RUBIN_REACH in Bulge.h); the grid's bounding box is that, with its origin on a
+    // multiple of the coarse step so sightlines sit at round coordinates. The stub is a 0.1 x
+    // 0.1 deg test patch inside field 3, which both rolls image (spring centre l 0.500, autumn
+    // 0.350; it was l 0.5-0.6, b -1.0..-0.9 before, which the adopted fields do not reach).
+    const double scanReach = SCAN_RUBIN_REACH + gl.rField;
+    double fLmin = 1e9, fLmax = -1e9, fBmin = 1e9, fBmax = -1e9;
+    for (const auto& f : romanFields) {
+        fLmin = std::min(fLmin, f.l); fLmax = std::max(fLmax, f.l);
+        fBmin = std::min(fBmin, f.b); fBmax = std::max(fBmax, f.b);
+    }
+    const double lonMin = cfg.stubPatch ?  0.40  : gridStep * std::floor((fLmin - scanReach) / gridStep);
+    const double lonMax = cfg.stubPatch ?  0.50  : fLmax + scanReach;
+    const double latMin = cfg.stubPatch ? -1.45  : gridStep * std::floor((fBmin - scanReach) / gridStep);
+    const double latMax = cfg.stubPatch ? -1.35  : fBmax + scanReach;
+
+    // Inside the scan region: within scanReach of any field centre (the stub keeps its square).
+    auto inScan = [&](double lon, double lat) {
+        if (cfg.stubPatch) return true;
+        for (const auto& f : romanFields)
+            if (std::hypot(lon - f.l, lat - f.b) <= scanReach) return true;
+        return false;
+    };
+
+    // Every Rubin pointing in the visit list must be one that can image the scan region, i.e.
+    // centred within scanReach + FoV of a field centre. A pointing farther out means the list
+    // was extracted for a different region (readbaselineBulge.py uses the same rule).
+    if (not cfg.stubPatch) {
+        int nFar = 0;
+        for (int i = 0; i < Nl; ++i) {
+            bool near = false;
+            for (const auto& f : romanFields)
+                if (std::hypot(ls->l[i] - f.l, ls->b[i] - f.b) <= scanReach + FoV + 1e-3) { near = true; break; }
+            if (!near) nFar += 1;
+        }
+        if (nFar > 0) {
+            std::cerr << "ERROR: " << nFar << " of " << Nl << " Rubin visits in BulgeBaseline.dat "
+                      << "are centred farther than " << scanReach + FoV << " deg from every "
+                      << "Roman field, so the visit list was built for another region. "
+                      << "Regenerate it with Baseline/readbaselineBulge.py.\n";
+            return 1;
+        }
     }
 
     // ----------------------------------------------------------------------
@@ -1259,10 +1301,18 @@ int main(int argc, char** argv) {
     // the same points in the same order as the old nested loop -- so the RNG stream, and
     // therefore the run, is bit-identical to before this step.
     // ----------------------------------------------------------------------
+    // The fine stratum (Deviation 69): every fine cell that overlaps the detector outline's
+    // bounding rectangle of any placement. A grid point stands for the cell extending from it
+    // in +l and +b, so a cell overlaps when its point lies within one fine step below the
+    // rectangle; the same margin is kept on the other side. Chip-gap cells are therefore in the
+    // fine stratum too: which sightlines actually see Roman is decided by the detector test in
+    // matchVisibleEpochs, not here.
     auto insideFootprint = [&](double lon, double lat) {
         for (const auto& f : romanFields) {
-            const double dl = lon - f.first, db = lat - f.second;
-            if (std::sqrt(dl*dl + db*db) <= FoVRoman) return true;
+            const double dl = lon - f.l, db = lat - f.b;
+            const int k = f.layout;
+            if (dl >= gl.dlMin[k] - fineStep and dl <= gl.dlMax[k] + fineStep
+                and db >= gl.dbMin[k] - fineStep and db <= gl.dbMax[k] + fineStep) return true;
         }
         return false;
     };
@@ -1277,7 +1327,16 @@ int main(int argc, char** argv) {
     const int    nLatFine = nLatGrid * kSub;
     const double cellArea = (gridStep * gridStep) / double(kSub * kSub); // deg^2, one fine cell
 
-    struct Sightline { double lon, lat, area; bool inFootprint; int col; };
+    struct Sightline { double lon, lat, area; bool inFootprint; int col; int romanClass; };
+
+    // Roman coverage class of a sky point (Deviation 69): bit 0 = on a detector in the spring
+    // roll, bit 1 = in the autumn roll. 0 none, 1 spring only, 2 autumn only, 3 both.
+    auto romanClassAt = [&](double lon, double lat) {
+        int c = 0;
+        for (const auto& p : romanFields)
+            if (inDetector(gl, p.layout, lon - p.l, lat - p.b)) c |= (1 << p.layout);
+        return c;
+    };
 
     // Pass 1: for each coarse block, how many of its fine cells survive the corner cut and lie
     // OUTSIDE the footprint, and which of them represents that area.
@@ -1289,7 +1348,7 @@ int main(int argc, char** argv) {
         const double lon = lonMin + iF * fineStep;
         for (int jF = 0; jF < nLatFine; ++jF) {
             const double lat = latMin + jF * fineStep;
-            if (lon < lx and lat > bx) continue;   // same corner cut as the scan below
+            if (!inScan(lon, lat)) continue;       // same region test as the scan below
             nFineKept += 1;
             if (insideFootprint(lon, lat)) continue;
             const size_t b = size_t(iF / kSub) * size_t(nLatGrid) + size_t(jF / kSub);
@@ -1304,33 +1363,92 @@ int main(int argc, char** argv) {
     std::vector<int> fieldHits(romanFields.size(), 0);
     long nSightlines = 0, nSightlinesRoman = 0;
     double areaFootprint = 0.0, areaOutside = 0.0;
+    // Point-sampled sky area on a detector, per roll: the grid's estimate of what Roman images
+    // in a spring / an autumn season, to compare with the exact detector area.
+    std::array<double, GBTDS_NLAYOUT> areaOnDetector{};
     for (int iF = 0; iF < nLonFine; ++iF) {
         const double lon = lonMin + iF * fineStep;
         for (int jF = 0; jF < nLatFine; ++jF) {
             const double lat = latMin + jF * fineStep;
-            if (lon < lx and lat > bx) continue;
-            bool anyField = false;
-            for (size_t f = 0; f < romanFields.size(); ++f) {
-                const double dl = lon - romanFields[f].first;
-                const double db = lat - romanFields[f].second;
-                if (std::sqrt(dl*dl + db*db) <= FoVRoman) { fieldHits[f] += 1; anyField = true; }
-            }
+            if (!inScan(lon, lat)) continue;
+            const bool anyField = insideFootprint(lon, lat);
             if (anyField) {
-                scan.push_back({lon, lat, cellArea, true, iF});
+                std::array<bool, GBTDS_NLAYOUT> onDet{};
+                for (size_t f = 0; f < romanFields.size(); ++f) {
+                    const auto& p = romanFields[f];
+                    if (inDetector(gl, p.layout, lon - p.l, lat - p.b)) {
+                        fieldHits[f] += 1; onDet[p.layout] = true;
+                    }
+                }
+                for (int k = 0; k < GBTDS_NLAYOUT; ++k) if (onDet[k]) areaOnDetector[k] += cellArea;
+                scan.push_back({lon, lat, cellArea, true, iF, int(onDet[0]) | (int(onDet[1]) << 1)});
                 areaFootprint    += cellArea;
                 nSightlinesRoman += 1;
             } else {
                 const size_t b = size_t(iF / kSub) * size_t(nLatGrid) + size_t(jF / kSub);
                 if (blockRep[b] != long(iF) * nLatFine + jF) continue;  // not this block's rep
                 const double a = blockOutCount[b] * cellArea;
-                scan.push_back({lon, lat, a, false, iF});
+                scan.push_back({lon, lat, a, false, iF, 0});
                 areaOutside += a;
             }
             nSightlines += 1;
         }
     }
 
-    // The invariant. Every fine cell that survived the corner cut is represented exactly once,
+    // ----------------------------------------------------------------------
+    // Post-stratifying the footprint's area weights (Deviation 69).
+    //
+    // A footprint sightline is a POINT: it either lands on a detector in a given roll or in a
+    // chip gap. The detectors are 0.125 deg across with gaps of 0.008-0.026 deg, so a grid of
+    // 0.1 deg aliases against them: at --stride-roman 5 the grid put 1.46 deg^2 on a detector per
+    // roll where the exact figure is 1.68 -- every Roman yield per deg^2 13% low -- and even a
+    // 0.02 deg grid lands 2% high. Rather than chase that with CPU, each footprint sightline's
+    // area is rescaled so that each coverage CLASS (none / spring only / autumn only / both)
+    // carries its exact sky area inside the footprint stratum:
+    //     area_i <- cellArea * exact(c_i) / grid(c_i)
+    // exact(c) from sub-sampling every fine cell on a ~0.002 deg raster. The classes partition
+    // the stratum, so the stratum's total area -- and the invariant below -- is unchanged. The
+    // sightlines of a class still sample its sky at the grid points; only how much sky each
+    // stands for changes.
+    // ----------------------------------------------------------------------
+    std::array<double, 4> classGrid{}, classExact{};
+    std::array<long, 4>   classN{};
+    for (const auto& sl : scan)
+        if (sl.inFootprint) { classGrid[sl.romanClass] += cellArea; classN[sl.romanClass] += 1; }
+    {
+        const int nSub = std::max(1, int(std::ceil(fineStep / 0.002 - 1e-9)));
+        const double h = fineStep / nSub;
+        for (const auto& sl : scan) {
+            if (!sl.inFootprint) continue;
+            for (int a = 0; a < nSub; ++a)
+                for (int c = 0; c < nSub; ++c)
+                    classExact[romanClassAt(sl.lon + (a + 0.5) * h, sl.lat + (c + 0.5) * h)] += h * h;
+        }
+    }
+    for (int c = 0; c < 4; ++c) {
+        if (classExact[c] > 0.0 and classN[c] == 0) {
+            std::cerr << "ERROR: Roman coverage class " << c << " has " << classExact[c]
+                      << " deg^2 of sky in the footprint but no sightline samples it. Use a finer "
+                      << "--stride-roman.\n";
+            return 1;
+        }
+    }
+    areaFootprint = 0.0;
+    for (auto& sl : scan)
+        if (sl.inFootprint) {
+            sl.area = cellArea * classExact[sl.romanClass] / classGrid[sl.romanClass];
+            areaFootprint += sl.area;
+        }
+    std::cout << "Roman coverage classes in the footprint stratum (none / spring / autumn / both):"
+              << "\n  sightlines  " << classN[0] << " / " << classN[1] << " / " << classN[2]
+              << " / " << classN[3]
+              << "\n  grid area   " << classGrid[0] << " / " << classGrid[1] << " / "
+              << classGrid[2] << " / " << classGrid[3] << " deg^2"
+              << "\n  exact area  " << classExact[0] << " / " << classExact[1] << " / "
+              << classExact[2] << " / " << classExact[3] << " deg^2 (weights rescaled to these)"
+              << std::endl;
+
+    // The invariant. Every fine cell inside the scan region is represented exactly once,
     // either by itself (footprint) or by its block's representative (outside).
     const double areaScanned = areaFootprint + areaOutside;
     {
@@ -1346,22 +1464,34 @@ int main(int argc, char** argv) {
                   << " deg, " << (scan.size() - size_t(nSightlinesRoman)) << " outside at "
                   << gridStep << " deg), covering " << areaScanned << " deg^2 ("
                   << areaFootprint << " footprint + " << areaOutside << " outside)." << std::endl;
+        // The grid samples the detector mosaic at points, so its on-detector area is an
+        // estimate; the exact value is 6 fields x 18 detectors. Their difference is the
+        // sampling error of every per-deg^2 Roman yield from this grid.
+        for (int k = 0; k < GBTDS_NLAYOUT; ++k) {
+            double exact = 0.0;
+            for (const ScaRect& r : gl.sca[k]) exact += (r.l1 - r.l0) * (r.b1 - r.b0);
+            int nPlaced = 0;
+            for (const auto& f : romanFields) nPlaced += (f.layout == k);
+            exact *= nPlaced;
+            std::cout << "Roman detector area, " << (k == 0 ? "spring" : "autumn") << " roll: "
+                      << areaOnDetector[k] << " deg^2 on the grid vs " << exact
+                      << " deg^2 exact (" << nPlaced << " fields)." << std::endl;
+        }
     }
 
     const size_t nFieldsCovered = std::count_if(fieldHits.begin(), fieldHits.end(),
                                                 [](int h){ return h > 0; });
     // Fatal for a full-region scan, advisory for --stub: the stub patch is 0.1x0.1 deg
-    // by design and cannot possibly reach all six fields, so refusing to run it would
-    // remove the only way to reproduce the pre-Step-4 numbers.
+    // by design and cannot possibly reach all twelve placements.
     if (nFieldsCovered < romanFields.size() and not cfg.stubPatch) {
         std::cerr << "ERROR: the sightline grid (stride " << cfg.stride << ", step "
                   << gridStep << " deg) misses " << (romanFields.size() - nFieldsCovered)
-                  << " of " << romanFields.size() << " Roman GBTDS fields:\n";
+                  << " of " << romanFields.size() << " Roman field placements:\n";
         for (size_t f = 0; f < romanFields.size(); ++f)
             if (fieldHits[f] == 0)
-                std::cerr << "    field at (l,b) = (" << romanFields[f].first << ", "
-                          << romanFields[f].second << ") has no sightline within "
-                          << FoVRoman << " deg\n";
+                std::cerr << "    field at (l,b) = (" << romanFields[f].l << ", "
+                          << romanFields[f].b << "), " << (romanFields[f].layout ? "autumn" : "spring")
+                          << " roll, has no sightline on a detector\n";
         std::cerr << "Those fields would contribute no Roman epochs, and the run would "
                      "report joint columns built from Rubin data alone. Use a smaller "
                      "--stride.\n";
@@ -1369,7 +1499,7 @@ int main(int argc, char** argv) {
     }
     if (nFieldsCovered < romanFields.size() and cfg.stubPatch) {
         std::cout << "NOTE: --stub reaches " << nFieldsCovered << " of "
-                  << romanFields.size() << " Roman fields. Expected for a patch this "
+                  << romanFields.size() << " Roman field placements. Expected for a patch this "
                   << "small; joint statistics from it describe those fields only.\n";
     }
 
@@ -1425,11 +1555,21 @@ int main(int argc, char** argv) {
              << "# area_outside_deg2   " << areaOutside << "\n"
              << "# lon_range_deg       " << lonMin << " " << lonMax << "\n"
              << "# lat_range_deg       " << latMin << " " << latMax << "\n"
-             << "# corner_cut          lon < " << lx << " and lat > " << bx << "\n"
+             << "# scan_region         within " << scanReach << " deg of a Roman field centre"
+             << "   # 2*FoV + field reach " << gl.rField << "\n"
              << "# n_sightlines        " << nSightlines << "\n"
              << "# n_sightlines_roman  " << nSightlinesRoman << "\n"
              << "# roman_fields        " << nFieldsCovered << " of " << romanFields.size()
-             << " covered\n"
+             << " placements covered\n"
+             << "# roman_layout        Baseline/gbtds_layout (gbtds_{spring,autumn}_2026.4.3, "
+             << GBTDS_NSCA << " SCAs, side " << gl.scaSide << " deg)\n"
+             << "# roman_area_grid     " << areaOnDetector[0] << " " << areaOnDetector[1]
+             << "   # deg^2 on a detector, spring autumn, as point-sampled by the grid\n"
+             << "# roman_class_exact   " << classExact[0] << " " << classExact[1] << " "
+             << classExact[2] << " " << classExact[3]
+             << "   # deg^2 none/spring/autumn/both; footprint w_area post-stratified to these\n"
+             << "# roman_class_grid    " << classGrid[0] << " " << classGrid[1] << " "
+             << classGrid[2] << " " << classGrid[3] << "\n"
              << "# events_target       " << cfg.iconTarget << "   # icon\n"
              << "# lenses_target       " << cfg.nlensTarget << "   # nlens\n"
              << "# nerr_target         " << cfg.nerrTarget << "\n"
@@ -1447,7 +1587,7 @@ int main(int argc, char** argv) {
              << "# Nl                  " << Nl << "\n"
              << "# NlRoman             " << NlRoman << "\n"
              << "# FoV_rubin_deg       " << FoV << "\n"
-             << "# FoV_roman_deg       " << FoVRoman << "\n"
+
              << "# rng_seed            " << seed << "\n"
              // Step H1. 1 = Roman at Sun-Earth L2 (physical); 0 = Roman at the centre of the
              // Earth, which is what every run before H1 did. Any piE forecast from a run with
@@ -1501,10 +1641,9 @@ int main(int argc, char** argv) {
     // as lonMin + i*gridStep keeps the count exact and makes it predictable ahead of
     // the run, which the provenance block and the coverage guard both rely on.
 
-    // Sightline bookkeeping. The scan region is the Roman field box padded by one Rubin
-    // FoV radius (wid in Bulge.h), so it deliberately extends past where either survey
-    // actually points -- a Rubin pointing centred up to 1.75 deg away can still catch a
-    // Roman field corner. The consequence is that a large part of the grid is empty sky.
+    // Sightline bookkeeping. The scan region reaches 2*FoV + the field reach past the Roman
+    // field centres (Deviation 69), so it deliberately extends to sky only a Roman-overlapping
+    // Rubin pointing's far edge can catch; part of the grid may have no coverage at all.
     // These counters are what make that visible: a density in deg^-2 computed downstream
     // must know how much of the scanned area yielded nothing, and why.
     int nSkipNoCoverage = 0; //no Rubin AND no Roman epochs -- never entered the star loop
@@ -1558,8 +1697,15 @@ int main(int argc, char** argv) {
 
             cade = 0.0;
 
-            ndd  = matchVisibleEpochs("LSST", s->lon, s->lat, FoV, ls->l, ls->b, ls->tim, Nl, ls->ct, minc);
-            nddR = matchVisibleEpochs("Roman", s->lon, s->lat, FoVRoman, ro->l, ro->b, ro->tim, NlRoman, ro->ct, mincR);
+            auto rubinCovers = [&](int i) {
+                const double dl = s->lon - ls->l[i], db = s->lat - ls->b[i];
+                return std::sqrt(dl * dl + db * db) <= FoV;
+            };
+            auto romanCovers = [&](int i) {
+                return inDetector(gl, ro->layout[i], s->lon - ro->l[i], s->lat - ro->b[i]);
+            };
+            ndd  = matchVisibleEpochs("LSST",  rubinCovers, ls->tim, Nl,      ls->ct, minc);
+            nddR = matchVisibleEpochs("Roman", romanCovers, ro->tim, NlRoman, ro->ct, mincR);
 
             cout << "ndd (LSST): "  << ndd  << "\t minc (LSST): "  << minc  << endl;
             cout << "ndd (Roman): " << nddR << "\t minc (Roman): " << mincR << endl;

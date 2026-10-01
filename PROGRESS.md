@@ -78,7 +78,8 @@ then new bulge/bh/ns production runs and a NEW overview report.** Plan (approved
      F146 throughput); photometric table interpolated (not nearest-neighbour) and brought to 66 s;
      thre[6] and satu[6] from sources.
   M1b Rubin constants (audit at the user's request): gate Rubin epochs on each visit's own 5-sigma
-     depth instead of the SRD minimum `thre`; FWHM from the visit list's seeingFwhmGeom; gamma to
+     depth instead of the SRD minimum `thre` (user's decision 2026-10-02: per-visit limits, saturation
+     = visit depth - 8.3, pre-selection on each sightline's median depth per band); FWHM from the visit list's seeingFwhmGeom; gamma to
      Ivezić 2019; delete the unused constants; resolve F146 FWHM 105 vs 115 mas.
   M2 Blended astrometric centroid (shift diluted by blend light) [+ lens light if D3].
   M3 Astrometric finite-difference steps: sweep Delta2[], central stencil for tetE/piE.

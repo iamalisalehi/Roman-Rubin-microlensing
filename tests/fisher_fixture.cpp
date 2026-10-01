@@ -165,7 +165,7 @@ double modelMag(const source& s, int tt, double Astar)
 // forecast wants. FisherM differences the perturbed model against these, and for the one-sided
 // stencil (sig2, used for tE and piE) the stored value does not cancel, so it must be the true
 // model rather than a noise realisation.
-void appendEpoch(source& s, lens& l, astromet& as, double tim, int tele, int& ndw)
+void appendEpoch(source& s, lens& l, astromet& as, double tim, int tele, int& ndw, int season = -1)
 {
     // Step H1 gave lightcurve() a telescope argument: Roman observes from L2, so its
     // observer displacement differs from Rubin's by the projected Earth-L2 separation.
@@ -181,6 +181,10 @@ void appendEpoch(source& s, lens& l, astromet& as, double tim, int tele, int& nd
     l.souy[ndw] = s.pos2c;
     l.erra[ndw] = (tele == 0) ? kErrAstRubin : kErrAstRoman;
     l.tele[ndw] = tele;
+    // Season and roll of a Roman exposure (Deviation 71). The fixture's seasons alternate
+    // spring / autumn from the first, as the real schedule does.
+    l.rseas[ndw] = (tele == 1) ? season : -1;
+    l.rroll[ndw] = (tele == 1) ? season % 2 : -1;
     ++ndw;
 }
 
@@ -222,11 +226,12 @@ int buildLightCurve(source& s, lens& l, astromet& as, int& nL, int& nR)
     const double tMax    = l.t0 + halfWin;
 
     // Roman: dense sampling inside each season.
-    for (double start : kRomanSeasonStarts) {
+    for (int si = 0; si < int(sizeof(kRomanSeasonStarts) / sizeof(double)); ++si) {
+        const double start = kRomanSeasonStarts[si];
         for (double t = start; t <= start + kRomanSeasonLength; t += kRomanCadence) {
             if (t < 0.0 || t > Tobs) continue;
             if (t < tMin || t > tMax) continue;
-            appendEpoch(s, l, as, t, 1, ndw);
+            appendEpoch(s, l, as, t, 1, ndw, si);
             ++nR;
         }
     }
@@ -883,8 +888,63 @@ bool checkSeasonClustering()
     return fails == 0;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Step 3c (Deviation 71): the astrometric noise variants W / N / P (AST_SIGC in Bulge.h).
+//
+// Prints, per event and partition, sigma(tetE), the astrometric sigma(piE) and relMl under each
+// variant, and ASSERTS the ordering sigma_W <= sigma_N <= sigma_P on tetE. It is a theorem, not a
+// preference: N adds nuisance offsets (one per roll) and noise correlated within a day to W, and P
+// adds more of both (one offset per season, a larger sigma_c), and neither extra parameters nor
+// positively correlated noise can add information. A violation is a bug in the bookkeeping.
+// ---------------------------------------------------------------------------------------------
+int runAstroVariants()
+{
+    auto s  = std::make_unique<source>();
+    auto l  = std::make_unique<lens>();
+    auto as = std::make_unique<astromet>();
+    auto co = std::make_unique<covarian>();
+    const char* vn[NAVAR] = {"W", "N", "P"};
+    int bad = 0;
+    std::cout << "# Step 3c astrometric noise variants: W white | N roll offsets + "
+              << AST_SIGC_N << " mas/day | P season offsets + " << AST_SIGC_P << " mas/day\n"
+              << "# event,tE,partition,variant,ok,sig_tetE,sig_piE_ast,relMl,ratio_tetE_to_W\n";
+    for (const auto& ev : kEvents) {
+        setupStatic(*s, *l);
+        l->tE = ev.tE; l->t0 = ev.t0; l->u0 = ev.u0; l->piE = ev.piE;
+        int nL = 0, nR = 0;
+        const int ndw = buildLightCurve(*s, *l, *as, nL, nR);
+        l->tE = ev.tE; l->t0 = ev.t0; l->u0 = ev.u0; l->piE = ev.piE;
+        s->xi = kXi; s->fb[0] = kFbRubin; s->fb[1] = kFbRoman;
+        s->mbs[0] = kMbsRubin; s->mbs[1] = kMbsRoman;
+        FisherM(*s, *l, *as, *co, ndw);
+        ErrorCal(*co, *l, *s);
+        for (int q = 0; q < NSURV; ++q) {
+            const char* qn = (q == SJOINT) ? "joint" : (q == SRUBIN ? "rubin" : "roman");
+            const double w0 = co->ErbV[AV_W][q][0];
+            for (int v = 0; v < NAVAR; ++v)
+                std::cout << ev.name << ',' << ev.tE << ',' << qn << ',' << vn[v] << ','
+                          << co->okBV[v][q] << ',' << std::scientific << std::setprecision(4)
+                          << co->ErbV[v][q][0] << ',' << co->ErbV[v][q][3] << ','
+                          << co->relMlV[v][q] << ',' << std::fixed << std::setprecision(3)
+                          << ((w0 > 0.0 && co->ErbV[v][q][0] > 0.0) ? co->ErbV[v][q][0] / w0 : -1.0)
+                          << std::defaultfloat << '\n';
+            for (int v = 1; v < NAVAR; ++v) {
+                const double a0 = co->ErbV[v - 1][q][0], a1 = co->ErbV[v][q][0];
+                if (co->okBV[v - 1][q] && co->okBV[v][q] && a1 < a0 * (1.0 - 1e-9)) {
+                    std::cout << "#   FAIL " << ev.name << " " << qn << ": sigma_tetE " << vn[v]
+                              << " < " << vn[v - 1] << "\n";
+                    ++bad;
+                }
+            }
+        }
+    }
+    std::cout << (bad ? "# FAIL -- variant ordering violated\n" : "# PASS -- sigma_W <= sigma_N <= sigma_P everywhere\n");
+    return bad ? 1 : 0;
+}
+
 int main(int argc, char** argv)
 {
+    if (argc > 1 && std::string(argv[1]) == "--astro-variants") return runAstroVariants();
     if (argc > 1 && std::string(argv[1]) == "--sweep") return runSweep();
     if (argc > 1 && std::string(argv[1]) == "--eigen")
         return runEigen(argc > 2 ? std::atof(argv[2]) : 1.0);

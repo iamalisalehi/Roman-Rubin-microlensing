@@ -767,6 +767,13 @@ double RomanSchedule::dtToSeasonEdge(double t0) const
     return inside ? -best : best;
 }
 
+int RomanSchedule::seasonOf(double t) const
+{
+    for (size_t k = 0; k < seasons.size(); ++k)
+        if (t >= seasons[k].first and t <= seasons[k].second) return int(k);
+    return -1;
+}
+
 int RomanSchedule::zone(double t0) const
 {
     if (seasons.empty())                      return T0_OFF_MISSION;

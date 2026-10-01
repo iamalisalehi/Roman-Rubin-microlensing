@@ -301,6 +301,39 @@ constexpr double ROMAN_AST_SLOPE_SRC = 0.33285;
 constexpr double ROMAN_AST_SLOPE_BKG = 0.4;
 
 // ---------------------------------------------------------------------------------------
+// Step 3c (Deviation 71). The astrometric noise model, three ways.
+//
+// PER COORDINATE. errRomanA / errlsstA give the 1D (x or y) per-exposure precision, as every
+// source defines it (Lam et al. 2026 fn. 14; McKinnon & van der Marel 2026; Ivezic et al. "per
+// observation per coordinate"). Each coordinate's variance is erra^2 -- not 2 erra^2, which the
+// code used until Deviation 71 (every astrometric sigma was sqrt(2) too large).
+//
+// THE REFERENCE POSITION IS FREE. Real astrometric fits solve for the source's position offset;
+// the model's -u0 tetE sin(xi) term otherwise lets every exposure measure tetE from the source's
+// absolute position (fixture: sigma(tetE) x1.4-10 optimistic). An offset per "frame group" is
+// marginalised in closed form: F_g = sum_blocks F_k - (sum b_k)(sum b_k)^T / sum c_k, per coordinate.
+//
+// WHETHER THE 1.1 mas FLOOR AVERAGES DOWN is unknown: the literature adds it as white noise
+// (justified by the GBTDS's sub-pixel dithers) and quantifies no correlated part (Deviation 71).
+// So every event carries three forecasts:
+//   W  white (the literature's assumption): one free offset per telescope; Roman's errors white.
+//   N  nominal: one free offset per Roman ROLL (crowding biases flip with the PSF orientation) and
+//      a per-coordinate error AST_SIGC_N shared by all Roman exposures of the same day (distortion
+//      residuals at "a few x 0.1% of a pixel", Bellini 2024 via Lam et al. 2026).
+//   P  pessimistic: one free offset per Roman SEASON (each season its own frame) and the WHOLE
+//      floor, AST_SIGC_P = 1.1 mas, shared within each day (it averages only across days).
+// Rubin's errors are white with one offset in all three. The day blocks enter by Sherman-Morrison:
+// for a block with weights w_i = 1/erra_i^2 and derivatives d_i, F_k = S_wdd - s^2 S_wd S_wd^T /
+// (1 + s^2 S_w), b_k = S_wd / (1 + s^2 S_w), c_k = S_w / (1 + s^2 S_w), s = sigma_c.
+// The main table columns (sigtetE_*, relMl_*, okB_*, condB_*) are W.
+// ---------------------------------------------------------------------------------------
+enum AstroVariant { AV_W = 0, AV_N = 1, AV_P = 2, NAVAR = 3 };
+constexpr double AST_SIGC_N = 0.3;               //mas per coordinate per Roman day
+constexpr double AST_SIGC_P = ROMAN_AST_FLOOR;   //1.1 mas
+constexpr std::array<double, NAVAR> AST_SIGC = {0.0, AST_SIGC_N, AST_SIGC_P};
+constexpr int    AST_MAX_SEASONS = 16;           //Roman seasons a P-variant offset can be keyed on
+
+// ---------------------------------------------------------------------------------------
 // Rubin/LSST astrometric error: renormalising files/sigmaA_LSST.txt from mission-averaged
 // to PER VISIT.
 //
@@ -691,6 +724,8 @@ struct lens {
     std::vector<double> errm; // size coun
     std::vector<double> erra; // size coun
     std::vector<int> tele;    // size coun
+    std::vector<int> rseas;   // size coun: Roman season index of the epoch (-1 for Rubin), Dev. 71
+    std::vector<int> rroll;   // size coun: Roman roll of the epoch, 0 spring / 1 autumn (-1 Rubin)
     
     std::vector<double> tEs;  // size GG+1
     std::vector<double> Mls;  // size GG+1
@@ -710,7 +745,7 @@ struct lens {
           Nsfb(GG+1), Ndfb(GG+1),
           Nsmu(GG+1), Ndmu(GG+1),
           timn(coun), magn(coun), soux(coun), souy(coun), errm(coun), erra(coun),
-          tele(coun),
+          tele(coun), rseas(coun, -1), rroll(coun, -1),
 
           tEs(make_grid(tE_min, tE_max)),
           Mls(gPop->logGrid ? make_grid_log(Ml_min, Ml_max) : make_grid(Ml_min, Ml_max)),
@@ -920,6 +955,7 @@ struct RomanSchedule {
     // both give a positive dtToSeasonEdge and they must not be pooled.
     double dtToSeasonEdge(double t0) const;
     int    zone(double t0) const;
+    int    seasonOf(double t) const;   // index into seasons containing t, or -1 (Deviation 71)
 };
 
 // Cluster ro.tim into seasons. One pass over a sorted, de-duplicated copy of the epoch
@@ -995,6 +1031,16 @@ struct covarian {
 
     std::array<std::vector<double>, NSURV> Era; //size Nx each: 1-sigma photometric
     std::array<std::vector<double>, NSURV> Erb; //size Ny each: 1-sigma astrometric
+
+    // Step 3c (Deviation 71): the astrometric forecast under the three noise variants (AV_W, AV_N,
+    // AV_P; see AST_SIGC in this file). Index [variant][survey][param]. Variant W is identical to
+    // Erb/okB/condB/relMl; the Rubin partition is identical in all three (only Roman's noise and
+    // offsets differ). -1 sentinels as everywhere else.
+    std::array<std::array<std::array<double, Ny>, NSURV>, NAVAR> ErbV{};
+    std::array<std::array<int, NSURV>, NAVAR>    okBV{};
+    std::array<std::array<double, NSURV>, NAVAR> condBV{};
+    std::array<std::array<double, NSURV>, NAVAR> relMlV{};
+    std::array<std::array<std::array<double, Ny * Ny>, NSURV>, NAVAR> FBV{};  // the matrices
 
     // Per-survey epoch counts and characterizability flags. A partition with no epochs at all
     // (a short event peaking in a Roman gap genuinely has no Roman data), or with fewer epochs
@@ -1298,6 +1344,8 @@ double AlAv(double lambda_um, double Rv);
 // non-singular and the inverse is usable, 0 if it was singular -- in which case the caller must
 // treat that partition as not-characterizable rather than reading numbers out of it.
 int    invert_matrix(covarian & co, int flag, int surv);
+int    invertNormalized(const gsl_matrix* in, gsl_matrix* out, const std::vector<int>& act,
+                        double& cond, double* deter);   // invert_matrix's core (Deviation 71)
 void   print_mat_contents(gsl_matrix *matrix, int);
 
 double RandN(double , double);

@@ -30,7 +30,7 @@ the overview report, and the primary sources. Verdicts:
 | five events sigma_joint > sigma_Rubin, cond > 1e9 | historical; re-check on new runs | kMaxCondition 1e12 unchanged |
 | binary git stamp stale | true | Makefile captures GIT_COMMIT at make time; no forced rebuild |
 | F3 rests on 1,950 events / F2 long-tE on 124 | superseded by the stratified runs | re-check sample sizes on the new runs |
-| F1/F2/F3 OOM | **probably RESOLVED** | romanlib.load_events streams in chunks with `keep`; F1 uses it |
+| F1/F2/F3 OOM | **RESOLVED** | F1-F4 all use romanlib.load_events with `keep` and `chunksize` (checked 2026-10-02) |
 | two Phase F panels unweighted | **RESOLVED** (outdated) | f3 and f4 call romanlib.attach_weight |
 | E1 tE stratification not implemented | true, deferred by design | |
 | Roman halo orbit not modelled | true, negligible | |
@@ -84,7 +84,9 @@ astrometric error, the unsourced F146 saturation limit, and the 46.8-s exposure 
 table. The overview report repeats one of them: its "2.75 mas at the median F146 = 21.82" evaluates
 the Vega-calibrated curve at an AB magnitude.
 
-## Astrometric Fisher CHECK aborts when a perturbation is unresolvable (from the fixture)
+## RESOLVED 2026-10-02 (audit) -- Astrometric Fisher CHECK aborts when a perturbation is unresolvable (from the fixture)
+
+**Closed:** the CHECK no longer exists; null derivatives are accepted (FisherM; rewritten in Deviation 71). Kept below for the record.
 
 `FisherM`'s astrometric branch asserts
 
@@ -319,7 +321,9 @@ accumulation.
 
 ---
 
-## The startup file check makes an unread file's existence a precondition, and names no file when it fails
+## RESOLVED 2026-10-02 (audit) -- The startup file check makes an unread file's existence a precondition, and names no file when it fails
+
+**Closed:** the unread input stream is gone; LpLMC is created if missing (Bulge_LSST.cpp, 'ensureLp'). Kept below for the record.
 
 **What.** `LpLMC2.dat` is opened twice. Line 490 opens it for *reading*; nothing ever reads from
 that stream. Its only purpose is to be tested at line 523:
@@ -524,7 +528,9 @@ populated to comparable depth as the 30-100 d bin, and carry explicit weights to
 survey-wide totals. Re-run F2 with `--param piE` on the stratified table and check whether
 the flat ~0.98 line survives.
 
-## F1/F2/F3 still load the whole 5.57M-row table and will be OOM-killed on a small machine (found during Step F4)
+## RESOLVED 2026-10-02 (audit) -- F1/F2/F3 still load the whole 5.57M-row table and will be OOM-killed on a small machine (found during Step F4)
+
+**Closed:** F1, F2, F3 and F4 all read through romanlib.load_events with `keep` and `chunksize` (streaming). Kept below for the record.
 
 `analysis/romanlib.load_events()` read the entire per-event table into one DataFrame. For
 `test5.dat` that is 5,571,168 rows x 90 float64 columns -- about 4 GB resident before
@@ -573,7 +579,9 @@ writing.
 
 ---
 
-## Two Phase F panels pool events across sightlines and do not yet apply the area weight (raised during Step E1)
+## RESOLVED 2026-10-02 (audit) -- Two Phase F panels pool events across sightlines and do not yet apply the area weight (raised during Step E1)
+
+**Closed:** f3_characterization_map.py and f4_fisher_precision.py both call romanlib.attach_weight (event-rate weight, which includes w_area). Kept below for the record.
 
 **What is wrong:** Step E1 makes the scan stratified — sightlines inside Roman's footprint can
 be visited on a finer grid than those outside — so the sightlines no longer stand for equal
@@ -671,7 +679,9 @@ comparison to see whether anything moves.
 
 ---
 
-## No astrometric-shift analysis product exists (raised 2026-09-04, planning Phase H)
+## RESOLVED 2026-10-02 (audit) -- No astrometric-shift analysis product exists (raised 2026-09-04, planning Phase H)
+
+**Closed:** analysis/h5_astrometric_shift.py, h5_astrometry_summary.py and h5_crosscheck.py (Step H5). Kept below for the record.
 
 **What is wrong:** the astrometric microlensing signal — the centroid deflection
 `δθ = θE · u / (u² + 2)` — is computed per epoch in `lightcurve()` (`s.def1c`/`s.def2c`, stored
@@ -1034,7 +1044,9 @@ profiles for a quantity that must be identical.
 
 Scripts: `perf_h7.sh`, `perf_startup.sh`, `perf_cmp.py`, `h7_final.py`, `h7_attrib.py`.
 
-## Startup costs ~170 s, ~40% of it parsing ~1000 extinction files, and every chunk pays it
+## RESOLVED 2026-10-02 (audit) -- Startup costs ~170 s, ~40% of it parsing ~1000 extinction files, and every chunk pays it
+
+**Closed:** the extinction tables are one file since Deviation 70; a production dry run starts in 26 s. Kept below for the record.
 
 **Status: open, measured 2026-09-07. Not a correctness issue.**
 
@@ -1057,7 +1069,9 @@ step's business.
 <!-- Superseded 2026-09-07 by the entry above. Kept verbatim: its two refuted
      hypotheses remain correct and useful; only its concluding magnitude is withdrawn. -->
 
-## Step H7 made footprint sightlines ~6x more expensive, and the mechanism is unknown
+## RESOLVED 2026-10-02 (audit) -- Step H7 made footprint sightlines ~6x more expensive, and the mechanism is unknown
+
+**Closed:** superseded by the resolved profiling entry (already marked SUPERSEDED in its text). Kept below for the record.
 
 **Status: SUPERSEDED 2026-09-07 — see the resolved entry above. Left as written for the
 record. Its two refuted hypotheses stand; its concluding magnitude (2.5-6.6x, and "roughly 3x
@@ -1340,7 +1354,9 @@ single-field v5.1 number cannot distinguish a bug from a setup difference.
 
 ---
 
-## Pooled per-event statistics give every sightline the same number of events, whatever its event rate
+## RESOLVED 2026-10-02 (audit) -- Pooled per-event statistics give every sightline the same number of events, whatever its event rate
+
+**Closed:** resolved by Steps W1/W2 (Deviations 41, 43), as its own text says. Kept below for the record.
 
 **Status: open, found 2026-09-15 while preparing Step E2. DERIVED AND MEASURED 2026-09-15 --
 Deviation 41. The framing below is superseded:** the per-sightline terms move pooled fractions
@@ -1388,7 +1404,9 @@ decide whether F1-F4 need regenerating.
 
 ---
 
-## The per-mass and per-parallax detection efficiencies have never been computed
+## RESOLVED 2026-10-02 (audit) -- The per-mass and per-parallax detection efficiencies have never been computed
+
+**Closed:** resolved in Deviation 46, as its own text says. Kept below for the record.
 
 **Status: RESOLVED 2026-09-17 the same day it was found -- Deviation 46.** All six missing
 curves are now computed (measured: their `EfLMC` columns went from summing to exactly 0 to being
@@ -1459,7 +1477,9 @@ on the raw sample and are labelled as such in the script's output.
 
 ---
 
-## The map file's stream is never flushed, so a killed run loses its last sightline rows
+## RESOLVED 2026-10-02 (audit) -- The map file's stream is never flushed, so a killed run loses its last sightline rows
+
+**Closed:** the code was fixed in Deviation 42; the affected v3 data were deleted on 2026-10-01. Kept below for the record.
 
 **Status: the code is FIXED (2026-09-16, Deviation 42) -- `fil3`, `fil2` and `fil2b` now flush
 per sightline, verified by killing a stub run under both binaries. This entry stays open for the

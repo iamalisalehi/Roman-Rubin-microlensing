@@ -5145,4 +5145,30 @@ photometric steps ~1e4 too large.
 **Verification.** fixture PASS (all assertions); tetE column moves in the 4th digit through its
 correlation with piE; `--astro-variants` PASS.
 
+**Commit:** `0a518f0`.
+
+## 76. M4: a stray telescope epoch no longer breaks the joint fit; gap geometry from the observed peak (2026-10-02)
+
+**1. The x8.3 lens-mass event, investigated (OPEN_ITEMS; its proposed cause was incomplete).** In
+runs/prod_bulge_20260924 (test5_detJ.dat) exactly 1 of 12,461 events with both masses measured has
+relMl_J > relMl_R: ratio 8.34, tE 62.5 d, **ndw_L = 1, ndw_R = 50,181**, okA_J = 0 with condA_J =
+1.46e16 (rejected), okA_R = 1 (cond 4.5e6). Cause: `activePhotParams` switches a telescope's flux
+pair (fb, mbs) on as soon as it has ONE epoch; one epoch cannot constrain two parameters, the joint
+photometric matrix went singular, and the joint mass fell back to the (worse) astrometric piE.
+**Fix:** a telescope with fewer than `kMinTeleEpochs` = 3 epochs in an event is left out of the
+photometric matrices (its epochs carry next to no information; Bulge.h). New fixture check
+`checkFewEpochTelescope` (433 Roman epochs + exactly 1 Rubin epoch): PASS with the fix (okA_J 1,
+sigma_tE J = R); with the old rule (threshold 1) it FAILS exactly as in production (okA_J 0) --
+verified, then restored.
+
+**2. The observed peak (OPEN_ITEMS "the table's t0 is not the observed peak").** `observedPeak()`:
+minimum of the Earth-observer separation u(t) over t0 +- 3 tE (600-point grid + golden section). No
+random numbers (pilot draws identical), no measurable cost (116.6 vs 117.2 s CPU on the stub).
+`t0zone`, `dt_edge` and `nep_pk_{L,R}` (and the sample classes that use them) are now measured from
+t0obs; columns `t0obs umin_obs` appended. Pilot (bulge stub, 917 draws): |t0obs - t0|/tE median
+0.109 (the 0.12 measured on the S1 events), 90% 0.49; u_min_obs/u0 median 1.04; t0zone changes for
+39 draws, 9 of the 89 detections.
+
+**Verification.** Builds; fixture PASS including the new check; pilot as above.
+
 **Commit:** see the next commit.

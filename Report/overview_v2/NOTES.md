@@ -29,7 +29,9 @@ Plan these notes follow: `/home/ali/.claude/plans/i-want-to-do-resilient-humming
 | 2 | Extinction tables rebuilt from DECaPS + Marshall (dustmaps), regular grid, one file; hardened reader | 70 | (pending) | everything, most near the plane (U5 estimated x0.4-0.9) |
 | M1 | Roman: AB->Vega before the astrometric error curve (x0.45 at the median source); photometric curve anchored to STScI 66-s depth 25.45 AB, interpolated; depth/saturation sourced | 72 | 5b10cdb |
 | M1b | Rubin: per-visit depth/saturation gate (visit fiveSigmaDepth, -8.3); FWHM = median seeingFwhmGeom of the bulge visits; gamma from Ivezic 2019 | 73 | 0e22ab6 |
-| M2 | Luminous lenses (bulge population, MS stars) add their light to the blend; astrometric centroid light-weighted (source, lens, blend) | 74 | (next) |
+| M2 | Luminous lenses (bulge population, MS stars) add their light to the blend; astrometric centroid light-weighted (source, lens, blend) | 74 | 7a572b3 |
+| M3 | Astrometric derivative steps swept; central stencil | 75 | 0a518f0 |
+| M4 | Telescopes with < 3 epochs left out of the photometric fit (fixes the x8.3 mass event); gap geometry (t0zone, dt_edge) from the observed peak t0obs | 76 | (next) |
 | 3 | Astrometric reference position freed; sqrt(2) per-coordinate fix; correlated-floor bracket | 71 | 39b50c0 | every theta_E / mass number |
 
 ## Section by section
@@ -323,4 +325,9 @@ the floor.
   (0.1% in r).
 - **Physics worth a sentence:** lens light both dilutes the shift and pulls the centroid toward the
   lens; it is why theta_E for ordinary lenses is harder than for black holes beyond the sqrt(M) factor.
+
+### M3/M4 (2026-10-02, Deviations 75-76)
+- **Gap filling (Sec. 4.3):** "in a gap" is now judged by the OBSERVED peak time (parallax included),
+  not the model's reference t0 -- 10% of detections change zone in the pilot. Say so in the method.
+- Numerical: astrometric derivatives verified step-independent (sweep); no text needed beyond a line.
 

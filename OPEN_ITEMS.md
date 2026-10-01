@@ -1571,7 +1571,9 @@ streams, `save`, and `initial` (which only exists to widen that dead block's tim
 the output-file table in DEVIATIONS.md; confirm a stub run is byte-identical before and after.
 Do **not** instead make the gate reachable.
 
-## The table's t0 is not the observed peak, and t0zone / dt_edge / nep_pk are all computed from it
+## RESOLVED 2026-10-02 (Deviation 76) -- The table's t0 is not the observed peak, and t0zone / dt_edge / nep_pk are all computed from it
+
+**Resolved:** t0obs (Earth-frame observed peak) computed per event; t0zone, dt_edge, nep_pk now use it; columns t0obs, umin_obs (Deviation 76). Analyses that need the peak should read t0obs.
 
 **What is wrong.** `lightcurve()` measures the observer's displacement from Earth's position at
 **t = 0** (the start of the simulation), so `u0` and `t0` are the closest approach and its time
@@ -1853,7 +1855,9 @@ the fraction of detR = 1 events with t0zone = 2 (or with nep_pk_R = 0), weighted
 whether the report should quote Roman yields with a peak-coverage requirement as well.
 
 
-## One bulge event violates sigma_joint <= sigma_Roman on the lens mass by a factor 8.3 (2026-09-26)
+## RESOLVED 2026-10-02 (Deviation 76) -- One bulge event violates sigma_joint <= sigma_Roman on the lens mass by a factor 8.3 (2026-09-26)
+
+**Resolved:** cause found -- one Rubin epoch made the joint photometric matrix singular (cond 1.46e16); telescopes with < 3 epochs are now left out of the photometric matrices; fixture check added (Deviation 76).
 
 **What is wrong.** `f3_characterization_map.py` on the post-fix bulge detections
 (`figures/wp_20260926/f3.log`) reports `('Ml', 'roman', 8.34, 1)`: one event whose joint lens-mass

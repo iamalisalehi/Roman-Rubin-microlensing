@@ -114,6 +114,33 @@ double errRomanM(const roman& ro, double mag)
 ///                                                              //
 ///==============================================================//
 
+// ---------------------------------------------------------------------------------------
+// The OBSERVED peak (Deviation 76). The table's t0 and u0 are the closest approach of the straight
+// line in lightcurve()'s gauge, where parallax is referenced to Earth's position at t = 0; the
+// event an observer sees is the parallax-bent trajectory, whose closest approach comes at another
+// time (median offset ~0.12 tE on the S1 sample events, OPEN_ITEMS). This finds it for the Earth
+// observer: a grid of 600 points over t0 +- 3 tE, then golden-section refinement. Uses no random
+// numbers; leaves s/as holding the state at the returned time (callers recompute what they need).
+// ---------------------------------------------------------------------------------------
+std::pair<double, double> observedPeak(source& s, lens& l, astromet& as)
+{
+    auto uAt = [&](double t) { lightcurve(s, l, as, t, 0); return s.ut; };
+    const double lo = l.t0 - 3.0 * l.tE, hi = l.t0 + 3.0 * l.tE;
+    const int    N  = 600;
+    const double h  = (hi - lo) / N;
+    int best = 0; double ubest = uAt(lo);
+    for (int k = 1; k <= N; ++k) { const double u = uAt(lo + k * h); if (u < ubest) { ubest = u; best = k; } }
+    double a = lo + std::max(best - 1, 0) * h, b = lo + std::min(best + 1, N) * h;
+    const double g = 0.5 * (std::sqrt(5.0) - 1.0);
+    double c = b - g * (b - a), d = a + g * (b - a), fc = uAt(c), fd = uAt(d);
+    for (int it = 0; it < 60 and (b - a) > 1e-6 * l.tE; ++it) {
+        if (fc < fd) { b = d; d = c; fd = fc; c = b - g * (b - a); fc = uAt(c); }
+        else         { a = c; c = d; fc = fd; d = a + g * (b - a); fd = uAt(d); }
+    }
+    const double t = 0.5 * (a + b);
+    return {t, uAt(t)};
+}
+
 #ifndef FISHER_FIXTURE_BUILD
 // main() is excluded when this translation unit is linked into the Fisher-matrix
 // test fixture (tests/fisher_fixture.cpp), which supplies its own main(). Everything
@@ -165,7 +192,10 @@ const char* eventTableHeader()
         "okB_NJ okB_NR okB_PJ okB_PR "
         // Deviation 74: luminous lens (1 = a main-sequence star whose light is blended) and the
         // lens's share of the baseline flux in Rubin's reference band and in F146.
-        "lensLum fLens_L fLens_R";
+        "lensLum fLens_L fLens_R "
+        // Deviation 76: the observed (Earth-frame, parallax-bent) peak time and impact parameter.
+        // t0zone, dt_edge and nep_pk_* are now measured from t0obs, not from t0.
+        "t0obs umin_obs";
 }
 
 struct RunConfig {
@@ -417,7 +447,7 @@ struct SampleFacts {
     int    detL, detR, detJ;  //per-survey and joint detection booleans
     double tE;                //Einstein crossing time [days]
     int    t0zone;            //0 = t0 in a Roman season, 1 = mid-mission gap, 2 = off-mission
-    int    nepLpk, nepRpk;    //epochs within +-2 tE of t0, per survey
+    int    nepLpk, nepRpk;    //epochs within +-2 tE of the OBSERVED peak t0obs, per survey (Dev. 76)
     int    ndwL, ndwR;        //epochs over the WHOLE mission, per survey. ndwR == 0 means
                               //Roman never observed this sightline at all: it lies outside
                               //the GBTDS footprint
@@ -2526,6 +2556,9 @@ int main(int argc, char** argv) {
                 }
 //            CHECK(gg >= 0);
 
+            // Deviation 76: the observed peak, and the gap geometry measured from it.
+            const auto [t0obs, uminObs] = observedPeak(*s, *l, *as);
+
             records.push_back(EventRecord{
                 icon, static_cast<int>(FFG[0]),
                 l->tE, l->RE/AU, l->piE, l->tetE, l->Vt, l->u0, l->Ml,
@@ -2554,7 +2587,7 @@ int main(int argc, char** argv) {
                 co->relMl[SJOINT], co->relMl[SRUBIN], co->relMl[SROMAN],
                 co->okB[SJOINT], co->okB[SRUBIN], co->okB[SROMAN],
                 co->condB[SJOINT], co->condB[SRUBIN], co->condB[SROMAN],
-                sched.dtToSeasonEdge(l->t0), sched.zone(l->t0),
+                sched.dtToSeasonEdge(t0obs), sched.zone(t0obs),
                 nres5_L, nres20_L, nresPSF_L, nres5_R, nres20_R, nresPSF_R,
                 dsepMax_L, dsepMax_R
             });
@@ -2595,7 +2628,7 @@ int main(int argc, char** argv) {
             {
                 const double win = 2.0 * l->tE;
                 for (int i = 0; i < ndw; ++i) {
-                    if (std::fabs(l->timn[i] - l->t0) > win) continue;
+                    if (std::fabs(l->timn[i] - t0obs) > win) continue;   // Deviation 76
                     if (int(l->tele[i]) == 1) nepRpk += 1;
                     else                      nepLpk += 1;
                 }
@@ -2633,7 +2666,7 @@ int main(int argc, char** argv) {
                     // Gap geometry. dt_edge is NEGATIVE when t0 fell inside a Roman season;
                     // t0zone distinguishes a mid-mission gap (1) from before-launch/after-end
                     // (2), which must never be pooled -- only the former is gap-filling.
-                    << sched.dtToSeasonEdge(l->t0) << " " << sched.zone(l->t0) << " "
+                    << sched.dtToSeasonEdge(t0obs) << " " << sched.zone(t0obs) << " "
                     // Sky area this event's sightline stands for, deg^2 (Step E1). Constant
                     // across an unstratified run; NOT constant once --stride-roman is used,
                     // and then any statistic pooled over sightlines must weight by it.
@@ -2652,7 +2685,8 @@ int main(int argc, char** argv) {
                     << co->relMlV[AV_P][SJOINT] << " " << co->relMlV[AV_P][SROMAN] << " "
                     << co->okBV[AV_N][SJOINT] << " " << co->okBV[AV_N][SROMAN] << " "
                     << co->okBV[AV_P][SJOINT] << " " << co->okBV[AV_P][SROMAN] << " "
-                    << int(l->luminous) << " " << s->fLens[0] << " " << s->fLens[1] << "\n";
+                    << int(l->luminous) << " " << s->fLens[0] << " " << s->fLens[1] << " "
+                    << t0obs << " " << uminObs << "\n";
             filg_in.close();
 
             // ------------------------------------------------------------------------------
@@ -2671,7 +2705,7 @@ int main(int argc, char** argv) {
                     maxShift = std::max(maxShift,
                                         std::sqrt(e.def1c * e.def1c + e.def2c * e.def2c));
 
-                const SampleFacts facts{detL, detR, detJ, l->tE, sched.zone(l->t0),
+                const SampleFacts facts{detL, detR, detJ, l->tE, sched.zone(t0obs),
                                         nepLpk, nepRpk, ndw_L, ndw_R,
                                         co->okB[SROMAN], maxShift};
 
@@ -2720,8 +2754,8 @@ int main(int argc, char** argv) {
                        << "detL "         << detL          << "\n"
                        << "detR "         << detR          << "\n"
                        << "detJ "         << detJ          << "\n"
-                       << "dt_edge "      << sched.dtToSeasonEdge(l->t0) << "\n"
-                       << "t0zone "       << sched.zone(l->t0)           << "\n"
+                       << "dt_edge "      << sched.dtToSeasonEdge(t0obs) << "\n"
+                       << "t0zone "       << sched.zone(t0obs)           << "\n"
                        << "du_sat "       << duSat         << "\n"
                        << "max_shift "    << maxShift      << "\n"
                        << "dsep_max_L "   << dsepMax_L     << "\n"
@@ -3340,8 +3374,13 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 
 
 
+    // Deviation 76: a telescope with fewer than kMinTeleEpochs epochs is left out (see Bulge.h).
+    std::array<int, 2> nTele{0, 0};
+    for (int i = 0; i < ndw; ++i) nTele[int(l.tele[i]) == 1 ? 1 : 0] += 1;
+
     for (int i = 0; i < ndw; ++i) {//data
         tt = int(l.tele[i]);//telescope[0,1] LSST, ELT
+        if (nTele[tt == 1 ? 1 : 0] < kMinTeleEpochs) continue;
         const int surv = surveyOfTele(tt); // which single-survey matrix this epoch also feeds
         co.nepochA[SJOINT] += 1;
         co.nepochA[surv]   += 1;

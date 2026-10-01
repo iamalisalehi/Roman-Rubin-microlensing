@@ -900,6 +900,43 @@ bool checkSeasonClustering()
 // Step M3 (Deviation 75): step-size sweep of the ASTROMETRIC derivatives, the counterpart of
 // --sweep for the photometric ones. One parameter's step is scaled at a time (others at 1); prints
 // CSV of sigma (variant W) per event, partition, parameter and scale.
+// Deviation 76: one stray epoch from a telescope must not make the joint photometric matrix
+// singular. Take an event with 433 Roman epochs, keep exactly ONE Rubin epoch, and require that
+// the joint matrix inverts and that sigma_joint <= sigma_Roman for tE (it was rejected at
+// condition 1.5e16 on the bulge event with ndw_L = 1, whose joint mass error came out 8.3x Roman's).
+bool checkFewEpochTelescope()
+{
+    auto s  = std::make_unique<source>();
+    auto l  = std::make_unique<lens>();
+    auto as = std::make_unique<astromet>();
+    auto co = std::make_unique<covarian>();
+    const auto& ev = kEvents[0];                       // short_inseason
+    setupStatic(*s, *l);
+    l->tE = ev.tE; l->t0 = ev.t0; l->u0 = ev.u0; l->piE = ev.piE;
+    int nL = 0, nR = 0;
+    int ndw = buildLightCurve(*s, *l, *as, nL, nR);
+    // Keep the Roman epochs and the first Rubin epoch only, compacting the buffers in place.
+    int w = 0; bool keptRubin = false;
+    for (int i = 0; i < ndw; ++i) {
+        if (l->tele[i] == 0) { if (keptRubin) continue; keptRubin = true; }
+        l->timn[w] = l->timn[i]; l->magn[w] = l->magn[i]; l->errm[w] = l->errm[i];
+        l->soux[w] = l->soux[i]; l->souy[w] = l->souy[i]; l->erra[w] = l->erra[i];
+        l->tele[w] = l->tele[i]; l->rseas[w] = l->rseas[i]; l->rroll[w] = l->rroll[i];
+        ++w;
+    }
+    ndw = w;
+    l->tE = ev.tE; l->t0 = ev.t0; l->u0 = ev.u0; l->piE = ev.piE;
+    s->xi = kXi; s->fb[0] = kFbRubin; s->fb[1] = kFbRoman; s->mbs[0] = kMbsRubin; s->mbs[1] = kMbsRoman;
+    FisherM(*s, *l, *as, *co, ndw);
+    ErrorCal(*co, *l, *s);
+    const bool ok = co->okA[SJOINT] == 1 && co->okA[SROMAN] == 1
+                 && co->Era[SJOINT][1] <= co->Era[SROMAN][1] * (1.0 + 1e-9);
+    std::cout << "# --- one stray Rubin epoch (Deviation 76) ---\n# okA_J " << co->okA[SJOINT]
+              << "  okA_R " << co->okA[SROMAN] << "  sigma_tE J/R " << co->Era[SJOINT][1] << " / "
+              << co->Era[SROMAN][1] << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
 int runSweepAstro()
 {
     auto s  = std::make_unique<source>();
@@ -1021,6 +1058,7 @@ int main(int argc, char** argv)
     // the event table, which is long.
     if (!checkSentinelDiscipline()) ++failures;
     if (!checkSeasonClustering())   ++failures;
+    if (!checkFewEpochTelescope())  ++failures;
 
     std::cout << "# Fisher-matrix fixture -- synthetic events, no data files required\n"
               << "# Nx=" << Nx << " (photometric)  Ny=" << Ny << " (astrometric)\n"

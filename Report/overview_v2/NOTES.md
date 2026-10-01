@@ -27,7 +27,7 @@ Plan these notes follow: `/home/ali/.claude/plans/i-want-to-do-resilient-humming
 |---|---|---|---|---|
 | 1 | Adopted GBTDS layout (spring/autumn, 18-SCA detectors); scan region by distance rule; Roman start day 730 -> 306 (2027-02-11); Rubin visit list 3,686 -> 12,308; footprint area post-stratified | 69 | 078756b | Roman footprint yields, Rubin whole-scan totals, gap geometry (timeline vs Rubin seasons) |
 | 2 | Extinction tables rebuilt from DECaPS + Marshall (dustmaps), regular grid, one file; hardened reader | 70 | (pending) | everything, most near the plane (U5 estimated x0.4-0.9) |
-| 3 | Astrometric reference position audit; correlated-floor bracket | | | every theta_E / mass number |
+| 3 | Astrometric reference position freed; sqrt(2) per-coordinate fix; correlated-floor bracket | 71 | (pending) | every theta_E / mass number |
 
 ## Section by section
 
@@ -186,4 +186,33 @@ k = A_Ks/A_V = 0.0830, measured where both maps are valid (the median ratio at 8
 five-field block, 580 positions). It is used only where DECaPS stops seeing -- beyond DECaPS's own
 reliable distance, and outright once its calibrated column passes DECaPS's sensitivity limit
 (A_V = 12), which happens at 53% of table positions, typically from ~4.5 kpc.
+
+### Step 3 -- the astrometric floor (2026-10-01, Deviation 71, in progress)
+- **Two corrections to state plainly (they move every theta_E and mass number):** (A) the fit now
+  solves for the source's reference position, as every real astrometric fit does (Lam+2026 Eq. 1-2);
+  before, theta_E was partly "measured" from the source's absolute position. Fixture: sigma(theta_E)
+  x1.4-10 larger. (B) per-coordinate errors: the sources quote 1D (x or y) precisions; the old code
+  doubled each coordinate's variance. sigma x1/sqrt(2).
+- **The floor, in one paragraph for Sec. 5:** Roman's per-exposure centroiding floor of 1% of a pixel
+  (1.1 mas per coordinate; Sanderson+2019, Lam+2026, McKinnon & van der Marel 2026) is everywhere
+  treated as white noise that averages down as sqrt(N). The GBTDS's several-pixel and sub-pixel
+  dithers sample the pixel phase, which is what makes that plausible (Lam+2026). Correlated
+  systematics -- distortion residuals (few x 0.1% pixel; Bellini 2024), crowding biases (~mas, fixed
+  per roll), frame alignment -- are acknowledged in all three papers and quantified in none
+  ("it is not clear how best to incorporate these effects", McKinnon & van der Marel). We therefore
+  report a bracket (Step 3c). Note also: a time-CONSTANT error is absorbed by the reference position
+  and costs nothing; only correlations on timescales shorter than the event matter.
+- Literature PDFs/text used: arXiv 1712.05420, 2608.24998, 2602.00310, 2601.10789 (refs to add to
+  Report/refs.bib: McKinnon & van der Marel 2026 PASP 138; Kaczmarek+2026 A&A; Lam+2026 already cited).
+- **Implemented (3c) and piloted.** Report it as: theta_E and masses are quoted under the white-noise
+  assumption the literature uses (W), with the nominal (N) and pessimistic (P) bracket beside every
+  number. Pilot (bulge lenses, stub, unweighted): sigma(theta_E) N/W ~1.5, P/W ~12; theta_E to 10%:
+  7.9% / 1.3% / 0% (W/N/P). The old report's astrometric headlines (H5, Sec. 4.7; bh/ns masses in
+  4.10; yields of masses to 10% in 4.12; image-resolution bars use sigma_a too -- check R1's D*sigma_a
+  bars, which use erra per coordinate and are unaffected by fix A) must all be redone.
+- **Figure worth making:** sigma(theta_E)/theta_E CDF for W/N/P, per population (bulge/ns/bh), from
+  the production tables; and the fraction to 10% vs lens mass for the three variants.
+- **Method box for Sec. 2.3 (three Fisher matrices):** the astrometric matrix now has a free
+  reference position per frame (telescope; per roll in N; per season in P) and day-correlated noise;
+  a one-line flowchart addition.
 

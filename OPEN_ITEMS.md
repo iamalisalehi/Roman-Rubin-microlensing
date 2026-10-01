@@ -1141,7 +1141,23 @@ that the precision consequence is unmeasured. `analysis/h3_satellite_parallax.py
 in code: it withholds the ratios when the checks fail.
 
 
-## Roman's 1.1 mas astrometric floor is treated as independent per exposure, and it may not be
+## ADDRESSED 2026-10-01 BY A BRACKET (Deviation 71) -- Roman's 1.1 mas astrometric floor is treated as independent per exposure, and it may not be
+
+**STATUS 2026-10-01.** The literature (Sanderson+2019, Lam+2026, McKinnon & van der Marel 2026,
+Kaczmarek+2026; read in full, Deviation 71) treats the floor as white, with the GBTDS's sub-pixel
+dithers as the physical justification, and quantifies no correlated part. So every event now carries
+three forecasts: W (white; the main columns), N (offset per Roman roll + 0.3 mas per coordinate
+shared within each day) and P (offset per Roman season + the full 1.1 mas shared within each day);
+columns `sigtetE_{N,P}{J,R}`, `relMl_{N,P}{J,R}`, `okB_{N,P}{J,R}`; `romanlib.sigma(..., noise=)`.
+**Two corrections made on the way, which move every theta_E number:** the source's reference
+position is now free (it was not: theta_E was partly measured from the absolute position), and the
+per-coordinate error is no longer doubled in variance. **The text below is kept for the record but
+is partly wrong:** "in the fully-correlated limit ... theta_E would not be measurable at all" -- with
+the reference position free, an error constant over the mission is absorbed and costs nothing; only
+correlation on timescales shorter than the event matters, which is what N and P model. Remove this
+entry once the N/P bracket has been measured on production runs and reported. The remaining open
+question is the TRUE split, which only Roman data (or the Roman project's astrometry simulations)
+can give.
 
 **Status: open, identified 2026-09-11 while producing the H5 astrometric results. This is the
 dominant caveat on every theta_E and lens-mass number in the project.**

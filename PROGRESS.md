@@ -41,7 +41,7 @@ then new bulge/bh/ns production runs and a NEW overview report.** Plan (approved
   deleted runs (e.g. `figures/prod_20260918/`, `figures/yield_prefix_20260922/`) remain.
   NOTE: the 09-24 run dirs symlink `Baseline/` and `files/ext` to the live ones, which Steps 1-2
   change; their original visit lists are in `Baseline/legacy_layout40395/`.
-- **Step 2 ✅ extinction (Deviation 70; NOT yet committed).** `files/ext/ext_tables.dat` (47.5 MB,
+- **Step 2 ✅ extinction (Deviation 70; commit fcd6c82; old tables deleted in 94b03ff).** `files/ext/ext_tables.dat` (47.5 MB,
   15,965 positions x 399 distances, ~25 MB in RAM) built by the rewritten `maps.py` from DECaPS +
   Marshall via dustmaps (`analysis/dustref.py`, shared with U5; profiles forced non-decreasing);
   k = 0.0830 on the adopted five-field block. Raw maps cached `files/ext_raw/raw_899b8b0c531d.npz`.
@@ -50,6 +50,18 @@ then new bulge/bh/ns production runs and a NEW overview report.** Plan (approved
   `figures/ext_20261001/`; **residual: GC field ~10% thin** (contrast 4.74 vs VVV 5.52; new
   OPEN_ITEMS entry). Pilot: every draw's A_r matches the tables to 0.017 mag. Old tables archived in
   `files/ext_bayestar_v1/` (U4/U5 read them).
+- **Step 3 ✅ astrometric floor (Deviation 71; NOT yet committed).** Two pre-existing errors fixed
+  (user's decision): (A) the source's reference position is now free per frame group -- before,
+  tetE was partly measured from the absolute position; (B) erra is the per-coordinate sigma (was
+  doubled in variance). FisherM's astrometry rewritten (one derivative pass per epoch; day blocks;
+  Sherman-Morrison); every event now carries W (white, main columns), N (offset per roll + 0.3
+  mas/day) and P (offset per season + 1.1 mas/day): 12 new columns, `romanlib.sigma(noise=)`,
+  `fishertest --astro-variants`. **Pilot (stub, bulge, 76 Roman detections): sigma(tetE) W is 6.8x
+  the old value (median); N/W 1.46, P/W 12; theta_E to 10%: W 7.9%, N 1.3%, P 0%.** Every theta_E and
+  mass number in the existing reports is therefore optimistic by more than the dust or footprint
+  corrections; the bh numbers need the production runs.
+- **Next:** commit Step 3; then the user's minor items (F146 depth `thre[6]`, Roman photometric
+  noise, `--seed`/`--end-index`, DET_ANOMALY, LSSTCam outline...), then the production runs.
 
 **Newest (2026-09-30): the overview report quotes dust-corrected numbers on a VVV-verified dust
 reference (Deviation 63).** The extinction tables are wrong near the plane: maps.py's documented

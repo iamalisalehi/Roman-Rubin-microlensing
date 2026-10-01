@@ -161,7 +161,12 @@ const char* eventTableHeader()
         // Step R1. Epoch counts at which the two lensing-induced images were separately
         // detectable AND separated by more than the bar named in the suffix; dsep_max is the
         // largest separation reached at such an epoch, -1 if there was none.
-        "nres5_L nres20_L nresPSF_L dsep_max_L nres5_R nres20_R nresPSF_R dsep_max_R";
+        "nres5_L nres20_L nresPSF_L dsep_max_L nres5_R nres20_R nresPSF_R dsep_max_R "
+        // Deviation 71. The astrometric forecast under the N (nominal) and P (pessimistic)
+        // noise variants, joint and Roman partitions; the main sigtetE_*/relMl_*/okB_* columns
+        // are variant W (white). Rubin's partition is the same in all three. See AST_SIGC.
+        "sigtetE_NJ sigtetE_NR sigtetE_PJ sigtetE_PR relMl_NJ relMl_NR relMl_PJ relMl_PR "
+        "okB_NJ okB_NR okB_PJ okB_PR";
 }
 
 struct RunConfig {
@@ -1958,14 +1963,16 @@ int main(int argc, char** argv) {
                                 chi2_L += std::fabs((magnio -  magni0[fi]) * (magnio -  magni0[fi]) / (errg * errg));
                                 chi3_L += std::fabs((magnio - s->magb[fi]) * (magnio - s->magb[fi]) / (errg * errg));
 
-                                sil  = RandN(errs * std::sqrt(2.0), 3.0);
+                                // erra is the per-coordinate sigma (Deviation 71; was drawn and
+                                // divided as if each coordinate had variance 2 errs^2).
+                                sil  = RandN(errs, 3.0);
                                 sil2 = RandN(errs, 3.0);
 
-                                chi1a += std::fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs * 2.0)); //real trajectory
-                                chi2a += std::fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs * 2.0)); //real without lensing
+                                chi1a += std::fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs)); //real trajectory
+                                chi2a += std::fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs)); //real without lensing
                                 chi3a += std::fabs( sil2  * sil2 / (errs * errs));
-                                chi1a_L += std::fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs * 2.0));
-                                chi2a_L += std::fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs * 2.0));
+                                chi1a_L += std::fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs));
+                                chi2a_L += std::fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs));
                                 chi3a_L += std::fabs( sil2  * sil2 / (errs * errs));
 
                                 CHECK(ndw < coun); // array-bounds guard — see note on `coun` sizing
@@ -1976,6 +1983,7 @@ int main(int argc, char** argv) {
                                 l->souy[ndw] = s->pos2c;
                                 l->erra[ndw] = errs;
                                 l->tele[ndw] = 0; // 0 = LSST
+                                l->rseas[ndw] = -1; l->rroll[ndw] = -1;
 
                                 // Step S1. Everything here was computed above for the
                                 // detection test; nothing new is drawn. magnio in
@@ -2101,13 +2109,13 @@ int main(int argc, char** argv) {
                                     }
                                 }
 
-                                silR  = RandN(errsR * std::sqrt(2.0), 3.0);
+                                silR  = RandN(errsR, 3.0);
                                 sil2R = RandN(errsR, 3.0);
-                                chi1a += std::fabs((trajp + silR - trajp) * (trajp + silR - trajp) / (errsR * errsR * 2.0));
-                                chi2a += std::fabs((trajp + silR - trajm) * (trajp + silR - trajm) / (errsR * errsR * 2.0));
+                                chi1a += std::fabs((trajp + silR - trajp) * (trajp + silR - trajp) / (errsR * errsR));
+                                chi2a += std::fabs((trajp + silR - trajm) * (trajp + silR - trajm) / (errsR * errsR));
                                 chi3a += std::fabs( sil2R * sil2R / (errsR * errsR));
-                                chi1a_R += std::fabs((trajp + silR - trajp) * (trajp + silR - trajp) / (errsR * errsR * 2.0));
-                                chi2a_R += std::fabs((trajp + silR - trajm) * (trajp + silR - trajm) / (errsR * errsR * 2.0));
+                                chi1a_R += std::fabs((trajp + silR - trajp) * (trajp + silR - trajp) / (errsR * errsR));
+                                chi2a_R += std::fabs((trajp + silR - trajm) * (trajp + silR - trajm) / (errsR * errsR));
                                 chi3a_R += std::fabs( sil2R * sil2R / (errsR * errsR));
 
                                 flag2_R = 0.0;
@@ -2134,6 +2142,11 @@ int main(int argc, char** argv) {
                                 // own per-exposure error is both used and stored.
                                 l->erra[ndw] = errsR;
                                 l->tele[ndw] = 1; // 1 = Roman/F146
+                                // Season and roll of this exposure, for the astrometric noise
+                                // variants' day blocks and frame groups (Deviation 71).
+                                l->rseas[ndw] = sched.seasonOf(ro->tim[sqR]);
+                                l->rroll[ndw] = ro->layout[sqR];
+                                CHECK(l->rseas[ndw] >= 0);
 
                                 // Step S1, Roman side. s->ut, s->def* and s->pos* are the
                                 // L2-frame values lightcurve(..., 1) rebuilt above, not the
@@ -2206,6 +2219,10 @@ int main(int argc, char** argv) {
                     co->relMl[q] = -1.0;
                     for (int k = 0; k < Nx; ++k) co->Era[q][k] = -1.0;
                     for (int k = 0; k < Ny; ++k) co->Erb[q][k] = -1.0;
+                    for (int v = 0; v < NAVAR; ++v) {
+                        co->okBV[v][q] = 0; co->condBV[v][q] = -1.0; co->relMlV[v][q] = -1.0;
+                        for (int k = 0; k < Ny; ++k) co->ErbV[v][q][k] = -1.0;
+                    }
                 }
     
                 FFG[0] = 0;
@@ -2587,7 +2604,14 @@ int main(int argc, char** argv) {
                     // survey, then the largest separation reached while both were detectable
                     // (-1 = never). The three bars differ only in what counts as "resolved".
                     << nres5_L << " " << nres20_L << " " << nresPSF_L << " " << dsepMax_L << " "
-                    << nres5_R << " " << nres20_R << " " << nresPSF_R << " " << dsepMax_R << "\n";
+                    << nres5_R << " " << nres20_R << " " << nresPSF_R << " " << dsepMax_R << " "
+                    // Deviation 71: astrometric noise variants N and P (joint, Roman).
+                    << co->ErbV[AV_N][SJOINT][0] << " " << co->ErbV[AV_N][SROMAN][0] << " "
+                    << co->ErbV[AV_P][SJOINT][0] << " " << co->ErbV[AV_P][SROMAN][0] << " "
+                    << co->relMlV[AV_N][SJOINT] << " " << co->relMlV[AV_N][SROMAN] << " "
+                    << co->relMlV[AV_P][SJOINT] << " " << co->relMlV[AV_P][SROMAN] << " "
+                    << co->okBV[AV_N][SJOINT] << " " << co->okBV[AV_N][SROMAN] << " "
+                    << co->okBV[AV_P][SJOINT] << " " << co->okBV[AV_P][SROMAN] << "\n";
             filg_in.close();
 
             // ------------------------------------------------------------------------------
@@ -3584,35 +3608,52 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         for(int k = 0; k < Ny; ++k){
             gsl_matrix_set(co.inputB[q].get(), j, k, 0.0);
             gsl_matrix_set(co.inverB[q].get(), j, k, 0.0);
-            //gsl_matrix_set(co.adjunB, j, k, 0.0);
-            //gsl_matrix_set(co.tempoB, j, k, 0.0);
-            //gsl_matrix_set(co.summ, j, k, 0.0);
         }
     }
 
-    for (int i = 0; i < ndw; ++i) {
-        const int survB = surveyOfTele(int(l.tele[i])); // same partition as the photometric side
+    // ---- Step 3c (Deviation 71): per-coordinate weights, free reference positions, and the
+    // three noise variants (AST_SIGC in Bulge.h), from ONE pass over the epochs. ----
+    //
+    // Per epoch the 4-vector of derivatives of each sky coordinate is computed once (Ny x 2 model
+    // evaluations). Until Deviation 71 the matrix was built element by element and re-evaluated
+    // the k-derivative inside the j loop: 28 evaluations per epoch for the same numbers.
+    //
+    // Sums kept per coordinate c (0 = x, 1 = y): S_w = sum w, S_wd[c][j] = sum w d_cj, S_wdd[c][jk].
+    // Rubin's epochs go into one white group. Roman's go into day blocks (the sigma_c correlation
+    // unit), each tagged with its season and roll so the variants can group them differently.
+    struct AstSums {
+        double Sw = 0.0;
+        std::array<std::array<double, Ny>, 2>      Swd{};
+        std::array<std::array<double, Ny * Ny>, 2> Swdd{};
+        int season = -1, roll = -1;
+        void add(double w, const std::array<double, Ny>& dx, const std::array<double, Ny>& dy) {
+            Sw += w;
+            for (int c = 0; c < 2; ++c) {
+                const auto& d = c ? dy : dx;
+                for (int j = 0; j < Ny; ++j) {
+                    Swd[c][j] += w * d[j];
+                    for (int k = 0; k < Ny; ++k) Swdd[c][j * Ny + k] += w * d[j] * d[k];
+                }
+            }
+        }
+    };
+    AstSums rubin;
+    std::map<long, AstSums> romanDays;
+    std::array<double, Ny> dx{}, dy{};
 
-        // Step H3b, astrometric half of the same correction -- and here it matters for every
-        // parameter, not just the cross-telescope rows: tetE and piE use the one-sided sig2
-        // stencil, so a reference from the wrong observer does not cancel anywhere. soux/souy
-        // were stored as s.pos1c/s.pos2c straight out of lightcurve(), so under an unchanged
-        // observer these two lines reproduce them bit for bit.
+    for (int i = 0; i < ndw; ++i) {
+        // Step H3b / H1: reference and every perturbation evaluated from the observer that
+        // produced THIS datum (see the history of this loop in DEVIATIONS 27 and 37).
         lightcurve(s, l, as, l.timn[i], int(l.tele[i]));
         const double soux0 = s.pos1c, souy0 = s.pos2c;
 
-        for (int j = 0; j < Ny;  ++j) {
-
+        for (int j = 0; j < Ny; ++j) {
             for (int h = 0; h < 2; ++h) {
                 if (j == 0) { co.diff = double(co.Delta2[j] * sig2[h]); l.tetE += co.diff; }
                 if (j == 1) { co.diff = double(co.Delta2[j] * sig[h]);  s.mus1 += co.diff; }
                 if (j == 2) { co.diff = double(co.Delta2[j] * sig[h]);  s.mus2 += co.diff; }
                 if (j == 3) { co.diff = double(co.Delta2[j] * sig2[h]); l.piE  += co.diff; }
 
-
-                // Step H1: the observer that produced THIS datum. A derivative evaluated
-                // with a different observer than its datum makes the Fisher matrix
-                // inconsistent, and the error it produces is not a forecast of anything.
                 lightcurve(s, l, as, l.timn[i], int(l.tele[i]));
                 co.dera1[h] = double(s.pos1c - soux0) / co.diff;
                 co.derb1[h] = double(s.pos2c - souy0) / co.diff;
@@ -3620,82 +3661,97 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 CHECK(l.tetE > 0.0);
                 CHECK(l.piE > 0.0);
                 CHECK(co.diff != 0.0);
-                // A perturbation that leaves BOTH modelled coordinates unchanged is legitimate,
-                // not an error, and the arithmetic above already handles it: the numerator is zero,
-                // so the derivative is zero and this epoch contributes nothing to that parameter's
-                // row -- exactly right, because this epoch carries no information about it.
-                //
-                // It happens for real, structural reasons:
-                //   - An epoch at t == t0 makes the mus1/mus2 terms vanish identically.
-                //   - An epoch at t == 0 has zero parallax offset BY CONSTRUCTION: lightcurve()
-                //     builds ue_n1/ue_n2 as Ve(t) - Ve(0), so at t=0 they are exactly zero and piE
-                //     multiplies nothing. Every light curve starting at t=0 hits this.
-                //   - Far from peak the astrometric deflection falls as 1/u^2, so a piE
-                //     perturbation can move the position by less than a double can represent.
-                //
-                // The previous CHECK aborted the whole program (uncaught std::runtime_error) on all
-                // of these. Removed rather than softened; see OPEN_ITEMS.md.
-                CHECK(l.erra[i] > 0.0);
+                // A null derivative is legitimate (an epoch at t0 or t = 0, or far from the peak);
+                // it contributes nothing to that parameter, which is right. See OPEN_ITEMS.md.
 
                 if (j==0) l.tetE -= co.diff;
                 if (j==1) s.mus1 -= co.diff;
                 if (j==2) s.mus2 -= co.diff;
                 if (j==3)  l.piE -= co.diff;
             }
+            dx[j] = (co.dera1[0] + co.dera1[1]) * 0.5;
+            dy[j] = (co.derb1[0] + co.derb1[1]) * 0.5;
+        }
+        CHECK(l.erra[i] > 0.0);
+        const double w = 1.0 / (l.erra[i] * l.erra[i]);       // per coordinate (Deviation 71)
+        if (int(l.tele[i]) == 0) {
+            rubin.add(w, dx, dy);
+        } else {
+            CHECK(l.rseas[i] >= 0 and l.rseas[i] < AST_MAX_SEASONS);
+            CHECK(l.rroll[i] == 0 or l.rroll[i] == 1);
+            AstSums& d = romanDays[long(std::floor(l.timn[i]))];
+            if (d.season < 0) { d.season = l.rseas[i]; d.roll = l.rroll[i]; }
+            CHECK(d.season == l.rseas[i] and d.roll == l.rroll[i]);
+            d.add(w, dx, dy);
+        }
+    }
 
-            co.dera1f = (co.dera1[0] + co.dera1[1]) * 0.5;
-            co.derb1f = (co.derb1[0] + co.derb1[1]) * 0.5;
-
-
-            for (int k = 0; k <= j; ++k) {
-                for (int h = 0; h < 2; ++h) {
-                    if (k==0) {co.diff = double(co.Delta2[k] * sig2[h]);  l.tetE += co.diff;}
-                    if (k==1) {co.diff = double(co.Delta2[k] * sig[h] );  s.mus1 += co.diff;}
-                    if (k==2) {co.diff = double(co.Delta2[k] * sig[h] );  s.mus2 += co.diff;}
-                    if (k==3) {co.diff = double(co.Delta2[k] * sig2[h]);  l.piE  += co.diff;}
-
-                    lightcurve(s, l, as, l.timn[i], int(l.tele[i])); //Step H1: same observer as the datum
-                    co.dera2[h] = double(s.pos1c - soux0) / co.diff;
-                    co.derb2[h] = double(s.pos2c - souy0) / co.diff;
-
-                    CHECK(l.tetE > 0.0);
-                    CHECK(l.piE > 0.0);
-                    CHECK(co.diff != 0.0);
-                    // Null derivative is legitimate here too -- see the note in the j-loop above.
-
-                    if (k==0) l.tetE -= co.diff;
-                    if (k==1) s.mus1 -= co.diff;
-                    if (k==2) s.mus2 -= co.diff;
-                    if (k==3)  l.piE -= co.diff;
+    // A frame group: sum of block matrices, the block offset-vectors b per coordinate, and c.
+    struct Group {
+        std::array<double, Ny * Ny> F{};
+        std::array<std::array<double, Ny>, 2> b{};
+        double c = 0.0;
+        void fold(const AstSums& k, double sc) {          // one block, correlated at sigma_c = sc
+            const double s2 = sc * sc, den = 1.0 + s2 * k.Sw;
+            for (int cc = 0; cc < 2; ++cc)
+                for (int j = 0; j < Ny; ++j) {
+                    b[cc][j] += k.Swd[cc][j] / den;
+                    for (int m = 0; m < Ny; ++m)
+                        F[j * Ny + m] += k.Swdd[cc][j * Ny + m] - s2 * k.Swd[cc][j] * k.Swd[cc][m] / den;
                 }
+            c += k.Sw / den;
+        }
+        void marginaliseInto(std::array<double, Ny * Ny>& out) const {   // free offset
+            for (int j = 0; j < Ny; ++j)
+                for (int m = 0; m < Ny; ++m)
+                    out[j * Ny + m] += F[j * Ny + m]
+                        - (c > 0.0 ? (b[0][j] * b[0][m] + b[1][j] * b[1][m]) / c : 0.0);
+        }
+    };
 
-                co.dera2f = (co.dera2[0] + co.dera2[1]) * 0.5;
-                co.derb2f = (co.derb2[0] + co.derb2[1]) * 0.5;
-
-                // ACCUMULATE, do not overwrite -- same defect and same reasoning as the
-                // photometric matrix above, applied to the astrometric one. Here each epoch
-                // contributes both sky coordinates (pos1c/pos2c), hence the two derivative
-                // products summed before dividing by the per-epoch astrometric variance.
-                {
-                    const double contribB = (co.dera1f * co.dera2f + co.derb1f * co.derb2f)
-                                              / (l.erra[i] * l.erra[i] * 2.0);
-                    gsl_matrix_set(co.inputB[SJOINT].get(), j, k,
-                                   gsl_matrix_get(co.inputB[SJOINT].get(), j, k) + contribB);
-                    gsl_matrix_set(co.inputB[survB].get(), j, k,
-                                   gsl_matrix_get(co.inputB[survB].get(), j, k) + contribB);
-                }
-            }
-        }//end of loop J
-    }//end of loop data
+    std::array<double, Ny * Ny> FL{};
+    { Group g; g.fold(rubin, 0.0); g.marginaliseInto(FL); }
+    for (int v = 0; v < NAVAR; ++v) {
+        std::vector<Group> groups(v == AV_W ? 1 : (v == AV_N ? 2 : AST_MAX_SEASONS));
+        for (const auto& [day, k] : romanDays)
+            groups[v == AV_W ? 0 : (v == AV_N ? k.roll : k.season)].fold(k, AST_SIGC[v]);
+        std::array<double, Ny * Ny> FR{};
+        for (const auto& g : groups) g.marginaliseInto(FR);
+        for (int jm = 0; jm < Ny * Ny; ++jm) {
+            co.FBV[v][SRUBIN][jm] = FL[jm];
+            co.FBV[v][SROMAN][jm] = FR[jm];
+            co.FBV[v][SJOINT][jm] = FL[jm] + FR[jm];
+        }
+    }
+    // The main matrices are variant W.
+    for (int q = 0; q < NSURV; ++q)
+        for (int j = 0; j < Ny; ++j)
+            for (int m = 0; m < Ny; ++m)
+                gsl_matrix_set(co.inputB[q].get(), j, m, co.FBV[AV_W][q][j * Ny + m]);
 
     for (int q = 0; q < NSURV; ++q) {
-        for(int j = 0; j < Ny; ++j) {
-            for(int k = (j+1); k < Ny; ++k) {
-                double element = gsl_matrix_get(co.inputB[q].get(), k, j);
-                gsl_matrix_set(co.inputB[q].get(), j, k, element);
-            }
-        }
         co.okB[q] = (co.nepochA[q] >= Ny) ? invert_matrix(co, 1, q) : 0;
+    }
+
+    // Variants N and P, through the same normalised inversion and condition cut.
+    {
+        static const std::vector<int> kAllAst = {0, 1, 2, 3};
+        gsl_matrix* Fin  = gsl_matrix_alloc(Ny, Ny);
+        gsl_matrix* Fout = gsl_matrix_alloc(Ny, Ny);
+        for (int v = 0; v < NAVAR; ++v)
+            for (int q = 0; q < NSURV; ++q) {
+                co.okBV[v][q] = 0; co.condBV[v][q] = -1.0;
+                for (int k = 0; k < Ny; ++k) co.ErbV[v][q][k] = -1.0;
+                if (v == AV_W or co.nepochA[q] < Ny) continue;      // W is filled in ErrorCal
+                for (int j = 0; j < Ny; ++j)
+                    for (int m = 0; m < Ny; ++m) gsl_matrix_set(Fin, j, m, co.FBV[v][q][j * Ny + m]);
+                co.okBV[v][q] = invertNormalized(Fin, Fout, kAllAst, co.condBV[v][q], nullptr);
+                if (co.okBV[v][q])
+                    for (int k = 0; k < Ny; ++k)
+                        co.ErbV[v][q][k] = std::sqrt(std::fabs(gsl_matrix_get(Fout, k, k)));
+            }
+        gsl_matrix_free(Fin);
+        gsl_matrix_free(Fout);
     }
 
     /*for(int i = 0; i < Ny; ++i) {
@@ -3778,6 +3834,23 @@ void ErrorCal(covarian & co, lens & l , source & s){
       const double rp  = (rp1 >= 0.0 and rp2 >= 0.0) ? MIN(rp1, rp2) : std::max(rp1, rp2);
       const double rt  = (co.Erb[q][0] >= 0.0) ? co.Erb[q][0] / (std::fabs(l.tetE) + eps) : -1.0;
       co.relMl[q] = (rp >= 0.0 and rt >= 0.0) ? std::sqrt(rp * rp + rt * rt) : -1.0;
+  }
+
+  // The astrometric noise variants (Deviation 71): W is the main result; N and P were inverted
+  // in FisherM. Their lens-mass errors follow the same rule, with each variant's own tetE and
+  // astrometric piE and the (variant-independent) photometric piE.
+  for (int q = 0; q < NSURV; ++q) {
+      co.okBV[AV_W][q] = co.okB[q];
+      co.condBV[AV_W][q] = co.condB[q];
+      for (int k = 0; k < Ny; ++k) co.ErbV[AV_W][q][k] = co.Erb[q][k];
+      for (int v = 0; v < NAVAR; ++v) {
+          const auto& E = co.ErbV[v][q];
+          const double rp1 = (co.Era[q][3] >= 0.0) ? co.Era[q][3] / (std::fabs(l.piE) + eps) : -1.0;
+          const double rp2 = (E[3] >= 0.0) ? E[3] / (std::fabs(l.piE) + eps) : -1.0;
+          const double rp  = (rp1 >= 0.0 and rp2 >= 0.0) ? MIN(rp1, rp2) : std::max(rp1, rp2);
+          const double rt  = (E[0] >= 0.0) ? E[0] / (std::fabs(l.tetE) + eps) : -1.0;
+          co.relMlV[v][q] = (rp >= 0.0 and rt >= 0.0) ? std::sqrt(rp * rp + rt * rt) : -1.0;
+      }
   }
 
   // Everything below is the JOINT event summary, unchanged in meaning: resu[] keeps its existing
@@ -4175,6 +4248,15 @@ int invert_matrix(covarian & co, int flag, int surv)
         ? activePhotParams(surv, co.nepochA[SRUBIN], co.nepochA[SROMAN])
         : std::vector<int>();
     const std::vector<int>& act = photometric ? actPhot : kAllAst;
+    return invertNormalized(in, out, act, cond, &co.deter);
+}
+
+// The core of invert_matrix, on any information matrix (Deviation 71: the astrometric noise
+// variants are inverted through exactly the same normalisation and condition cut as the main
+// matrices). `in` is read, `out` receives the inverse scattered to full size (zero elsewhere).
+int invertNormalized(const gsl_matrix* in, gsl_matrix* out, const std::vector<int>& act,
+                     double& cond, double* deter)
+{
     const int dim = static_cast<int>(act.size());
 
     cond = -1.0;
@@ -4242,7 +4324,7 @@ int invert_matrix(covarian & co, int flag, int surv)
     int s;
     gsl_linalg_LU_decomp(lu, p, &s);
     const double det = gsl_linalg_LU_det(lu, s);
-    co.deter = det;
+    if (deter) *deter = det;
 
     if (det == 0.0 || !std::isfinite(det)) {
         gsl_permutation_free(p); gsl_matrix_free(Fi);

@@ -4905,3 +4905,95 @@ CRITICAL dust entry, whose fix plan this follows).
   visit list grew 3.3x in Deviation 69).
 
 **Commit:** `fcd6c82`.
+
+## 71. Step 3a/3b: the astrometric Fisher matrix has no reference position and a sqrt(2) too much; what the literature says about the 1.1 mas floor (2026-10-01; IN PROGRESS)
+
+**3a, finding A -- no free reference position.** `lightcurve()` models the source's sky position as
+`-u0 tetE sin(xi) + mus1 (t - t0) - parallax + deflection` (and its y twin), and the astrometric
+Fisher matrix fits (tetE, mus1, mus2, piE) only. The constant `-u0 tetE sin(xi)` therefore lets every
+exposure measure tetE from the source's ABSOLUTE position, which no real fit can do: real astrometric
+models always solve for a positional offset (Lam et al. 2026, arXiv:2608.24998, Eq. 1-2: "positional
+offset (Delta alpha*, Delta delta)"; McKinnon & van der Marel 2026, PASP 138: "true position on the
+sky at some reference epoch (2D measurement)"). Marginalising over a free (x0, y0) is exact in closed
+form, F_eff = F - (b_x b_x^T + b_y b_y^T)/c with b_j = sum w_i dpos_i/dp_j, c = sum w_i. Measured on the
+fixture (`./fishertest --refpos`, new mode; FisherM gains the two sums, no output changes, default
+fixture byte-identical): sigma(tetE) free/fixed, Roman partition = 1.80 (tE 5 d in season), 1.38
+(25 d), 2.41 (100 d), 10.1 (100 d peaking in a gap), 6.59 (900 d); Rubin 1.6-3.2. mus x1.0-3.6,
+astrometric piE x1.0-2.0. **Material: every tetE and lens-mass forecast so far is optimistic by this.**
+Consequence for the floor question: with the offset free, an error CONSTANT over the mission costs
+nothing, so the "fully correlated limit: tetE unmeasurable" statement in OPEN_ITEMS is wrong; what
+matters is correlation on timescales shorter than the event.
+
+**3a, finding B -- a sqrt(2).** Per epoch, FisherM adds `(dx_j dx_k + dy_j dy_k) / (2 erra^2)`, the
+noise realisations draw sigma = errs*sqrt(2), and the astrometric chi^2 divides by 2 errs^2: each
+coordinate is treated as having variance 2 erra^2. But both sources define erra PER COORDINATE:
+Rubin's renormalisation is to Ivezic et al.'s "10 mas per observation per coordinate" (Bulge.h); Lam
+et al. footnote 14: "we mean the 1D uncertainties in the x or y direction"; McKinnon & van der Marel
+also report "the per-coordinate uncertainty in x or y". So every astrometric sigma (both surveys) is
+sqrt(2) too large, and the astrometric chi^2 is half what it should be. Not discussed anywhere before.
+
+**3b, the literature on the floor** (full texts read; excerpts in Report/overview_v2/NOTES.md):
+- Sanderson et al. 2019 (WFIRST Astrometry WG, JATIS): "we assume the single-exposure precision for
+  well-exposed point sources is 0.01 pixel, or about 1.1 mas"; "precision can be substantially
+  improved by repeated, dithered observations as sigma ~ Delta eta / sqrt(N)"; geometric distortion is
+  "the most significant systematic", calibratable with dithers; no time-correlation model.
+- Lam et al. 2026 (the floor's source in Bulge.h): the GBTDS "will employ a dither strategy that
+  includes dithers of several pixels as well as sub-pixel dithers; this results in a well-sampled
+  pixel phase"; "this 1% centroiding floor is added as white noise. This implicitly assumes that each
+  observation is an independent measurement ... To achieve this in reality will require systematic
+  errors (including time dependent systematic errors that will vary across the full 5 year temporal
+  baseline) to be sub-dominant"; distortion "correctable at the few x 0.1% of a pixel (Bellini 2024)";
+  crowding can bias a faint star by ~2 mas (HST bulge); they bin to 1 day for variability >> 1 day.
+- McKinnon & van der Marel 2026: "we have assumed that all errors are improved by sqrt(n_exposures),
+  which is likely true for many types of centroiding systematics. However, some systematics such as
+  ill-measured distortion corrections could lead to correlated position measurements between
+  different images that do not improve as sqrt(n). We have ignored the latter ... it is not clear how
+  best to incorporate these effects without specific knowledge about the true Roman performance";
+  GBTDS repeat visits may calibrate the floor DOWN to 0.1% or 0.01% of a pixel.
+- Kaczmarek et al. 2026 (A&A, NS astrometric microlensing with Roman): white noise, Delta_ast >
+  sigma_ast/sqrt(N).
+- So: the white 1.1 mas floor is the community-standard assumption, and the dithering gives it a
+  physical basis; no published number exists for the correlated part; the candidates are distortion
+  residuals (~0.1-0.5 mas, slowly time-varying), crowding/blend biases (up to ~mas, fixed for a given
+  roll and dither pattern), and frame alignment.
+
+**User's decisions (2026-10-01):** fix both A and B; bracket W / N / P.
+
+**3c, what was done.**
+- `FisherM` astrometric half rewritten: per epoch, the 4-vector of position derivatives is computed
+  once (8 model evaluations, was 28 for the same numbers); weight w = 1/erra^2 per coordinate (fix B);
+  Rubin epochs in one white group; Roman epochs in DAY blocks (tagged with season and roll, new
+  `lens::rseas/rroll`, filled from `RomanSchedule::seasonOf(visit time)` and the visit's `layout`).
+  Per variant v, each day block is folded in by Sherman-Morrison at sigma_c(v) into its frame group
+  (W: one Roman group; N: one per roll; P: one per season), and every group's offset is marginalised
+  (fix A): F_g = sum F_k - sum_c b_c b_c^T / c. Rubin's group gets its own offset. Joint = Rubin +
+  Roman exactly, so sigma_joint <= sigma_single still holds by construction.
+- Constants and their sources in Bulge.h (`AST_SIGC`: W 0, N 0.3 mas, P 1.1 mas per coordinate per
+  Roman day). The main matrices/columns are W. N and P go through `invertNormalized`, the core of
+  `invert_matrix` split out unchanged (same normalisation and condition cut), and `ErrorCal` derives
+  each variant's mass error by the same rule.
+- Fix B also applied to the astrometric noise draws and chi^2 (`sil = RandN(errs)`, divide by errs^2):
+  `dchiA*` columns double (not a detection test). RandN's acceptance is scale-free, so the RNG stream
+  is unchanged (verified: the pilot below reproduces the previous pilot's 590 draws exactly).
+- Event table: 12 columns appended (`sigtetE_{N,P}{J,R}`, `relMl_{N,P}{J,R}`, `okB_{N,P}{J,R}`);
+  existing columns keep their positions. `romanlib.sigma(df, param, survey, noise="W"|"N"|"P")`.
+- `fishertest --astro-variants` (replaces the temporary `--refpos`): per event W/N/P and the assertion
+  sigma_W <= sigma_N <= sigma_P (a theorem: N and P only add nuisance and correlated noise).
+
+**Verification.**
+- W reproduces the independent 3a audit exactly: Roman sigma(tetE) = audit's free-offset value /
+  sqrt(2) on all five fixture events with Roman data (e.g. 2.0445e-2/sqrt 2 = 1.4457e-2).
+- `--astro-variants`: PASS (ordering holds everywhere); Rubin partition identical in W/N/P.
+- Default fixture: PASS, all assertions (joint = Rubin + Roman exactly, sigma_joint <= both, t0
+  marginalisation); only the tetE column changed (19 lines); every photometric sigma identical.
+  The fixture's N/P ratios (x12-1600) are NOT representative: its Roman error is a flat 0.05 mas
+  stand-in at 6 exposures/day.
+- **Pilot** (stub, bulge, `--events 10 --lenses 2 --maxdraws 1000`, 590 draws, same as Deviation
+  70's): 2 min 33 s (was 2 min 44 s). On the 76 Roman detections (unweighted, small sample):
+  **W new/old sigma(tetE), same events: median 6.8 (16-84%: 2.2-26)** -- fix A dominates (fix B
+  alone is 0.71). Bracket: N/W median 1.46 (1.11-3.13), P/W median 12.1 (4.5-43.9). Fraction with
+  sigma(tetE)/tetE < 10%: W 7.9%, N 1.3%, P 0%. (The pre-fix H5 headline was 33% for Roman-observed
+  detections, on bulge lenses with the old dust and footprint; the black-hole numbers, with ~10x
+  larger tetE, will be hit less -- to be measured on the production runs.)
+
+**Commit:** not yet committed (awaiting the user).

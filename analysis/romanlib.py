@@ -268,13 +268,17 @@ def load_provenance(path):
 # Sentinel-aware accessors. Use these instead of touching the columns directly.
 # ---------------------------------------------------------------------------------------
 
-def sigma(df, param, survey):
+def sigma(df, param, survey, noise="W"):
     """1-sigma forecast for `param` from `survey`, NaN where it was not measured.
 
     param  : "tE" | "piE"    (photometric, gated on okA)
              "tetE"          (astrometric, gated on okB)
              "Ml"            (derived from tetE and piE, gated on its own positivity)
     survey : "joint" | "rubin" | "roman"
+    noise  : astrometric noise variant (Deviation 71) for "tetE" and "Ml": "W" white (the main
+             columns), "N" nominal, "P" pessimistic (columns sigtetE_N<q>, relMl_P<q>, gated on
+             okB_N<q> ...). They exist for the joint and Roman partitions; Rubin's is the same
+             in all three, so noise is ignored for "rubin". Photometric params ignore it.
 
     Gating is on the ok flag AND on positivity. Both are needed: the flag can be set while
     an individual parameter is still a sentinel, because each survey partition fits its own
@@ -283,12 +287,15 @@ def sigma(df, param, survey):
     parameter -- exactly the case that aborted the 2026-08-29 run.
     """
     q = SURVEYS[survey]
+    if noise not in ("W", "N", "P"):
+        raise KeyError(f"unknown noise variant {noise!r}")
+    v_ = "" if (noise == "W" or q == "L") else noise      # suffix: "", "N" or "P"
     if param in ("tE", "piE"):
         col, gate = f"sig{param}_{q}", f"okA_{q}"
     elif param == "tetE":
-        col, gate = f"sigtetE_{q}", f"okB_{q}"
+        col, gate = f"sigtetE_{v_}{q}", f"okB_{v_}{q}"
     elif param == "Ml":
-        col, gate = f"relMl_{q}", None
+        col, gate = f"relMl_{v_}{q}", None
     else:
         raise KeyError(f"unknown param {param!r}")
 

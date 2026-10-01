@@ -1909,7 +1909,9 @@ footprint rate per star is 25-40% LOW, which makes an over-count from the rate u
 counts or the detection efficiency are the places to look. **Fix would involve:** restricting our
 count to Penny's six high-cadence seasons and |u0| < 1, and comparing per-star rather than per-area.
 
-## The simulator cannot yet be split safely across cluster jobs: no seed option, no end index (2026-09-26)
+## FIXED IN CODE 2026-10-02 (Deviation 77) -- The simulator cannot yet be split safely across cluster jobs: no seed option, no end index (2026-09-26)
+
+**Fixed:** per-sightline re-seeding from (--seed, index), --end-index; chunks verified byte-identical to the whole run. Remaining: concatenating chunk outputs for the analysis layer (plain concatenation in index order is correct).
 
 **What is wrong.** The RNG is `mt19937_64` seeded with the compile-time constant `seed = 42`
 (`Bulge.h:32`), and `--start-index` skips sightlines *without* consuming random numbers

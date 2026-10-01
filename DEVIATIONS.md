@@ -5171,4 +5171,26 @@ t0obs; columns `t0obs umin_obs` appended. Pilot (bulge stub, 917 draws): |t0obs 
 
 **Verification.** Builds; fixture PASS including the new check; pilot as above.
 
+**Commit:** `3952f9a`.
+
+## 77. M5: per-sightline random streams; --seed and --end-index; chunked runs reproduce the whole run (2026-10-02)
+
+**What the code had** (OPEN_ITEMS, cluster entry): one mt19937_64 seeded 42 at compile time;
+--start-index skipped sightlines without advancing the stream, so a chunk started where chunk 0 did
+(correlated draws), and there was no --end-index.
+
+**What was done.** At the start of every sightline the generator is re-seeded with
+`sightlineSeed(base, index)` = SplitMix64(SplitMix64(base) XOR index) (Bulge.h); `--seed S` sets the
+base (default 42), `--end-index N` stops before sightline N; both recorded in run_provenance.txt
+(`seed`, `end_index`; `rng_seed` now prints the run's base seed). A resumed run is now a replay.
+Note: this changes every random stream relative to earlier runs (new runs anyway).
+
+**Verification.** Stub, `--events 5 --lenses 1 --maxdraws 300`, 36 sightlines: the full run versus two
+chunks [0,18) and [18,36) run in separate directories -- the concatenated chunk event tables equal the
+full run's BYTE FOR BYTE (713 rows), and so do the map files. fixture PASS (unaffected).
+
+**Still to do for cluster use (not code in the simulator):** the analysis layer assumes one run
+directory per population; chunked runs need their tables, map files and logs concatenated in index
+order (the byte-identity above shows plain concatenation is correct).
+
 **Commit:** see the next commit.

@@ -53,7 +53,17 @@ Roman detections: 3,170 draws, N_eff 3,170
 | <5% | 58.1 (1.07) | 30.7 (1.44) | 65.9 (0.68) | 26.1 (1.25) |
 | <10% | 71.9 (1.07) | 42.1 (1.40) | 80.2 (0.81) | 38.1 (1.28) |
 
-Cells: ours (ours / SS23). SS23 = Table 1, dN/dM ~ M^-1, sparse observations.
+### SS23 sample, event-rate weighted: u0 <= 1, t0 on mission
+
+Roman detections: 3,170 draws, N_eff 1,472
+
+| threshold | tE | piE | tetE | Ml |
+|---|---:|---:|---:|---:|
+| <1% | 17.7 (0.72) | 2.9 (0.38) | 21.9 (0.32) | 1.4 (0.26) |
+| <5% | 51.8 (0.96) | 14.3 (0.67) | 58.8 (0.61) | 12.3 (0.59) |
+| <10% | 67.4 (1.01) | 23.5 (0.78) | 75.5 (0.76) | 21.1 (0.71) |
+
+Cells: ours (ours / SS23). SS23 = Table 1, dN/dM ~ M^-1, sparse observations. Monte Carlo 1 sigma on a fraction p: 100 sqrt(p (1 - p) / N_eff).
 
 ### Roman detections, 3-50 Msun: sample properties (unweighted, as SS23 plot them)
 

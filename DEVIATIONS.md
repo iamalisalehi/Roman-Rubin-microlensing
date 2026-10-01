@@ -4706,3 +4706,48 @@ been audited.
 **Build.** overview 50 pp, populations 15 pp, postfix 13 pp: 0 TODO, 0 undefined, 0 BibTeX
 warnings. Whitepaper 56 pp, 0 undefined; its one BibTeX warning (empty author in
 `RomanBHbinaries`) predates this change. Commit `7aa4338`.
+
+## 68. Overview report: Sec. 5.2 dropped; the Sajadian & Sahu comparison rewritten as a comparison with the published paper (2026-10-01)
+
+**Asked.** Drop Sec. 5.2 ("Checks the results pass"). Rewrite "Against Sajadian & Sahu": Dr. Sajadian
+is the supervisor and a collaborator, the work builds on SS23 rather than testing it, so no "ours
+vs. theirs" framing; and the *published paper* is the reference, not the released code, which may
+be an older version.
+
+**Done in `Report/overview/overview_report.tex`.**
+- Sec. 5.2 and its table `tab:checks` removed. What it held that the report still states elsewhere:
+  the optical-depth check (Sec. 2.5, "agree to 0.1%"), the OGLE-IV tE check (Sec. 2.5). The other
+  rows (sigma_joint <= sigma_single, satellite control events, CCM ratios, step plateau, resolvable-
+  visit re-count) are now only in DEVIATIONS/PROGRESS. Sections renumber: 5.2-5.6 were 5.3-5.7.
+- Paragraph retitled "Comparison with SS23" and rewritten in "this simulation / the paper" terms.
+  Every SS23 number re-read from arXiv:2301.03812:
+  - Sample, from the paper's Fig. 3: u0 on [0, 1], t0 on [0, 5] yr (the code's `RandR(0,1)` is no
+    longer the source). Detection criterion, Sec. 3: dchi2 > 800 and >= 3 points 4 sigma above
+    baseline. Astrometric Fisher, Sec. 3 assumptions (ii)-(iii): t0, u0, tE, xi from photometry,
+    source parallax neglected; precision from S. Calchi Novati's jitter simulations (not tabulated).
+  - Rate: the paper's own Sec. 3.4 formula, N_e,BHs = 27,000 x 0.019 x 0.17 = 87 (alpha = 1, sparse
+    visits) -> 7.4 per deg^2 per season over 1.96 deg^2 x 6 (was 86 = 22 / 0.2561 from Table 1 ->
+    7.3). Factor vs 31.5 still 4.3.
+  - Removed as code-derived: "counted without the sqrt(M) v_t weight" (the paper does not say
+    whether Table 1 is rate-weighted) and "1.6-8 times smaller per-exposure astrometric errors"
+    (from `roman_astro2.txt` in the released code; kept in a LaTeX comment only). Sec. 2.5's "which
+    the published code of SS23 also applies" (the blend-as-one-object criterion) removed: the paper
+    does not state it.
+- **New measurement** (`analysis/u7_ss23_factors.py`, one variant added): because the paper does not
+  say whether its counts are rate-weighted, the paper's sample (u0 <= 1, t0 on mission; 3,170 draws)
+  is now also counted with the event-rate weight, N_eff = 1,472. Fractions with sigma/X < 10%:
+  tE 67.4 +- 1.2, piE 23.5 +- 1.1, tetE 75.5 +- 1.1, Ml 21.1 +- 1.1 (unweighted, as before: 71.9,
+  42.1, 80.2, 38.1; paper 67.0, 30.0, 99.2, 29.8). So tE matches the weighted count, piE and Ml lie
+  between the two countings, tetE is below in both. Errors: 100 sqrt(p(1-p)/N_eff), now stated in
+  `figures/u7_20260930/u7_ss23_factors.md`.
+- tetE: stated as the one parameter where the forecasts differ, with the two choices the *paper*
+  describes (fixed photometric parameters / no parallax in the astrometric fit, which can only
+  lower the errors; Calchi Novati's precision model); separate contributions "not measured".
+- Sec. 5 intro, the Sec. 5.5 SS23 item and the "what to believe" row reworded to match (no
+  "disagreement ... explained"; risk now "whether their counts are rate-weighted").
+
+**Other documents.** The rate 7.3 / 86 -> 7.4 / 87 in the populations report (text and table;
+factor 2.3 unchanged), postfix report (factor 4.3 unchanged; history in a LaTeX comment) and
+whitepaper. Their SS23 paragraphs keep the old framing (OPEN_ITEMS, stale statements, item 4).
+
+**Build.** overview 50 pp, populations 15 pp, postfix 13 pp, whitepaper 56 pp; 0 undefined, 0 errors.

@@ -80,6 +80,9 @@ def main():
         ("t0 on Roman's mission only", w, onmission),
         ("unweighted only (SS23's counting)", ones, allrows),
         ("SS23 sample: unweighted, u0 <= 1, t0 on mission", ones, u0le1 & onmission),
+        # The paper's Fig. 3 fixes the sample (u0 on [0, 1], t0 inside the five years) but not
+        # whether its counts carry the event-rate weight, so the same sample is also counted weighted.
+        ("SS23 sample, event-rate weighted: u0 <= 1, t0 on mission", w, u0le1 & onmission),
     ]
     os.makedirs(a.out_dir, exist_ok=True)
     rows, lines = [], ["# Roman black-hole characterisation vs Sajadian & Sahu 2023: sample-definition factors",
@@ -96,7 +99,8 @@ def main():
             for p in PARAMS:
                 rows.append(dict(variant=name, threshold=thr, param=p, ours=fr[(thr, p)],
                                  ss23=SS23[thr][p], ratio=fr[(thr, p)] / SS23[thr][p], n=n, neff=neff))
-    lines.append("\nCells: ours (ours / SS23). SS23 = Table 1, dN/dM ~ M^-1, sparse observations.")
+    lines.append("\nCells: ours (ours / SS23). SS23 = Table 1, dN/dM ~ M^-1, sparse observations. "
+                 "Monte Carlo 1 sigma on a fraction p: 100 sqrt(p (1 - p) / N_eff).")
     # The sample itself, against SS23's Fig. 3 (their detected events: <tE> 303 d, <m_base> 20.06
     # for the UNIFORM mass function; u0 flat on [0, 1], mean 0.49).
     det = R.detected(df, "roman")

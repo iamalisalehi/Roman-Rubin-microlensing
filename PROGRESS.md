@@ -32,6 +32,13 @@ Penny's layout tool (`mtpenny/gbtds_optimizer`, layout 40395, verified) and Kali
 the Penny misreading fixed in the populations report, postfix report and whitepaper. Still stale
 there: the SS23 characterisation deficit (resolved in Dev. 65), the whitepaper's "v5.3.0" and a
 garbled `Biswas2019OpSim` bib entry (OPEN_ITEMS, "Stale or wrong statements").
+**2026-10-01 (Deviation 68):** overview Sec. 5.2 (checks table) dropped; the SS23 paragraph is now
+"Comparison with SS23", written as building on the paper (Dr. Sajadian is supervisor and
+collaborator -- no "ours vs. theirs") and grounded in the *published paper* only, not the released
+code. SS23 rate now from the paper's own formula: 27,000 x 0.019 x 0.17 = 87 -> 7.4 per deg^2 per
+season (all four documents). New: the paper's sample counted rate-weighted (N_eff 1,472): tE / piE /
+tetE / Ml at 10% = 67.4 / 23.5 / 75.5 / 21.1% (unweighted 71.9 / 42.1 / 80.2 / 38.1; paper 67.0 /
+30.0 / 99.2 / 29.8). The older documents' SS23 paragraphs still need the same rewrite (OPEN_ITEMS).
 
 **Newest (2026-09-21): Step series S -- sample light curves for illustrative figures.**
 Requested: per-band light curves and astrometric tracks, with and without parallax, with

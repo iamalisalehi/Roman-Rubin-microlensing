@@ -2005,6 +2005,10 @@ table that fails to parse or contains a non-finite value, instead of continuing 
 3. `Whitepaper/refs.bib` `Biswas2019OpSim` is garbled: DOI 10.3847/1538-4365/ab4b44 does not exist;
    arXiv:1905.02887 is Biswas et al. 2020, ApJS, doi 10.3847/1538-4365/ab72f2, with a different
    title. The rest of the whitepaper bib has not been audited against Crossref.
+4. (2026-10-01, Deviation 68) The SS23 paragraphs of the populations report, postfix report and
+   whitepaper still use "ours vs. theirs" / "Against SS23" framing and cite the released code
+   (u0 draw, unweighted counting, astrometric precision file) as if it were the paper. The overview
+   report now compares with the published paper only, in "this simulation / the paper" terms.
 
 **Why it matters.** The populations and postfix reports may already have been read; the whitepaper
 is the eventual paper. Each states something a reader would take as a finding.
@@ -2013,5 +2017,5 @@ is the eventual paper. Each states something a reader would take as a finding.
 The whitepaper is due a full reconciliation anyway (JOINT_FIT_REFACTOR_PLAN Phase G).
 
 **Fix would involve.** For (1), a note in each older report pointing to the resolution, and a
-rewrite of the whitepaper's SS23 paragraph from the overview's. For (2), one word. For (3), a
+rewrite of the whitepaper's SS23 paragraph from the overview's (which also covers (4)). For (2), one word. For (3), a
 Crossref pass over `Whitepaper/refs.bib` as was done for `Report/refs.bib` in Deviation 66.

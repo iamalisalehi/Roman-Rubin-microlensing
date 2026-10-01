@@ -153,13 +153,17 @@ constexpr double Tobs = 10.0 * year;///LSST observational time 10 years
 constexpr double delta2 = 0.005;///systematic errors
 
 
-// TODO: ADD 7th value for F146 filter
-constexpr std::array<double, M> gama = {0.037,0.038,0.039,0.039,0.040,0.040}; //a function of sky brightness and airmass in wavelengths.
-constexpr std::array<double, M> seeing = {0.77,  0.73,  0.70,  0.67,  0.65,  0.63}; //seeing
-constexpr std::array<double, M> msky   = {22.9,  22.3,  21.2,  20.5,  19.6,  18.6};
-constexpr std::array<double, M> Cm     = {22.92, 24.29, 24.33, 24.20, 24.07, 23.69};
-constexpr std::array<double, M> Dci    = {0.67,  0.21,  0.11,  0.08,  0.05,  0.04};
-constexpr std::array<double, M> km     = {0.451, 0.163, 0.087, 0.065, 0.043, 0.138}; //sky extinction
+// gamma of the LSST photometric error model, sigma_rand^2 = (0.04 - gamma) x + gamma x^2 (Ivezic
+// et al. 2019 eq. 5, Table 2; Deviation 73 -- the values were an older version, 0.037-0.040). Rubin
+// only (index 6, F146, is unused). delta2 above is the 5 mmag bright-end repeatability (Ivezic
+// et al. 2019, requirement 3). The unused seeing/msky/Cm/Dci/km constants (an older Table 2) and
+// cade1 were deleted in Deviation 73.
+constexpr std::array<double, M> gama = {0.038, 0.039, 0.039, 0.039, 0.039, 0.039, 0.0};
+
+// Rubin's saturation, relative to each visit's own 5-sigma depth (Deviation 73): saturation =
+// fiveSigmaDepth - RUBIN_SATU_BELOW_M5. Ivezic et al. 2019 give "the LSST saturation limit at r ~ 16"
+// for a 24.35 design depth (8.35 mag); the previous fixed constants were exactly depth - 8.3.
+constexpr double RUBIN_SATU_BELOW_M5 = 8.3;
 
 
 constexpr std::array<double, M> sigma = {0.022, 0.02, 0.017, 0.017, 0.027, 0.027, 0.04}; // PLACEHOLDER: K-band value, not F146
@@ -174,7 +178,12 @@ constexpr double ROMAN_DEPTH5_AB = 25.37 + 1.25 * 0.06368;   // log10(66/57) = 0
 constexpr double ROMAN_SATU_AB   = 14.8;
 constexpr std::array<double, M> thre  = {23.4, 24.6, 24.3, 23.6, 22.9, 21.7, ROMAN_DEPTH5_AB};
 constexpr std::array<double, M> satu  = {15.2, 16.3, 16.0, 15.3, 14.6, 13.4, ROMAN_SATU_AB};
-constexpr std::array<double, M> FWHM  = {1.22087, 1.10136, 0.993103, 0.967076, 0.951766, 0.936578, 0.105}; //LSST [arcsec] ugrizy + F146 Filter
+// PSF FWHM [arcsec]: the image-resolution bar (Step R1) and the blending disc (Lensing.cpp).
+// ugrizy (Deviation 73): the median GEOMETRIC seeing, OpSim seeingFwhmGeom (= 0.822 seeingFwhmEff +
+// 0.052, verified exactly in the database), of the 12,308 bulge visits in Baseline/BulgeBaseline.dat
+// (baseline_v5.1.0); per-visit 16-84% spans ~0.77-1.4". The previous values (1.221 ... 0.937) were an
+// older OpSim's, 1-10% wider. F146: 0.105", STScI SummaryPSFstats (centre and corner).
+constexpr std::array<double, M> FWHM  = {1.1140, 1.0420, 0.9819, 0.9487, 0.9320, 0.8992, 0.105};
 //constexpr std::array<double, M> a0    = {0.9429, 1.0138, 0.94027, 0.8139, 0.6641, 0.5703, 0.1615}; //for calculating the extinction + F146 Filter (value needs to change)
 //constexpr std::array<double, M> b0    = {1.9788, 0.5575, -0.2197, -0.4982, -0.6097, -0.5236, -0.1483}; // PLACEHOLDER: K-band value, not F146
 constexpr std::array<double, M> lambda_um = {0.367, 0.482, 0.622, 0.755, 0.869, 0.971, 1.464};
@@ -190,7 +199,6 @@ constexpr std::array<double, M> lambda_um = {0.367, 0.482, 0.622, 0.755, 0.869, 
 // filter, regardless of this setting.
 inline const std::vector<int> RUBIN_REF_BANDS = {2};
 
-constexpr double cade1 = 3.0 ;//LSST[days]
 //constexpr double cade2 = 10.0;//ELT [days]
 
 //constexpr int YZ = 3578;   //No.yzma.txt rows

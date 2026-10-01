@@ -2255,7 +2255,9 @@ table's faint end is ~0.1-0.2 mag pessimistic, and the error at fixed magnitude 
 Options: rescale (SNR ~ sqrt(t) where background-limited) or replace with a 66-s model (Wilson et
 al. 2023, STScI/Pandeia). Part of the existing "photometric error placeholder" entry's fix.
 
-## Rubin's depth gate is the SRD minimum, not each visit's own depth (2026-10-01, audit)
+## FIXED IN CODE 2026-10-02 (Deviation 73) -- Rubin's depth gate is the SRD minimum, not each visit's own depth (2026-10-01, audit)
+
+**Fixed:** per-visit depth and saturation (sig5 - 8.3) gate; pre-selection on each sightline's median depth per band; FWHM from the visits' seeingFwhmGeom; gamma from Ivezic 2019; unused constants deleted.
 
 **What is wrong.** Rubin epochs are recorded only if the source is between `satu[fi]` and `thre[fi]`
 (Bulge_LSST.cpp, the Rubin branch, and the pre-selection `Mpeak <= thre[i]`), with `thre` = the SRD

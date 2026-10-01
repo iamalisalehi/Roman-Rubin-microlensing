@@ -1730,6 +1730,22 @@ int main(int argc, char** argv) {
             ndd  = matchVisibleEpochs("LSST",  rubinCovers, ls->tim, Nl,      ls->ct, minc);
             nddR = matchVisibleEpochs("Roman", romanCovers, ro->tim, NlRoman, ro->ct, mincR);
 
+            // Rubin's depth per band at this sightline (Deviation 73): the median of its matched
+            // visits' own 5-sigma depths, for the pre-selection below. A band with no visit here
+            // gets -inf, so it cannot count toward "detectable in >= 2 bands".
+            std::array<double, 6> rubinDepthMed;
+            {
+                std::array<std::vector<double>, 6> d5;
+                for (int k = 0; k < ndd; ++k) {
+                    const int v = int(ls->ct[k]);
+                    d5[ls->filter[v]].push_back(ls->sig5[v]);
+                }
+                for (int b = 0; b < 6; ++b) {
+                    if (d5[b].empty()) { rubinDepthMed[b] = -std::numeric_limits<double>::infinity(); continue; }
+                    std::nth_element(d5[b].begin(), d5[b].begin() + d5[b].size() / 2, d5[b].end());
+                    rubinDepthMed[b] = d5[b][d5[b].size() / 2];
+                }
+            }
             cout << "ndd (LSST): "  << ndd  << "\t minc (LSST): "  << minc  << endl;
             cout << "ndd (Roman): " << nddR << "\t minc (Roman): " << mincR << endl;
 
@@ -1872,7 +1888,8 @@ int main(int argc, char** argv) {
 //                        cout << "i=" << i << "  Mab=" << s->Mab[i] << "  Map=" << s->Map[i]
 //                             << "  blend=" << s->blend[i] << "  Mpeak=" << Mpeak << endl;
                     if (i < 6) { // LSST ugrizy
-                        if (Mpeak <= thre[i] and s->magb[i] > satu[i])    fdetRubin += 1.0;
+                        if (Mpeak <= rubinDepthMed[i] and s->magb[i] > rubinDepthMed[i] - RUBIN_SATU_BELOW_M5)
+                            fdetRubin += 1.0;
                     } else {     // i == 6, Roman F146 — single band, no ">=2 filters" bar applies
                         if (Mpeak <= thre[i] and s->magb[i] > satu[i])    romanDetectable = true;
                     }
@@ -1951,8 +1968,12 @@ int main(int argc, char** argv) {
     
                             fi = int(ls->filter[sq]);
     
-                            if (magni[fi] >= satu[fi] and magni[fi] <= thre[fi]) {
-                                errg = errlsstM(magni[fi], int(fi), double(ls->sig5[sq])); //[mag]
+                            // Deviation 73: this visit's own depth and saturation, not the SRD
+                            // minimum -- the same depth that sets errg below.
+                            const double m5v   = double(ls->sig5[sq]);
+                            const double satuv = m5v - RUBIN_SATU_BELOW_M5;
+                            if (magni[fi] >= satuv and magni[fi] <= m5v) {
+                                errg = errlsstM(magni[fi], int(fi), m5v); //[mag]
                                 errs = errlsstA(*ls, magniRubinRef); ///[mas]
 
                                 // Step R1. Could Rubin have told the two images apart at THIS
@@ -1961,7 +1982,7 @@ int main(int argc, char** argv) {
                                 // survey never recorded is not one.
                                 {
                                     const ImagePair ip = imagePair(s->ut, l->tetE, s->magb[fi],
-                                                                   s->blend[fi], thre[fi], satu[fi]);
+                                                                   s->blend[fi], m5v, satuv);
                                     if (ip.bothDetectable) {
                                         if (ip.sep >= RESOLVE_D_FAINT  * errs)          nres5_L   += 1;
                                         if (ip.sep >= RESOLVE_D_BRIGHT * errs)          nres20_L  += 1;

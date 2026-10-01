@@ -5043,4 +5043,34 @@ report must use 1.23 mas.
 dry run prints the anchoring ("Penny+2019 5-sigma point 25.4819 AB shifted by -0.0322606 mag to
 25.4496"); romanlib's mirror with offset 0 equals u2's old mirror exactly.
 
+**Commit:** `5b10cdb`.
+
+## 73. M1b: Rubin's recording gate per visit; Rubin PSF from the visits; gamma from Ivezic 2019; dead constants removed (2026-10-02)
+
+**Found by the constants audit (2026-10-01, user's request; OPEN_ITEMS audit table).** The Rubin
+recording gate used `thre` = the SRD MINIMUM single-visit depths (Ivezic et al. 2019 Table 1) and
+`satu` = thre - 8.3, while each visit's own fiveSigmaDepth (already used for its error) was 0.1-0.4 mag
+shallower in u-z and 0.3 deeper in y (bulge visits' medians). `FWHM[0-5]` were an older OpSim's
+geometric seeing; `gama` an older Ivezic Table 2; `seeing/msky/Cm/Dci/km/cade1` unused.
+
+**What was done (user's decision: per-visit limits).**
+- Each Rubin epoch is recorded iff `sig5 - 8.3 <= m <= sig5` with the visit's own sig5
+  (`RUBIN_SATU_BELOW_M5 = 8.3`; Ivezic's "saturation at r ~ 16" for a 24.35 depth is 8.35). The Rubin
+  image-resolution count uses the same per-visit limits.
+- Pre-selection ("detectable in >= 2 LSST bands"): each band's limit is the MEDIAN depth of that
+  sightline's matched visits in that band (-inf for a band with no visit there, so it cannot count).
+- `FWHM[0-5]` = median seeingFwhmGeom of the 12,308 bulge visits: 1.114 1.042 0.982 0.949 0.932 0.899"
+  (OpSim's seeingFwhmGeom = 0.822 seeingFwhmEff + 0.052 verified to 0.0 in the database). Sets the
+  blending disc (neighbour count ~ FWHM^2: r 2% fewer, u 17% fewer than before) and the PSF bar.
+- `gama` = 0.038 0.039 0.039 0.039 0.039 0.039 (Ivezic 2019 Table 2); `delta2` = 0.005 verified (req. 3).
+- Deleted the unused `seeing, msky, Cm, Dci, km, cade1`. `thre/satu[0-5]` remain defined (documented)
+  but are no longer read by the Rubin gate.
+
+**Not changed, stated as a model choice for the report:** one blending FWHM per band for the whole
+scan (per-visit seeing varies 0.77-1.4"); one Rubin blend fraction/baseline (r) in the Fisher fit
+(RUBIN_REF_BANDS).
+
+**Verification.** Builds clean; fishertest byte-identical (no Rubin gate inside); extinctiontest passes;
+the remaining thre/satu reads are Roman's only. Smoke-tested in the M2 pilot (below/next entry).
+
 **Commit:** see the next commit.

@@ -27,7 +27,8 @@ Plan these notes follow: `/home/ali/.claude/plans/i-want-to-do-resilient-humming
 |---|---|---|---|---|
 | 1 | Adopted GBTDS layout (spring/autumn, 18-SCA detectors); scan region by distance rule; Roman start day 730 -> 306 (2027-02-11); Rubin visit list 3,686 -> 12,308; footprint area post-stratified | 69 | 078756b | Roman footprint yields, Rubin whole-scan totals, gap geometry (timeline vs Rubin seasons) |
 | 2 | Extinction tables rebuilt from DECaPS + Marshall (dustmaps), regular grid, one file; hardened reader | 70 | (pending) | everything, most near the plane (U5 estimated x0.4-0.9) |
-| M1 | Roman: AB->Vega before the astrometric error curve (x0.45 at the median source); photometric curve anchored to STScI 66-s depth 25.45 AB, interpolated; depth/saturation sourced | 72 | (next) |
+| M1 | Roman: AB->Vega before the astrometric error curve (x0.45 at the median source); photometric curve anchored to STScI 66-s depth 25.45 AB, interpolated; depth/saturation sourced | 72 | 5b10cdb |
+| M1b | Rubin: per-visit depth/saturation gate (visit fiveSigmaDepth, -8.3); FWHM = median seeingFwhmGeom of the bulge visits; gamma from Ivezic 2019 | 73 | (next) |
 | 3 | Astrometric reference position freed; sqrt(2) per-coordinate fix; correlated-floor bracket | 71 | 39b50c0 | every theta_E / mass number |
 
 ## Section by section
@@ -303,4 +304,12 @@ the floor.
   correction (Step 3). Net effect on theta_E: measure on the new runs.
 - **Decision to flag to the reader (and the user):** Penny's curve was rescaled to the current STScI
   depth rather than by exposure time alone (which would be 0.26 mag deeper).
+
+### M1b -- Rubin's survey constants (2026-10-02, Deviation 73)
+- **Say in Sec. 2.1 (noise and detection):** each Rubin epoch is recorded if the source is between
+  that visit's saturation and its own 5-sigma depth (OpSim fiveSigmaDepth, baseline_v5.1.0), and its
+  error follows Ivezic et al. 2019 eq. 5 at that depth with a 5 mmag floor; blending and the PSF bar use
+  the median geometric seeing of the bulge visits (0.90-1.11" by band). Table of per-band medians
+  (depth 23.3 / 24.3 / 23.9 / 23.4 / 22.9 / 22.0, seeing) is worth including -- they are what Rubin
+  delivers toward the bulge, below its all-sky design numbers.
 

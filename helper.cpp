@@ -864,6 +864,52 @@ double drawKroupaInitialMass()
 // gaps, so the remnant prescription is what populates the regime this whole project is
 // about. Dropping remnants would leave the short-tE yield science intact and quietly
 // remove the long-tE precision science.
+void readLensML(const std::string& path)
+{
+    std::ifstream fin(path);
+    if (!fin) {
+        std::cerr << "ERROR: cannot read " << path << " (run CMD/lens_ml_table.py)\n";
+        std::exit(EXIT_FAILURE);
+    }
+    std::string line;
+    int n = 0;
+    while (std::getline(fin, line)) {
+        if (line.empty() or line[0] == '#') continue;
+        std::istringstream ss(line);
+        int comp, cnt; double lo, hi; std::array<double, 7> m{};
+        if (!(ss >> comp >> lo >> hi >> cnt)) continue;
+        for (auto& v : m) ss >> v;
+        if (!ss or comp < 0 or comp > 3 or !(hi > lo)) {
+            std::cerr << "ERROR: malformed line in " << path << ": '" << line << "'\n";
+            std::exit(EXIT_FAILURE);
+        }
+        // File order is u g r i z y F146, the simulator's filter order.
+        gLensML.mmid[comp].push_back(0.5 * (lo + hi));
+        gLensML.mab[comp].push_back(m);
+        ++n;
+    }
+    for (int c = 0; c < 4; ++c)
+        if (gLensML.mmid[c].size() < 2) {
+            std::cerr << "ERROR: " << path << " has fewer than 2 bins for component " << c << "\n";
+            std::exit(EXIT_FAILURE);
+        }
+    std::cout << "Loaded " << n << " luminous-lens mass-magnitude rows from " << path << "\n";
+}
+
+bool lensAbsMag(int comp, double mass, std::array<double, 7>& mab)
+{
+    const auto& x = gLensML.mmid[comp];
+    const auto& y = gLensML.mab[comp];
+    if (mass < KROUPA_BREAK1) return false;
+    if (mass <= x.front()) { mab = y.front(); return true; }
+    if (mass >= x.back())  { mab = y.back();  return true; }
+    size_t i = 1;
+    while (x[i] < mass) ++i;
+    const double f = (mass - x[i - 1]) / (x[i] - x[i - 1]);
+    for (int b = 0; b < 7; ++b) mab[b] = y[i - 1][b] + f * (y[i][b] - y[i - 1][b]);
+    return true;
+}
+
 double remnantMass(double initialMass)
 {
     const double Mi = initialMass;
@@ -929,14 +975,18 @@ double drawNeutronStarMass()
 
 // The one entry point func_lens uses. Which mass function runs is a property of the
 // population selected by --population, not of the build.
-double drawLensMass()
+double drawLensMass(bool* luminous)
 {
+    if (luminous) *luminous = false;
     switch (gPop->mf) {
     case MassFunction::KROUPA_REMNANTS: {
         // Draw what the star was BORN as, then ask what is left of it. The order matters:
         // the mass function describes formation, the lens is whatever survived, and
         // collapsing the two loses the black holes that make the long-tE regime exist.
         const double Mi = drawKroupaInitialMass();
+        // Deviation 74: below the turnoff it is still a main-sequence star, and shines (white
+        // dwarfs, neutron stars, black holes and brown dwarfs are treated as dark).
+        if (luminous) *luminous = (Mi < MS_TURNOFF and Mi >= KROUPA_BREAK1);
         return remnantMass(Mi);
     }
     case MassFunction::LOG_UNIFORM:

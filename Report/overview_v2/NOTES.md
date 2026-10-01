@@ -28,7 +28,8 @@ Plan these notes follow: `/home/ali/.claude/plans/i-want-to-do-resilient-humming
 | 1 | Adopted GBTDS layout (spring/autumn, 18-SCA detectors); scan region by distance rule; Roman start day 730 -> 306 (2027-02-11); Rubin visit list 3,686 -> 12,308; footprint area post-stratified | 69 | 078756b | Roman footprint yields, Rubin whole-scan totals, gap geometry (timeline vs Rubin seasons) |
 | 2 | Extinction tables rebuilt from DECaPS + Marshall (dustmaps), regular grid, one file; hardened reader | 70 | (pending) | everything, most near the plane (U5 estimated x0.4-0.9) |
 | M1 | Roman: AB->Vega before the astrometric error curve (x0.45 at the median source); photometric curve anchored to STScI 66-s depth 25.45 AB, interpolated; depth/saturation sourced | 72 | 5b10cdb |
-| M1b | Rubin: per-visit depth/saturation gate (visit fiveSigmaDepth, -8.3); FWHM = median seeingFwhmGeom of the bulge visits; gamma from Ivezic 2019 | 73 | (next) |
+| M1b | Rubin: per-visit depth/saturation gate (visit fiveSigmaDepth, -8.3); FWHM = median seeingFwhmGeom of the bulge visits; gamma from Ivezic 2019 | 73 | 0e22ab6 |
+| M2 | Luminous lenses (bulge population, MS stars) add their light to the blend; astrometric centroid light-weighted (source, lens, blend) | 74 | (next) |
 | 3 | Astrometric reference position freed; sqrt(2) per-coordinate fix; correlated-floor bracket | 71 | 39b50c0 | every theta_E / mass number |
 
 ## Section by section
@@ -312,4 +313,14 @@ the floor.
   the median geometric seeing of the bulge visits (0.90-1.11" by band). Table of per-band medians
   (depth 23.3 / 24.3 / 23.9 / 23.4 / 22.9 / 22.0, seeing) is worth including -- they are what Rubin
   delivers toward the bulge, below its all-sky design numbers.
+
+### M2 -- luminous lenses and the blended centroid (2026-10-02, Deviation 74)
+- **Say in Sec. 2.2 (one event):** in the ordinary-star population, lenses below the turnoff are
+  main-sequence stars whose light (magnitudes from the Besancon model's mass-luminosity relation with
+  MIST bolometric corrections, dimmed by the dust in front of the lens) is blended with the source;
+  black holes and neutron stars are dark. Measured astrometry is the light-weighted centroid of
+  source, lens and blends. Pilot: a luminous lens supplies a median 24% of the F146 baseline light
+  (0.1% in r).
+- **Physics worth a sentence:** lens light both dilutes the shift and pulls the centroid toward the
+  lens; it is why theta_E for ordinary lenses is harder than for black holes beyond the sqrt(M) factor.
 

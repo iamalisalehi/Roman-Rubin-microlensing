@@ -731,7 +731,9 @@ mas single-visit systematic, so the delivered floor may be better than assumed h
 re-run against it yet; the 2026-09-05 v2 production run is the first that will be.
 
 
-## The astrometric shift is not diluted by blending (found in Step H5)
+## FIXED IN CODE 2026-10-02 (Deviation 74) -- The astrometric shift is not diluted by blending (found in Step H5)
+
+**Fixed:** the measured centroid is light-weighted over source (magnified), lens (if luminous) and blend; luminous lenses added for the bulge population.
 
 **What is wrong:** the simulator's modelled centroid, `s.pos1c`/`s.pos2c` in `lightcurve()`,
 adds the lensing deflection `s.def1c`/`s.def2c` undiluted — it is the SOURCE's centroid. A real
@@ -2274,4 +2276,33 @@ sources are. Size not measured.
 it, e.g. sig5 - 8.3 as the current constants imply, or a sourced bright limit); keep a per-sightline
 median for the pre-selection. Re-derive `FWHM[0-5]` from the visit list's seeingFwhmGeom medians and
 update `gama` to Ivezić 2019 Table 2 in the same step; delete the unused constants.
+
+## The source catalogue excludes stars only Roman can see, and its builder reads Bulge.h's thresholds (2026-10-02, found in M2)
+
+**What is wrong.** `CMD/BolometricCorrection.py`'s `apply_visibility_filter` keeps a Besancon star as
+a potential source only if it is visible in F146 AND in at least one LSST band, at its Besancon
+distance with no extinction, against `thre`/`satu` parsed from Bulge.h at build time. (1) Stars that
+Roman can see but Rubin cannot -- e.g. bulge K/M dwarfs with F146 ~ 22-24 AB but r > 24.3 -- are not
+in `CMD/components/*.dat` at all, so the simulator can never draw them as sources: Roman-only yields
+(and Roman's share of joint yields) are biased low by an unmeasured amount. (2) The filter uses
+baseline magnitudes, so a star too faint at baseline but detectable when magnified is excluded too
+(both surveys). (3) The script parses `thre`/`satu` from Bulge.h: the existing component files were
+built with older values (F146 29 then), and regenerating them now would silently apply the new
+25.45 and per-visit Rubin limits' constants -- a different source population.
+
+**Why it matters.** It sets which stars can be sources. The Roman-only part is directly on the
+project's central question (who detects what).
+
+**What the fix involves.** Rebuild the components with a filter that is (a) OR over surveys, (b)
+generous by the maximum magnification worth simulating (e.g. a few magnitudes below the depths),
+(c) with its thresholds stated in the script rather than parsed; check the effect on N1-N4 (Bulge.h)
+and the source counts; then the event-rate normalisation (Nstart per sightline) must still describe
+ALL stars, not the filtered ones -- verify how it is computed before changing the filter. Needs the
+2.7 GB bos9.dat pass (~minutes) and a decision by the user.
+
+## Blended field stars are placed at the source's position in the astrometric centroid (2026-10-02, M2)
+
+A real neighbour sits somewhere within the PSF; as the source brightens, the light-weighted centroid
+moves toward the source by (offset x change in weight) -- a blend-induced "shift" that can mimic or
+mask the lensing signal. Modelling it needs a position per neighbour. Kept as an approximation.
 

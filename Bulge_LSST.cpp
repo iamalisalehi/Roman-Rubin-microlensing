@@ -162,7 +162,10 @@ const char* eventTableHeader()
         // noise variants, joint and Roman partitions; the main sigtetE_*/relMl_*/okB_* columns
         // are variant W (white). Rubin's partition is the same in all three. See AST_SIGC.
         "sigtetE_NJ sigtetE_NR sigtetE_PJ sigtetE_PR relMl_NJ relMl_NR relMl_PJ relMl_PR "
-        "okB_NJ okB_NR okB_PJ okB_PR";
+        "okB_NJ okB_NR okB_PJ okB_PR "
+        // Deviation 74: luminous lens (1 = a main-sequence star whose light is blended) and the
+        // lens's share of the baseline flux in Rubin's reference band and in F146.
+        "lensLum fLens_L fLens_R";
 }
 
 struct RunConfig {
@@ -963,6 +966,7 @@ int main(int argc, char** argv) {
 
     // --------------------- Read extinction ------------------------
     readExtinction(*ex, "./files/ext/ext_tables.dat");
+    readLensML("./CMD/components/lens_ml.dat");   // luminous lenses (Deviation 74)
 
     // --------------------- Call read_cmd --------------------------
     read_cmd(*cm);
@@ -1786,7 +1790,7 @@ int main(int argc, char** argv) {
             do { //Start of visible star
                 nsim += 1.0;
                 func_source(*s, *cm, *ex, sightlineIdx);
-                func_lens(*l, *s);
+                func_lens(*l, *s, *ex, sightlineIdx);
 //                std::cerr << "nsim=" << nsim << "  Ds=" << s->Ds << "  mass=" << s->mass
 //                          << "  nums=" << s->nums << "  Ml=" << l->Ml << "  u0=" << l->u0 << "\n";
                 optical_depth(*s);
@@ -2647,7 +2651,8 @@ int main(int argc, char** argv) {
                     << co->relMlV[AV_N][SJOINT] << " " << co->relMlV[AV_N][SROMAN] << " "
                     << co->relMlV[AV_P][SJOINT] << " " << co->relMlV[AV_P][SROMAN] << " "
                     << co->okBV[AV_N][SJOINT] << " " << co->okBV[AV_N][SROMAN] << " "
-                    << co->okBV[AV_P][SJOINT] << " " << co->okBV[AV_P][SROMAN] << "\n";
+                    << co->okBV[AV_P][SJOINT] << " " << co->okBV[AV_P][SROMAN] << " "
+                    << int(l->luminous) << " " << s->fLens[0] << " " << s->fLens[1] << "\n";
             filg_in.close();
 
             // ------------------------------------------------------------------------------
@@ -4033,8 +4038,20 @@ void lightcurve(source & s, lens & l, astromet & as, double timh, int tele)
     s.pos1b = -l.u0 * l.tetE * std::sin(s.xi) + s.mus1 * (timh - l.t0) - as.ue_n1 * pis; //x-source trajectory+parallax[mas]
     s.pos2b = +l.u0 * l.tetE * std::cos(s.xi) + s.mus2 * (timh - l.t0) - as.ue_n2 * pis; //y-source trajectory+parallax[mas]
 
-    s.pos1c = -l.u0 * l.tetE * std::sin(s.xi) + s.mus1 * (timh - l.t0) - as.ue_n1 * pis + s.def1c; //x-source trajectory+parallax[mas]+lensing
-    s.pos2c = +l.u0 * l.tetE * std::cos(s.xi) + s.mus2 * (timh - l.t0) - as.ue_n2 * pis + s.def2c; //y-source trajectory+parallax[mas]+lensing
+    // The MEASURED centroid (Deviation 74): the light-weighted position of everything in the PSF.
+    // The lensed source (flux fb*A, at its unlensed position + the deflection), the lens's own
+    // light (fLens, at the lens: -u*thetaE from the source) and the other blended stars (the rest,
+    // taken at the source's unlensed position, so they only dilute). Fractions are of this
+    // telescope's baseline flux. Dark, unblended limit (fb = 1, fLens = 0): exactly the old model.
+    {
+        const int    tt  = (tele == 1) ? 1 : 0;
+        const double fs  = s.fb[tt], fL = s.fLens[tt];
+        const double u2  = s.ut * s.ut;
+        const double A   = (u2 + 2.0) / std::sqrt(u2 * (u2 + 4.0));
+        const double den = fs * A + 1.0 - fs;
+        s.pos1c = s.pos1b + (fs * A * s.def1c - fL * l.tetE * s.ux) / den; //x-centroid[mas]
+        s.pos2c = s.pos2b + (fs * A * s.def2c - fL * l.tetE * s.uy) / den; //y-centroid[mas]
+    }
 
     l.pos1  = l.mul1 * (timh - l.t0) - as.ue_n1 * pil ;//x-lens trajectory && parallax[mas]
     l.pos2  = l.mul2 * (timh - l.t0) - as.ue_n2 * pil ;//y-lens trajectory && parallax[mas]

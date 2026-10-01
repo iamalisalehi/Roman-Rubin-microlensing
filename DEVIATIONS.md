@@ -5073,4 +5073,51 @@ scan (per-visit seeing varies 0.77-1.4"); one Rubin blend fraction/baseline (r) 
 **Verification.** Builds clean; fishertest byte-identical (no Rubin gate inside); extinctiontest passes;
 the remaining thre/satu reads are Roman's only. Smoke-tested in the M2 pilot (below/next entry).
 
+**Commit:** `0e22ab6`.
+
+## 74. M2: luminous lenses and the blended astrometric centroid (2026-10-02)
+
+**What the code had.** The astrometric position was the bare source centroid (`pos1c` = source track
++ deflection), undiluted by any blended light (OPEN_ITEMS, "shift not diluted by blending"), and the
+lens's own light was never added to the blend for any population (found in the audit).
+
+**What was done (user's decision: lens light for stellar lenses).**
+- `drawLensMass(&luminous)`: for the bulge population (KROUPA_REMNANTS) a lens is luminous iff its
+  birth mass is 0.08 <= Mi < 1.0 Msun (main sequence); white dwarfs, NS, BH, brown dwarfs and every
+  other population are dark. No extra RNG draws.
+- Lens magnitudes: `CMD/lens_ml_table.py` -> `CMD/components/lens_ml.dat` (184 rows: 4 components x
+  46 mass bins, 0.08-1.00 Msun). **Not from components/*.dat**: those went through the visibility
+  filter and keep only bright low-mass stars (median M_r 9.9 at 0.09 Msun). The raw Besancon catalogue
+  (bos9.dat) is itself V <= 29-limited, so distant dwarfs are biased bright too (Mv at 0.5 Msun: 9.06
+  beyond 6 kpc vs 10.38 within 1 kpc). The table therefore takes the median Teff, logg, Mbol of
+  dwarfs within 1.5 kpc per mass bin and applies the same MIST bolometric corrections (AB) at each
+  component's median metallicity (thin +0.15, bulge 0.00, thick -0.47, halo -1.47). Result, M_r at
+  0.1 / 0.3 / 0.5 / 0.7 / 0.9 Msun: 13.9 / 11.8 / 9.7 / 7.4 / 5.3 (thin disk). The Besancon model's
+  own 0.1-Msun dwarfs are brighter than observed late-M dwarfs (~16); irrelevant here, such lenses
+  are >~6 mag below typical sources.
+- `func_lens(l, s, ex, idx)`: a luminous lens's flux (its distance modulus and the extinction at Dl
+  from the new tables, CCM89 at its component's R_V) is added to the blend in all seven bands; fb,
+  mbs of both telescopes rebuilt; `s.fLens[tele]` = the lens's share of the baseline flux.
+- `lightcurve()`: the measured centroid = source track + (fs A def - fL thetaE u) / (fs A + 1 - fs):
+  the lensed source at its deflected position, the lens's light at the lens, other blended stars at
+  the source's unlensed position (they only dilute). Telescope-specific (fb, fLens per telescope).
+  Exactly the old model for fb = 1, fL = 0.
+- Event table: `lensLum fLens_L fLens_R` appended.
+
+**Verification.** Builds; fixture PASS (all assertions; `--astro-variants` ordering PASS); only tetE
+changed, by the expected dilution: Roman (fb 0.8) x1.14-1.30 (1/0.8 = 1.25 far from the peak), Rubin
+(fb 0.5) x1.84-2.0. Stub pilot (bulge, 917 draws, 2 min 36 s, includes M1/M1b): 58.5% of lenses
+luminous (median 0.19 Msun); lens share of the F146 baseline median 0.24 (90%: 0.87), of Rubin's r
+0.001 (90%: 0.15) -- red M dwarfs, and r is heavily extinguished; theta_E to 10% among Roman
+detections W 10.1% (n = 69; was 7.9% before M1/M2 on the Deviation 71 pilot).
+
+**Approximations kept (state in the report):** blended field stars sit at the source's position (no
+blend-induced centroid motion); lens light uses a median mass-luminosity relation (no scatter, no
+binaries).
+
+**Found on the way, NOT fixed (OPEN_ITEMS; needs the user):** the source catalogue
+(CMD/components/*.dat) was pre-filtered by BolometricCorrection.py to stars visible in F146 AND >= 1
+LSST band at their Besancon distance (no dust) -- Roman-only-visible sources are absent; and that
+script reads thre/satu from Bulge.h, so regenerating it now would use the new F146 depth.
+
 **Commit:** see the next commit.

@@ -27,6 +27,7 @@ Plan these notes follow: `/home/ali/.claude/plans/i-want-to-do-resilient-humming
 |---|---|---|---|---|
 | 1 | Adopted GBTDS layout (spring/autumn, 18-SCA detectors); scan region by distance rule; Roman start day 730 -> 306 (2027-02-11); Rubin visit list 3,686 -> 12,308; footprint area post-stratified | 69 | 078756b | Roman footprint yields, Rubin whole-scan totals, gap geometry (timeline vs Rubin seasons) |
 | 2 | Extinction tables rebuilt from DECaPS + Marshall (dustmaps), regular grid, one file; hardened reader | 70 | (pending) | everything, most near the plane (U5 estimated x0.4-0.9) |
+| M1 | Roman: AB->Vega before the astrometric error curve (x0.45 at the median source); photometric curve anchored to STScI 66-s depth 25.45 AB, interpolated; depth/saturation sourced | 72 | (next) |
 | 3 | Astrometric reference position freed; sqrt(2) per-coordinate fix; correlated-floor bracket | 71 | 39b50c0 | every theta_E / mass number |
 
 ## Section by section
@@ -289,4 +290,17 @@ the star's absolute position, making sigma(theta_E) a median 6.8x too small in t
 per-coordinate error was counted twice in variance (sigma sqrt(2) too large). The first dominates;
 the earlier reports' theta_E and mass precisions were optimistic for this reason, not because of
 the floor.
+
+### M1 -- Roman's magnitude system and noise (2026-10-02, Deviation 72)
+- **Say in Sec. 2.1 (noise):** all magnitudes are AB (MIST bolometric corrections). Roman's
+  photometric error: Penny et al. 2019's single-epoch F146 curve (1 mmag floor), anchored to STScI's
+  current 5-sigma point-source depth for a 66-s exposure, 25.45 AB (25.37 in 57 s); saturation 14.8 AB
+  (Penny et al. 2019). Roman's astrometric error: Lam et al. 2026's per-exposure curve, whose anchors
+  are Vega magnitudes, evaluated at m_Vega = m_AB - 1.03 (synphot, STScI throughput, CALSPEC Vega).
+  Per-exposure precision at the median Roman detection (F146 ~ 21.8 AB): ~1.2 mas per coordinate.
+- **Correction to quote:** the earlier forecasts used AB magnitudes in a Vega-calibrated curve,
+  overstating Roman's astrometric errors ~2.2x -- in the opposite direction to the reference-position
+  correction (Step 3). Net effect on theta_E: measure on the new runs.
+- **Decision to flag to the reader (and the user):** Penny's curve was rescaled to the current STScI
+  depth rather than by exposure time alone (which would be 0.26 mag deeper).
 

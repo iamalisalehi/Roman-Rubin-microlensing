@@ -4997,3 +4997,50 @@ sqrt(2) too large, and the astrometric chi^2 is half what it should be. Not disc
   larger tetE, will be hit less -- to be measured on the production runs.)
 
 **Commit:** `39b50c0`.
+
+## 72. M1: Roman's magnitude system, photometric noise, depth and saturation (2026-10-02)
+
+**Found by the OPEN_ITEMS audit (2026-10-01), all three verified against primary sources.**
+1. **Astrometric error evaluated in the wrong magnitude system.** errRomanA's anchors are F146 VEGA
+   magnitudes (Lam et al. 2026: "F146_Vega < 20.62", "< 23.5"); the simulator's magnitudes are AB
+   (CMD/Roman MIST tables headed "Roman (AB)"). Every Roman astrometric error was read ~1 mag too faint.
+2. **Photometric table**: `files/sigma_roman.txt` is Penny et al. 2019 Fig. 4 (W149 = F146, AB, the
+   Cycle-7 46.8-s exposure, 1 mmag floor), looked up nearest-neighbour; the GBTDS exposure is 66 s.
+3. **Depth and saturation placeholders**: thre[6] = 29.0, satu[6] = 12.0, both unsourced.
+
+**What was done.**
+- `F146_AB_MINUS_VEGA = 1.0324`, computed with synphot (installed in .roman, v1.7.0): AB magnitude of
+  Vega (CALSPEC alpha_lyr_stis_011) through STScI's F146 effective area (roman-technical-information
+  @14a9b0c, Roman_effarea_v8_SCA01_20240301; pivot 14,355 A). Cross-checks: EXOZIPPy #313 1.037;
+  STScI Roman-STScI-000825 Table 4 2MASS J 0.913, H 1.391 bracket it. errRomanA now converts first.
+- Photometric curve: at load time its photon-noise part is shifted so its 5-sigma point lands at
+  `ROMAN_DEPTH5_AB` = 25.37 + 1.25 log10(66/57) = 25.4496 AB -- STScI's current 57-s 5-sigma
+  point-source sensitivity (AB_mag_limiting_sensitivity.ecsv, 2x minimum zodi, updated 2024-06-03)
+  scaled to 66 s -- and the 1 mmag floor re-added; errRomanM interpolates log(err) linearly
+  (was nearest neighbour). Penny's own 5-sigma point (interpolated) is 25.48, so the shift is -0.032
+  mag. **Departure from the user's decision ("rescale Penny to 66 s"), flagged for the report:**
+  Penny's curve rescaled by exposure time alone would put the depth at ~25.71, 0.26 mag deeper than
+  STScI's current figure (Penny modelled an older design); anchoring to STScI implements the
+  decision's intent (66-s, Penny-shaped, interpolated) with the current calibration. One constant.
+- thre[6] = ROMAN_DEPTH5_AB (25.45); satu[6] = 14.8 AB (Penny et al. 2019 Table 3, "W149 saturation
+  ~14.8", brightest pixel 1e5 e- before the first read, i.e. usable up-the-ramp; the thermal-vacuum
+  paper arXiv:2607.18419's "~17th mag" is full-exposure saturation, not the measurement limit).
+- F146 PSF FWHM 0.105" confirmed by STScI (SummaryPSFstats_center/corner, filter_parameters.ecsv);
+  Lam et al.'s 115 mas is their own figure. No change.
+- Provenance gains a `# roman_noise` line. Python mirrors: `romanlib.roman_ast_error(m_AB, offset)`
+  and `roman_ast_vega_offset(provenance)` (0 for runs without the line, so the 2026-09 analyses
+  reproduce); u2, h5_astrometric_shift use them; h5_crosscheck takes `--ab-minus-vega`.
+- Stale TODO/PLACEHOLDER comments about the Roman error models removed.
+
+**Size of the change** (per exposure, per coordinate): astrometric error at F146 AB 21.0 / 21.8 /
+22.5 / 23.5 / 24.5 / 25.4 = 1.10 / 1.23 / 2.11 / 4.53 / 9.75 / 22.2 mas (was 1.47 / 2.72 / 4.65 / 10.0 /
+25.1 / 57.5): **x0.45 at the median Roman detection**, opposite in direction to Deviation 71. The floor
+now binds to AB 21.65. Photometric error changes by < 5% everywhere (-0.032 mag shift + interpolation).
+The overview report's "2.75 mas at the median F146 = 21.82" is the old (AB-as-Vega) value; the new
+report must use 1.23 mas.
+
+**Verification.** fishertest byte-identical (its errors are flat stand-ins); extinctiontest passes;
+dry run prints the anchoring ("Penny+2019 5-sigma point 25.4819 AB shifted by -0.0322606 mag to
+25.4496"); romanlib's mirror with offset 0 equals u2's old mirror exactly.
+
+**Commit:** see the next commit.

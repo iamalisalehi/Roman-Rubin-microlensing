@@ -86,8 +86,12 @@ ROMAN_AST_SBKG = 10.0
 ROMAN_AST_SLOPE_BKG = 0.4
 
 
+AB_MINUS_VEGA = 0.0   # --ab-minus-vega; 1.0324 for runs from Deviation 72 on (see romanlib)
+
+
 def roman_ast_error(mag):
     """Per-exposure astrometric error at F146 magnitude `mag`, in mas."""
+    mag = np.asarray(mag, dtype=float) - AB_MINUS_VEGA
     mag = np.asarray(mag, dtype=float)
     out = np.full(mag.shape, ROMAN_AST_FLOOR)
     mid = (mag > ROMAN_AST_MFLR) & (mag <= ROMAN_AST_MBKG)
@@ -209,7 +213,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("extract", help="column extract of test5.dat (see docstring)")
+    ap.add_argument("--ab-minus-vega", type=float, default=0.0,
+                    help="F146 AB-Vega offset the run applied before errRomanA: 0 for runs before "
+                         "Deviation 72, 1.0324 after (their provenance has a '# roman_noise' line)")
     a = ap.parse_args()
+    global AB_MINUS_VEGA
+    AB_MINUS_VEGA = a.ab_minus_vega
 
     d = load(a.extract)
     print(f"detected events: {len(d):,}")

@@ -58,8 +58,15 @@ LIVE_BASELINE = os.path.join(G.ROOT, "Baseline", "RomanBaseline.dat")
 SIGMA_ROMAN = "files/sigma_roman.txt"
 
 
+AB_MINUS_VEGA = 0.0   # per run, from its provenance (Deviation 72); 0 for the 2026-09 runs
+
+
 def err_roman_a(m):
-    """helper.cpp errRomanA(), vectorised."""
+    """helper.cpp errRomanA(), vectorised (AB magnitudes; offset as the run applied it)."""
+    return R.roman_ast_error(m, AB_MINUS_VEGA)
+
+
+def _err_roman_a_unused(m):
     e = np.where(m > ROMAN_AST_MBKG,
                  ROMAN_AST_SBKG * 10.0 ** (ROMAN_AST_SLOPE_BKG * (m - ROMAN_AST_MBKG)),
                  np.where(m > ROMAN_AST_MFLR,
@@ -143,6 +150,9 @@ def main():
         b = U.Boot(len(ev), seed=U.SEED + 10)
         allm = np.ones(len(ev), bool)
         base = LEGACY_BASELINE if G.run_geometry(directory) == "legacy" else LIVE_BASELINE
+        global AB_MINUS_VEGA
+        AB_MINUS_VEGA = R.roman_ast_vega_offset(
+            os.path.join(directory, "files", "MONTLMC", "files", "run_provenance.txt"))
         times_list, n_lists = roman_times_per_event(ev, G.read_roman_visits(base))
         print(f"[{name}] counting epochs for {len(ev):,} Roman detections; visit list {base} "
               f"({n_lists} distinct epoch lists)", flush=True)

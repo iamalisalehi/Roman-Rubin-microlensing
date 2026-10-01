@@ -1509,7 +1509,9 @@ minutes of CPU. Any reader should also reject lines whose field count is not 70.
 patch the six rows and split line 687 from the logs, or have the analysis read `nsim` from the
 logs.
 
-## Roman's photometric error model is a flagged placeholder, and every Roman error bar inherits it
+## FIXED IN CODE 2026-10-02 (Deviation 72) -- Roman's photometric error model is a flagged placeholder, and every Roman error bar inherits it
+
+**Fixed:** Penny+2019 Fig. 4 identified as the source (AB, 46.8 s); interpolated and anchored to STScI's 66-s 5-sigma depth (Deviation 72). Remaining caveat: Penny's aperture-photometry model, isolated-star, no extra crowding noise -- a pixel-level GBTDS model (Wilson et al. 2023) would be the next refinement.
 
 **What is wrong.** `errRomanM()` (`Bulge_LSST.cpp`, just above `main`) carries
 `TODO(Ali): PLACEHOLDER`. It is a **nearest-neighbour** lookup of magnitude in
@@ -1950,7 +1952,9 @@ their own items: stale git stamp (`make clean && make` after the last commit), `
 truncating outputs, append-mode outputs, ~170 s start-up per chunk, silent OOM kills in analysis
 (run under `analysis/memrun.py`); resume with `runs/runctl.sh stop/continue`.
 
-## Roman's F146 single-visit depth is a 29 mag placeholder, and the image-resolution count used it (2026-09-29)
+## FIXED IN CODE 2026-10-02 (Deviation 72) -- Roman's F146 single-visit depth is a 29 mag placeholder, and the image-resolution count used it (2026-09-29)
+
+**Fixed:** thre[6] = 25.45 AB, STScI's current 5-sigma depth scaled to 66 s (Deviation 72).
 
 **What is wrong.** `thre` in `Bulge.h` gives F146 a single-visit depth of 29.0 mag, commented
 "(value needs to change)". Roman's own photometric error table, `files/sigma_roman.txt` (the noise
@@ -2210,7 +2214,9 @@ every table position, ~16,000 VizieR boxes, and a choice of how to distribute th
 distance), or bracket it: U5's `aks_lo` variant (k 0.0734, +10% Marshall) gives the size of the
 effect on the yields without rebuilding.
 
-## Roman's astrometric error is a Vega-calibrated curve evaluated at AB magnitudes (2026-10-01, audit)
+## FIXED IN CODE 2026-10-02 (Deviation 72) -- Roman's astrometric error is a Vega-calibrated curve evaluated at AB magnitudes (2026-10-01, audit)
+
+**Fixed:** errRomanA converts AB -> Vega with 1.0324 (synphot, STScI effective area, CALSPEC Vega) (Deviation 72).
 
 **What is wrong.** `errRomanA(magF146)` (helper.cpp) uses Lam et al. (2026)'s anchors, which are in
 F146 VEGA magnitudes ("F146_Vega < 20.62" floor, "F146_Vega < 23.5" background; their Fig. 5). The
@@ -2229,7 +2235,9 @@ and sigma_roman.txt (Penny+2019, AB) are both AB.
 the F146 throughput and a Vega spectrum (synphot) rather than taken from a code issue; record it in
 Bulge.h with its source; check u2_resolution_depth.py and any Python mirror of errRomanA.
 
-## Roman's F146 saturation limit satu[6] = 12.0 is an unsourced placeholder (2026-10-01, audit)
+## FIXED IN CODE 2026-10-02 (Deviation 72) -- Roman's F146 saturation limit satu[6] = 12.0 is an unsourced placeholder (2026-10-01, audit)
+
+**Fixed:** satu[6] = 14.8 AB, Penny+2019 Table 3 (Deviation 72).
 
 `satu` in Bulge.h gives F146 a single-visit saturation of 12.0 mag, commented "(value needs to
 change)". It gates which epochs are recorded and the image-resolution count. Penny+2019 Fig. 4
@@ -2237,7 +2245,9 @@ marks the single-read saturation for their exposure; STScI's WFI pages give satu
 it from a source in the right system (AB) and exposure (66 s, with up-the-ramp reads), together with
 thre[6].
 
-## Roman's photometric error table is for a 46.8-s exposure; the GBTDS uses 66 s (2026-10-01, audit)
+## FIXED IN CODE 2026-10-02 (Deviation 72) -- Roman's photometric error table is for a 46.8-s exposure; the GBTDS uses 66 s (2026-10-01, audit)
+
+**Fixed:** anchored to the 66-s depth (Deviation 72).
 
 `files/sigma_roman.txt` reproduces Penny+2019 Fig. 4 (AB; "the Cycle 7 design's assumed exposure
 time (46.8 s)"; 1 mmag floor). The adopted GBTDS exposure is 66 s (Lam et al. 2026; STScI), so the

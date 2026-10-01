@@ -230,7 +230,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
 //                         Func lens  calculations                    //
 //                                                                    //
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
-void func_lens(lens & l, source & s){
+void func_lens(lens & l, source & s, const extin & ex, int sightlineIdx){
 
     double test, tt, Am, DD;
     double mmin = Ml_min;
@@ -280,7 +280,7 @@ void func_lens(lens & l, source & s){
     // live here -- uniform, three power laws, Kroupa+remnants -- now lives in drawLensMass()
     // beside the two new ones, so a population is one table entry rather than an `if` here
     // plus a constant there plus a filename suffix somewhere else.
-    l.Ml = drawLensMass();
+    l.Ml = drawLensMass(&l.luminous);
 
     // The bounds bracket the masses the population can produce and also set the Mls
     // efficiency grid, so a draw outside them would land outside every efficiency bin.
@@ -294,6 +294,43 @@ void func_lens(lens & l, source & s){
     s.ros    = 1.0 * Rsun * l.xls / l.RE;
     l.pirel  = 1.0 / l.Dl - 1.0 / s.Ds; //[mas]
     l.piE    = l.pirel / l.tetE; //[]
+    // ---- Deviation 74: a luminous lens's own light joins the blend ----
+    // Apparent magnitudes from its main-sequence absolute magnitudes (CMD/components/lens_ml.dat),
+    // distance modulus, and the dust in front of the LENS (the same tables, at Dl). No random
+    // scatter is drawn, so the RNG stream is unchanged. The source fraction fb and baseline mbs of
+    // both telescopes are rebuilt from the enlarged blend, and fLens records the lens's share,
+    // which pulls the astrometric centroid toward the lens (lightcurve()).
+    s.fLens = {0.0, 0.0};
+    if (l.luminous) {
+        std::array<double, 7> mab;
+        if (lensAbsMag(static_cast<int>(l.struc), l.Ml, mab)) {
+            const double AvL = interpExtinctionAlongSightline(ex, sightlineIdx, l.Dl);
+            std::array<double, M> fluxL{};
+            for (int i = 0; i < M; ++i) {
+                const double AiL = std::max(0.0, AvL * AlAv(lambda_um[i], Rv[static_cast<int>(l.struc)]));
+                fluxL[i] = std::pow(10.0, -0.4 * (mab[i] + 5.0 * std::log10(l.Dl * 100.0) + AiL));
+                s.Fluxb[i] += fluxL[i];
+                s.magb[i]   = -2.5 * std::log10(s.Fluxb[i]);
+                s.blend[i]  = std::pow(10.0, -0.4 * s.Map[i]) / s.Fluxb[i];
+            }
+            double fluxTotRubin = 0.0, fluxSrcRubin = 0.0, fluxLensRubin = 0.0;
+            for (int band : RUBIN_REF_BANDS) {
+                fluxTotRubin  += s.Fluxb[band];
+                fluxSrcRubin  += std::pow(10.0, -0.4 * s.Map[band]);
+                fluxLensRubin += fluxL[band];
+            }
+            s.mbs[0]   = -2.5 * std::log10(fluxTotRubin);
+            s.fb[0]    = fluxSrcRubin / fluxTotRubin;
+            s.fb[1]    = s.blend[6];
+            s.mbs[1]   = s.magb[6];
+            s.fLens[0] = fluxLensRubin / fluxTotRubin;
+            s.fLens[1] = fluxL[6] / s.Fluxb[6];
+            CHECK(s.fb[0] + s.fLens[0] <= 1.000001 and s.fb[1] + s.fLens[1] <= 1.000001);
+        } else {
+            l.luminous = false;
+        }
+    }
+
     l.u0     = RandR(0.001, u0m);
     l.t0     = RandR(2.0, Tobs - 2.0);
     l.DeltaT = std::sqrt(4.0 + l.u0 * l.u0) * l.tetE; //[mas]

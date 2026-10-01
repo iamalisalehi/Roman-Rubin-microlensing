@@ -695,6 +695,9 @@ struct source {
     double od_thin, od_thick, od_bulge, od_halo, opt;
 
     std::array<double, 2> fb, mbs; // small fixed arrays
+    // Share of each telescope's baseline flux that is the LENS's own light (Deviation 74): 0 for
+    // dark lenses; for a luminous lens it is already inside the blend (fb counts the source only).
+    std::array<double, 2> fLens{};
 
     std::vector<double> nssim; // size Num
     std::vector<double> nsdet; // size Num
@@ -727,6 +730,7 @@ struct source {
 
 struct lens {
     int numl;
+    bool luminous = false;          // a living (main-sequence) star, whose light is blended (Dev. 74)
 
     double Ml, Dl, vl, Vt, xls, u0, A0, mi1, mi2;
     double rhomaxl, tE, RE, t0, murel, DeltaT;
@@ -1339,7 +1343,7 @@ void   read_cmd(CMD & cm);
 void   readExtinction(extin& ex, const std::string& path); // files/ext/ext_tables.dat; exits on bad input
 void   optical_depth(source & s);
 void   func_source(source & s, CMD & cm, const extin& ex, int sightlineIdx);
-void   func_lens( lens & l, source & s);
+void   func_lens( lens & l, source & s, const extin & ex, int sightlineIdx);
 void   vrel(source & s, lens & l);
 void   Disk_model(source & s, int);
 void   ErrorCal(covarian & co, lens &l, source &s);
@@ -1390,6 +1394,17 @@ double remnantMass(double initialMass);
 double drawLogUniformMass(double lo, double hi);
 double drawNeutronStarMass();
 double drawPowerLawMass(double lo, double hi, double alpha);
-double drawLensMass();
+double drawLensMass(bool* luminous = nullptr);   // *luminous: a living star (Deviation 74)
+
+// Luminous lenses (Deviation 74): main-sequence mass -> absolute magnitude (AB, ugrizy + F146) per
+// Galactic component, from CMD/components/lens_ml.dat (CMD/lens_ml_table.py). Bins of 0.02 Msun
+// over 0.08-1.00 Msun; lighter lenses are brown dwarfs and treated as dark.
+struct LensML {
+    std::array<std::vector<double>, 4> mmid;
+    std::array<std::vector<std::array<double, 7>>, 4> mab;
+};
+inline LensML gLensML;
+void   readLensML(const std::string& path);
+bool   lensAbsMag(int comp, double mass, std::array<double, 7>& mab);   // false if dark
 
 #endif // LMC_H

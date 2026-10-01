@@ -138,7 +138,9 @@ The code now uses two separate visit lists and cadences: `FoV` (1.75°) for Rubi
 declaration in `Bulge.h`) for Roman via `RomanBaseline.dat`, matched independently by two calls to
 `matchVisibleEpochs()`. Fix in Phase G, Step G3.
 
-## Astrometric finite-difference steps (`Delta2[]`) are unswept, and two use a biased stencil (from Step C3)
+## RESOLVED 2026-10-02 (Deviation 75) -- Astrometric finite-difference steps (`Delta2[]`) are unswept, and two use a biased stencil (from Step C3)
+
+**Resolved:** swept (fishertest --sweep-astro); central stencil for all four; tetE/mus exact (linear), piE step set to 1e-2 of legacy, mid-plateau.
 
 Step C3 swept and retuned the **photometric** steps (`Delta1[]`) and fixed the stencil for the
 photometric `tE` and `piE` (see `DEVIATIONS.md` entries 10 and 11). The astrometric matrix was

@@ -5120,4 +5120,29 @@ binaries).
 LSST band at their Besancon distance (no dust) -- Roman-only-visible sources are absent; and that
 script reads thre/satu from Bulge.h, so regenerating it now would use the new F146 depth.
 
+**Commit:** `7a572b3`.
+
+## 75. M3: the astrometric finite-difference steps swept; central stencil for all four (2026-10-02)
+
+**What the code had.** Delta2[] = 25% of each parameter, never swept (OPEN_ITEMS); tetE and piE used
+sig2 (two forward differences, O(h) bias), mus1/mus2 the central sig. Step C3 had found the analogous
+photometric steps ~1e4 too large.
+
+**What was done.** `kFDStepScaleB` (Bulge.h, production multipliers) and `covarian::deltaScaleB`
+(runtime knob, 1 = production) on Delta2[]; all four use the central stencil; new fixture mode
+`./fishertest --sweep-astro` (CSV like --sweep: sigma per event, partition, parameter, scale).
+
+**Result of the sweep (scales 1e-8 .. 2 of the legacy step, all 7 fixture events, all partitions).**
+- tetE, mus1, mus2: sigma identical to all printed digits at every scale. The modelled centroid is
+  LINEAR in each (source track, deflection thetaE u/(u^2+2) with u independent of thetaE, the
+  light-weighting of Deviation 74 and the lens-light term all linear), so any difference quotient is
+  exact -- including the old forward one. Steps kept at 1.
+- piE (enters through the parallax-bent trajectory, nonlinear): plateau 1e-8 .. 1e-2; at the legacy
+  step sigma is off by up to 0.4% (median 0.035%), at 2x by up to 2.5%. Production step set to 1e-2
+  of the legacy one; re-swept around it: flat to 1e-5 from 1e-7 to 2x, round-off appears only at
+  1e-8 (0.04%).
+
+**Verification.** fixture PASS (all assertions); tetE column moves in the 4th digit through its
+correlation with piE; `--astro-variants` PASS.
+
 **Commit:** see the next commit.

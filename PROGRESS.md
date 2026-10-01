@@ -50,7 +50,7 @@ then new bulge/bh/ns production runs and a NEW overview report.** Plan (approved
   `figures/ext_20261001/`; **residual: GC field ~10% thin** (contrast 4.74 vs VVV 5.52; new
   OPEN_ITEMS entry). Pilot: every draw's A_r matches the tables to 0.017 mag. Old tables archived in
   `files/ext_bayestar_v1/` (U4/U5 read them).
-- **Step 3 ✅ astrometric floor (Deviation 71; NOT yet committed).** Two pre-existing errors fixed
+- **Step 3 ✅ astrometric floor (Deviation 71; commit 39b50c0).** Two pre-existing errors fixed
   (user's decision): (A) the source's reference position is now free per frame group -- before,
   tetE was partly measured from the absolute position; (B) erra is the per-coordinate sigma (was
   doubled in variance). FisherM's astrometry rewritten (one derivative pass per epoch; day blocks;
@@ -60,8 +60,29 @@ then new bulge/bh/ns production runs and a NEW overview report.** Plan (approved
   the old value (median); N/W 1.46, P/W 12; theta_E to 10%: W 7.9%, N 1.3%, P 0%.** Every theta_E and
   mass number in the existing reports is therefore optimistic by more than the dust or footprint
   corrections; the bh numbers need the production runs.
-- **Next:** commit Step 3; then the user's minor items (F146 depth `thre[6]`, Roman photometric
-  noise, `--seed`/`--end-index`, DET_ANOMALY, LSSTCam outline...), then the production runs.
+- **OPEN_ITEMS AUDIT 2026-10-01 (user: "some items could be outdated or wrong -- double check every
+  item").** Every open entry re-checked against the code at 39b50c0, the reports and the sources;
+  verdict table at the top of OPEN_ITEMS ("AUDIT 2026-10-01"). 6 entries outdated/resolved, 3 partly
+  outdated, 1 with a wrong proposed cause (x8.3 mass event), and **3 NEW problems**: (1) Roman's
+  astrometric error curve is Vega-calibrated (Lam+2026) but fed AB magnitudes (MIST tables are AB):
+  sigma_ast ~2.2-2.6x too large; (2) F146 saturation satu[6] = 12 is an unsourced placeholder;
+  (3) the photometric table is Penny+2019 Fig. 4 for a 46.8-s exposure, not the GBTDS's 66 s.
+  Also: the blend never includes the lens's own light (right for bh/ns, not for stellar lenses).
+- **Verified minor-items plan (proposed; awaiting the user's decisions D1-D5):**
+  M0 OPEN_ITEMS: close the resolved/outdated entries per the audit (no code).
+  M1 Roman magnitudes and noise: AB->Vega before errRomanA (offset computed with synphot from the
+     F146 throughput); photometric table interpolated (not nearest-neighbour) and brought to 66 s;
+     thre[6] and satu[6] from sources.
+  M2 Blended astrometric centroid (shift diluted by blend light) [+ lens light if D3].
+  M3 Astrometric finite-difference steps: sweep Delta2[], central stencil for tetE/piE.
+  M4 Investigate the x8.3 mass event (no presumed fix); add observed peak time t0obs and compute
+     t0zone/dt_edge from it.
+  M5 Per-sightline RNG seeding + --seed/--end-index (chunked runs reproduce the unchunked run).
+  M6 Output hygiene: MapLMC/LpLMC append doubling, --dry-run truncation, flagi reset, signed
+     dchiP/dchiA, flag_det, dead magC0/datC0, stale TODOs, Makefile stamp, numd/EffiD.
+  M7 DET_ANOMALY: dump the chi2 breakdown of any anomalous event (reproducible after M5).
+  M8 (if D4) Rubin's LSSTCam footprint.
+  M9 Pre-production: tests, dry runs, pilots for bulge/bh/ns, timing, launch decision.
 
 **Newest (2026-09-30): the overview report quotes dust-corrected numbers on a VVV-verified dust
 reference (Deviation 63).** The extinction tables are wrong near the plane: maps.py's documented

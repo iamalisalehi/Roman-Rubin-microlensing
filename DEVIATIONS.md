@@ -4996,4 +4996,4 @@ sqrt(2) too large, and the astrometric chi^2 is half what it should be. Not disc
   detections, on bulge lenses with the old dust and footprint; the black-hole numbers, with ~10x
   larger tetE, will be hit less -- to be measured on the production runs.)
 
-**Commit:** not yet committed (awaiting the user).
+**Commit:** `39b50c0`.

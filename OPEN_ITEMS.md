@@ -6,6 +6,66 @@ into the whitepaper's open-items discussion at Phase G, Step G3.
 
 ---
 
+
+## AUDIT 2026-10-01: every open entry re-checked against the code, the reports and the sources
+
+The user warned that entries here can be outdated or wrong (several were, in the overview-report
+work). Each open entry below was re-checked on 2026-10-01 against the CURRENT code (commit 39b50c0),
+the overview report, and the primary sources. Verdicts:
+
+| entry | verdict | evidence |
+|---|---|---|
+| Astrometric Fisher CHECK aborts | **RESOLVED** (outdated) | the CHECK no longer exists; null derivatives are accepted (FisherM, Deviation 71 rewrite) |
+| Joint flag_det is Rubin-only | true, diagnostic only | `flag_det` set only in the Rubin branch (l. ~2002), written to stdout only |
+| §5.1 visit-list model (whitepaper) | true, document only | whitepaper still describes one merged list; Phase G |
+| Delta2[] unswept, tetE/piE biased stencil | **true, now important** | no sweep in DEVIATIONS; tetE/piE still use sig2; theta_E is now the headline |
+| fb stencil depends on fb bin | true, negligible | co.bb[] bins unchanged; C3 showed < 0.3% effect |
+| table still test2.dat in repo root | **partly outdated** | now `./test<tag>.dat` in the run directory; still truncated by a fresh run there |
+| stale TODO(Ali) (RomanBaseline read) | true | l. ~885; also a stale "no Roman astrometric error model exists yet" TODO at l. ~988 (wrong since H4) |
+| flagi stale on uncharacterised events | true | not in the per-event reset block |
+| two output files in append mode | **partly outdated** | EfLMC/EfLMC_B/magC0/datC0 now truncate on a fresh run; MapLMC and LpLMC still always append |
+| startup check on an unread file | **RESOLVED** (outdated) | the `fil0` input stream is gone; LpLMC is created if missing |
+| numd[0] counts drawn stars | true | records.push_back (l. 2489) sits outside the visibility gate (closes l. 2486) |
+| BH remnant single slope | true, model choice | helper.cpp remnantMass, BH_MI_SLOPE |
+| five events sigma_joint > sigma_Rubin, cond > 1e9 | historical; re-check on new runs | kMaxCondition 1e12 unchanged |
+| binary git stamp stale | true | Makefile captures GIT_COMMIT at make time; no forced rebuild |
+| F3 rests on 1,950 events / F2 long-tE on 124 | superseded by the stratified runs | re-check sample sizes on the new runs |
+| F1/F2/F3 OOM | **probably RESOLVED** | romanlib.load_events streams in chunks with `keep`; F1 uses it |
+| two Phase F panels unweighted | **RESOLVED** (outdated) | f3 and f4 call romanlib.attach_weight |
+| E1 tE stratification not implemented | true, deferred by design | |
+| Roman halo orbit not modelled | true, negligible | |
+| no astrometric-shift analysis product | **RESOLVED** (outdated) | analysis/h5_astrometric_shift.py, h5_astrometry_summary.py, h5_crosscheck.py |
+| astrometric shift not diluted by blending | **true, now important** | lightcurve(): pos1c adds def1c undiluted (l. ~4000) |
+| provenance stamp stale (discipline) | true | same as the git-stamp entry |
+| --dry-run destroys previous output | **true** | outputs are opened/truncated (l. ~1080-1141) before the dry-run exit (l. ~1620); a NOTE is now printed |
+| dchiP/dchiA absolute | true, diagnostic | l. ~2282 |
+| startup ~170 s parsing extinction files | **RESOLVED** (Deviation 70) | single table file; dry run 26 s |
+| H7 cost mechanism | superseded (marked so) | |
+| G2 has no published number | true, deferred | |
+| pooled stats / per-mass efficiencies | RESOLVED (already marked inside) | |
+| H3 satellite numbers unweighted | open until a new paired run | the new runs use --pair-satellite |
+| map stream never flushed | code FIXED (marked inside); data note only for v3 | v3 data deleted 2026-10-01 -> entry can close |
+| Roman photometric error placeholder | **true, and its source is now identified** | sigma_roman.txt = Penny+2019 Fig. 4 (W149 = F146, AB, 46.8-s Cycle-7 exposure, 1 mmag floor); nearest-neighbour lookup; the adopted GBTDS exposure is 66 s |
+| magC0/datC0 dump dead | true | gate `save < 0` with save = 0 can never fire |
+| t0 is not the observed peak | true | lightcurve() references parallax to Earth at t = 0 |
+| CRITICAL AlAv inverted | FIXED IN CODE (Dev. 53), closes with the re-runs | |
+| event rate too flat in latitude | open, re-measure on new runs | measured through the old dust |
+| Neven ~300x | open, analysis | |
+| one DET_ANOMALY | open | code path exists (nDetClass[DET_ANOMALY]); not reproducible until per-sightline seeding |
+| Roman detects off-mission peaks | open: a reporting convention | measured 2.9-4.4% |
+| x8.3 sigma_joint > sigma_Roman on Ml | **open; the entry's proposed cause is incomplete** | with okA/okB set on both partitions, min-of-two-routes is monotone (each route is); a violation needs a partition whose matrix was rejected (condition cut) -- investigate the event, do not presume a fix |
+| Penny comparison | open, after the runs | |
+| no --seed / --end-index | true | seed = 42 compile-time; --start-index skips without consuming RNG |
+| F146 depth thre[6] = 29 placeholder | true | Bulge.h; the curve's own 5 sigma is 25.52 (AB, 46.8 s) |
+| stale statements in older documents | true, documents | |
+| Rubin FoV a circle (new) | true; LSSTCam facts to be re-verified when worked on | |
+| GC dust 10% thin (new) | true (measured, Deviation 70) | |
+
+**Three NEW problems found by this audit** (entries below): the AB/Vega mismatch in Roman's
+astrometric error, the unsourced F146 saturation limit, and the 46.8-s exposure of the photometric
+table. The overview report repeats one of them: its "2.75 mas at the median F146 = 21.82" evaluates
+the Vega-calibrated curve at an AB magnitude.
+
 ## Astrometric Fisher CHECK aborts when a perturbation is unresolvable (from the fixture)
 
 `FisherM`'s astrometric branch asserts
@@ -2111,4 +2171,39 @@ Marshall column ratio at the bulge distance (a 2D correction applied to a 3D sha
 every table position, ~16,000 VizieR boxes, and a choice of how to distribute the extra dust in
 distance), or bracket it: U5's `aks_lo` variant (k 0.0734, +10% Marshall) gives the size of the
 effect on the yields without rebuilding.
+
+## Roman's astrometric error is a Vega-calibrated curve evaluated at AB magnitudes (2026-10-01, audit)
+
+**What is wrong.** `errRomanA(magF146)` (helper.cpp) uses Lam et al. (2026)'s anchors, which are in
+F146 VEGA magnitudes ("F146_Vega < 20.62" floor, "F146_Vega < 23.5" background; their Fig. 5). The
+simulator's magnitudes are AB: the MIST bolometric-correction tables in CMD/Roman and CMD/Rubin are
+headed "Roman (AB)" and "LSST (AB)". F146's AB - Vega offset is about +1.04 mag (EXOZIPPy issue #313,
+computed for W149; consistent with STScI's Roman-STScI-000825 Table 4, 2MASS J 0.913 / H 1.391,
+which bracket F146). So every Roman exposure's astrometric error is read ~1 mag too faint.
+
+**Why it matters scientifically.** On the curve's slopes (0.333 dex/mag source-dominated, 0.4
+background-dominated) that overstates sigma_ast by ~2.2-2.6x for typical bulge sources, and puts
+the 1.1 mas floor at AB 20.62 instead of AB ~21.66. Every astrometric number is pessimistic by
+this, in the opposite direction to Deviation 71's fixes. Photometry is NOT affected: Rubin's model
+and sigma_roman.txt (Penny+2019, AB) are both AB.
+
+**What the fix involves.** Convert before the lookup, m_Vega = m_AB - dAB, with dAB computed from
+the F146 throughput and a Vega spectrum (synphot) rather than taken from a code issue; record it in
+Bulge.h with its source; check u2_resolution_depth.py and any Python mirror of errRomanA.
+
+## Roman's F146 saturation limit satu[6] = 12.0 is an unsourced placeholder (2026-10-01, audit)
+
+`satu` in Bulge.h gives F146 a single-visit saturation of 12.0 mag, commented "(value needs to
+change)". It gates which epochs are recorded and the image-resolution count. Penny+2019 Fig. 4
+marks the single-read saturation for their exposure; STScI's WFI pages give saturation times. Set
+it from a source in the right system (AB) and exposure (66 s, with up-the-ramp reads), together with
+thre[6].
+
+## Roman's photometric error table is for a 46.8-s exposure; the GBTDS uses 66 s (2026-10-01, audit)
+
+`files/sigma_roman.txt` reproduces Penny+2019 Fig. 4 (AB; "the Cycle 7 design's assumed exposure
+time (46.8 s)"; 1 mmag floor). The adopted GBTDS exposure is 66 s (Lam et al. 2026; STScI), so the
+table's faint end is ~0.1-0.2 mag pessimistic, and the error at fixed magnitude ~10-20% too large.
+Options: rescale (SNR ~ sqrt(t) where background-limited) or replace with a 66-s model (Wilson et
+al. 2023, STScI/Pandeia). Part of the existing "photometric error placeholder" entry's fix.
 

@@ -27,7 +27,7 @@ Plan these notes follow: `/home/ali/.claude/plans/i-want-to-do-resilient-humming
 |---|---|---|---|---|
 | 1 | Adopted GBTDS layout (spring/autumn, 18-SCA detectors); scan region by distance rule; Roman start day 730 -> 306 (2027-02-11); Rubin visit list 3,686 -> 12,308; footprint area post-stratified | 69 | 078756b | Roman footprint yields, Rubin whole-scan totals, gap geometry (timeline vs Rubin seasons) |
 | 2 | Extinction tables rebuilt from DECaPS + Marshall (dustmaps), regular grid, one file; hardened reader | 70 | (pending) | everything, most near the plane (U5 estimated x0.4-0.9) |
-| 3 | Astrometric reference position freed; sqrt(2) per-coordinate fix; correlated-floor bracket | 71 | (pending) | every theta_E / mass number |
+| 3 | Astrometric reference position freed; sqrt(2) per-coordinate fix; correlated-floor bracket | 71 | 39b50c0 | every theta_E / mass number |
 
 ## Section by section
 
@@ -187,7 +187,7 @@ five-field block, 580 positions). It is used only where DECaPS stops seeing -- b
 reliable distance, and outright once its calibrated column passes DECaPS's sensitivity limit
 (A_V = 12), which happens at 53% of table positions, typically from ~4.5 kpc.
 
-### Step 3 -- the astrometric floor (2026-10-01, Deviation 71, in progress)
+### Step 3 -- the astrometric floor (2026-10-01, Deviation 71, commit 39b50c0)
 - **Two corrections to state plainly (they move every theta_E and mass number):** (A) the fit now
   solves for the source's reference position, as every real astrometric fit does (Lam+2026 Eq. 1-2);
   before, theta_E was partly "measured" from the source's absolute position. Fixture: sigma(theta_E)
@@ -215,4 +215,78 @@ reliable distance, and outright once its calibrated column passes DECaPS's sensi
 - **Method box for Sec. 2.3 (three Fisher matrices):** the astrometric matrix now has a free
   reference position per frame (telescope; per roll in N; per season in P) and day-correlated noise;
   a one-line flowchart addition.
+
+#### Draft text: why three astrometric noise models (W, N, P), and why these three
+
+*(For the report's Sec. 2.3 and Sec. 5. The argument is the point; the numbers are placeholders
+until the production runs.)*
+
+**What has to be decided.** Roman measures the Einstein radius theta_E from the tiny shift of the
+source's centroid during the event (~0.1-1 mas for ordinary lenses, a few mas for black holes),
+using ~50,000 exposures, each with a per-coordinate precision of 1.1 mas for bright stars and
+several mas for typical bulge sources. The forecast therefore rests on how the per-exposure errors
+COMBINE. If they are independent, N exposures beat the error down by sqrt(N) ~ 220; if part of
+the error is shared between exposures, that part does not average down.
+
+**What is known.** The 1.1 mas is a centroiding floor of 1% of a 0.11-arcsec pixel, the level
+demonstrated with HST (Sanderson et al. 2019; Lam et al. 2026; McKinnon & van der Marel 2026). All
+published Roman forecasts, including the ones we compare with, add it as independent ("white")
+noise, and there is a physical reason to expect most of it to behave that way: the GBTDS will
+dither by several pixels and by sub-pixel steps, so a star falls on a different part of a pixel
+and of the detector from one exposure to the next, and the pixel-level errors that set the floor
+are re-drawn each time (Lam et al. 2026). But the same papers name systematics that would NOT be
+re-drawn -- residuals of the geometric-distortion solution (expected at "a few x 0.1% of a pixel",
+Bellini 2024), biases from crowding (a neighbour can shift a faint star by ~2 mas in HST bulge data),
+time-dependent instrument effects (readout, detector, plate-scale drifts), and frame alignment --
+and none of them gives the size or the timescale of the shared part. McKinnon & van der Marel say
+it outright: "it is not clear how best to incorporate these effects without specific knowledge
+about the true Roman performance." No choice of a single number can be defended, so we carry a
+bracket, and choose its members by what is physically distinct rather than by arbitrary scaling.
+
+**The key observation that makes a bracket possible.** A real astrometric fit always solves for the
+source's reference position (its position at some epoch). Any error that is the SAME in every
+exposure of a frame -- a fixed bias in that frame's zero point -- is absorbed by that reference
+position and costs nothing. So the question is not "is the floor correlated?" but "over what
+TIMESCALE is it correlated, compared with the event?" Two timescales matter physically, and the
+three models are three answers to them:
+
+1. *Frame timescale (offsets).* How often is the astrometric frame effectively re-set? Each
+   re-set adds a free offset, and each free offset throws away the information in the absolute
+   position between frames.
+2. *Short timescale (within a day).* Do exposures taken close together share an error that
+   exposures on different days do not? The day is the natural unit: it holds ~120 GBTDS exposures
+   cycling through one dither sequence under one thermal and guiding state, and Lam et al. bin
+   Roman astrometry to one day for the same reason. Such a shared error is modelled as a
+   per-coordinate sigma_c common to all of a day's exposures (it averages down across days, not
+   within one).
+
+| model | frame offsets (free) | shared error per day | what it represents |
+|---|---|---|---|
+| **W** white | one per telescope | 0 | the literature's assumption: dithering makes the floor white; the frame is stable for the whole mission (Roman at L2). Used for every published comparison. |
+| **N** nominal | one per Roman **roll** (spring / autumn) | 0.3 mas | the two systematics with a physical anchor: the telescope turns 180 deg between spring and autumn, so the PSF and the detector layout flip and any crowding or PSF-model bias changes sign -- a separate frame per roll; and distortion residuals at the level Bellini (2024) expects (0.3 mas = 0.27% of a pixel, "a few x 0.1%"), shared by a day's exposures. |
+| **P** pessimistic | one per Roman **season** (10) | 1.1 mas (the whole floor) | every season is calibrated independently (plate-scale and distortion drifts between seasons of ~6 months, which Lam et al. flag as time-dependent systematics), and the floor does not average down within a day at all -- a day of ~120 exposures is no better than one. This contradicts the HST experience that 100 stacked exposures reach ~0.1 mas (Sanderson et al.), which is why it is a pessimistic bound rather than an expectation. |
+
+The models are nested: N adds nuisance parameters and correlated noise to W, and P adds more of
+both to N, so sigma_W <= sigma_N <= sigma_P for every event; the code asserts this. Rubin's
+astrometry is the same in all three (one frame, white noise): Rubin contributes little to theta_E
+and its own systematics are a separate question.
+
+**What the bracket does not cover.** (i) Extra white scatter from crowding (Whitaker et al. find
+a factor 2-5 for faint stars near bright ones) would scale every model's per-exposure error, not
+change their ratios; (ii) an error correlated on timescales between a day and a season (e.g. a
+slow drift within a season) lies between N and P; (iii) the true split can only come from Roman
+data or from the Roman project's own astrometry simulations, and a measured split would replace the
+bracket.
+
+**How to quote results.** Main numbers in W, so they compare directly with published forecasts
+(Sajadian & Sahu 2023; Lam et al. 2026; Kaczmarek et al. 2026), with N and P given beside every
+astrometric number (theta_E precision, lens masses, yields of masses to 10%). The pilot already
+shows the spread matters: on bulge lenses theta_E to 10% falls from 7.9% (W) to 1.3% (N) to 0% (P).
+
+**And the two corrections underneath all three.** Independently of the bracket, two errors in the
+earlier forecasts were fixed: the reference position was not a free parameter (the fit could use
+the star's absolute position, making sigma(theta_E) a median 6.8x too small in the pilot), and the
+per-coordinate error was counted twice in variance (sigma sqrt(2) too large). The first dominates;
+the earlier reports' theta_E and mass precisions were optimistic for this reason, not because of
+the floor.
 

@@ -1,11 +1,31 @@
-"""Regenerate Report/overview/timeline.tex: the two surveys' observing windows at one Roman
-footprint sightline, drawn on the simulation clock (day 0 = 2026-04-11, the first Rubin bulge
-visit). Run from the repo root. Reads the same visit lists the simulator reads, and matches epochs
-with the simulator's fields of view (Rubin 1.75 deg, Roman 0.3003 deg), keeping unique times."""
+"""Regenerate a survey timeline (TikZ): the two surveys' observing windows at one Roman footprint
+sightline, drawn on the simulation clock (day 0 = 2026-04-11, the first Rubin bulge visit). Run from
+the repo root. Reads the same visit lists the simulator reads and matches epochs with the
+simulator's own coverage tests (Rubin: 1.75 deg circle; Roman: analysis/gbtds_geometry), keeping
+unique times.
+
+    .roman/bin/python Report/overview/make_timeline.py            # adopted layout (Deviation 69)
+        -> Report/overview_v2/timeline.tex, sightline (0.40, -1.45), on a detector in both rolls
+    .roman/bin/python Report/overview/make_timeline.py --legacy   # the old report's figure
+        -> Report/overview/timeline.tex, from Baseline/legacy_layout40395/, sightline (0.4, -1.2)
+"""
+import argparse
 import datetime as dt
+import os
+import sys
+
 import numpy as np
 
-RUBIN_FOV, ROMAN_FOV = 1.75, 0.3003
+sys.path.insert(0, "analysis")
+import gbtds_geometry as G                              # noqa: E402
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--legacy", action="store_true", help="the pre-Deviation-69 runs' visit lists")
+args = ap.parse_args()
+BASE = "Baseline/legacy_layout40395" if args.legacy else "Baseline"
+OUT = "Report/overview/timeline.tex" if args.legacy else "Report/overview_v2/timeline.tex"
+
+RUBIN_FOV = G.FOV_RUBIN
 TOBS = 3652.425
 DAY0 = dt.date(2026, 4, 11)
 GAP = 20.0          # a gap longer than this starts a new observing window
@@ -21,10 +41,14 @@ def windows(t):
     lo, hi = np.r_[0, cut + 1], np.r_[cut, len(t) - 1]
     return [(t[a], t[z], z - a + 1) for a, z in zip(lo, hi)], len(t)
 
-rom = np.loadtxt('Baseline/RomanBaseline.dat', comments='#', usecols=(3, 4, 5))
-rub = np.loadtxt('Baseline/BulgeBaseline.dat', comments='#', usecols=(3, 4, 5))
-l0, b0 = rom[0, 0], rom[0, 1]                      # the first Roman field centre
-rom_w, n_rom = windows(rom[near(rom[:, 0], rom[:, 1], l0, b0, ROMAN_FOV), 2])
+visits = G.read_roman_visits(f'{BASE}/RomanBaseline.dat')
+rub = np.loadtxt(f'{BASE}/BulgeBaseline.dat', comments='#', usecols=(3, 4, 5))
+if args.legacy:
+    l0, b0 = visits["l"].iloc[0], visits["b"].iloc[0]     # the first Roman field centre
+else:
+    l0, b0 = 0.40, -1.45                                  # field 2, on a detector in both rolls
+    assert G.on_detector(l0, b0).all(), "timeline sightline must see both rolls"
+rom_w, n_rom = windows(visits["time"].to_numpy()[G.visit_covers(visits, l0, b0)])
 rub_w, n_rub = windows(rub[near(rub[:, 0], rub[:, 1], l0, b0, RUBIN_FOV), 2])
 
 x = lambda d: f'{WIDTH_CM * d / TOBS:.3f}'
@@ -46,7 +70,8 @@ for a, z, n in rom_w:
     style = 'blue!75' if n > 1000 else 'blue!25'    # high cadence: thousands of exposures
     out.append(f'\\fill[{style}] ({x(a)},0.2) rectangle ({x(z)},0.6);')
 out.append('\\end{tikzpicture}')
-open('Report/overview/timeline.tex', 'w').write('\n'.join(out) + '\n')
+os.makedirs(os.path.dirname(OUT), exist_ok=True)
+open(OUT, 'w').write('\n'.join(out) + '\n')
 for a, z, n in rom_w:
     print(f'Roman {a:8.1f} {z:8.1f} {n:6d}')
 print(f'sightline ({l0}, {b0}); Rubin {n_rub} unique epochs in {len(rub_w)} windows; Roman {n_rom}')

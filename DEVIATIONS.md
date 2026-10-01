@@ -4751,3 +4751,85 @@ factor 2.3 unchanged), postfix report (factor 4.3 unchanged; history in a LaTeX 
 whitepaper. Their SS23 paragraphs keep the old framing (OPEN_ITEMS, stale statements, item 4).
 
 **Build.** overview 50 pp, populations 15 pp, postfix 13 pp, whitepaper 56 pp; 0 undefined, 0 errors. Commit `3ff25e8`.
+
+## 69. Adopted GBTDS footprint (18-detector mosaics, two rolls), distance-rule scan region, Roman start day 306, Rubin visit list rebuilt (2026-10-01; pre-production Step 1)
+
+**What the plan / code had.** Roman's footprint was M. Penny's notional `layout_40395`: six fields
+at b = -1.2 (GC at (0, -0.125)), each an equal-area circle of 0.3003 deg, the same in every season
+(1.47 deg^2 with the circles' overlap, against the design's 1.7). The scan region was a box around
+an even older layout (`l1/l2/b1/b2` in Bulge.h) with a corner cut on the wrong side (OPEN_ITEMS).
+Rubin's visit list (`readbaselineBulge.py`) was cut by the same box on the pointing CENTRES. Roman's
+mission started on sim day 730 (2028-04-10). Plan: `/home/ali/.claude/plans/i-want-to-do-resilient-hummingbird.md`
+(user-approved 2026-10-01).
+
+**What was done.**
+- **Source of the layout.** `github.com/mtpenny/gbtds_optimizer` at commit 7c2e5e5, vendored into
+  `Baseline/gbtds_layout/` (README: provenance and checks): `gbtds_{spring,autumn}_2026.4.3.centers`
+  and `sca_layout_{spring,fall}.txt`. 18 axis-aligned detectors per field, 0.12491 deg on a side,
+  0.28085 deg^2 per field (1.685 for six); fall = spring rotated 180 deg exactly. Five fields at
+  b = -1.400 (spring l -0.318..1.318, autumn 0.15 deg lower), GC at (0.055 | -0.095, -0.221).
+  **STScI's GBTDS page confirms the roll-dependent centres**: "spring season center at l = 0.5,
+  autumn at l = 0.35", PA ~90 / ~270 deg.
+- **Generator** (`Baseline/generateRomanBaseline.py`): reads those centres; spring windows use the
+  spring centres, autumn the autumn ones; two new columns `field` (0-5) and `layout` (0 spring, 1
+  autumn). **Mission start 730 -> 306 (2027-02-11), user's decision**: the roll only means something
+  if the seasons fall on the real dates. The visit list reproduces the published windows (2027-02-11
+  -> 04-20, 2027-08-15 -> 10-25, 2028-02-11 -> 04-20, low cadence from 2028-08-14; 1-2 d drift from
+  365.24-d years). NlRoman unchanged (302,406). Mission days 306-2024.
+- **Coverage test** (`Bulge_LSST.cpp`, `helper.cpp` `readGbtdsLayout`/`inDetector`, `Bulge.h`
+  `GbtdsLayout`): `matchVisibleEpochs` is now a template on a coverage predicate. Rubin: the same
+  1.75-deg circle arithmetic (bit-identical). Roman: the sightline must lie ON one of the 18 detectors
+  of that visit's layout, placed at the field centre. `FoVRoman` retired. Verified on a stub run: a
+  sightline at (0.48, -1.45) falls in a spring chip gap and gets exactly the autumn seasons' 25,737
+  epochs (3 x 8,569 + 2 x 15); its neighbours on detectors in both rolls get all 50,401.
+- **Scan region**: every point within `SCAN_RUBIN_REACH + rField` = 2 x 1.75 + 0.4443 = 3.944 deg of
+  any of the 12 (field, roll) centres -- the sky a Rubin pointing that also images a Roman field can
+  reach. The box constants and the corner cut are gone. Grid origin on a multiple of the coarse step.
+  Fine stratum = cells overlapping any placement's detector-outline bounding rectangle (chip-gap
+  cells included). The field guard now requires a sightline ON a detector of each of the 12
+  placements. The step guard compares the footprint step to the detector side; with no
+  `--stride-roman`, a grid coarser than a detector is refined automatically (with a note).
+- **Footprint area weights post-stratified.** Found during verification: point sampling at 0.1 deg
+  aliases against the 0.125-deg detectors and their gaps -- the grid put 1.46 deg^2 on a detector per
+  roll against an exact 1.684 (Roman yields per deg^2 13% low); 0.04 deg gives 1.66, 0.02 deg 1.73
+  (2% high). Each footprint sightline is now classed by coverage (none / spring only / autumn only /
+  both) and its `w_area` scaled so each class carries its exact area in the stratum (sub-sampled at
+  0.002 deg): 0.982 / 0.197 / 0.194 / 1.487 deg^2 (grid: 1.25 / 0.15 / 0.15 / 1.31). Stratum total
+  unchanged, so the area invariant still holds (and is asserted). Provenance records both.
+- **Rubin visit list rebuilt** (`Baseline/readbaselineBulge.py`): every pointing centred within
+  scan reach + 1.75 = 5.694 deg of a Roman field centre. **12,308 visits, against 3,686**: the box
+  dropped pointings centred outside it whose fields still reached scanned sightlines, so edge
+  sightlines undercounted their Rubin visits. All 3,686 old rows are in the new list, unchanged.
+  `Nl` 3686 -> 12308. **Day 0 pinned** to MJD 61141.312002288 (2026-04-11): it was "the earliest
+  selected visit", and the wider selection reaches MJD 60981.0 (2025-11-01) -- the clock would have
+  moved 160 d and silently displaced Roman. 40 visits before day 0 are dropped (none after Tobs).
+  Bulge_LSST.cpp refuses a list with a pointing beyond that reach.
+- **Stub patch moved** to l 0.40-0.50, b -1.45..-1.35 (inside field 3 in both rolls); the old patch
+  (b -1.0..-0.9) is outside the adopted detectors.
+- **Python**: `analysis/gbtds_geometry.py` is the one mirror of the above (layout, `in_detector`,
+  scan rebuild, visit-list reader recognising the old 7-column format). Ported: `f1_results_table.py`
+  (field = the field whose detector images the sightline), `u2_resolution_depth.py` (per-event Roman
+  epoch list from the event's own sightline; legacy list chosen from the run's provenance),
+  `Report/overview/make_timeline.py` and `make_footprints.py` (`--legacy` reproduces the old
+  report's outputs; default writes the new geometry to `Report/overview_v2/` and
+  `figures/footprint_20261001/`). `u3_footprint_offset.py` marked as a legacy analysis. The old visit
+  lists are archived in `Baseline/legacy_layout40395/` so the 09-24 runs stay analysable.
+
+**Verification.**
+- `fishertest` byte-identical before/after; `extinctiontest` passes.
+- Dry run with the production flags (`--population bulge --events 300 --lenses 50 --stride-roman 5
+  --pair-satellite`): 2,013 sightlines (286 footprint at 0.1 deg, 1,727 outside at 0.2 deg), 69.32
+  deg^2, 12 of 12 placements covered, invariant holds. The Python rebuild reproduces the grid's
+  on-detector area (1.460) exactly.
+- Legacy reproductions: f1's field labels identical on all 1,829 sightlines of the 09-24 bulge run
+  (147 in the footprint); the old timeline byte-identical with `--legacy`; u2 on the 09-24 bh run
+  reproduces the published P(resolvable) 65.5 / 30.9 / 0.68% (model-simulator event agreement
+  99.76-99.99%).
+- **Against the real tiles** (the Aladin screenshots): overlap of the simulated detectors, union of
+  rolls, 91% of simulated / 87% of real (was 83% / 58%). Spring 90.1% as placed; best shift
+  -0.010..-0.025 deg in l, i.e. agreement to screenshot precision. **Autumn 79.5%: the screenshot's
+  autumn tiles are the rotated layout at the SPRING centres** (91.1% that way), 0.15 deg from the
+  autumn centre STScI states. The simulator follows STScI and Penny; the screenshot is not a
+  reference for the autumn roll.
+
+**Commit:** not yet committed (awaiting the user).

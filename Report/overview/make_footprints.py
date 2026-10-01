@@ -1,4 +1,13 @@
-"""Regenerate the overview report's two footprint figures. Run from the repo root.
+"""Regenerate the overview reports' two footprint figures. Run from the repo root.
+
+    .roman/bin/python Report/overview/make_footprints.py            # adopted layout (Dev. 69)
+        -> figures/footprint_20261001/: the scan and Roman's detectors as the simulator now builds
+           them (analysis/gbtds_geometry), and their overlap with the real tiles; checked against a
+           run's log with --log <run.log> once a run exists.
+    .roman/bin/python Report/overview/make_footprints.py --legacy   # the old report's figures
+        -> figures/footprint_20260929/, as described below (pre-Deviation-69 runs).
+
+LEGACY MODE (the original description):
 
   figures/footprint_20260929/footprint_simulated.{pdf,png}
       The sky the production runs scanned: every 0.1-deg cell of the tiling, coloured by the
@@ -139,6 +148,8 @@ def real_tiles(img):
 
 
 def main():
+    if "--legacy" not in sys.argv:
+        return main_gbtds()
     os.makedirs(OUT, exist_ok=True)
     ps.use_paper_style()
 
@@ -269,6 +280,130 @@ def main():
                   f"Overlap {both:.2f} deg^2: {100*both/area_sim:.0f}% of the simulated footprint, "
                   f"{100*both/area_real:.0f}% of the real tiles")
     for p in ps.save_figure(fig, f"{OUT}/footprint_vs_gbtds"):
+        print("wrote", p)
+    plt.close(fig)
+
+
+def main_gbtds():
+    """The adopted layout: rebuilt with analysis/gbtds_geometry, the simulator's mirror."""
+    import gbtds_geometry as G
+    out = "figures/footprint_20261001"
+    os.makedirs(out, exist_ok=True)
+    ps.use_paper_style()
+    g = G.scan_sightlines(10, 5)                     # the production flags' grid
+    lon, lat, fine = g["lon"], g["lat"], g["fine"]
+    fstep = g["fine_step"]
+    # Rubin visits per sightline, with the simulator's circle test.
+    rub = np.loadtxt("Baseline/BulgeBaseline.dat", comments="#", usecols=(3, 4, 5))
+    nvis = np.array([np.unique(rub[np.hypot(rub[:, 0] - a, rub[:, 1] - b) <= G.FOV_RUBIN, 2]).size
+                     for a, b in zip(lon, lat)])
+    if "--log" in sys.argv:
+        global LOG
+        LOG = sys.argv[sys.argv.index("--log") + 1]
+        logged = logged_sightlines()
+        mine = {(round(a, 3), round(b, 3)) for a, b in zip(lon, lat)}
+        if mine != set(logged):
+            sys.exit(f"rebuilt scan differs from {LOG}: {len(mine ^ set(logged))} sightlines")
+        bad = sum(logged[(round(a, 3), round(b, 3))][0] != n for a, b, n in zip(lon, lat, nvis))
+        print(f"scan verified against {LOG}: {len(mine)} sightlines; Rubin counts differ at {bad}")
+    od = G.on_detector(lon, lat)
+    print(f"scan: {len(lon)} sightlines, {g['area'].sum():.2f} deg^2; footprint stratum "
+          f"{fine.sum()} at {fstep} deg; on a detector: spring {od[fine, 0].sum()}, "
+          f"autumn {od[fine, 1].sum()}, both {(od[fine, 0] & od[fine, 1]).sum()}")
+
+    # ---- figure 1: the scan, Rubin visits, Roman detectors ----
+    fig, ax = ps.figure(width="double", height=5.6)
+    cells = g["cells"]
+    vis = np.array([nvis[n] for _, _, n in cells])
+    covered = [Rectangle((c[0], c[1]), fstep, fstep) for c, v in zip(cells, vis) if v > 0]
+    pc = PatchCollection(covered, cmap="Blues", norm=LogNorm(vmin=max(vis[vis > 0].min(), 1),
+                                                             vmax=vis.max()),
+                         edgecolor="face", linewidth=0.3)
+    pc.set_array(vis[vis > 0])
+    ax.add_collection(pc)
+    empty = [Rectangle((c[0], c[1]), fstep, fstep) for c, v in zip(cells, vis) if v == 0]
+    ax.add_collection(PatchCollection(empty, facecolor="#eeeeee", edgecolor="#eeeeee", linewidth=0.3))
+    colours = {0: "#f97316", 1: "#7c3aed"}
+    for l0, b0, k in G.placements():
+        for dl0, dl1, db0, db1 in G.sca_rects(k):
+            ax.add_patch(Rectangle((l0 + dl0, b0 + db0), dl1 - dl0, db1 - db0, fill=False,
+                                   lw=0.4, ec=colours[k]))
+    th = np.linspace(0, 2 * np.pi, 400)
+    for l0, b0, _ in G.placements():
+        ax.plot(l0 + G.scan_reach() * np.cos(th), b0 + G.scan_reach() * np.sin(th), lw=0.15,
+                color=ps.INK, alpha=0.3)
+    cb = fig.colorbar(pc, ax=ax, fraction=0.035, pad=0.02)
+    cb.set_label("Rubin visits at the sightline")
+    lo, hi, blo, bhi = g["bounds"]
+    ax.set_xlim(hi + 0.1, lo - 0.1)
+    ax.set_ylim(blo - 0.1, bhi + 0.1)
+    ax.set_aspect("equal")
+    ax.set_xlabel(r"Galactic longitude $l$ [deg]")
+    ax.set_ylabel(r"Galactic latitude $b$ [deg]")
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    ax.legend(handles=[Patch(fill=False, ec=colours[0], label="Roman detectors, spring roll"),
+                       Patch(fill=False, ec=colours[1], label="Roman detectors, autumn roll"),
+                       Patch(facecolor=plt.cm.Blues(0.6), label="Rubin coverage"),
+                       Patch(facecolor="#eeeeee", label="no coverage"),
+                       Line2D([], [], lw=0.4, color=ps.INK, alpha=0.5,
+                              label=f"scan reach ({G.scan_reach():.2f} deg)")],
+              loc="upper right", fontsize=6, frameon=False, labelcolor=ps.INK)
+    ps.stamp(fig, f"analysis/gbtds_geometry scan_sightlines(10, 5): {len(lon)} sightlines, "
+                  f"{g['area'].sum():.2f} deg^2; layout gbtds_2026.4.3 (Baseline/gbtds_layout)")
+    for p in ps.save_figure(fig, f"{out}/footprint_simulated"):
+        print("wrote", p)
+    plt.close(fig)
+
+    # ---- figure 2: simulated detectors over the real tiles, and their overlap ----
+    img = np.asarray(Image.open(IMG).convert("RGB"))
+    lfun, bfun, ppd, xs, ys = calibrate(img)
+    H, W = img.shape[:2]
+    ext = [float(lfun(-0.5)), float(lfun(W - 0.5)), float(bfun(H - 0.5)), float(bfun(-0.5))]
+    yy, xx = np.mgrid[0:H, 0:W]
+    L, B = lfun(xx), bfun(yy)
+    print(f"calibration: {ppd:.1f} px/deg")
+    rows = []
+    union_real = np.zeros((H, W), bool)
+    union_sim = np.zeros((H, W), bool)
+    for k, season in ((0, "spring"), (1, "autumn")):
+        simg = np.asarray(Image.open(IMG.replace("both", season)).convert("RGB"))
+        if calibrate(simg)[3:] != (xs, ys):
+            sys.exit(f"{season} image is framed differently from the combined one")
+        real = real_tiles(simg)
+        sim = G.on_detector(L.ravel(), B.ravel())[:, k].reshape(H, W)
+        both = (real & sim).sum() / ppd ** 2
+        rows.append((season, real.sum() / ppd ** 2, sim.sum() / ppd ** 2, both))
+        print(f"  {season}: real tiles {real.sum() / ppd**2:.3f} deg^2, simulated detectors "
+              f"{sim.sum() / ppd**2:.3f}, overlap {both:.3f} = {100*both/(sim.sum()/ppd**2):.1f}% "
+              f"of simulated, {100*both/(real.sum()/ppd**2):.1f}% of real")
+        union_real |= real
+        union_sim |= sim
+    both = (union_real & union_sim).sum() / ppd ** 2
+    ar, asim = union_real.sum() / ppd ** 2, union_sim.sum() / ppd ** 2
+    print(f"  union: real {ar:.3f}, simulated {asim:.3f}, overlap {both:.3f} = "
+          f"{100*both/asim:.1f}% / {100*both/ar:.1f}%")
+    fig, ax = ps.figure(width="double", height=5.9)
+    ax.imshow(img, extent=ext, origin="upper", interpolation="bilinear")
+    for l0, b0, k in G.placements():
+        for dl0, dl1, db0, db1 in G.sca_rects(k):
+            ax.add_patch(Rectangle((l0 + dl0, b0 + db0), dl1 - dl0, db1 - db0, fill=False,
+                                   lw=0.6, ec=colours[k], ls="--" if k else "-"))
+    ax.set_xlim(ext[0], ext[1])
+    ax.set_ylim(ext[2], ext[3])
+    ax.set_aspect("equal")
+    ax.set_xlabel(r"Galactic longitude $l$ [deg]")
+    ax.set_ylabel(r"Galactic latitude $b$ [deg]")
+    ax.legend(handles=[Patch(fill=False, ec=colours[0], label="simulated detectors, spring"),
+                       Patch(fill=False, ec=colours[1], ls="--", label="simulated detectors, autumn"),
+                       Patch(facecolor="none", edgecolor="#7CFC00",
+                             label="GBTDS detectors, spring and autumn (Aladin)")],
+              loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=3, fontsize=6, frameon=False,
+              labelcolor=ps.INK)
+    ps.stamp(fig, f"background: {IMG} ({ppd:.0f} px/deg). Overlap (union of rolls) {both:.2f} "
+                  f"deg^2: {100*both/asim:.0f}% of the simulated detectors, {100*both/ar:.0f}% of "
+                  f"the real tiles")
+    for p in ps.save_figure(fig, f"{out}/footprint_vs_gbtds"):
         print("wrote", p)
     plt.close(fig)
 

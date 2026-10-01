@@ -1,5 +1,48 @@
 # PROGRESS.md — where this project stands
 
+**NOW (2026-10-01): pre-production fixes, in the user's order -- (1) adopted GBTDS footprint +
+Rubin scan region, (2) extinction tables, (3) Roman's 1.1 mas astrometric floor; minor items after;
+then new bulge/bh/ns production runs and a NEW overview report.** Plan (approved):
+`/home/ali/.claude/plans/i-want-to-do-resilient-hummingbird.md`. Step by step, each approved first.
+- **Step 0 ✅** `Report/overview_v2/NOTES.md`: running notes for the new overview report (user:
+  "complete it as we go"); every later step appends its outputs there.
+- **User's decisions (2026-10-01):** Roman mission start sim day 730 -> **306 (2027-02-11, the real
+  GBTDS start)**; scan region by a **distance rule** (within FoV + FoV + field half-size of any Roman
+  field, spring or autumn) replacing the box and corner cut; production records a **bracket of
+  astrometric noise models** per event; `maps.py` builds the tables with the **dustmaps** library
+  (DECaPS + Marshall; Marshall IS 3D -- A_Ks(d), checked -- and the only near-IR 3D map in dustmaps
+  1.0.14 reaching the bulge).
+- **Layout source found:** `github.com/mtpenny/gbtds_optimizer` `field_layouts/gbtds_{spring,
+  autumn}_2026.4.3.centers` (five fields b = -1.400; GC (0.055 | -0.095, -0.221)) and
+  `sca_layout_{spring,fall}.txt` (18 axis-aligned SCA rectangles in (l, b) offsets; fall = spring
+  rotated 180 deg). To be vendored into `Baseline/gbtds_layout/` in Step 1.
+- **New finding for Step 3 (not yet verified):** the astrometric Fisher fits (tetE, mus1, mus2, piE)
+  with NO free reference position, while `lightcurve()`'s pos1c contains -u0*tetE*sin(xi): every
+  exposure then "measures" tetE from the source's absolute position. A real fit frees (x0, y0),
+  which removes that and also makes a time-CONSTANT correlated error harmless. Step 3a measures it
+  in the fixture before anything else in Step 3.
+- **Step 1 ✅ footprint (Deviation 69; NOT yet committed).** Adopted GBTDS layout vendored in
+  `Baseline/gbtds_layout/` (18 detectors/field, spring + autumn rolls; STScI confirms the autumn
+  centre l 0.35 vs spring 0.5); coverage = "on a detector" per visit; scan region = within 3.944 deg
+  of any of 12 placements (box + corner cut gone); Roman mission days 306-2024 on the real windows;
+  **Rubin visit list rebuilt: 12,308 visits (was 3,686 -- the box undercounted edge sightlines),
+  day 0 pinned to MJD 61141.312002288**; footprint `w_area` post-stratified by coverage class so
+  Roman's area is exact (the 0.1-deg grid alone gave 1.46 vs 1.684 deg^2 per roll). Dry run with
+  production flags: 2,013 sightlines, 69.32 deg^2. `fishertest` byte-identical. Shared Python
+  geometry: `analysis/gbtds_geometry.py`; old visit lists in `Baseline/legacy_layout40395/`.
+  New figures: `figures/footprint_20261001/`, `Report/overview_v2/timeline.tex`. The user's Aladin
+  screenshot agrees for spring (to ~0.02 deg) but draws autumn at the spring centres (0.15 deg off
+  STScI) -- not a reference for autumn.
+- **Old run data deleted 2026-10-01 (user's request, ~11 GB):** `runs/prod_{bh,ns}_20260917`,
+  `macho_final_20260830`, `partial_20260829`, `stall_D1prod_20260829`, `stub_D1verify_20260824`, loose
+  `runs/test2_*.dat`, old logs/pids, and the v3 `test5.dat` in the repo root. Their provenance and log
+  tails are kept in `runs/deleted_20261001/` (local). KEPT: `runs/prod_{bulge,bh,ns}_20260924` (the
+  overview report's runs) and the `runs/samples_*_S3*` sample runs. Figures/tables derived from the
+  deleted runs (e.g. `figures/prod_20260918/`, `figures/yield_prefix_20260922/`) remain.
+  NOTE: the 09-24 run dirs symlink `Baseline/` and `files/ext` to the live ones, which Steps 1-2
+  change; their original visit lists are in `Baseline/legacy_layout40395/`.
+- **Next: Step 2** (extinction tables from DECaPS + Marshall via dustmaps), awaiting the user's go.
+
 **Newest (2026-09-30): the overview report quotes dust-corrected numbers on a VVV-verified dust
 reference (Deviation 63).** The extinction tables are wrong near the plane: maps.py's documented
 Bayestar/DECaPS declination rule puts Bayestar, beyond its own reliable distance, on 139 of Roman's

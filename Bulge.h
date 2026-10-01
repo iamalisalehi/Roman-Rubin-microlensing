@@ -20,6 +20,8 @@
 #include <limits>
 #include <algorithm>
 #include <utility>
+#include <map>
+#include <sstream>
 
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_matrix_double.h>
@@ -195,10 +197,11 @@ constexpr int Na = 96;     //rows in "sigmaA_LSST.txt"
 constexpr int NaRoman = 123;  // rows in sigma_roman.txt
 constexpr int nq = 15;     //resu
 constexpr int N1 = 396593, N2 = 3568010, N3 = 646090, N4 = 3171; //CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo
-// Data rows in BulgeBaseline.dat, EXCLUDING the header. Regenerated 2026-08-22 from
+// Data rows in BulgeBaseline.dat, EXCLUDING the header. Regenerated 2026-10-01 (Deviation 69:
+// every pointing that can image the distance-rule scan region; was 3686 from a box) from
 // baseline_v5.1.0_10yrs.db; readbaselineBulge.py prints the value to use here. The
 // previous 7373 counted a doubled file (append-mode bug) and read 3687 phantom rows.
-constexpr int Nl = 3686;
+constexpr int Nl = 12308;
 
 // Data rows in RomanBaseline.dat, EXCLUDING the header. generateRomanBaseline.py prints
 // the value to use here; it must be updated whenever the season pattern, cadence or
@@ -215,15 +218,33 @@ constexpr int NlRoman = 302406;
 // is allocated once, not per event: (Nl+NlRoman) * 7 buffers * 8 bytes ~= 17.7 MB.
 constexpr int    coun  = Nl + NlRoman;
 
-// Roman WFI field of view is much smaller than Rubin's and covers a small number of
-// discrete GBTDS fields, not a rolling-cadence footprint. Do not reuse `FoV` for Roman.
-// Matching RADIUS in degrees, NOT an area: matchVisibleEpochs tests
-// sqrt(dl^2 + db^2) <= FoVRoman. STScI's GBTDS design page quotes 1.7 deg^2 monitored over
-// six WFI fields = 0.2833 deg^2 per field, so the equal-area radius is
-// sqrt(0.2833/pi) = 0.3003 deg. The previous 0.28 took a deg^2 figure as if it were already
-// a radius, giving pi*0.28^2 = 0.2463 deg^2 -- about 13% too small. This value decides which
-// sightlines see Roman at all, so it matters more than its size suggests.
-constexpr double FoVRoman = 0.3003;
+// Roman's footprint is the ADOPTED GBTDS layout (Step 1 of the 2026-10 pre-production fixes,
+// Deviation 69): six fields, each a mosaic of 18 rectangular detectors (SCAs) with gaps between
+// them, placed differently in spring and autumn because the telescope rolls by 180 deg between
+// the two seasons. The field centres travel with every visit in RomanBaseline.dat (columns l, b,
+// layout); the detector rectangles, as (l, b) offsets from the centre, are read at start-up from
+// the vendored files below (Baseline/gbtds_layout/README.md: source, commit, checks). A sightline
+// sees a Roman visit only if it falls ON a detector of that visit's layout -- not, as until
+// Deviation 69, if it lies within an equal-area circle of 0.3003 deg about the field centre.
+constexpr int    GBTDS_NLAYOUT = 2;    // 0 = spring roll, 1 = autumn roll
+constexpr int    GBTDS_NSCA    = 18;   // detectors per field
+inline const char* const GBTDS_SCA_FILES[GBTDS_NLAYOUT] = {
+    "./Baseline/gbtds_layout/sca_layout_spring.txt",
+    "./Baseline/gbtds_layout/sca_layout_fall.txt"};
+
+struct ScaRect { double l0, l1, b0, b1; };   // offsets from the field centre [deg], l0<l1, b0<b1
+
+struct GbtdsLayout {
+    std::array<std::vector<ScaRect>, GBTDS_NLAYOUT> sca;
+    // Bounding rectangle of each layout's detectors, for a cheap early reject and for the fine
+    // stratum of the sightline grid.
+    std::array<double, GBTDS_NLAYOUT> dlMin{}, dlMax{}, dbMin{}, dbMax{};
+    double rField  = 0.0;   // largest centre-to-detector-corner distance, either layout [deg]
+    double scaSide = 0.0;   // smallest detector side [deg]
+};
+
+// A field placement: one (centre, roll) that RomanBaseline.dat visits. 6 fields x 2 rolls = 12.
+struct FieldPlacement { double l, b; int layout; };
 
 constexpr double tetp   = double(M_PI / 3.0);        //parallax
 
@@ -532,15 +553,15 @@ constexpr double step = double(MaxD / Num / 1.0); //step in kpc
 //const double DecLMC = -68.2438888888889;
 //const double DLMC =  49.97;///KPC
 constexpr double DBulge = 8; //Kpc
-constexpr double l1  = -0.219 - 0.2 - 3.5 / 2;
-constexpr double l2  = 1.4134 + 0.2 + 3.5 / 2;
-constexpr double lx  = 1.0053 - 0.2 - 3.5 / 2;
-constexpr double b1  = -1.64  - 0.2 - 3.5 / 2;
-constexpr double b2  = -0.85  + 0.2 + 3.5 / 2;
-constexpr double bx  = -1.64  + 0.2 + 3.5 / 2;
-constexpr double wid = 3.5 / 2;
 constexpr double dd  = 0.02;
 constexpr double FoV = double(3.5 / 2.0);  //the radius of teh Rubin Field of View
+// The scan region (Deviation 69; replaces the l1/l2/b1/b2 box and its lx/bx corner cut, which
+// were built from an older field layout and cut the wrong corner). A sky point is scanned if a
+// Rubin pointing that ALSO images a Roman field could image it: such a pointing is centred within
+// FoV + rField of a Roman field centre, and images points within FoV of its own centre, so the
+// region is every point within SCAN_RUBIN_REACH + rField of any field centre, spring or autumn.
+// rField comes from the detector layout at run time (GbtdsLayout::rField, ~0.48 deg).
+constexpr double SCAN_RUBIN_REACH = 2.0 * FoV;
 
 ///============================================================================
 struct GSLMatrixDeleter {
@@ -829,6 +850,9 @@ struct roman {
     std::vector<double> tim;    // NlRoman
     std::vector<double> sig5;   // NlRoman — only needed if the Roman photometric error
                                 // model varies per-visit; otherwise mag/err alone may suffice.
+    std::vector<int> field;     // NlRoman -- GBTDS field index, 0-4 contiguous block, 5 GC
+    std::vector<int> layout;    // NlRoman -- roll of this visit, 0 spring / 1 autumn; selects
+                                // which detector layout is placed at (l, b)
 
     // NOTE: no `filter` array — currently only F146 (constant filter index 6) is modeled
     // for Roman. If F087/F213 are added later, give roman a `filter` array like lsst's.
@@ -836,7 +860,8 @@ struct roman {
     roman()
         : mag(NaRoman), err(NaRoman),
           ct(NlRoman),
-          RA(NlRoman), DEC(NlRoman), l(NlRoman), b(NlRoman), tim(NlRoman), sig5(NlRoman)
+          RA(NlRoman), DEC(NlRoman), l(NlRoman), b(NlRoman), tim(NlRoman), sig5(NlRoman),
+          field(NlRoman), layout(NlRoman)
     {}
 };
 
@@ -1270,19 +1295,14 @@ double errRomanA(double magF146);   //Roman WFI per-exposure astrometric error [
 // below assumes the simpler case (no per-visit depth); adjust if you need `sig5`.
 double errRomanM(const roman & ro, double mag);
 
-// Finds all epochs of a given instrument's baseline within `fov` of (lon,lat),
-// filling `ct` with indices into the instrument's own tim/l/b arrays (sorted by time,
-// since the baseline files are pre-sorted). Returns the number of visible epochs (ndd)
-// and reports the smallest gap between consecutive visible epochs via minCadence.
-// `label` ("LSST"/"Roman") is used only in diagnostic messages if tied/out-of-order
-// timestamps are found and skipped.
-int matchVisibleEpochs(const char* label, double lon, double lat, double fov,
-                       const std::vector<double>& l_arr,
-                       const std::vector<double>& b_arr,
-                       const std::vector<double>& tim_arr,
-                       int nEpochs,
-                       std::vector<int>& ct,
-                       double& minCadence);
+// matchVisibleEpochs is a template (the coverage test is a predicate) and is defined in
+// Bulge_LSST.cpp, its only caller.
+
+// GBTDS detector layout (helper.cpp). readGbtdsLayout exits with the file named on any
+// malformed input; inDetector tests a sky offset (dl, db) from a field centre against one
+// layout's 18 detector rectangles.
+GbtdsLayout readGbtdsLayout();
+bool inDetector(const GbtdsLayout& g, int layout, double dl, double db);
 
 double CCM89_a(double lambda_um);
 double CCM89_b(double lambda_um);

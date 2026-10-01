@@ -22,7 +22,12 @@ rebuilds them semi-analytically, per detected event, on Roman's real epoch list:
 with sigma_a = errRomanA() mirrored from helper.cpp. VALIDATION FIRST: at depth = 29.0 the model
 must reproduce the simulator's own nres{5,20,PSF}_R >= 3, event by event and in the weighted
 fraction; only then is the depth-25.5 number a statement about the depth rather than about the
-model's approximations (it has no parallax and no per-field timing).
+model's approximations (it has no parallax).
+
+Roman's epoch list per event is the one its own sightline sees (gbtds_geometry.visit_covers, the
+simulator's coverage test), from the visit list the run used: Baseline/legacy_layout40395/ for
+runs before Deviation 69 (one list for every footprint sightline), the live list otherwise
+(sightlines in a chip gap in one roll see only the other roll's seasons).
 
     .roman/bin/python analysis/u2_resolution_depth.py \\
         --run bulge=runs/prod_bulge_20260924 --run bh=runs/prod_bh_20260924 \\
@@ -38,6 +43,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import romanlib as R                 # noqa: E402
+import gbtds_geometry as G           # noqa: E402
 import u1_report_numbers as U        # noqa: E402
 
 # Mirrored from Bulge.h.
@@ -47,7 +53,8 @@ PSF_FWHM_MAS = 105.0
 ROMAN_AST_FLOOR = 1.1
 ROMAN_AST_MFLR, ROMAN_AST_MBKG, ROMAN_AST_SBKG = 20.62, 23.5, 10.0
 ROMAN_AST_SLOPE_SRC, ROMAN_AST_SLOPE_BKG = 0.33285, 0.4
-FOV_ROMAN_DEG = 0.3003
+LEGACY_BASELINE = os.path.join(G.ROOT, "Baseline", "legacy_layout40395", "RomanBaseline.dat")
+LIVE_BASELINE = os.path.join(G.ROOT, "Baseline", "RomanBaseline.dat")
 SIGMA_ROMAN = "files/sigma_roman.txt"
 
 
@@ -67,15 +74,23 @@ def depth_at_snr(snr):
     return float(t[np.argmax(t[:, 1] >= 1.0857 / snr), 0])
 
 
-def roman_times(l0=0.4, b0=-1.2):
-    """Roman's unique epoch times at one footprint sightline (every footprint sightline has the
-    same 50,401: one mission-wide visit list)."""
-    rom = np.loadtxt("Baseline/RomanBaseline.dat", comments="#", usecols=(3, 4, 5))
-    m = np.hypot(rom[:, 0] - l0, rom[:, 1] - b0) <= FOV_ROMAN_DEG
-    return np.unique(rom[m, 2])
+def roman_times_per_event(ev, visits):
+    """Per event, Roman's unique epoch times at its own sightline (arrays shared between
+    sightlines that the same set of visits covers)."""
+    cache, by_key, out = {}, {}, []
+    for lon, lat in zip(ev["lon"].to_numpy(float), ev["lat"].to_numpy(float)):
+        k = (round(lon, 4), round(lat, 4))
+        if k not in by_key:
+            m = G.visit_covers(visits, lon, lat)
+            sig = np.packbits(m).tobytes()
+            if sig not in cache:
+                cache[sig] = np.unique(visits["time"].to_numpy()[m])
+            by_key[k] = cache[sig]
+        out.append(by_key[k])
+    return out, len(cache)
 
 
-def count_epochs(ev, times, depths):
+def count_epochs(ev, times_list, depths):
     """{(depth, bar): per-event count of resolvable epochs}, bars 5, 20, PSF."""
     out = {(d, b): np.zeros(len(ev), np.int32) for d in depths for b in ("5", "20", "PSF")}
     te, u0, tE, t0 = (ev[c].to_numpy(float) for c in ("tetE", "u0", "tE", "t0"))
@@ -83,6 +98,7 @@ def count_epochs(ev, times, depths):
     fb = np.clip(ev["blend_F146"].to_numpy(float), 1e-12, 1.0)
     msrc = mb - 2.5 * np.log10(fb)
     for i in range(len(ev)):
+        times = times_list[i]
         tau = (times - t0[i]) / tE[i]
         u = np.sqrt(u0[i] ** 2 + tau * tau)
         root = np.sqrt(u * u + 4.0)
@@ -113,8 +129,6 @@ def main():
     d5, d3 = depth_at_snr(5.0), depth_at_snr(3.0)
     depths = (THRE_F146_CODE, d3, d5)
     print(f"depths: code {THRE_F146_CODE}, SNR3 {d3:.2f}, SNR5 {d5:.2f} (from {SIGMA_ROMAN})")
-    times = roman_times()
-    print(f"Roman epochs: {len(times):,}")
     if "t0" not in U.COLS:
         U.COLS.append("t0")
 
@@ -128,8 +142,11 @@ def main():
         W, y = ev["W"].to_numpy(), ev["y"].to_numpy()
         b = U.Boot(len(ev), seed=U.SEED + 10)
         allm = np.ones(len(ev), bool)
-        print(f"[{name}] counting epochs for {len(ev):,} Roman detections", flush=True)
-        cnt = count_epochs(ev, times, depths)
+        base = LEGACY_BASELINE if G.run_geometry(directory) == "legacy" else LIVE_BASELINE
+        times_list, n_lists = roman_times_per_event(ev, G.read_roman_visits(base))
+        print(f"[{name}] counting epochs for {len(ev):,} Roman detections; visit list {base} "
+              f"({n_lists} distinct epoch lists)", flush=True)
+        cnt = count_epochs(ev, times_list, depths)
         # --- validation against the simulator's own counts, at the code's depth ---
         for bar, col in (("5", "nres5_R"), ("20", "nres20_R"), ("PSF", "nresPSF_R")):
             sim = ev[col].to_numpy() >= U.RESOLVE_MIN_EPOCHS

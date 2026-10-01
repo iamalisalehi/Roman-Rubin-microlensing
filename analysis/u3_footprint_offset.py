@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Step U3: what the simulated-vs-real Roman footprint mismatch, and the scan's corner cut, cost.
 
+LEGACY ANALYSIS (Deviation 69). This script measures the runs made on the notional layout
+(layout_40395 circles, box scan with a corner cut) against the real tiles; its FIELDS and scan
+constants are that layout's on purpose. From Deviation 69 the simulator uses the adopted layout
+and a distance-rule scan, so the mismatch it estimates no longer exists in new runs; the shared
+geometry for those is analysis/gbtds_geometry.py.
+
 WHY THIS EXISTS. Deviation 59 measured the simulated GBTDS fields against the real tile layout
 (Whitepaper/roman_967_{spring,autumn,both}_aladinX.png): the modelled five-field block sits at
 b = -1.2 where the real one is centred at -1.40, the Galactic-centre field ~0.1 deg closer to the

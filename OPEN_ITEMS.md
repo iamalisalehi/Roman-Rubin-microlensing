@@ -104,7 +104,18 @@ simplifying `FisherM`'s data loop. Do it when `FisherM` is next opened for other
 
 ---
 
-## Sky coverage is Penny et al.'s, not the current GBTDS footprint — and Rubin's FoV overlap is unmodelled (raised by Ali, 2026-08-24)
+## RESOLVED 2026-10-01 (Deviation 69) — Sky coverage is Penny et al.'s, not the current GBTDS footprint — and Rubin's FoV overlap is unmodelled (raised by Ali, 2026-08-24)
+
+**Resolution.** The simulator now uses the adopted layout (`Baseline/gbtds_layout/`, Penny's
+`gbtds_{spring,autumn}_2026.4.3`, centres confirmed by STScI's GBTDS page): 18 detectors per field,
+spring and autumn rolls, coverage decided per visit by "on a detector". The scan region is a
+distance rule around the 12 placements and the Rubin visit list was rebuilt for it (12,308 visits).
+**The Rubin partial-overlap concern below does not apply to this code**: coverage is decided per
+sightline, which is a point -- a Rubin pointing either images it or not, however little of the
+pointing's field overlaps a Roman field -- so partial overlap is handled exactly at the grid's
+resolution; blending (`s.blend[]`, `s.fb[]`) is computed per source, not per pointing. What
+remains is that Rubin's field is a circle, not LSSTCam's real outline (new entry below). Kept for
+the record:
 
 **MEASURED 2026-09-29 (Deviation 59):** against the real tile layout in
 `Whitepaper/roman_967_both_aladinX.png` (spring + autumn), the modelled five-field block sits at
@@ -1850,7 +1861,11 @@ derive it from the same table at run time so the two cannot drift -- extend or c
 `sigma_roman.txt` beyond 27 mag, re-run `fishertest`, and fold the change into the next production
 runs (it belongs with the Roman photometric-model item above, since both are the same curve).
 
-## The scan's corner cut removes the wrong corner (raised by the user, 2026-09-29)
+## RESOLVED 2026-10-01 (Deviation 69) — The scan's corner cut removes the wrong corner (raised by the user, 2026-09-29)
+
+**Resolution.** The box and its corner cut are gone; the scan region is every point within
+2 x 1.75 deg + the field reach (3.944 deg) of any Roman field centre, either roll -- the
+"distance test" proposed below. Kept for the record:
 
 **What is wrong.** `Bulge_LSST.cpp` drops every grid point with `lon < lx and lat > bx`
 (Bulge.h: lx = 1.0053 - 0.2 - 1.75 = -0.9447, bx = -1.64 + 0.2 + 1.75 = 0.31), i.e. the upper corner
@@ -2019,3 +2034,28 @@ The whitepaper is due a full reconciliation anyway (JOINT_FIT_REFACTOR_PLAN Phas
 **Fix would involve.** For (1), a note in each older report pointing to the resolution, and a
 rewrite of the whitepaper's SS23 paragraph from the overview's (which also covers (4)). For (2), one word. For (3), a
 Crossref pass over `Whitepaper/refs.bib` as was done for `Report/refs.bib` in Deviation 66.
+
+## Rubin's field of view is a 1.75-deg circle, not LSSTCam's outline (2026-10-01, from Deviation 69)
+
+**What is wrong.** `matchVisibleEpochs` gives a Rubin visit to every sightline within `FoV` = 1.75
+deg of the pointing centre. LSSTCam's focal plane is a square-ish mosaic of 21 rafts with the
+corners cut (9.6 deg^2, the same area as the circle), with gaps between sensors (fill factor ~0.9),
+and it rotates with `rotSkyPos` from visit to visit (the column is in the OpSim database but not
+extracted). Also: the 40 earliest OpSim visits that reach the scan (MJD 60981-61141, before the
+simulation's day 0) are dropped, which shortens the Rubin baseline before day 0 for events peaking
+in the first months.
+
+**Why it matters scientifically.** Per sightline, the visit count is right on average but wrong at
+the field edges (the square reaches 2.1 deg along its diagonals and 1.6 deg along its sides), and
+chip gaps remove ~10% of visits at random. Rubin's per-event cadence, hence its detection
+efficiency and Fisher precision, inherit that. The effect on pooled yields should be at the
+few-percent level because rotation and dithering average the outline; it has not been measured.
+
+**Why deferred.** Not one of the three pre-production fixes; the circle is the standard
+approximation, and the user asked for the minor items after those three.
+
+**What the fix involves.** Extract `rotSkyPos` in `readbaselineBulge.py`; add a Rubin coverage
+predicate built from the LSSTCam raft/sensor layout (rubin_sim/`lsst.obs.lsst` geometry) rotated per
+visit; the predicate interface in `matchVisibleEpochs` already allows it. Then the readbaselineBulge
+reach must use the outline's maximum radius (~2.1 deg) instead of 1.75.
+

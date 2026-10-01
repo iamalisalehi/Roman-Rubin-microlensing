@@ -68,11 +68,18 @@ then new bulge/bh/ns production runs and a NEW overview report.** Plan (approved
   sigma_ast ~2.2-2.6x too large; (2) F146 saturation satu[6] = 12 is an unsourced placeholder;
   (3) the photometric table is Penny+2019 Fig. 4 for a 46.8-s exposure, not the GBTDS's 66 s.
   Also: the blend never includes the lens's own light (right for bh/ns, not for stellar lenses).
-- **Verified minor-items plan (proposed; awaiting the user's decisions D1-D5):**
+- **User's decisions 2026-10-01:** lens light added to the blend for stellar lenses (bh/ns dark);
+  Penny's photometric table rescaled to 66 s (interpolated); LSSTCam footprint (M8) BEFORE the runs;
+  synphot installed in .roman to compute F146 AB-Vega. Open for the report: whether Roman yields
+  count events peaking outside the mission.
+- **Verified minor-items plan (approved; M8 included):**
   M0 OPEN_ITEMS: close the resolved/outdated entries per the audit (no code).
   M1 Roman magnitudes and noise: AB->Vega before errRomanA (offset computed with synphot from the
      F146 throughput); photometric table interpolated (not nearest-neighbour) and brought to 66 s;
      thre[6] and satu[6] from sources.
+  M1b Rubin constants (audit at the user's request): gate Rubin epochs on each visit's own 5-sigma
+     depth instead of the SRD minimum `thre`; FWHM from the visit list's seeingFwhmGeom; gamma to
+     Ivezić 2019; delete the unused constants; resolve F146 FWHM 105 vs 115 mas.
   M2 Blended astrometric centroid (shift diluted by blend light) [+ lens light if D3].
   M3 Astrometric finite-difference steps: sweep Delta2[], central stencil for tetE/piE.
   M4 Investigate the x8.3 mass event (no presumed fix); add observed peak time t0obs and compute

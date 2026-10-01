@@ -61,6 +61,24 @@ the overview report, and the primary sources. Verdicts:
 | Rubin FoV a circle (new) | true; LSSTCam facts to be re-verified when worked on | |
 | GC dust 10% thin (new) | true (measured, Deviation 70) | |
 
+**The hard-coded survey constants in Bulge.h (user's request, same day)**, checked against Ivezić
+et al. 2019 (ApJ 873, 111; arXiv:0805.2366, Tables 1-2), the OpSim database the visit list comes
+from (baseline_v5.1.0, the 12,308 bulge visits), Lam et al. 2026 and STScI:
+
+| constant | value in code | verdict |
+|---|---|---|
+| `thre[0-5]` (u..y depth gate) | 23.4 24.6 24.3 23.6 22.9 21.7 | **= the SRD MINIMUM single-visit 5-sigma depths** (Ivezić Table 1, "min."). Not what these visits reach: median per-visit m5 of the bulge visits 23.31 24.33 23.93 23.36 22.86 22.00 (0.1-0.4 mag shallower in u-z, 0.3 deeper in y). The noise model (errlsstM) already uses each visit's own m5, so the recording gate and the error bars disagree. |
+| `satu[0-5]` (saturation) | 15.2 16.3 16.0 15.3 14.6 13.4 | **= thre - 8.3 in every band**, i.e. derived, not sourced. Ivezić quotes only "the LSST saturation limit at r ~ 16" (r 16.0 agrees). |
+| `gama` | 0.037 0.038 0.039 0.039 0.040 0.040 | an older version of Ivezić Table 2's gamma (0.038 0.039 0.039 0.039 0.039 0.039); < 3% in the error. 6 values for M = 7 (gama[6] = 0, unused). |
+| `delta2` = 0.005 mag | systematic photometric floor | **verified**: Ivezić requirement 3, "photometric repeatability should achieve 5 mmag precision at the bright end". |
+| `FWHM[0-5]` (Rubin PSF; also sets the blending disc) | 1.221 1.101 0.993 0.967 0.952 0.937 | close to the GEOMETRIC PSF width of the actual bulge visits (median seeingFwhmGeom 1.114 1.042 0.982 0.949 0.932 0.899): an older OpSim's value, 1-10% wide (u worst). Not Ivezić's zenith theta_eff. Per-visit seeing spans 0.75-1.5" (16-84%), but blending uses one value per band. |
+| `FWHM[6]` (F146) | 0.105" | STScI's F146 PSF FWHM; **Lam et al. 2026 use 115 mas** -- check which (centre vs field average) before relying on the PSF resolution bar. |
+| `sigma[]` (per-band extinction scatter) | 0.022 ... 0.04 | unsourced; F146 value commented "PLACEHOLDER: K-band value". Small (0.02-0.04 mag) next to the dust maps' own errors. |
+| `seeing`, `msky`, `Cm`, `Dci`, `km`, `cade1` | | **unused** anywhere; older than Ivezić 2019. Dead constants. |
+| `LSST_AST_FLOOR` = 10 mas | per visit per coordinate | **verified** (Ivezić: "10 mas per observation per coordinate"). |
+| `RUBIN_REF_BANDS` = {2} | one Rubin blend fraction and baseline (r) for all six bands in the Fisher fit | a modelling simplification, documented in Bulge.h; a real fit has per-band fb and mbs. Not sourced, not wrong; state it in the report. |
+| LSSTCam facts in the new Rubin-FoV entry | 21 rafts, 189 CCDs, 9.6 deg^2 | **verified** (Ivezić Sec. 2.6.2, Table 1); the "fill factor ~0.9" is NOT in Ivezić -- re-verify in M8. |
+
 **Three NEW problems found by this audit** (entries below): the AB/Vega mismatch in Roman's
 astrometric error, the unsourced F146 saturation limit, and the 46.8-s exposure of the photometric
 table. The overview report repeats one of them: its "2.75 mas at the median F146 = 21.82" evaluates
@@ -2206,4 +2224,22 @@ time (46.8 s)"; 1 mmag floor). The adopted GBTDS exposure is 66 s (Lam et al. 20
 table's faint end is ~0.1-0.2 mag pessimistic, and the error at fixed magnitude ~10-20% too large.
 Options: rescale (SNR ~ sqrt(t) where background-limited) or replace with a 66-s model (Wilson et
 al. 2023, STScI/Pandeia). Part of the existing "photometric error placeholder" entry's fix.
+
+## Rubin's depth gate is the SRD minimum, not each visit's own depth (2026-10-01, audit)
+
+**What is wrong.** Rubin epochs are recorded only if the source is between `satu[fi]` and `thre[fi]`
+(Bulge_LSST.cpp, the Rubin branch, and the pre-selection `Mpeak <= thre[i]`), with `thre` = the SRD
+minimum single-visit depths. But each visit's own 5-sigma depth (`sig5`, OpSim's fiveSigmaDepth) is
+in the visit list and already sets that epoch's error (errlsstM). For the bulge visits the real
+depths are 0.1-0.4 mag shallower than `thre` in u-z and 0.3 mag deeper in y (medians above), and
+vary by ~0.4 mag (16-84%) from visit to visit. So epochs with SNR < 5 are recorded in good-seeing
+bands, and y-band epochs between 21.7 and the visit's depth are dropped.
+
+**Why it matters.** It sets which Rubin epochs count, near the detection limit, where most bulge
+sources are. Size not measured.
+
+**What the fix involves.** Gate each Rubin epoch on its own `sig5` (and a saturation limit tied to
+it, e.g. sig5 - 8.3 as the current constants imply, or a sourced bright limit); keep a per-sightline
+median for the pre-selection. Re-derive `FWHM[0-5]` from the visit list's seeingFwhmGeom medians and
+update `gama` to Ivezić 2019 Table 2 in the same step; delete the unused constants.
 

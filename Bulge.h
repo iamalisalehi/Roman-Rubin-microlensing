@@ -31,8 +31,24 @@
 
 ////
 #include <random>
-constexpr int seed = 42;
+constexpr int seed = 42;   // default base seed; --seed overrides it at run time (Deviation 77)
 inline std::mt19937_64 rng{seed};
+
+// Deviation 77: the generator is RE-SEEDED at the start of every sightline from (base seed,
+// sightline index), so a sightline's draws do not depend on which sightlines ran before it. A scan
+// split into chunks (--start-index / --end-index), or resumed, reproduces the unsplit run exactly.
+// SplitMix64 (Steele, Lea & Flood 2014) mixes the pair into well-separated 64-bit seeds.
+inline std::uint64_t splitmix64(std::uint64_t x)
+{
+    x += 0x9E3779B97F4A7C15ULL;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
+    return x ^ (x >> 31);
+}
+inline std::uint64_t sightlineSeed(std::uint64_t base, long index)
+{
+    return splitmix64(splitmix64(base) ^ static_cast<std::uint64_t>(index));
+}
 //inline std::mt19937_64 rng{std::random_device{}()};
 ////
 /// for reading the extinction maps

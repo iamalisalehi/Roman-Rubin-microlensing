@@ -260,6 +260,11 @@ struct RunConfig {
     // Step: resume. Index into the (deterministic) sightline scan vector at which to begin.
     // 0 means "start from the beginning", which is what every non-resumed run wants.
     long   startIndex  = 0;
+    // Deviation 77: one past the last sightline to simulate (-1 = to the end), and the base seed
+    // from which every sightline's own seed is derived. Together with --start-index they let a
+    // scan be cut into independent chunks that reproduce the whole run.
+    long   endIndex    = -1;
+    unsigned long long seedBase = seed;
 
     // Put Roman back at the centre of the Earth, killing the Earth-L2 spatial baseline while
     // leaving the timing untouched (Step H1). This is the "off" half of Step H3's
@@ -294,6 +299,11 @@ static void printUsage(const char* prog) {
         << "                 grid spacing is N*dd deg. If the footprint grid (see\n"
         << "                 --stride-roman) would be coarser than one Roman detector, it\n"
         << "                 is refined automatically when --stride-roman is not given.\n"
+        << "  --seed S       base random seed (default " << seed << "); every sightline is\n"
+        << "                 re-seeded from (S, its scan index), so runs are reproducible\n"
+        << "                 sightline by sightline, however the scan is split\n"
+        << "  --end-index N  stop before sightline N (with --start-index: one chunk of a split\n"
+        << "                 scan; chunks [0,a), [a,b), ... together equal the full run)\n"
         << "  --start-index N   skip the first N sightlines of the scan and resume there.\n"
         << "                 The scan vector is deterministic for a given --stride/\n"
         << "                 --stride-roman/--stub, and the output files are opened in\n"
@@ -705,6 +715,8 @@ int main(int argc, char** argv) {
         else if (arg == "--maxdraws") cfg.maxDraws    = std::atof(need("--maxdraws"));
         else if (arg == "--stub")    cfg.stubPatch   = true;
         else if (arg == "--start-index") cfg.startIndex = std::atol(need("--start-index"));
+        else if (arg == "--end-index")   cfg.endIndex   = std::atol(need("--end-index"));
+        else if (arg == "--seed")        cfg.seedBase   = std::strtoull(need("--seed"), nullptr, 10);
         else if (arg == "--dry-run") cfg.dryRun      = true;
         else if (arg == "--no-satellite-parallax") cfg.noSatPar = true;
         else if (arg == "--pair-satellite") cfg.pairSat = true;
@@ -759,6 +771,11 @@ int main(int argc, char** argv) {
     }
     // A cap below the event budget would stop every sightline early, which is not a cap
     // but a silent redefinition of the budget.
+    if (cfg.endIndex >= 0 and cfg.endIndex <= cfg.startIndex) {
+        std::cerr << "ERROR: --end-index (" << cfg.endIndex << ") must exceed --start-index ("
+                  << cfg.startIndex << ").\n";
+        return 2;
+    }
     if (cfg.startIndex < 0) {
         std::cerr << "ERROR: --start-index (" << cfg.startIndex << ") cannot be negative.\n";
         return 1;
@@ -1625,6 +1642,9 @@ int main(int argc, char** argv) {
              << "# lenses_target       " << cfg.nlensTarget << "   # nlens\n"
              << "# nerr_target         " << cfg.nerrTarget << "\n"
              << "# maxdraws            " << cfg.maxDraws << "   # per-sightline draw cap\n"
+             << "# seed                " << cfg.seedBase
+             << "   # base; each sightline re-seeded from (seed, index) (Deviation 77)\n"
+             << "# end_index           " << cfg.endIndex << "   # -1 = to the end\n"
              << "# start_index         " << cfg.startIndex
              << "   # sightlines skipped; >0 means this run RESUMES an earlier one\n"
              << "# region              " << (cfg.stubPatch ? "stub patch" : "full") << "\n"
@@ -1645,7 +1665,7 @@ int main(int argc, char** argv) {
              << "# extinction          files/ext/ext_tables.dat: " << ex->nTables << " x "
              << ex->nDist << ", k " << ex->k << " --" << ex->built << "\n"
 
-             << "# rng_seed            " << seed << "\n"
+             << "# rng_seed            " << cfg.seedBase << "\n"
              // Step H1. 1 = Roman at Sun-Earth L2 (physical); 0 = Roman at the centre of the
              // Earth, which is what every run before H1 did. Any piE forecast from a run with
              // 0 here contains only the annual Earth-orbit parallax.
@@ -1748,6 +1768,10 @@ int main(int argc, char** argv) {
         // resumed run is not bit-identical to an uninterrupted one -- it is a valid
         // continuation with a different draw sequence, not a replay.
         if (iScan < cfg.startIndex) continue;
+        if (cfg.endIndex >= 0 and iScan >= cfg.endIndex) break;   // Deviation 77
+        // Deviation 77: this sightline's own random stream (see sightlineSeed in Bulge.h). The note
+        // above, that a resumed run is "not a replay", no longer applies: it IS one.
+        rng.seed(sightlineSeed(cfg.seedBase, iScan));
         {
             cout << ">>>>>>>>>>> NEW STEP " << nde << " <<<<<<<<\t nri:  " << nri << endl;
             cout << "longtitude: " << s->lon << "\t latitude: " << s->lat << endl;

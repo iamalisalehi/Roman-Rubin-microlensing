@@ -102,7 +102,11 @@ DEPTH_5SIG = 25.52
 T_S = (3652.43 - 2 * R.T0_MARGIN_DAYS) * 86400.0
 EFF_BINS = np.arange(10.0, 34.01, 0.25)
 DGRID = dustref.DGRID                         # kpc, for per-sightline dust profiles
-# The tables the pre-Deviation-70 runs read, archived when maps.py rebuilt files/ext (Deviation 70).
+# The tables the pre-Deviation-70 runs read. Archived here when maps.py rebuilt files/ext, then
+# DELETED at the user's request (2026-10-01, Deviation 70). To rerun U4/U5 on the 2026-09-24 runs,
+# regenerate them: `git show 12144f7:maps.py > /tmp/maps_v1.py`, point its BulgeBaseline.dat path at
+# Baseline/legacy_layout40395/BulgeBaseline.dat and its output at this directory, and run it with
+# Bayestar and DECaPS installed under dustmaps/ (it queries ~2,518 positions).
 LEGACY_EXT = "files/ext_bayestar_v1"
 FOOT_COLS = ["lon", "lat", "w_area", "Ml", "Vt", "Ds", "struc", "detL", "detR", "detJ",
              "magb_F146", "magb_r", "blend_F146", "tE", "piE", "tetE", "u0", "t0",
@@ -139,6 +143,9 @@ class Dust(dustref.ReferenceDust):
 
     def __init__(self):
         super().__init__()
+        if not os.path.isdir(LEGACY_EXT):
+            sys.exit(f"{LEGACY_EXT} is gone (deleted 2026-10-01); see the LEGACY_EXT note at the top "
+                     f"of this script for how to regenerate the pre-Deviation-70 tables.")
         self.files = [e.path for e in os.scandir(LEGACY_EXT)
                       if e.is_file() and e.name.endswith(".txt")]
         self.pos = np.array([np.loadtxt(f, max_rows=1, usecols=(0, 1)) for f in self.files])

@@ -126,3 +126,64 @@ make_sample_table.py). Pooled numbers: `analysis/u1_report_numbers.py`.
 - Supersedes old Sec. 5.5 ("The dust near the Galactic plane: what is wrong and how to correct it")
   and the dust row of Sec. 5.2's uncertainty list; the GC residual becomes a small row.
 
+#### Draft text: why the extinction model was changed
+
+*(Written for the report's Sec. 2.1 / Sec. 5; reword freely, but keep the chain of evidence.)*
+
+Every simulated source is dimmed by the dust between it and us, A_lambda = A_V(d) x (A_lambda/A_V),
+with A_V(d) the extinction to distance d along its line of sight. Toward the inner bulge that
+column is large, A_V ~ 5-30 mag, and it decides which sources each survey can see: through the
+same dust, Rubin's r band loses 4.3 times as many magnitudes as Roman's F146. So the extinction
+model sets the absolute yields of both surveys, and it sets their ratio.
+
+The earlier runs took A_V(d) from two optical 3D dust maps, Bayestar19 and DECaPS, split by
+declination as the dustmaps documentation suggests (Bayestar north of -30 deg). That put almost
+all of Roman's footprint on Bayestar. Optical maps work by measuring the reddening of individual
+stars at known distances; behind the dense dust lanes within ~1 deg of the plane the optical stars
+are too faint to be seen, so the maps stop increasing and the extinction to bulge distances is a
+lower limit. Bayestar's own reliability flag says exactly that: it was false beyond ~4 kpc on all
+139 of the footprint's Bayestar sightlines, i.e. for every bulge source. DECaPS, which goes deeper,
+is reliable over most of the scan but saturates (its stated limit is A_V ~ 12) on the
+Galactic-centre field.
+
+We checked this against an independent measurement that does not share the problem: the VVV
+reddening map (Surot et al. 2020), built from the near-infrared colours of bulge red-clump stars,
+which see through A_V ~ 30. Comparing the column to 8 kpc, the old tables had 17% of VVV's
+extinction within 0.5 deg of the plane and 31% at 0.5-1 deg; and the ratio of the
+Galactic-centre field's column to the five-field block's -- a test that does not depend on the
+extinction law -- was 0.57 in the old tables against 4.89 in VVV. The dust was not merely
+miscalibrated: it was missing where it matters most.
+
+The new tables use DECaPS where DECaPS can see (it agrees with VVV to ~10% away from the plane),
+and switch to the near-infrared 3D map of Marshall et al. (2006) where it cannot. They now track
+VVV to 0.88-0.99 in every latitude bin, with no fall toward the plane. One residual remains: the
+Galactic-centre field is ~10% thin (Marshall's own known shortfall there), worth ~0.5 mag in F146;
+it is stated as a limitation rather than tuned away.
+
+#### Draft text: what the Marshall et al. (2006) 3D map is
+
+*(Many readers know 2D extinction maps -- SFD/Planck dust emission, or the VVV and Gonzalez et al.
+2012 bulge maps -- which give one number per line of sight: the TOTAL column, or the column to the
+red clump. A 3D map gives the extinction as a function of DISTANCE along each line of sight, which
+a simulation needs because its sources sit at different distances.)*
+
+Marshall, Robin, Reylé, Schultheis & Picaud (2006, A&A 453, 635) built a 3D extinction map of the
+inner Galaxy from 2MASS near-infrared photometry. The idea: in each direction, the Besançon model
+of the Galaxy predicts how many stars of each type lie at each distance and what their intrinsic
+J-Ks colours are. The observed stars are redder than predicted by their colour excess E(J-Ks),
+which grows with the dust in front of them. Matching the observed colour distribution to the
+model's, distance bin by distance bin, gives the extinction A_Ks as a function of distance. It
+covers |l| <= 100 deg, |b| <= 10 deg on a 15-arcmin grid (over 64,000 lines of sight), and reaches
+the bulge because the near infrared is ~10 times less extinguished than the optical (A_Ks ~ 0.08
+A_V): stars behind A_V ~ 30 are still detected in Ks. Its limits: 15-arcmin resolution, coarser
+than DECaPS; and its distances come from a Galaxy model rather than from the stars themselves.
+The authors show the result is insensitive to moderate changes in the model. (The Besançon model
+is also the stellar-population model behind this simulation's synthetic colour-magnitude
+diagrams.)
+
+How it is used here: Marshall tabulates A_Ks; we put it on DECaPS's A_V scale with
+k = A_Ks/A_V = 0.0830, measured where both maps are valid (the median ratio at 8 kpc over Roman's
+five-field block, 580 positions). It is used only where DECaPS stops seeing -- beyond DECaPS's own
+reliable distance, and outright once its calibrated column passes DECaPS's sensitivity limit
+(A_V = 12), which happens at 53% of table positions, typically from ~4.5 kpc.
+

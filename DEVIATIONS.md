@@ -4897,7 +4897,11 @@ CRITICAL dust entry, whose fix plan this follows).
   records it in `run_provenance.txt`. Per-draw check (the U4 reconstruction): every one of 590
   draws' recorded A_r equals A_V(table, Ds) x CCM89 A_r/A_V (R_V 2.5 or 3.1) to within 0.017 mag,
   the simulator's own scatter; median recorded 4.93 vs predicted 4.88.
+- **Afterwards (user's request, same day): the archived old tables `files/ext_bayestar_v1/` (891 MB)
+  and the unread `files/extinctionf.txt` were deleted.** U4/U5 now exit with instructions to
+  regenerate the old tables (`git show 12144f7:maps.py`, with the legacy visit list) if the
+  2026-09-24 runs ever need their dust re-modelled. `files/ext_raw/` (the raw-map cache) is kept.
 - Start-up, dry run with the production flags: 26 s (35 s with the 2,518 files, before the Rubin
   visit list grew 3.3x in Deviation 69).
 
-**Commit:** not yet committed (awaiting the user).
+**Commit:** `fcd6c82`.

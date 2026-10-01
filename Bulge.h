@@ -1038,6 +1038,13 @@ inline int surveyOfTele(int tele) { return (tele == 0) ? SRUBIN : SROMAN; }
 // A short event peaking in a Roman gap has no Roman data at all, so the joint fit cannot solve for
 // Roman's flux scale either and must fall back to Rubin's parameter set. Without this the joint
 // matrix would go singular on exactly the gap-peaking events the project is about.
+// A telescope contributing fewer than kMinTeleEpochs epochs to an event is left out of the
+// photometric matrices altogether (Deviation 76): its flux pair (fb, mbs) cannot be constrained,
+// and with one epoch the joint matrix went singular (condition 1.5e16 on the bulge event whose joint
+// mass error was 8.3x Roman's -- one Rubin epoch). Its epochs carry next to no information on the
+// event anyway. The counts passed to activePhotParams are therefore >= kMinTeleEpochs or zero.
+constexpr int kMinTeleEpochs = 3;
+
 inline std::vector<int> activePhotParams(int surv, int nRubinEpochs, int nRomanEpochs)
 {
     const std::vector<int> shared = {0, 1, 3, 4, 5};  //u0, tE, piE, xi, t0

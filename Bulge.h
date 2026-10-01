@@ -547,6 +547,12 @@ constexpr double vearth = omegae;                    //radian per day
 // parameter, so theta - Delta stays positive, and after Step C3 they are smaller still.
 // The photometric tE and piE now use sig. The two astrometric uses are unchanged pending a
 // step-size sweep of Delta2 -- see OPEN_ITEMS.md.
+// Step-size multipliers on the astrometric Delta2[] (tetE, mus1, mus2, piE), chosen by the M3 sweep
+// (Deviation 75; ./fishertest --sweep-astro). 1.0 = the legacy 25%-of-value steps. tetE, mus1, mus2:
+// the modelled centroid is LINEAR in them (blending and lens light included), so every finite
+// difference is exact -- the sweep is flat to all digits over 1e-8..2. piE (through the parallax-
+// bent trajectory) is not: plateau 1e-8..1e-2, 0.4% off at the legacy step, 2.5% at 2x; 1e-2 chosen.
+constexpr std::array<double, 4> kFDStepScaleB = {1.0, 1.0, 1.0, 1.0e-2};
 constexpr std::array<double, 2> sig  = {+1.0 ,-1.0};
 constexpr std::array<double, 2> sig2 = {+0.5 ,+1.0};
 
@@ -1115,6 +1121,8 @@ struct covarian {
     // because a sweep needs many step values within a single process -- a compile flag would
     // mean one rebuild, and for the live binary one multi-minute CMD reload, per sweep point.
     std::array<double, Nx> deltaScale;
+    // Same knob for the astrometric steps Delta2[] (Deviation 75, step M3): 1.0 = production.
+    std::array<double, Ny> deltaScaleB{1.0, 1.0, 1.0, 1.0};
 
     gsl_matrix_uptr summA; //size Nx (diagnostic only, joint)
     gsl_matrix_uptr summB; //size Ny (diagnostic only, joint)

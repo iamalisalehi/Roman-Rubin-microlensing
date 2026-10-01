@@ -3640,10 +3640,10 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 ///                   Astrometry                                            ///
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 
-    co.Delta2[0] = l.tetE * 0.2500467345692345;
-    co.Delta2[1] = s.mus1 * 0.2500465923465493;
-    co.Delta2[2] = s.mus2 * 0.25000465936443;
-    co.Delta2[3] = 0.25000375423543264 * l.piE;
+    co.Delta2[0] = l.tetE * 0.2500467345692345   * kFDStepScaleB[0] * co.deltaScaleB[0];
+    co.Delta2[1] = s.mus1 * 0.2500465923465493   * kFDStepScaleB[1] * co.deltaScaleB[1];
+    co.Delta2[2] = s.mus2 * 0.25000465936443     * kFDStepScaleB[2] * co.deltaScaleB[2];
+    co.Delta2[3] = 0.25000375423543264 * l.piE   * kFDStepScaleB[3] * co.deltaScaleB[3];
     for (int q = 0; q < NSURV; ++q)
     for(int j = 0; j < Ny; ++j){
         for(int k = 0; k < Ny; ++k){
@@ -3690,10 +3690,14 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 
         for (int j = 0; j < Ny; ++j) {
             for (int h = 0; h < 2; ++h) {
-                if (j == 0) { co.diff = double(co.Delta2[j] * sig2[h]); l.tetE += co.diff; }
-                if (j == 1) { co.diff = double(co.Delta2[j] * sig[h]);  s.mus1 += co.diff; }
-                if (j == 2) { co.diff = double(co.Delta2[j] * sig[h]);  s.mus2 += co.diff; }
-                if (j == 3) { co.diff = double(co.Delta2[j] * sig2[h]); l.piE  += co.diff; }
+                // Deviation 75: all four astrometric parameters use the CENTRAL stencil (tetE and
+                // piE used sig2, two forward differences with an O(h) bias; Step C3 fixed the same
+                // thing on the photometric side).
+                co.diff = double(co.Delta2[j] * sig[h]);
+                if (j == 0) l.tetE += co.diff;
+                if (j == 1) s.mus1 += co.diff;
+                if (j == 2) s.mus2 += co.diff;
+                if (j == 3) l.piE  += co.diff;
 
                 lightcurve(s, l, as, l.timn[i], int(l.tele[i]));
                 co.dera1[h] = double(s.pos1c - soux0) / co.diff;

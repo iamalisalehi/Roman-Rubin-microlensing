@@ -897,6 +897,45 @@ bool checkSeasonClustering()
 // adds more of both (one offset per season, a larger sigma_c), and neither extra parameters nor
 // positively correlated noise can add information. A violation is a bug in the bookkeeping.
 // ---------------------------------------------------------------------------------------------
+// Step M3 (Deviation 75): step-size sweep of the ASTROMETRIC derivatives, the counterpart of
+// --sweep for the photometric ones. One parameter's step is scaled at a time (others at 1); prints
+// CSV of sigma (variant W) per event, partition, parameter and scale.
+int runSweepAstro()
+{
+    auto s  = std::make_unique<source>();
+    auto l  = std::make_unique<lens>();
+    auto as = std::make_unique<astromet>();
+    auto co = std::make_unique<covarian>();
+    static const double kScales[] = {1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, 2.0};
+    const char* pn[Ny] = {"tetE", "mus1", "mus2", "piE"};
+    std::cout << "event,tE,survey,param,param_idx,scale,sigma,cond,ok\n";
+    for (const auto& ev : kEvents) {
+        for (int j = 0; j < Ny; ++j) {
+            for (double sc : kScales) {
+                setupStatic(*s, *l);
+                l->tE = ev.tE; l->t0 = ev.t0; l->u0 = ev.u0; l->piE = ev.piE;
+                int nL = 0, nR = 0;
+                const int ndw = buildLightCurve(*s, *l, *as, nL, nR);
+                l->tE = ev.tE; l->t0 = ev.t0; l->u0 = ev.u0; l->piE = ev.piE;
+                s->xi = kXi; s->fb[0] = kFbRubin; s->fb[1] = kFbRoman;
+                s->mbs[0] = kMbsRubin; s->mbs[1] = kMbsRoman;
+                for (int k = 0; k < Ny; ++k) co->deltaScaleB[k] = 1.0;
+                co->deltaScaleB[j] = sc;
+                FisherM(*s, *l, *as, *co, ndw);
+                ErrorCal(*co, *l, *s);
+                for (int q = 0; q < NSURV; ++q) {
+                    const char* qn = (q == SJOINT) ? "joint" : (q == SRUBIN ? "rubin" : "roman");
+                    std::cout << ev.name << ',' << ev.tE << ',' << qn << ',' << pn[j] << ',' << j << ','
+                              << sc << ',' << std::scientific << std::setprecision(10)
+                              << co->Erb[q][j] << ',' << co->condB[q] << ',' << co->okB[q]
+                              << std::defaultfloat << '\n';
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 int runAstroVariants()
 {
     auto s  = std::make_unique<source>();
@@ -945,6 +984,7 @@ int runAstroVariants()
 int main(int argc, char** argv)
 {
     if (argc > 1 && std::string(argv[1]) == "--astro-variants") return runAstroVariants();
+    if (argc > 1 && std::string(argv[1]) == "--sweep-astro") return runSweepAstro();
     if (argc > 1 && std::string(argv[1]) == "--sweep") return runSweep();
     if (argc > 1 && std::string(argv[1]) == "--eigen")
         return runEigen(argc > 2 ? std::atof(argv[2]) : 1.0);

@@ -4750,4 +4750,4 @@ be an older version.
 factor 2.3 unchanged), postfix report (factor 4.3 unchanged; history in a LaTeX comment) and
 whitepaper. Their SS23 paragraphs keep the old framing (OPEN_ITEMS, stale statements, item 4).
 
-**Build.** overview 50 pp, populations 15 pp, postfix 13 pp, whitepaper 56 pp; 0 undefined, 0 errors.
+**Build.** overview 50 pp, populations 15 pp, postfix 13 pp, whitepaper 56 pp; 0 undefined, 0 errors. Commit `3ff25e8`.

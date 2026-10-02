@@ -1833,6 +1833,13 @@ covered by the astrometric-floor items). Full record, numbers and code reference
 
 ## One DET_ANOMALY event in the post-extinction-fix bulge run (2026-09-24)
 
+**STATUS 2026-10-02 (Deviation 79): explained in principle, instrumented.** The "zero by construction"
+claim was wrong: the joint delta-chi2 is the sum of the two surveys', and one of them can be negative
+through noise, pulling a single-survey detection just over the bar under it jointly. detJ is forced
+monotone, so no result depends on it. New runs log DET_ANOMALY_DETAIL for every case and check the
+sum identity on every event (RUN TOTALS). Close once a production run's details confirm the
+mechanism (expected: |dchiL_R| small, dchiL_L just above 500).
+
 **What is wrong.** `runs/prod_bulge_20260924` (commit a5028fe) reports
 `ANOMALY(single-not-joint) 1` in its RUN TOTALS: one event where a single-survey detection
 test passed and the joint test did not. Since Step H7 all three tests share one fixed bar and

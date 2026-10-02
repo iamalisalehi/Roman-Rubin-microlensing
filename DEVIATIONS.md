@@ -5221,3 +5221,26 @@ files/MONTLMC/files/* byte-identical (md5); two consecutive fresh runs give iden
 (MapLMC 36, LpLMC 75, table 666), no doubling. fixture PASS and byte-identical to M4's.
 
 **Commit:** `9aee0b4`.
+
+## 79. M7: DET_ANOMALY is physically possible, not a sign bug; instrumented (2026-10-02)
+
+**What the code said.** "DET_ANOMALY ... should be ZERO by construction"; one occurred in the
+09-24 bulge run (OPEN_ITEMS). **Re-read:** the joint test thresholds dchiL = chi3 - chi1 summed over
+BOTH surveys' epochs, the single tests each survey's own sum, all against the same bar. dchiL =
+dchiL_L + dchiL_R, and either term can be NEGATIVE through noise: a survey whose data happen to fit
+the flat baseline slightly better than the true model (expected value of the term = the signal power,
+fluctuation ~ 2 sqrt of it). Rubin just over 500 plus Roman mildly negative leaves the joint just
+under 500. So the anomaly is a rare, legitimate noise outcome, not "impossible"; detJ is already
+made monotone (forced on when either single test passes), so no result depends on it.
+
+**What was done.** (1) Every anomaly prints a `DET_ANOMALY_DETAIL` line to stderr (sightline, both
+surveys' dchiL, their sum and the joint value and the difference, the bar, epoch counts, run-test
+flags, tE, u0, t0) -- reproducible since Deviation 77 by re-running that sightline alone with
+--start-index i --end-index i+1. (2) Every event checks the bookkeeping identity |dchiL_L + dchiL_R -
+dchiL| <= 1e-6 max(1, |dchiL|); violations are counted (first ten printed as DCHI_MISMATCH) and the
+count printed in RUN TOTALS -- a non-zero count WOULD be a bug.
+
+**Verification.** Stub pilot: "dchiL bookkeeping: 0 event(s) with joint != Rubin + Roman"; no anomaly
+in this small run (the diagnostic path compiles and is exercised only when one occurs).
+
+**Commit:** see the next commit.

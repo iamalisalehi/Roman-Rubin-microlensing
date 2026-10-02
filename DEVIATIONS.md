@@ -5364,4 +5364,4 @@ from 602 draws (was 50 from 603). Median over draws: blend_r 0.0043 -> 0.0030 (f
 magb_F146 23.62 -> 23.85 (less blend light). CPU 168 -> 150 s. 776 (outside): 11,153 draws per 50
 events (was 10,399), 34 -> 32 s. The M9 estimate stands.
 
-**Commit:** see git log (low-mass dwarfs).
+**Commit:** `8860102`.

@@ -2203,7 +2203,9 @@ The whitepaper is due a full reconciliation anyway (JOINT_FIT_REFACTOR_PLAN Phas
 rewrite of the whitepaper's SS23 paragraph from the overview's (which also covers (4)). For (2), one word. For (3), a
 Crossref pass over `Whitepaper/refs.bib` as was done for `Report/refs.bib` in Deviation 66.
 
-## Rubin's field of view is a 1.75-deg circle, not LSSTCam's outline (2026-10-01, from Deviation 69)
+## FIXED IN CODE 2026-10-02 (Deviation 80) -- Rubin's field of view is a 1.75-deg circle, not LSSTCam's outline (2026-10-01, from Deviation 69)
+
+**Fixed:** LSSTCam active-silicon map (rubin_scheduler fov_map, 9.12 deg^2 = 88% of the circle) with per-visit rotSkyPos; validated against rubin_scheduler. The "fill factor ~0.9" below was unverified; the map gives 0.88 of the 1.75-deg disc. Remaining: the figure scripts still use the circle; the 40 pre-day-0 visits remain dropped.
 
 **What is wrong.** `matchVisibleEpochs` gives a Rubin visit to every sightline within `FoV` = 1.75
 deg of the pointing centre. LSSTCam's focal plane is a square-ish mosaic of 21 rafts with the

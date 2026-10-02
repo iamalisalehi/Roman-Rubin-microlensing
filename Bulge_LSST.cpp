@@ -876,7 +876,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < Nl; ++i) {
         fil >> ID >> ls->RA[i] >> ls->DEC[i] >> ls->l[i] >> ls->b[i]
             >> ls->tim[i] >> ls->filter[i] >> airm >> seeingVal >> skyB
-            >> TV >> ls->sig5[i] >> texp >> ls->dist[i];
+            >> TV >> ls->sig5[i] >> texp >> ls->dist[i] >> ls->rot[i];
 //if (i == 0) cout << ID << endl;
         // A failed extraction is a silent no-op that leaves this row zero-initialised,
         // and zeros pass every CHECK below: (l,b)=(0,0) is inside the bulge region,
@@ -1011,6 +1011,20 @@ int main(int argc, char** argv) {
     // --------------------- Read extinction ------------------------
     readExtinction(*ex, "./files/ext/ext_tables.dat");
     readLensML("./CMD/components/lens_ml.dat");   // luminous lenses (Deviation 74)
+    readLsstCamMap("./Baseline/lsstcam_fov/fov_map.txt");   // Rubin's footprint (Deviation 80)
+    {
+        // The galactic->ICRS conversion the coverage test relies on, checked against OpSim's own
+        // RA/Dec for every Rubin visit (whose l, b readbaselineBulge.py derived with astropy).
+        double worst = 0.0;
+        for (int i = 0; i < Nl; ++i) {
+            double ra, dec;
+            galToIcrs(ls->l[i], ls->b[i], ra, dec);
+            double dra = std::fabs(ra - ls->RA[i]); if (dra > 180.0) dra = 360.0 - dra;
+            worst = std::max(worst, std::hypot(dra * std::cos(dec * M_PI / 180.0), dec - ls->DEC[i]));
+        }
+        std::cout << "galactic->ICRS check over " << Nl << " Rubin visits: worst " << worst * 3600.0 << " arcsec\n";
+        if (worst > 1e-4) { std::cerr << "ERROR: galToIcrs disagrees with OpSim by " << worst << " deg\n"; return 1; }
+    }
 
     // --------------------- Call read_cmd --------------------------
     read_cmd(*cm);
@@ -1314,12 +1328,12 @@ int main(int argc, char** argv) {
         for (int i = 0; i < Nl; ++i) {
             bool near = false;
             for (const auto& f : romanFields)
-                if (std::hypot(ls->l[i] - f.l, ls->b[i] - f.b) <= scanReach + FoV + 1e-3) { near = true; break; }
+                if (std::hypot(ls->l[i] - f.l, ls->b[i] - f.b) <= scanReach + RUBIN_MAX_RADIUS + 1e-3) { near = true; break; }
             if (!near) nFar += 1;
         }
         if (nFar > 0) {
             std::cerr << "ERROR: " << nFar << " of " << Nl << " Rubin visits in BulgeBaseline.dat "
-                      << "are centred farther than " << scanReach + FoV << " deg from every "
+                      << "are centred farther than " << scanReach + RUBIN_MAX_RADIUS << " deg from every "
                       << "Roman field, so the visit list was built for another region. "
                       << "Regenerate it with Baseline/readbaselineBulge.py.\n";
             return 1;
@@ -1775,9 +1789,14 @@ int main(int argc, char** argv) {
 
             cade = 0.0;
 
+            // Deviation 80: on LSSTCam's active silicon for this visit's pointing and rotation
+            // (was: within a 1.75-deg circle). A cheap (l, b) distance cut first.
+            double slRA, slDec;
+            galToIcrs(s->lon, s->lat, slRA, slDec);
             auto rubinCovers = [&](int i) {
                 const double dl = s->lon - ls->l[i], db = s->lat - ls->b[i];
-                return std::sqrt(dl * dl + db * db) <= FoV;
+                if (dl * dl + db * db > (RUBIN_MAX_RADIUS + 0.1) * (RUBIN_MAX_RADIUS + 0.1)) return false;
+                return onLsstCam(slRA, slDec, ls->RA[i], ls->DEC[i], ls->rot[i]);
             };
             auto romanCovers = [&](int i) {
                 return inDetector(gl, ro->layout[i], s->lon - ro->l[i], s->lat - ro->b[i]);

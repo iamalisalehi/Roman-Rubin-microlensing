@@ -31,7 +31,9 @@ Plan these notes follow: `/home/ali/.claude/plans/i-want-to-do-resilient-humming
 | M1b | Rubin: per-visit depth/saturation gate (visit fiveSigmaDepth, -8.3); FWHM = median seeingFwhmGeom of the bulge visits; gamma from Ivezic 2019 | 73 | 0e22ab6 |
 | M2 | Luminous lenses (bulge population, MS stars) add their light to the blend; astrometric centroid light-weighted (source, lens, blend) | 74 | 7a572b3 |
 | M3 | Astrometric derivative steps swept; central stencil | 75 | 0a518f0 |
-| M4 | Telescopes with < 3 epochs left out of the photometric fit (fixes the x8.3 mass event); gap geometry (t0zone, dt_edge) from the observed peak t0obs | 76 | (next) |
+| M4 | Telescopes with < 3 epochs left out of the photometric fit (fixes the x8.3 mass event); gap geometry (t0zone, dt_edge) from the observed peak t0obs | 76 | 3952f9a |
+| M5-M7 | Per-sightline random streams (chunked runs exact), output hygiene, DET_ANOMALY explained | 77-79 | see DEVIATIONS |
+| M8 | Rubin coverage = LSSTCam active silicon (rubin_scheduler map, rotSkyPos): 88% of the old circle; 12,915 visits | 80 | (next) |
 | 3 | Astrometric reference position freed; sqrt(2) per-coordinate fix; correlated-floor bracket | 71 | 39b50c0 | every theta_E / mass number |
 
 ## Section by section
@@ -330,4 +332,10 @@ the floor.
 - **Gap filling (Sec. 4.3):** "in a gap" is now judged by the OBSERVED peak time (parallax included),
   not the model's reference t0 -- 10% of detections change zone in the pilot. Say so in the method.
 - Numerical: astrometric derivatives verified step-independent (sweep); no text needed beyond a line.
+
+### M8 -- Rubin's camera footprint (2026-10-02, Deviation 80)
+- **Say in Sec. 2.1/2.4:** a sightline is in a Rubin visit if it lands on LSSTCam's active silicon
+  for that pointing and camera rotation (the map OpSim/MAF use), not inside a 1.75-deg circle: 9.12
+  deg^2 of silicon, 88% of the circle; ~7% fewer Rubin epochs per sightline in the stub. Figures: port
+  make_footprints/make_timeline to the map (they still use the circle).
 

@@ -506,6 +506,64 @@ GbtdsLayout readGbtdsLayout() {
     return g;
 }
 
+// ---------------------------------------------------------------------------------------
+// LSSTCam footprint (Deviation 80). See Bulge.h.
+// ---------------------------------------------------------------------------------------
+void readLsstCamMap(const std::string& path)
+{
+    std::ifstream fin(path);
+    if (!fin) { std::cerr << "ERROR: cannot read " << path << " (run Baseline/lsstcam_fov/export_fov_map.py)\n"; std::exit(EXIT_FAILURE); }
+    std::string line;
+    std::getline(fin, line);                       // provenance
+    std::getline(fin, line);                       // '# n x0 step max_radius'
+    { std::istringstream ss(line.substr(1)); double rmax; ss >> gLsstCam.n >> gLsstCam.x0 >> gLsstCam.step >> rmax;
+      if (!ss or gLsstCam.n <= 0 or !(gLsstCam.step > 0)) { std::cerr << "ERROR: bad header in " << path << "\n"; std::exit(EXIT_FAILURE); } }
+    gLsstCam.on.assign(size_t(gLsstCam.n) * gLsstCam.n, 0);
+    for (int ix = 0; ix < gLsstCam.n; ++ix) {
+        if (!std::getline(fin, line) or int(line.size()) < gLsstCam.n) {
+            std::cerr << "ERROR: " << path << " row " << ix << " short or missing\n"; std::exit(EXIT_FAILURE);
+        }
+        for (int iy = 0; iy < gLsstCam.n; ++iy) gLsstCam.on[size_t(ix) * gLsstCam.n + iy] = (line[iy] == '1');
+    }
+    size_t nOn = 0; for (auto v : gLsstCam.on) nOn += v;
+    std::cout << "Loaded LSSTCam footprint " << path << ": " << nOn * gLsstCam.step * gLsstCam.step
+              << " deg^2 active\n";
+}
+
+// rubin_scheduler.utils.LsstCameraFootprint.__call__, one point: gnomonic projection about the
+// boresight (projections.gnomonic_project_toxy), rotate by rotSkyPos (its rotate()), nearest pixel,
+// image[ix][iy].
+bool onLsstCam(double ra, double dec, double ra0, double dec0, double rotSkyPos)
+{
+    const double d2r = M_PI / 180.0;
+    const double a = ra * d2r, d = dec * d2r, a0 = ra0 * d2r, d0 = dec0 * d2r;
+    const double cosc = std::sin(d0) * std::sin(d) + std::cos(d0) * std::cos(d) * std::cos(a - a0);
+    if (cosc <= 0.0) return false;
+    double x = std::cos(d) * std::sin(a - a0) / cosc;
+    double y = (std::cos(d0) * std::sin(d) - std::sin(d0) * std::cos(d) * std::cos(a - a0)) / cosc;
+    const double r = rotSkyPos * d2r, c = std::cos(r), s = std::sin(r);
+    const double xr = c * x - s * y, yr = s * x + c * y;
+    const double stepRad = gLsstCam.step * d2r, x0Rad = gLsstCam.x0 * d2r;
+    const long ix = std::lround((xr - x0Rad) / stepRad), iy = std::lround((yr - x0Rad) / stepRad);
+    if (ix < 0 or iy < 0 or ix >= gLsstCam.n or iy >= gLsstCam.n) return false;
+    return gLsstCam.on[size_t(ix) * gLsstCam.n + size_t(iy)] != 0;
+}
+
+// Galactic -> ICRS (J2000), via the transpose of the Hipparcos ICRS->Galactic rotation matrix
+// (ESA 1997, vol. 1, sec. 1.5.3); checked at start-up against every visit's OpSim RA/Dec vs l/b.
+void galToIcrs(double l, double b, double& ra, double& dec)
+{
+    static const double A[3][3] = {{-0.0548755604162154, -0.8734370902348850, -0.4838350155487132},
+                                   {+0.4941094278755837, -0.4448296299600112, +0.7469822444972189},
+                                   {-0.8676661490190047, -0.1980763734312015, +0.4559837761750669}};
+    const double d2r = M_PI / 180.0;
+    const double g[3] = {std::cos(b * d2r) * std::cos(l * d2r), std::cos(b * d2r) * std::sin(l * d2r), std::sin(b * d2r)};
+    double e[3];
+    for (int i = 0; i < 3; ++i) e[i] = A[0][i] * g[0] + A[1][i] * g[1] + A[2][i] * g[2];   // A^T g
+    ra  = std::atan2(e[1], e[0]) / d2r; if (ra < 0.0) ra += 360.0;
+    dec = std::asin(std::max(-1.0, std::min(1.0, e[2]))) / d2r;
+}
+
 bool inDetector(const GbtdsLayout& g, int layout, double dl, double db) {
     if (dl < g.dlMin[layout] or dl > g.dlMax[layout] or db < g.dbMin[layout] or db > g.dbMax[layout])
         return false;

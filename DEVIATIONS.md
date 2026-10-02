@@ -5243,4 +5243,36 @@ count printed in RUN TOTALS -- a non-zero count WOULD be a bug.
 **Verification.** Stub pilot: "dchiL bookkeeping: 0 event(s) with joint != Rubin + Roman"; no anomaly
 in this small run (the diagnostic path compiles and is exercised only when one occurs).
 
+**Commit:** `2065c4f`.
+
+## 80. M8: Rubin's coverage is LSSTCam's active silicon, not a 1.75-deg circle (2026-10-02)
+
+**What the code had** (OPEN_ITEMS, from Deviation 69): a Rubin visit covered every sightline within
+1.75 deg of its pointing centre; camera rotation, raft outline and chip gaps ignored.
+
+**What was done (user's decision: before the runs).**
+- Footprint = the map OpSim/MAF themselves use: rubin_scheduler 4.6.0 `LsstCameraFootprint` with its
+  default `fov_map.npz` (rubin_sim_data utils_2023_11_02.tgz, s3df.slac.stanford.edu), cropped at its
+  max_radius 1.94 deg; exported by `Baseline/lsstcam_fov/export_fov_map.py` to `fov_map.txt`
+  (1000 x 1000, step 0.0035 deg). **9.12 deg^2 active = 88% of the 1.75-deg circle's 9.62**; active
+  pixels reach 1.94 deg (2.03 before the crop) in the corners.
+- `Baseline/readbaselineBulge.py`: each visit's rotSkyPos added as a 15th column; pointings selected
+  within scan reach + 1.94 deg (was + 1.75): **12,915 visits** (was 12,308). `Nl` = 12915.
+- C++: `onLsstCam()` mirrors LsstCameraFootprint.__call__ for one point (gnomonic projection about the
+  boresight, rotation by rotSkyPos, nearest pixel, image[ix][iy]); the Rubin coverage predicate uses it
+  (after an (l,b) pre-cut at 2.04 deg). Sightline RA/Dec from `galToIcrs()` (Hipparcos matrix),
+  checked at start-up against OpSim's RA/Dec for every visit: worst 0.029 arcsec. The visit-list
+  sanity check uses the 1.94-deg reach.
+- The 90-degree symmetry of the 21-raft layout means the sign convention of rotSkyPos (flagged as a
+  TODO in rubin_scheduler itself) cannot change coverage beyond chip-gap positions.
+
+**Verification.** Stub run: Rubin visits per sightline ~2,220 (circle: ~2,390, -7%). Against
+rubin_scheduler's own, unmodified LsstCameraFootprint on the same visits and map: 33 of 36 stub
+sightlines identical, 3 differ by one visit in ~2,200 (half-pixel rounding at a chip edge: numpy's
+round-half-even vs lround). fixture/extinctiontest unaffected.
+
+**Not updated (analysis side, noted for the report):** `Report/overview/make_footprints.py` and
+`make_timeline.py` still count Rubin visits with the 1.75-deg circle; port them to the map when the
+new report's figures are made.
+
 **Commit:** see the next commit.

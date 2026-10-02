@@ -1,6 +1,24 @@
 # PROGRESS.md — where this project stands
 
-**NOW (2026-10-01): pre-production fixes, in the user's order -- (1) adopted GBTDS footprint +
+**NOW (2026-10-02): M0-M8 DONE (Deviations 72-80, commits 49126c4..3d4e7c8); M9 timing IN FLIGHT.**
+Approved by the user: "do everything before M9 ... for M9 first gather time estimations, then give me
+a report of everything from M0 to M8 along with those estimations and ask my approval".
+- M0 49126c4 OPEN_ITEMS closed per audit. M1 5b10cdb (Dev 72) Roman AB->Vega for the astrometric
+  curve (x0.45 at the median source), photometric curve anchored to STScI 66-s depth 25.45 AB,
+  saturation 14.8. M1b 0e22ab6 (73) Rubin per-visit depth/saturation gate, FWHM from the visits,
+  Ivezic gamma. M2 7a572b3 (74) luminous lenses (bulge pop.) + light-weighted centroid; lens M-L
+  table CMD/components/lens_ml.dat (CMD/lens_ml_table.py). M3 0a518f0 (75) astrometric steps swept.
+  M4 3952f9a (76) telescopes with < 3 epochs out of the photometric fit (the x8.3 event); t0obs.
+  M5 5ae0f04 (77) per-sightline RNG, --seed/--end-index, chunks byte-identical. M6 9aee0b4 (78)
+  output hygiene. M7 2065c4f (79) DET_ANOMALY explained + logged. M8 ce537a9 (80) LSSTCam footprint.
+- **Open decision for the user (found in M2):** the source catalogue (CMD/components) excludes stars
+  only Roman can see (BolometricCorrection.py's visibility filter needs >= 1 LSST band) -- OPEN_ITEMS.
+- **M9 timing running since 2026-10-02 ~12:10:** `runs/m9_timing.sh` (8 footprint + 8 outside
+  sightlines per population, production flags, one at a time, 3 populations in parallel) ->
+  `runs/m9_timing_{bulge,bh,ns}/times.csv` (+ log_<i>.txt). Finished when each times.csv ends with
+  DONE and runs/m9_timing.log says ALL DONE. Indices in runs/m9_idx_{F,O}.txt.
+
+**PREVIOUS (2026-10-01): pre-production fixes, in the user's order -- (1) adopted GBTDS footprint +
 Rubin scan region, (2) extinction tables, (3) Roman's 1.1 mas astrometric floor; minor items after;
 then new bulge/bh/ns production runs and a NEW overview report.** Plan (approved):
 `/home/ali/.claude/plans/i-want-to-do-resilient-hummingbird.md`. Step by step, each approved first.

@@ -22,6 +22,15 @@ MEAN MASSES. <m> per component over the whole list (dark entries included) is pr
 to components/provenance.txt; Bulge.h's MEANMASS_* must equal it, so that Nstart counts the very
 population the draws come from.
 
+LOW-MASS DWARFS OF THE BULGE, THICK DISC AND HALO (Deviation 82). Besancon's dwarfs in these
+components are 2-3 mag brighter at 0.1 Msun than its thin-disc dwarfs (and than real M dwarfs). Below
+MS_FIX_HI each such dwarf (CL = 5) is moved, in every band, by the difference between
+components/lens_ml.dat -- the relation lens light already uses (lens_ml_table.py: nearby thin-disc
+dwarfs, MIST BCs at the component's metallicity) -- and its component's own running median at that
+mass; the star's scatter about the median is kept. The shift tapers linearly to zero between
+MS_FIX_LO and MS_FIX_HI, above which stars may be evolving and are left alone. The thin disc is the
+reference and is not touched. Run lens_ml_table.py first.
+
 SUBSAMPLE. A component with more than MAX_ROWS stars is reduced to a uniform random subsample
 (fixed seed): a luminosity function needs no more, and the simulator holds the lists in RAM.
 
@@ -46,6 +55,9 @@ MAX_ROWS = 3_500_000                  # per component; only the bulge (5.9M) exc
 SUBSAMPLE_SEED = 20261002
 # Besancon Pop codes -> component, as in Bulge.h's GalacticComponent order of the files.
 COMPONENTS = {"thin_disk": list(range(1, 8)), "bulge": [10], "thick_disk": [8, 11], "halo": [9]}
+MS_FIX_LO, MS_FIX_HI = 0.6, 0.7       # Msun: full shift below LO, none above HI (Deviation 82)
+MS_FIX_COMP = {"bulge": 1, "thick_disk": 2, "halo": 3}   # lens_ml.dat comp codes
+MS_FIX_BIN = 0.02                     # Msun, running-median bin
 # Upper age bounds read_cmd() CHECKs (helper.cpp); a violation stops the build, it does not drop.
 AGE_MAX = {"thin_disk": 10, "bulge": 10, "thick_disk": 13, "halo": 14}
 
@@ -165,6 +177,28 @@ class MISTBolometricCorrection:
         print(self.input_data.head())
 
 
+def fix_low_mass_dwarfs(sub, name, lens_ml):
+    """Deviation 82: put the component's unevolved dwarfs on the lens-light M-L relation."""
+    if name not in MS_FIX_COMP:
+        return sub, 0
+    t = lens_ml[lens_ml["comp"] == MS_FIX_COMP[name]]
+    centres = ((t["m_lo"] + t["m_hi"]) / 2).to_numpy()
+    sel = ((sub["CL"] == 5) & (sub["mass"] < MS_FIX_HI) & (sub["LSST_r"] < DARK_MAG)).to_numpy()
+    m = sub["mass"].to_numpy()[sel]
+    taper = np.clip((MS_FIX_HI - m) / (MS_FIX_HI - MS_FIX_LO), 0.0, 1.0)
+    bins = np.floor(m / MS_FIX_BIN).astype(int)
+    bands = {"Roman_F146": "F146", "LSST_u": "u", "LSST_g": "g", "LSST_r": "r", "LSST_i": "i",
+             "LSST_z": "z", "LSST_y": "y"}
+    for col, short in bands.items():
+        v = sub[col].to_numpy()[sel]
+        med = pd.Series(v).groupby(bins).median()
+        target = np.interp((med.index.to_numpy() + 0.5) * MS_FIX_BIN, centres, t[short].to_numpy())
+        shift = pd.Series(target - med.to_numpy(), index=med.index)
+        new = v + taper * shift.reindex(bins).to_numpy()
+        sub.loc[sub.index[sel], col] = new
+    return sub, int(sel.sum())
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -194,11 +228,15 @@ def build():
     if not np.isfinite(out.to_numpy()).all():
         raise RuntimeError("non-finite value left after the dark-entry substitution")
 
+    lens_ml = pd.read_csv("./components/lens_ml.dat", sep=r"\s+", comment="#", header=None,
+                          names=["comp", "m_lo", "m_hi", "n", "u", "g", "r", "i", "z", "y", "F146"])
     rng = np.random.default_rng(SUBSAMPLE_SEED)
     prov = ["# CMD/components provenance (BolometricCorrection.py, Deviation 81)",
             "# component  n_catalogue  n_written  n_dark  mean_mass  median_Mr_lum"]
     for name, pops in COMPONENTS.items():
-        sub = out[out["Pop"].isin(pops)]
+        sub = out[out["Pop"].isin(pops)].copy()
+        sub, n_fix = fix_low_mass_dwarfs(sub, name, lens_ml)
+        print(f"{name}: {n_fix} low-mass dwarfs moved onto the lens_ml.dat relation")
         bad = (sub["Age"] > AGE_MAX[name]).sum()
         if bad:
             raise RuntimeError(f"{name}: {bad} stars older than read_cmd's bound {AGE_MAX[name]}")

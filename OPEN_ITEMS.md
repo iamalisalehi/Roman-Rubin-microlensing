@@ -115,7 +115,9 @@ instead of crash-or-garbage" work, which is the same class of problem.
 **Workaround meanwhile:** the fixture's `t0` values are deliberately offset off the cadence grid,
 and it carries an explicit guard that reports this cause rather than leaving an opaque abort.
 
-## Joint `flag_det` is Rubin-only (from Step C0)
+## RESOLVED 2026-10-02 (Deviation 78) -- Joint `flag_det` is Rubin-only (from Step C0)
+
+**Resolved:** flag_det = flag_det_L or flag_det_R (Deviation 78); not written to any output.
 
 `flag_det` (`Bulge_LSST.cpp`, in the Rubin epoch branch) is described as the joint run-test flag,
 but it is only ever set inside the **Rubin** branch and is gated on `ndw_L`. There is no equivalent
@@ -267,7 +269,9 @@ loudly first, which is the intended behaviour.
 
 ---
 
-## `TODO(Ali)` at `Bulge_LSST.cpp` (RomanBaseline.dat read) is stale
+## RESOLVED 2026-10-02 (Deviation 78) -- `TODO(Ali)` at `Bulge_LSST.cpp` (RomanBaseline.dat read) is stale
+
+**Resolved:** replaced by the format note (Deviation 78).
 
 It asks for a generator sourced from Roman's own season structure rather than an LSST OpSim.
 Commit `74e5e18` delivered exactly that (`Baseline/generateRomanBaseline.py`, against the ROTAC
@@ -276,7 +280,9 @@ is cosmetic and belongs with whatever step next touches that read.
 
 ---
 
-## `co->flagi` is stale on uncharacterized events
+## RESOLVED 2026-10-02 (Deviation 78) -- `co->flagi` is stale on uncharacterized events
+
+**Resolved:** reset per event (Deviation 78).
 
 `flagi` is set inside `FisherM`, which only runs for detected events, and it is **not** in the
 per-event reset block that clears `okA`/`okB`/`condA`/`condB`/`Era`/`Erb`/`relMl`. So the `flagi`
@@ -293,7 +299,9 @@ actually supposed to mean.
 
 ---
 
-## Two output files open in append mode, so a re-run silently doubles them
+## RESOLVED 2026-10-02 (Deviation 78) -- Two output files open in append mode, so a re-run silently doubles them
+
+**Resolved:** MapLMC and LpLMC now truncate on a fresh run, append on a resume (Deviation 78).
 
 **What.** `LpLMC2.dat` and `MapLMC2.dat` are opened with `std::ios::app`, not truncated:
 
@@ -355,7 +363,9 @@ most naturally the `test2.dat` renaming item above, which moves output paths any
 
 ---
 
-## `numd[0]` counts drawn stars, not observable ones, so `EffiD` is 100% by construction
+## RESOLVED 2026-10-02 (Deviation 78) -- `numd[0]` counts drawn stars, not observable ones, so `EffiD` is 100% by construction
+
+**Resolved:** EffiD = icon / nsim (Deviation 78).
 
 **What.** `icon` is incremented only inside the visibility gate:
 
@@ -455,7 +465,9 @@ should stay noisy: the day it fires on a *well*-conditioned event, that IS a bug
 
 ---
 
-## The binary's git stamp goes stale whenever `make` has nothing to do
+## RESOLVED 2026-10-02 (Deviation 78) -- The binary's git stamp goes stale whenever `make` has nothing to do
+
+**Resolved:** Makefile .git_stamp dependency (Deviation 78); verified: make rebuilds after a commit.
 
 `Makefile:18` captures `GIT_COMMIT` at compile time and bakes it into the binary, which
 writes it to `run_provenance.txt`. But the stamp only refreshes when something actually
@@ -798,7 +810,9 @@ accepted ~15%. That asymmetry fed every Roman-against-Rubin yield comparison, in
 gap-filling claim. It should now be smaller, and the size of the change is a result in itself.
 
 
-## The provenance stamp goes stale silently, and discipline has now failed twice
+## RESOLVED 2026-10-02 (Deviation 78) -- The provenance stamp goes stale silently, and discipline has now failed twice
+
+**Resolved:** Makefile .git_stamp dependency (Deviation 78).
 
 **Status:** open. Found on 2026-09-05, while checking the freshly launched production run.
 
@@ -892,7 +906,9 @@ hypothetical, and the anomaly rate is the measurement of how hard it now bites.
 
 ---
 
-## `--dry-run` destroys the previous run's output, and it has already cost one table
+## RESOLVED 2026-10-02 (Deviation 78) -- `--dry-run` destroys the previous run's output, and it has already cost one table
+
+**Resolved:** a dry run opens outputs in append mode, skips the header and does not rewrite the provenance; verified byte-identical (Deviation 78).
 
 **Status: open. Found 2026-09-05 the hard way — it destroyed the v1 partial production table.**
 
@@ -937,7 +953,9 @@ flight.
 
 ---
 
-## `dchiP` and `dchiA` are still absolute values while `dchiL` is signed
+## RESOLVED 2026-10-02 (Deviation 78) -- `dchiP` and `dchiA` are still absolute values while `dchiL` is signed
+
+**Resolved:** signed (Deviation 78); note they are not written to any output since the dead dump was removed.
 
 **Status: open. Created deliberately by Step H7 on 2026-09-06, not inherited.**
 
@@ -1546,7 +1564,9 @@ linear interpolation in magnitude, and confirm with `fishertest` and a stub run 
 sigmas move. Until then, a figure caption quoting Roman error bars should say they come from a
 tabulated per-exposure model.
 
-## The legacy magC0.dat / datC0.dat demo dump is dead code
+## RESOLVED 2026-10-02 (Deviation 78) -- The legacy magC0.dat / datC0.dat demo dump is dead code
+
+**Resolved:** removed, with BHLSSTMONTS and the random draw that gated it (Deviation 78).
 
 **What is wrong.** Inherited from the LMC code. `fil4` (`magC0.dat`, a dense model curve) and
 `fil5` (`datC0.dat`, noisy sampled epochs) are written only when `flagm > 0`. `flagm` is set only

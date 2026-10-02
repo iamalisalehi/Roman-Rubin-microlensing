@@ -5220,4 +5220,4 @@ Each item is an audited OPEN_ITEMS entry (2026-10-01 audit), re-checked against 
 files/MONTLMC/files/* byte-identical (md5); two consecutive fresh runs give identical line counts
 (MapLMC 36, LpLMC 75, table 666), no doubling. fixture PASS and byte-identical to M4's.
 
-**Commit:** see the next commit.
+**Commit:** `9aee0b4`.

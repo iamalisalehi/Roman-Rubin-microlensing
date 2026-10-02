@@ -5337,3 +5337,31 @@ within its error. On 795 the 50 detections split Roman+joint 45 / Rubin+joint 4 
 / 8 of 80). Too few to quote; the production runs will measure the shift.
 
 **Commit:** `13d0cca`.
+
+## 82. Besancon's bulge, thick-disc and halo M dwarfs put on the lens-light mass-luminosity relation (2026-10-02)
+
+**What was wrong** (found in Deviation 81, OPEN_ITEMS). In bos9.dat the low-mass dwarfs of the bulge,
+thick disc and halo are much brighter than the thin disc's at the same mass: in LSST r, relative to
+`components/lens_ml.dat` (nearby thin-disc dwarfs, MIST BCs at the component's metallicity -- the
+relation lens light uses since Deviation 74), the bulge's median is -2.60 / -2.10 / -1.58 / -1.01 /
+-0.93 mag at 0.1 / 0.2 / 0.3 / 0.5 / 0.6 Msun; thick -2.10 ... -0.58; halo -2.43 ... -1.06. The
+thin disc itself sits within -0.5 to +0.3. About half the bulge's stars are such dwarfs, so they gave
+too much blend light, and a bulge star was brighter as a source than as a lens of the same mass.
+
+**What was done (user: "fix the problems you found").** `BolometricCorrection.fix_low_mass_dwarfs`:
+for CL = 5 stars of the bulge, thick disc and halo below 0.7 Msun, every band is shifted by
+(lens_ml.dat at the star's mass) - (the component's running median in 0.02-Msun bins). The star keeps
+its scatter about the median. The shift is full below 0.6 Msun and tapers linearly to zero at 0.7
+Msun; above that, old thick-disc/halo stars may be leaving the main sequence and their brightness is
+partly real (thick/halo stay -0.3 to -0.8 mag at 0.7-0.9 Msun, as metal-poor and evolving stars
+should). Moved: bulge 4,882,019, thick 802,205, halo 4,288 stars (before the bulge subsample).
+Masses, N1-N4 and mean masses are unchanged. `lens_ml_table.py` must run first (it reads only the raw
+catalogue, so there is no cycle).
+
+**Verification.** After the rebuild the medians match lens_ml.dat to within 0.06 mag at 0.1-0.6 Msun in
+all three components. Stub (bulge population, same sightlines as Deviation 81): 795 (Roman detector) gave 58 lensing events
+from 602 draws (was 50 from 603). Median over draws: blend_r 0.0043 -> 0.0030 (fainter sources),
+magb_F146 23.62 -> 23.85 (less blend light). CPU 168 -> 150 s. 776 (outside): 11,153 draws per 50
+events (was 10,399), 34 -> 32 s. The M9 estimate stands.
+
+**Commit:** see git log (low-mass dwarfs).

@@ -2367,7 +2367,10 @@ ALL stars, not the filtered ones -- verify how it is computed before changing th
   white dwarfs): also a bias toward bright stars, small. The visibility filter also drops stars
   SATURATED at their Besancon distance -- bright neighbours are missing too.
 
-## Besancon's bulge and thick-disc low-mass dwarfs are 2-3 mag brighter than its thin-disc ones (2026-10-02, Deviation 81)
+## RESOLVED 2026-10-02 (Deviation 82) — Besancon's bulge and thick-disc low-mass dwarfs are 2-3 mag brighter than its thin-disc ones (2026-10-02, Deviation 81)
+
+**Status: resolved by Deviation 82.** Below 0.6 Msun (tapering to 0.7) they are moved onto lens_ml.dat's
+relation, the same one lens light uses. The text below records the problem.
 
 **What is wrong.** In bos9.dat (Besancon model 1612), median M_V at 0.1 / 0.3 / 0.5 Msun is 11.7 /
 10.6 / 9.1 for the bulge (Pop 10) and 12.3 / 11.1 / 9.3 for the thick disc, against 13.8-14.8 / 12.2 /

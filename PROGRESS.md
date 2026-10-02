@@ -16,9 +16,11 @@ a report of everything from M0 to M8 along with those estimations and ask my app
   the user's next item.** Catalogue = complete Besancon population (no visibility filter; dark entries
   for brown/white dwarfs; bulge a 3.5M random subsample), sources AND neighbours; Nstart mean masses =
   catalogue's (bulge 0.3086 -> 0.4199; Nstart -14%). Data: CMD/components/*.dat + provenance.txt;
-  old lists in CMD/components_v1_visfilter/ (~460 MB, deletable). Stubs (795/1031/776): CPU per lensing
-  event unchanged, so the M9 estimate below still holds. New OPEN_ITEM: Besancon bulge M dwarfs
-  2-3 mag brighter than its thin-disc ones.
+  old lists deleted. Stubs (795/1031/776): CPU per lensing
+  event unchanged, so the M9 estimate below still holds.
+- **Deviation 82 (2026-10-02):** bulge/thick/halo M dwarfs (< 0.6-0.7 Msun) moved onto lens_ml.dat's M-L
+  relation (were 1-2.6 mag too bright); catalogue rebuilt; stubs fine. Old visibility-filtered catalogue
+  DELETED at the user's request (noted in Report/overview_v2/NOTES.md).
 - **M9 timing DONE 2026-10-02** (`analysis/m9_time_estimate.py` -> `runs/m9_time_estimate.csv`; samples in
   `runs/m9_timing{,_extra}_<pop>/`): at production flags (--stride 10 --stride-roman 5 --events 300
   --lenses 50 --pair-satellite), 2,013 sightlines of which 161 on a Roman detector carry ~all the cost:

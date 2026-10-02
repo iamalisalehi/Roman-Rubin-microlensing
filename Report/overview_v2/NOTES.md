@@ -35,6 +35,7 @@ Plan these notes follow: `/home/ali/.claude/plans/i-want-to-do-resilient-humming
 | M5-M7 | Per-sightline random streams (chunked runs exact), output hygiene, DET_ANOMALY explained | 77-79 | see DEVIATIONS |
 | M8 | Rubin coverage = LSSTCam active silicon (rubin_scheduler map, rotSkyPos): 88% of the old circle; 12,915 visits | 80 | ce537a9 |
 | SC | Source catalogue = complete Besancon population (no visibility filter; dark entries for brown/white dwarfs); same lists for sources and blend neighbours; Nstart mean masses = catalogue's (bulge 0.3086 -> 0.4199, Nstart -14%) | 81 | 13d0cca | absolute yields (down), blend fractions, who-detects-what fractions, Roman-only share |
+| SC2 | Bulge/thick/halo M dwarfs (< 0.6-0.7 Msun) moved onto the nearby-dwarf M-L relation that lens light uses (they were 1-2.6 mag too bright in r) | 82 | (this commit) | blend light (Rubin especially), faint-source events |
 | 3 | Astrometric reference position freed; sqrt(2) per-coordinate fix; correlated-floor bracket | 71 | 39b50c0 | every theta_E / mass number |
 
 ## Section by section
@@ -358,3 +359,16 @@ the floor.
 - **Caveat to state:** Besancon's bulge M dwarfs are 2-3 mag brighter than its thin-disc ones
   (OPEN_ITEMS); lens light uses the fainter thin-disc relation.
 - **Cost:** more draws per event (1.5-2.7x) but cheap rejections; CPU per lensing event unchanged.
+- **Data housekeeping (2026-10-02):** the old, visibility-filtered catalogue (Deviation 81's
+  `CMD/components_v1_visfilter/`, 441 MB) was DELETED at the user's request. Every run before Deviation
+  81 used it; it can be regenerated only by reverting `CMD/BolometricCorrection.py` to its state before
+  commit 13d0cca and re-running it on bos9.dat (with the Bulge.h thresholds of that time: F146 29). Say
+  so if the new report compares against old-run numbers: those runs' source lists no longer exist.
+
+### Low-mass dwarfs (2026-10-02, Deviation 82)
+- **For Sec. 2.1:** Besancon's bulge, thick-disc and halo M dwarfs were 1-2.6 mag brighter (r) than its
+  thin-disc ones and than real M dwarfs. Below 0.6 Msun (tapering to 0.7) they now follow the same
+  mass-luminosity relation as lens light (nearby dwarfs, MIST BCs at the component's metallicity),
+  keeping their scatter. Sources, neighbours and lenses are then on one relation. Above 0.7 Msun the
+  catalogue is left alone (evolving, metal-poor stars are genuinely brighter).
+- **Effect on the stub:** less blend light (magb_F146 +0.2 mag), slightly more Roman lensing events per draw.

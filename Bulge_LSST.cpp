@@ -950,11 +950,8 @@ int main(int argc, char** argv) {
     }
  
     // --------------------- Read RomanBaseline.dat -------------------
-    // TODO(Ali): generate this file from the ROTAC 2025 overguide season/cadence design
-    // (analogous to readbaselineBulge.py, but sourced from Roman's own season structure
-    // rather than an LSST OpSim). Format assumed to mirror BulgeBaseline.dat's columns
-    // that matter for matching: ID RA DEC l b time [sig5] ... — adjust the >> list below
-    // to whatever columns you actually emit.
+    // Written by Baseline/generateRomanBaseline.py (adopted GBTDS layout, Deviation 69):
+    // ID RA DEC l b time sig5 field layout.
     fil.open("./Baseline/RomanBaseline.dat");
     if (!fil) {
         std::cerr << "Cannot read RomanBaseline.dat\n";
@@ -1023,7 +1020,7 @@ int main(int argc, char** argv) {
     // Bin indices for the seven detection-efficiency axes. gg (tE) was the only one ever
     // computed; the other six were commented out here and at their call site, which is why
     // every efficiency column but tE has been a column of zeros (Deviation 46).
-    int    save = 0, flagm, flagL, gg = -1, ss = 0, qq = 0, ww = 0, vv = 0, zz = 0, pp = 0;
+    int    save = 0, flagL, gg = -1, ss = 0, qq = 0, ww = 0, vv = 0, zz = 0, pp = 0;
     int    nri = -1, nde = -1, icon;
     int    nlens;// hh; // nde1, nri1,
     std::array<int, NDETCLASS> nDetClass{}; // per-field detection-taxonomy counts (DetClass, Bulge.h)
@@ -1092,15 +1089,9 @@ int main(int argc, char** argv) {
     // Cleared only when the scan STARTS. On a continuation this file, like every other
     // output, holds the earlier chunks' rows and must not be cleared. (cfg.startIndex is
     // read directly here because `resuming` is declared with the other opens below.)
-    if (gPop->legacyId == 1 and cfg.startIndex == 0) {
-        std::string filnam0 = "./files/MONTLMC/files/BHLSSTMONTS.dat";
-        std::ofstream(filnam0).close(); // create/clear file
-    }
 
     // File names
 //    std::string filnam0 = "./files/MONTLMC/files/BHLSSTMONTS.dat"; // now visible outside the if
-    std::string filnam1 = "./files/MONTLMC/files/magC"   + std::to_string(save)  +  ".dat";
-    std::string filnam2 = "./files/MONTLMC/files/datC"   + std::to_string(save)  +  ".dat";
     // Named from the population's tag, so a black-hole run cannot append to the bulge run's
     // table. The default population's tag is "5", which is what these files were called
     // before --population existed.
@@ -1128,8 +1119,12 @@ int main(int argc, char** argv) {
     // finished, because the file simply started filling again from the resume point.
     // MapLMC5.dat survived only because fil3 was already ios::app. See DEVIATIONS.md 34.
     const bool resuming = (cfg.startIndex > 0);
+    // Deviation 78: a --dry-run must not touch the previous run's outputs, so it opens them all in
+    // append mode (and writes nothing); a fresh run truncates EVERY output, MapLMC and LpLMC included
+    // (they used to always append, so a re-run in the same directory silently doubled them).
+    const bool keepOld = resuming or cfg.dryRun;
     const std::ios::openmode accumulate =
-        std::ios::out | (resuming ? std::ios::app : std::ios::trunc);
+        std::ios::out | (keepOld ? std::ios::app : std::ios::trunc);
 
     // LpLMC<tag>.dat is an APPEND-MODE OUTPUT -- the per-characterised-event dump inside the
     // sightline loop opens it with ios::app for every row. It was ALSO opened here as an
@@ -1140,13 +1135,11 @@ int main(int argc, char** argv) {
     // hand.) Create it if it is missing and let the appends do the rest; on a resume it
     // already exists and is left untouched, which is the append-only behaviour recorded in
     // OPEN_ITEMS.md and not changed here.
-    { std::ofstream ensureLp(fnLDt, std::ios::app); }
+    { std::ofstream ensureLp(fnLDt, accumulate); }   // create; truncated on a fresh run (Dev. 78)
 //    std::ifstream fil1(filnam0);
     std::ofstream fil2(fnEff,   accumulate);
     std::ofstream fil2b(fnEffB, accumulate);
-    std::ofstream fil4(filnam1, accumulate);
-    std::ofstream fil5(filnam2, accumulate);
-    std::ofstream fil3(fnGam, std::ios::app);
+    std::ofstream fil3(fnGam, accumulate);   // was always ios::app (Deviation 78)
 
     // The per-event table (Step D1). Truncate and write the column header once, in a
     // scope of its own, and leave `filg_in` itself CLOSED.
@@ -1182,7 +1175,9 @@ int main(int argc, char** argv) {
         std::ifstream probe(testf, std::ios::ate | std::ios::binary);
         tableBytes = probe ? static_cast<std::streamoff>(probe.tellg()) : std::streamoff(-1);
     }
-    if (tableBytes <= 0) {
+    if (cfg.dryRun) {
+        // Deviation 78: leave the previous run's table alone.
+    } else if (tableBytes <= 0) {
         std::ofstream head(testf);
         if (!head) {
             std::cerr << "Cannot open " << testf << std::endl;
@@ -1259,7 +1254,7 @@ int main(int argc, char** argv) {
     }
 
     // Check all
-    if (!fil2 || !fil2b || !fil3 || !fil4 || !fil5) {
+    if (!fil2 || !fil2b || !fil3) {
         std::cerr << "Cannot open one or more files!" << std::endl;
         return 1;
     }
@@ -1678,13 +1673,14 @@ int main(int argc, char** argv) {
              << "   # Step H3: every detection characterised at L2 AND at Earth\n"
              << "# dchi_det            " << cfg.dchiDet
              << "   # Step H7 fixed detection bar; every yield is conditioned on it\n";
-        std::ofstream fprov("./files/MONTLMC/files/run_provenance.txt");
-        if (!fprov) {
-            std::cerr << "Cannot write run_provenance.txt\n";
-            return 1;
+        if (!cfg.dryRun) {   // Deviation 78: a dry run must not overwrite the last run's provenance
+            std::ofstream fprov("./files/MONTLMC/files/run_provenance.txt");
+            if (!fprov) {
+                std::cerr << "Cannot write run_provenance.txt\n";
+                return 1;
+            }
+            fprov << prov.str();
         }
-        fprov << prov.str();
-        fprov.close();
         std::cout << prov.str() << std::flush;
     }
 
@@ -1884,7 +1880,6 @@ int main(int argc, char** argv) {
 
                 s->nssim[s->nums] += 1.0;
                 flagf   = 0;
-                flagm   = 0;
                 dumpBuf.clear(); //Step S1: this draw's epoch buffer. See the note on `ndw`.
                 dclsEvent = DET_NONE; //DetClass for this draw; stays NONE if no light curve
                 initial = 0.0;
@@ -1968,13 +1963,9 @@ int main(int argc, char** argv) {
                     cout << "************** DETECTABLE!!!!!! ********" << endl;
                     s->nsdet[s->nums] += 1.0;
                     flagf = 1;
-                    test  = RandR(0.0, 100.0);
-    
-                    if (test < 1.0 && save < 0 && gPop->legacyId == 1) {
-                        initial = 20.0 * year;
-                        save += 1;
-                        flagm = 1;
-                    }
+                    // (The legacy magC/datC/BHLSSTMONTS demo dump that was gated here could never
+                    // fire -- save < 0 with save = 0 -- and was removed in Deviation 78, with the
+                    // random draw that fed it.)
     
                     gi = 0;
                     gi = 0; giR = 0;
@@ -1999,12 +1990,6 @@ int main(int argc, char** argv) {
                         trajm = std::sqrt(s->pos1b * s->pos1b + s->pos2b * s->pos2b); //stright + parallax
                         trajp = std::sqrt(s->pos1c * s->pos1c + s->pos2c * s->pos2c); //stright + parallax+lensing
 
-                        if (flagm > 0) {
-                            fil4 << std::fixed << std::setprecision(4)
-                                 << tim      << " " << s->def1c << " " << s->def2c << " " << As0      << " " << As1 << " "
-                                 << s->pos1b << " " << s->pos2b << " " << s->pos1c << " " << s->pos2c << " "
-                                 << s->def1a << " " << s->def2a << " " << l->pos1  << " " << l->pos2  << "\n";
-                        }
     
                         for (int i = 0; i < M; ++i) {
                             magni0[i] = s->magb[i] - 2.5 * std::log10(Astar0   * s->blend[i] + 1.0 - s->blend[i]);
@@ -2103,19 +2088,6 @@ int main(int argc, char** argv) {
                                 flag0_L = flag1_L;
                                 flag1_L = flag2_L;
     
-                                if (flagm > 0) {
-                                    fil5 << std::fixed << std::setprecision(4)
-                                         << tim     << "  "
-                                         << std::setprecision(6) << As1 + RandN(deltaA, 3.0)    << "  "
-                                         << deltaA  << "  "
-                                         << std::setprecision(4) << s->pos1c + RandN(errs, 3.0) << "  "
-                                         << s->pos2c + RandN(errs, 3.0) << "  "
-                                         << s->def1c + RandN(errs, 3.0) << "  "
-                                         << s->def2c + RandN(errs, 3.0) << "  "
-                                         << errs    << "  "
-                                         << 1.0     << "  "
-                                         << int(fi) << "\n";
-                                }
     
                                 CHECK(sq >= 0);
                                 CHECK(sq <= int(Nl - 1));
@@ -2297,10 +2269,6 @@ int main(int argc, char** argv) {
                         }
     
                     }//end of loop time
-                    if (flagm > 0) {
-                        fil4.close();
-                        fil5.close();
-                    }
                 }// end of visible star
 
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH 
@@ -2309,6 +2277,7 @@ int main(int argc, char** argv) {
                 // reaches FisherM must not inherit the previous event's sigmas.
                 for (int q = 0; q < NSURV; ++q) {
                     co->okA[q] = 0; co->okB[q] = 0; co->nepochA[q] = 0;
+                    co->flagi = 0;   // Deviation 78: was stale on uncharacterised events
                     co->condA[q] = -1.0; co->condB[q] = -1.0;
                     co->relMl[q] = -1.0;
                     for (int k = 0; k < Nx; ++k) co->Era[q][k] = -1.0;
@@ -2368,19 +2337,22 @@ int main(int argc, char** argv) {
                     // difference from noise, and |dchi_L + dchi_R| can then fall below
                     // max(|dchi_L|, |dchi_R|). Signed, the sum is exact and monotone.
                     //
-                    // dchiP and dchiA keep fabs deliberately. They are not detection tests --
-                    // nothing thresholds them -- and they are reported as the SIZE of the
-                    // parallax and astrometric-deflection perturbations. The asymmetry is
-                    // recorded in OPEN_ITEMS.md rather than silently harmonised here.
+                    // dchiP and dchiA are not detection tests (nothing thresholds them); since
+                    // Deviation 78 they are signed like dchiL, so a negative value (the simpler
+                    // model fitting better) is visible rather than folded into a "size".
                     dchiL   = chi3  - chi1;             //lensing_effect (signed)
-                    dchiP   = std::fabs(chi2  - chi1);  //parallax_effect
-                    dchiA   = std::fabs(chi2a - chi1a); //deflection_effect
+                    // Deviation 78: signed like dchiL (positive = the full model fits better).
+                    dchiP   = chi2  - chi1;             //parallax_effect (signed)
+                    dchiA   = chi2a - chi1a;            //deflection_effect (signed)
                     dchiL_L = chi3_L - chi1_L;
-                    dchiP_L = std::fabs(chi2_L  - chi1_L);
-                    dchiA_L = std::fabs(chi2a_L - chi1a_L);
+                    dchiP_L = (chi2_L  - chi1_L);   // signed (Deviation 78)
+                    dchiA_L = (chi2a_L - chi1a_L);   // signed (Deviation 78)
                     dchiL_R = chi3_R - chi1_R;
-                    dchiP_R = std::fabs(chi2_R  - chi1_R);
-                    dchiA_R = std::fabs(chi2a_R - chi1a_R);
+                    dchiP_R = (chi2_R  - chi1_R);   // signed (Deviation 78)
+                    dchiA_R = (chi2a_R - chi1a_R);   // signed (Deviation 78)
+                    // flag_det is the JOINT run-test flag the table reports (Deviation 78): it was set in
+                    // the Rubin branch only, so a Roman-only persistent signal left it at 0.
+                    flag_det = (flag_det_L > 0 or flag_det_R > 0) ? 1 : 0;
 
                     // Three independent detection tests. detL/detR use each instrument's own
                     // epoch count (ndw_L/ndw_R) and run-test result — mixing in the joint ndw
@@ -2837,43 +2809,6 @@ int main(int argc, char** argv) {
 //          
 
 
-            if (flagm > 0 && gPop->legacyId == 1) {
-                std::ofstream fil1_append("./files/MONTLMC/files/BHLSSTMONTS.dat", std::ios::app);
-
-                fil1_append << save            << " " << std::fixed << std::setprecision(5)
-                            << s->lat          << " " << s->lon         << " "
-                            << static_cast<int>(l->struc)               << " " << l->Ml           << " "
-                            << l->Dl           << " " << l->vl          << " "
-                            << static_cast<int>(s->struc)               << " " << s->cl           << " "
-                            << s->Ds           << " " << s->logT        << " " << s->mass         << " "
-                            << s->vs           << " " << s->Mab[2]      << " " << s->Mab[6]       << " "
-                            << s->Map[2]       << " " << s->Map[6]      << " "
-                            << s->mbs[0]       << " " << s->mbs[1]      << " " << s->fb[0]        << " "
-                            << s->fb[1]        << " " << s->nsbl[2]     << " "
-                            << s->nsbl[6]      << " " << s->Ai[2]       << " " << s->Ai[6]        << " "
-                            << std::setprecision(7)
-                            << l->tE           << " " << l->RE / AU     << " " << l->t0           << " "
-                            << l->mul          << " " << l->Vt          << " " << l->u0           << " "
-                            << s->opt*1.0e6    << " " << l->tetE        << " "
-                            << s->mus1         << " " << s->mus2        << " " << s->xi           << " "
-                            << l->mul1         << " " << l->mul2        << " " << l->piE          << " "
-                            << s->errM         << " " << s->errA        << " "
-                            << flagf           << " " << flag_det       << " " << dchiL           << " "
-                            << dchiP           << " " << dchiA          << " " << ndw             << " "
-                            << FFG[0]          << " " << FFG[1]         << " " << FFG[2]          << " "
-                            << s->Rostart      << " " << s->Nstart      << " " << l->mi1          << " "
-                            << l->mi2          << " " << vsave          << " " << s->FWHM         << " "
-                            << chi3a           << " " << nri            << " " << nde             << " "
-                            << l->betal  * RAa << " " << l->betas * RAa << " " << l->deltal * RAa << " "
-                            << l->deltas * RAa << " "
-                            << l->deltao * RAa << " "
-                            << co->resu[0]     << " " << co->resu[1]    << " " << co->resu[2]     << " "
-                            << co->resu[3]     << " " << co->resu[5]    << " "
-                            << co->resu[9]     << " " << co->resu[10]   << " " << co->resu[13]    << " "
-                            << co->resu[14]    << "\n";
-                
-                fil1_append.close();
-            }
             //cout << "** End of saving in the file *********" << save << endl;
             //cout << "icon: " << icon << "\tnlens: " << nlens << "\tnerr: " << nerr << endl;
             // Per-sightline event budget -- see RunConfig. Was hardcoded to a stub
@@ -3078,7 +3013,7 @@ int main(int argc, char** argv) {
     EFF = double(EFF / (numd[1] + eps));//1/[years]
     Gamma = double(2.0 / M_PI * opd[0] * 1.0e-6 * EFF) / u0m; // 1/[star*year]  
     EffiL = double(numd[1] * 100.0 / (numd[0] + eps)); // probability of detecting lensing  
-    EffiD = double(numd[0] * 100.0 / (nsim    + eps)); // probability of detecting stars  
+    EffiD = double(icon * 100.0 / (nsim    + eps)); // % of drawn stars that are visible (Deviation 78; was numd[0], i.e. 100% by construction)
     Neven = double(s->nstart * Gamma * 10.0);//deg^{-2}
    
     Eru0   = double(Eru0   / (nErAvg + eps));  

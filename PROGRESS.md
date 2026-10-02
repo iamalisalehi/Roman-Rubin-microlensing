@@ -13,7 +13,14 @@ a report of everything from M0 to M8 along with those estimations and ask my app
   output hygiene. M7 2065c4f (79) DET_ANOMALY explained + logged. M8 ce537a9 (80) LSSTCam footprint.
 - **Open decision for the user (found in M2):** the source catalogue (CMD/components) excludes stars
   only Roman can see (BolometricCorrection.py's visibility filter needs >= 1 LSST band) -- OPEN_ITEMS.
-- **M9 timing running since 2026-10-02 ~12:10:** `runs/m9_timing.sh` (8 footprint + 8 outside
+- **M9 timing DONE 2026-10-02** (`analysis/m9_time_estimate.py` -> `runs/m9_time_estimate.csv`; samples in
+  `runs/m9_timing{,_extra}_<pop>/`): at production flags (--stride 10 --stride-roman 5 --events 300
+  --lenses 50 --pair-satellite), 2,013 sightlines of which 161 on a Roman detector carry ~all the cost:
+  4.0 / 6.3 / 5.4 min CPU each (bulge / bh / ns; 10 timed each), the rest ~0.1-0.3 min. **Total CPU
+  19.2 +- 1.2 / 18.7 +- 1.2 / 17.9 +- 1.2 h; all three in parallel on this laptop ~21 h wall.**
+  --stride-roman 2: 1,152 covered sightlines, ~90-125 h CPU per population (~136 h wall).
+  **Awaiting the user's approval to launch.**
+- (was) M9 timing running since 2026-10-02 ~12:10: `runs/m9_timing.sh` (8 footprint + 8 outside
   sightlines per population, production flags, one at a time, 3 populations in parallel) ->
   `runs/m9_timing_{bulge,bh,ns}/times.csv` (+ log_<i>.txt). Finished when each times.csv ends with
   DONE and runs/m9_timing.log says ALL DONE. Indices in runs/m9_idx_{F,O}.txt.

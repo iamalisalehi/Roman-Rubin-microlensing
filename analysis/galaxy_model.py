@@ -34,9 +34,11 @@ CORR = np.array([1.0, 7.9 / 4.48419, 6.2 / 3.52112, 4.0 / 2.27237,
                  5.8 / 3.29525, 4.9 / 2.78402, 6.6 / 3.74991, 3.96 / 2.24994])
 BAR_MASS_RESCALE = 0.24529       # calibrated to the Han & Gould (2003) Baade's Window benchmark
 
-# Mean stellar mass per component, the divisors in Nstari. Thin disk, thick disk and halo share
-# the disk value in the C++; the bulge is lighter.
-MBAR_THIN, MBAR_THICK, MBAR_HALO, MBAR_BULGE = 0.403445, 0.4542, 0.4542, 0.308571
+# Mean stellar mass per component, the divisors in Nstari: Bulge.h's MEANMASS_*, the mean mass of
+# each complete CMD list (Deviation 81). Runs before Deviation 81 used the legacy
+# 0.403445 / 0.4542 / 0.4542 / 0.308571 (thin, thick, halo, bulge); their Nstart is in their own map
+# files, which is what the weights read.
+MBAR_THIN, MBAR_THICK, MBAR_HALO, MBAR_BULGE = 0.4212, 0.4594, 0.3774, 0.4199
 
 
 class Profile:

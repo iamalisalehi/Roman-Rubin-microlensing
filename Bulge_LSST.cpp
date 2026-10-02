@@ -4280,10 +4280,10 @@ void Disk_model(source& s, int numt)
         s.Rostar0[i] = std::fabs(s.rho_thin[i] + s.rho_thick[i] + s.rho_bulge[i] + s.rho_halo[i]); //[Msun/pc^3]
         s.Rostari[i] = s.Rostar0[i] * x * x * step * 1.0e9 * (M_PI / 180.0) * (M_PI / 180.0); //[Msun/deg^2]
         s.Nstari[i]  = binary_fraction
-                     * (s.rho_thin[i] * fd / 0.403445
-                      + s.rho_thick[i] * fh / 0.4542 
-                      + s.rho_halo[i] * fh / 0.4542 
-                      + s.rho_bulge[i] * fb / 0.308571); //[Nt/pc^3]
+                     * (s.rho_thin[i] * fd / MEANMASS_THIN
+                      + s.rho_thick[i] * fh / MEANMASS_THICK
+                      + s.rho_halo[i] * fh / MEANMASS_HALO
+                      + s.rho_bulge[i] * fb / MEANMASS_BULGE); //[Nt/pc^3]
         s.Nstari[i]  = s.Nstari[i] * x * x * step * 1.0e9 * (M_PI / 180.0) * (M_PI / 180.0); //[Ni/deg^2]
 
         s.Nstart  += s.Nstari[i];  //[Nt/deg^2]

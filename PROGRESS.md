@@ -11,8 +11,14 @@ a report of everything from M0 to M8 along with those estimations and ask my app
   M4 3952f9a (76) telescopes with < 3 epochs out of the photometric fit (the x8.3 event); t0obs.
   M5 5ae0f04 (77) per-sightline RNG, --seed/--end-index, chunks byte-identical. M6 9aee0b4 (78)
   output hygiene. M7 2065c4f (79) DET_ANOMALY explained + logged. M8 ce537a9 (80) LSSTCam footprint.
-- **Open decision for the user (found in M2):** the source catalogue (CMD/components) excludes stars
-  only Roman can see (BolometricCorrection.py's visibility filter needs >= 1 LSST band) -- OPEN_ITEMS.
+- **Source catalogue FIXED 2026-10-02 (Deviation 81), per the user's decisions; production NOT
+  launched (user: "We still have work to do before launching the production runs!") -- WAITING for
+  the user's next item.** Catalogue = complete Besancon population (no visibility filter; dark entries
+  for brown/white dwarfs; bulge a 3.5M random subsample), sources AND neighbours; Nstart mean masses =
+  catalogue's (bulge 0.3086 -> 0.4199; Nstart -14%). Data: CMD/components/*.dat + provenance.txt;
+  old lists in CMD/components_v1_visfilter/ (~460 MB, deletable). Stubs (795/1031/776): CPU per lensing
+  event unchanged, so the M9 estimate below still holds. New OPEN_ITEM: Besancon bulge M dwarfs
+  2-3 mag brighter than its thin-disc ones.
 - **M9 timing DONE 2026-10-02** (`analysis/m9_time_estimate.py` -> `runs/m9_time_estimate.csv`; samples in
   `runs/m9_timing{,_extra}_<pop>/`): at production flags (--stride 10 --stride-roman 5 --events 300
   --lenses 50 --pair-satellite), 2,013 sightlines of which 161 on a Roman detector carry ~all the cost:

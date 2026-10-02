@@ -5276,3 +5276,64 @@ round-half-even vs lround). fixture/extinctiontest unaffected.
 new report's figures are made.
 
 **Commit:** `ce537a9`.
+
+## 81. The source catalogue is the complete Besancon population; Nstart counts that same population (2026-10-02)
+
+**What the plan said.** Nothing; the catalogue predates it. OPEN_ITEMS (found in M2) recorded that
+`CMD/BolometricCorrection.py` kept a star only if visible in F146 AND >= 1 LSST band at its Besancon
+distance, against `thre`/`satu` parsed from Bulge.h.
+
+**What was found (user: "fix the source catalogue first and wait").** The fault is larger than the
+Roman-only cut:
+1. **The weight and the draw described different populations.** `W = w_area Nstart/nsim ...` makes a
+   draw stand for a random star of the population `Nstart` counts (all stars: rho / <m>); the draw came
+   from the filtered list, which held thin 0.45, bulge 0.60, thick 0.61, halo 0.63 of the raw
+   catalogue. Absolute yields were too high, and the source luminosity function too bright.
+2. **The blend neighbours came from the same filtered lists** (`func_source` draws every k = 1..maxnb
+   from `cm.Mab_<comp>`), with their number from `Nstart`: every neighbour was a "visible" star, so
+   blends were too bright in every band. Stars saturated at their catalogue distance were dropped too.
+3. `save_components` `dropna()`-ed stars MIST cannot place (brown and white dwarfs, 3% of the
+   catalogue) and the type filter dropped Typ 9.0-9.2 (white dwarfs): also toward bright.
+4. **`Nstart`'s bulge mean mass did not match the catalogue.** Divisors 0.403445 / 0.4542 / 0.4542 /
+   0.308571 (thin / thick / halo / bulge) from an unrecorded "mass_averaged.cpp"; the catalogue's
+   means are 0.4212 / 0.4594 / 0.3774 / 0.4199. Disc values agree to 4%; the bulge is 36% off.
+5. **The raw catalogue is a valid "all stars" reference.** bos9.dat has Av = 0 everywhere and its
+   V <= 29 limit does not bite: bulge stars reach only V = 27.3; 0.08-0.2 Msun stars have the same
+   distance distribution as all stars in every component.
+6. **Correction to Deviation 74's reasoning (its lens table stands).** The bright low-mass dwarfs at
+   bulge distances are not a magnitude-limit artefact (point 5); Besancon's bulge and thick-disc
+   dwarfs are intrinsically brighter than its thin-disc ones (median M_V at 0.1 / 0.3 / 0.5 Msun:
+   bulge 11.7 / 10.6 / 9.1, thick 12.3 / 11.1 / 9.3, thin 13.8-14.8 / 12.2 / 10.0-10.4). lens_ml.dat's
+   use of nearby thin-disc dwarfs is still the right choice for lens light. Recorded in OPEN_ITEMS.
+
+**What was done (user's decisions: complete catalogue, no filter; catalogue mean masses).**
+- `BolometricCorrection.py` rewritten: no visibility filter and no Bulge.h parsing; every star kept.
+  Stars without a MIST BC (123,474) and white dwarfs (118,982) become **dark entries** (all
+  magnitudes `DARK_MAG` = 99: counted by Nstart, no light). The bulge (5,949,004) is a uniform random
+  subsample of 3,500,000 (seed 20261002) to hold RAM; others whole. Reads only the 11 columns it needs
+  in chunks. Stops (does not drop) on an age above read_cmd's bounds. Writes
+  `CMD/components/provenance.txt` (counts, dark entries, mean mass, median luminous M_r).
+- `Bulge.h`: N1-N4 = 889,406 / 3,500,000 / 1,058,765 / 5,025 (were 396,593 / 3,568,010 / 646,090 /
+  3,171); `MEANMASS_THIN/BULGE/THICK/HALO` = 0.4212 / 0.4199 / 0.4594 / 0.3774, used by `Disk_model`;
+  `DARK_MAG`. `read_cmd` accepts `M_r <= 20 or == DARK_MAG`. `analysis/galaxy_model.py` mirrors the
+  mean masses (old runs' weights read Nstart from their own map files, so they are unaffected).
+- Visibility is now decided only by the simulator's per-event test (magnification, dust, each
+  survey's per-visit limits, either survey), which is where it belonged.
+- Old lists archived in `CMD/components_v1_visfilter/` (~460 MB; deletable).
+
+**Verification.** Build clean; `fishertest` byte-identical (it reads no catalogue). Stub, bulge, the
+same sightlines as runs/m9_timing_bulge (old catalogue), production flags:
+
+| sightline | Nstart old -> new [deg^-2] | draws per 50 lensing events | CPU |
+|---|---|---|---|
+| 795 (Roman detector) | 2.16e8 -> 1.84e8 | 412 per 80 -> 603 per 50 | 292 s (80 ev.) -> 168 s (50 ev.) |
+| 1031 (footprint stratum, no detector) | 2.72e8 -> 2.35e8 | 9,721 -> 26,291 | 48 -> 54 s |
+| 776 (outside) | 2.39e8 -> 2.05e8 | 6,662 -> 10,399 | 38 -> 34 s |
+
+Nstart falls 14-15% (the bulge mean mass). More draws are needed per event, as expected, since most
+stars are now faint M dwarfs, but those draws are rejected cheaply: CPU per lensing event on the
+costly Roman-detector sightline is unchanged (3.4 vs 3.6 s), so the M9 estimate (~21 h wall) stands to
+within its error. On 795 the 50 detections split Roman+joint 45 / Rubin+joint 4 / both 1 (old: 68 / 4
+/ 8 of 80). Too few to quote; the production runs will measure the shift.
+
+**Commit:** see git log (source catalogue fix).

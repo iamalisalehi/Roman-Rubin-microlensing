@@ -34,6 +34,7 @@ Plan these notes follow: `/home/ali/.claude/plans/i-want-to-do-resilient-humming
 | M4 | Telescopes with < 3 epochs left out of the photometric fit (fixes the x8.3 mass event); gap geometry (t0zone, dt_edge) from the observed peak t0obs | 76 | 3952f9a |
 | M5-M7 | Per-sightline random streams (chunked runs exact), output hygiene, DET_ANOMALY explained | 77-79 | see DEVIATIONS |
 | M8 | Rubin coverage = LSSTCam active silicon (rubin_scheduler map, rotSkyPos): 88% of the old circle; 12,915 visits | 80 | ce537a9 |
+| SC | Source catalogue = complete Besancon population (no visibility filter; dark entries for brown/white dwarfs); same lists for sources and blend neighbours; Nstart mean masses = catalogue's (bulge 0.3086 -> 0.4199, Nstart -14%) | 81 | (this commit) | absolute yields (down), blend fractions, who-detects-what fractions, Roman-only share |
 | 3 | Astrometric reference position freed; sqrt(2) per-coordinate fix; correlated-floor bracket | 71 | 39b50c0 | every theta_E / mass number |
 
 ## Section by section
@@ -339,3 +340,21 @@ the floor.
   deg^2 of silicon, 88% of the circle; ~7% fewer Rubin epochs per sightline in the stub. Figures: port
   make_footprints/make_timeline to the map (they still use the circle).
 
+
+### Source catalogue (2026-10-02, Deviation 81)
+- **The argument, for Sec. 2.1 (inputs).** A Monte Carlo draw must be a random member of the population
+  the normalisation counts. Nstart = rho/<m> counts every star; the old lists held only stars "visible
+  at their catalogue distance in F146 AND an LSST band" -- 45-63% of each component, the bright end.
+  So (a) every draw stood for a brighter star than the sky holds and yields came out high, (b) stars
+  only Roman can see (faint red bulge dwarfs) could never be sources -- squarely on the "who detects
+  what" question, and (c) the same lists gave the blend neighbours, so blends were too bright. Now the
+  lists are the whole Besancon population; whether a star is seen is decided per event by the
+  simulator (magnification, dust, each survey's limits), which is the only place it can be decided
+  correctly, since the catalogue distance is not the simulated one.
+- **Mean masses:** Nstart's bulge divisor (legacy 0.3086, provenance lost) replaced by the catalogue's
+  0.4199, so stars counted = stars drawn. Nstart -14/-15% on the stubs.
+- **Old-vs-new to show:** absolute yields per population and F; median blend_r/blend_F146; Roman-only
+  fraction. Expect yields down by more than the Nstart change.
+- **Caveat to state:** Besancon's bulge M dwarfs are 2-3 mag brighter than its thin-disc ones
+  (OPEN_ITEMS); lens light uses the fainter thin-disc relation.
+- **Cost:** more draws per event (1.5-2.7x) but cheap rejections; CPU per lensing event unchanged.

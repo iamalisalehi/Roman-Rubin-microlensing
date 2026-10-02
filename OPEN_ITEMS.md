@@ -2314,7 +2314,12 @@ it, e.g. sig5 - 8.3 as the current constants imply, or a sourced bright limit); 
 median for the pre-selection. Re-derive `FWHM[0-5]` from the visit list's seeingFwhmGeom medians and
 update `gama` to Ivezić 2019 Table 2 in the same step; delete the unused constants.
 
-## The source catalogue excludes stars only Roman can see, and its builder reads Bulge.h's thresholds (2026-10-02, found in M2)
+## RESOLVED 2026-10-02 (Deviation 81) — The source catalogue excludes stars only Roman can see, and its builder reads Bulge.h's thresholds (2026-10-02, found in M2)
+
+**Status: resolved by Deviation 81.** The catalogue is now the complete Besancon population (no
+visibility filter, dark entries for brown/white dwarfs), and Nstart's mean masses are the catalogue's.
+The text below is the record of what was wrong.
+
 
 **What is wrong.** `CMD/BolometricCorrection.py`'s `apply_visibility_filter` keeps a Besancon star as
 a potential source only if it is visible in F146 AND in at least one LSST band, at its Besancon
@@ -2336,6 +2341,52 @@ generous by the maximum magnification worth simulating (e.g. a few magnitudes be
 and the source counts; then the event-rate normalisation (Nstart per sightline) must still describe
 ALL stars, not the filtered ones -- verify how it is computed before changing the filter. Needs the
 2.7 GB bos9.dat pass (~minutes) and a decision by the user.
+
+**Measured 2026-10-02 (fix in progress). The fault is larger than the Roman-only cut.**
+- **The same filtered list feeds the blend neighbours** (`func_source`, Lensing.cpp: every k = 1..maxnb
+  draws `Mab` uniformly from `cm.Mab_<comp>`), while their NUMBER comes from `Nstart`, which counts
+  every star. So each neighbour is a "potentially visible" star: blends are too bright in every band.
+- **The yield weight assumes the opposite.** `W = w_area Nstart/nsim ...` makes each draw stand for a
+  random star of the full population; it is a random star of the FILTERED list. Per component, the
+  list holds this fraction of the raw Besancon catalogue (bos9.dat, 0.1 deg^2 at (0.5, -1.4), 0-8 kpc):
+  thin 396,593/889,406 = 0.45; bulge 3,568,010/5,949,004 = 0.60; thick 646,090/1,058,765 = 0.61;
+  halo 3,171/5,025 = 0.63. Absolute yields are therefore too high by up to ~1/0.6 (the excluded stars
+  are faint, so few of them would have been detected; the exact size needs the rebuilt catalogue).
+  Fractions (who detects what) shift too, because the sample's luminosity function is too bright.
+- **The raw catalogue is a complete reference.** Its V <= 29 limit does not bite: bulge stars reach
+  only V = 27.3 (no extinction is applied: Av = 0 throughout), and 0.08-0.2 Msun stars have the same
+  distance distribution as all stars in every component. So "all stars" can be taken from it directly.
+- **Correction to Deviation 74's reasoning** (its table stands): the bright low-mass dwarfs at bulge
+  distances are not a magnitude-limit artefact. They are a property of Besancon's bulge and thick-disc
+  populations: median M_V at 0.1/0.3/0.5 Msun is 11.7/10.6/9.1 (bulge), 12.3/11.1/9.3 (thick) against
+  13.8/12.2/10.4 for thin-disc dwarfs beyond 6 kpc and 14.8/12.2/10.0 within 1.5 kpc. A separate item.
+- **Mean masses.** Raw-catalogue mean mass: thin 0.421, bulge 0.420, thick 0.459, halo 0.388. `Nstart`
+  divides by 0.403 (thin), 0.4542 (thick, halo), 0.308571 (bulge; provenance "mass_averaged.cpp", not
+  in the repo). The disc constants match the catalogue; the bulge one does not (-27%).
+- **`dropna()` in `save_components` silently drops stars MIST cannot interpolate** (brown dwarfs,
+  white dwarfs): also a bias toward bright stars, small. The visibility filter also drops stars
+  SATURATED at their Besancon distance -- bright neighbours are missing too.
+
+## Besancon's bulge and thick-disc low-mass dwarfs are 2-3 mag brighter than its thin-disc ones (2026-10-02, Deviation 81)
+
+**What is wrong.** In bos9.dat (Besancon model 1612), median M_V at 0.1 / 0.3 / 0.5 Msun is 11.7 /
+10.6 / 9.1 for the bulge (Pop 10) and 12.3 / 11.1 / 9.3 for the thick disc, against 13.8-14.8 / 12.2 /
+10.0-10.4 for thin-disc dwarfs (Teff 3634 K vs ~3100 K at 0.1 Msun). Not a magnitude-limit effect
+(Deviation 81, point 5): it is the model's bulge/thick-disc isochrones. Empirical M dwarfs (e.g.
+Benedict et al. 2016's mass-luminosity relation) sit nearer the thin-disc values or fainter.
+
+**Why it matters.** Sources and neighbours are drawn from these lists: the bulge's M dwarfs (about
+half its stars) carry ~10x too much light each, which adds blend light (mostly Rubin, whose disc holds
+~13 neighbours) and makes faint-source events slightly too easy for Roman. Lens light (lens_ml.dat,
+nearby thin-disc dwarfs) is on the fainter relation, so a bulge star is brighter as a source than as
+a lens of the same mass -- an inconsistency.
+
+**Why deferred.** It is the population model, not our code; changing it means choosing an external
+M-L relation for the bulge. Size of the effect on yields not measured.
+
+**What the fix involves.** Either re-derive bulge/thick dwarf magnitudes below ~0.6 Msun from an
+empirical or MIST-isochrone M-L relation at the component's metallicity (as lens_ml_table.py does),
+or query a newer Besancon version; then measure the blend-fraction and yield change on a stub.
 
 ## Blended field stars are placed at the source's position in the astrometric centroid (2026-10-02, M2)
 

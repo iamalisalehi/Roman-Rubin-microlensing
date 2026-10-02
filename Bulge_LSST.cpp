@@ -1030,6 +1030,7 @@ int main(int argc, char** argv) {
     // too small to quote. Broken down by tE bin as well, since the whole science case is that
     // the gain is tE-dependent.
     std::array<long, NDETCLASS> NDetClassTot{};
+    long nDchiMismatch = 0;   // Deviation 79: events where dchiL != dchiL_L + dchiL_R (should stay 0)
     std::vector<std::array<long, NDETCLASS>> NDetClassTE(GG + 1);
     long nSimTot = 0;
     // ndw MUST start at 0: it doubles as the bound of the per-event buffer clear
@@ -2509,9 +2510,34 @@ int main(int argc, char** argv) {
                     // production run, whose "0 ANOMALY" is this bug and not a measurement.
                     // The per-sightline counter was always right, which is why the anomaly
                     // was visible in the log all along and invisible in every summary.
+                    // Deviation 79: the joint delta-chi2 is accumulated separately from the two
+                    // per-survey ones; it must equal their sum on every event.
+                    if (std::fabs((dchiL_L + dchiL_R) - dchiL) > 1e-6 * std::max(1.0, std::fabs(dchiL))) {
+                        if (nDchiMismatch < 10)
+                            std::cerr << "DCHI_MISMATCH sightline " << iScan << " joint " << dchiL
+                                      << " L+R " << dchiL_L + dchiL_R << "\n";
+                        nDchiMismatch += 1;
+                    }
                     if (!detJ_raw and (detL or detR)) {
                         nDetClass[DET_ANOMALY]    += 1;
                         NDetClassTot[DET_ANOMALY] += 1;
+                        // Deviation 79: log everything needed to explain it. The joint delta-chi2
+                        // is the SUM of the two surveys' (each accumulated over its own epochs), and
+                        // either term can be negative through noise -- a survey whose data happen to
+                        // fit a flat baseline slightly better than the true model -- so a single-
+                        // survey detection just over the bar can leave the sum just under it. That
+                        // is physics, not a sign bug; "sum - joint" must be ~0 if the bookkeeping is
+                        // right, and a non-zero value there WOULD be a bug.
+                        std::cerr << std::setprecision(10)
+                                  << "DET_ANOMALY_DETAIL sightline " << iScan << " lon " << s->lon
+                                  << " lat " << s->lat << " | dchiL_L " << dchiL_L << " dchiL_R "
+                                  << dchiL_R << " sum " << dchiL_L + dchiL_R << " joint " << dchiL
+                                  << " (sum - joint " << (dchiL_L + dchiL_R) - dchiL << ") bar "
+                                  << cfg.dchiDet << " | ndw_L " << ndw_L << " ndw_R " << ndw_R
+                                  << " ndw " << ndw << " | flag_det_L " << flag_det_L
+                                  << " flag_det_R " << flag_det_R << " | detL " << detL << " detR "
+                                  << detR << " | tE " << l->tE << " u0 " << l->u0 << " t0 " << l->t0
+                                  << "\n";
                     }
 
                     // Detected-event count for this tE bin. The joint detection is the one
@@ -3178,6 +3204,8 @@ int main(int argc, char** argv) {
     // comparable between runs of different length.
     // ---------------------------------------------------------------------------------------
     cout << "\n================ RUN TOTALS ================" << endl;
+    cout << "dchiL bookkeeping: " << nDchiMismatch << " event(s) with joint != Rubin + Roman"
+         << (nDchiMismatch ? "  <-- a BUG, see DCHI_MISMATCH lines" : " (as it must be)") << endl;
     // Sightline accounting. The first THREE partition the grid and must sum to its size;
     // if they do not, a sightline left the loop by a path nobody wrote down. `nCapped` is
     // not part of that partition -- it overlaps both aggregated and barren, since hitting

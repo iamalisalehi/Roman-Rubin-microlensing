@@ -5193,4 +5193,31 @@ full run's BYTE FOR BYTE (713 rows), and so do the map files. fixture PASS (unaf
 directory per population; chunked runs need their tables, map files and logs concatenated in index
 order (the byte-identity above shows plain concatenation is correct).
 
+**Commit:** `5ae0f04`.
+
+## 78. M6: output hygiene -- no silent doubling, a harmless --dry-run, dead code removed, honest stamps (2026-10-02)
+
+Each item is an audited OPEN_ITEMS entry (2026-10-01 audit), re-checked against the code first.
+- **MapLMC / LpLMC no longer double on a re-run.** They were always opened ios::app; now, like every
+  other output, they are truncated on a fresh run and appended on a resume (--start-index > 0).
+- **--dry-run touches nothing.** Outputs were opened (truncating) and the provenance rewritten before
+  the dry-run exit. Now a dry run opens everything in append mode, skips the table header, and prints
+  its provenance to stdout without writing the file.
+- **Dead legacy dump removed**: magC0/datC0 (fil4/fil5) and BHLSSTMONTS.dat, gated on `save < 0` with
+  save = 0 (never true), with the random draw that fed the gate. This changes the random streams
+  (new runs only).
+- `co->flagi` reset per event (was stale on uncharacterised rows; characterised rows unchanged).
+- `EffiD` = visible / drawn (icon / nsim); it was numd[0] / nsim, 100% by construction (numd[0]
+  counts every drawn star; the per-sightline averages keep using numd).
+- dchiP / dchiA (all, L, R) signed like dchiL; `flag_det` = flag_det_L or flag_det_R. **Found while
+  doing it:** none of these is written anywhere any more -- their only output was the dead dump -- so
+  the two OPEN_ITEMS entries about them were about values no analysis ever saw.
+- Makefile: `.git_stamp` is rewritten whenever the git description changes and Bulge_LSST.o depends
+  on it, so `make` after a commit refreshes run_provenance's git_commit (it used to keep the old one).
+- Stale TODO at the RomanBaseline read replaced by the format it now reads.
+
+**Verification.** In a directory holding a finished stub run: `--dry-run` left test5.dat and all of
+files/MONTLMC/files/* byte-identical (md5); two consecutive fresh runs give identical line counts
+(MapLMC 36, LpLMC 75, table 666), no doubling. fixture PASS and byte-identical to M4's.
+
 **Commit:** see the next commit.

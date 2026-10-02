@@ -17,6 +17,11 @@ CXXFLAGS = -O2 -g -Wall -Wextra -std=c++17
 # after a commit -- an incremental build keeps the stamp its objects were built with.
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)$(shell git diff --quiet HEAD 2>/dev/null || echo -dirty)
 CXXFLAGS += -DGIT_COMMIT='"$(GIT_COMMIT)"'
+# Deviation 78: keep the stamp honest. A commit changes no source file, so make used to say
+# "nothing to be done" and keep the old stamp. .git_stamp is rewritten whenever the description
+# differs, and Bulge_LSST.o (which prints it into run_provenance.txt) depends on it.
+GIT_STAMP := .git_stamp
+$(shell echo '$(GIT_COMMIT)' | cmp -s - $(GIT_STAMP) 2>/dev/null || echo '$(GIT_COMMIT)' > $(GIT_STAMP))
 
 LDLIBS = -lgsl -lgslcblas -lm
 
@@ -37,6 +42,8 @@ $(TARGET): $(OBJS)
 # Compile each .cpp into .o
 %.o: %.cpp Bulge.h
 	$(CXX) $(CXXFLAGS) -c $<
+
+Bulge_LSST.o: $(GIT_STAMP)
 
 # ---------------------------------------------------------------------------
 # Fisher-matrix regression fixture (tests/fisher_fixture.cpp)

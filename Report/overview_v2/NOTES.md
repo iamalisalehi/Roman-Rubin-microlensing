@@ -372,3 +372,8 @@ the floor.
   keeping their scatter. Sources, neighbours and lenses are then on one relation. Above 0.7 Msun the
   catalogue is left alone (evolving, metal-poor stars are genuinely brighter).
 - **Effect on the stub:** less blend light (magb_F146 +0.2 mag), slightly more Roman lensing events per draw.
+
+### Caveat to state in the report (deferred, OPEN_ITEMS)
+- Blend neighbours sit at the source's position in the astrometric centroid; a real neighbour's offset
+  adds a blend-induced centroid shift (either sign). Matters mostly for Rubin's theta_E. Say it is
+  not modelled in these runs.

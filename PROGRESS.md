@@ -21,6 +21,10 @@ a report of everything from M0 to M8 along with those estimations and ask my app
 - **Deviation 82 (2026-10-02):** bulge/thick/halo M dwarfs (< 0.6-0.7 Msun) moved onto lens_ml.dat's M-L
   relation (were 1-2.6 mag too bright); catalogue rebuilt; stubs fine. Old visibility-filtered catalogue
   DELETED at the user's request (noted in Report/overview_v2/NOTES.md).
+- **WRAP-UP STATE (2026-10-02).** Code is ready for production; NOT launched. Deferred by the user:
+  neighbour positions in the astrometric centroid (OPEN_ITEMS, "Blended field stars are placed at the
+  source's position") -- after the runs. Launch: `runs/` timing harness flags (--stride 10
+  --stride-roman 5 --events 300 --lenses 50 --pair-satellite), ~21 h wall for bulge/bh/ns in parallel.
 - **M9 timing DONE 2026-10-02** (`analysis/m9_time_estimate.py` -> `runs/m9_time_estimate.csv`; samples in
   `runs/m9_timing{,_extra}_<pop>/`): at production flags (--stride 10 --stride-roman 5 --events 300
   --lenses 50 --pair-satellite), 2,013 sightlines of which 161 on a Roman detector carry ~all the cost:

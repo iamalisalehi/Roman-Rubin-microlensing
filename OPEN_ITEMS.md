@@ -2397,3 +2397,15 @@ A real neighbour sits somewhere within the PSF; as the source brightens, the lig
 moves toward the source by (offset x change in weight) -- a blend-induced "shift" that can mimic or
 mask the lensing signal. Modelling it needs a position per neighbour. Kept as an approximation.
 
+**Status 2026-10-02: deliberately deferred to after the production runs (user's decision at wrap-up).**
+**Why it matters.** It acts on every theta_E and mass forecast, and most on Rubin, whose seeing disc
+holds ~13 neighbours. For Roman (0.105" PSF, mean 0.14 neighbours) it is small. The sign is not
+fixed: a neighbour's pull can add to the lensing shift or cancel it, so leaving it out is not simply
+optimistic.
+**What the fix involves.** In `func_source`, draw each neighbour's offset uniformly within the seeing
+disc of each band (FWHM/2). In `lightcurve()`, form the centroid as the flux-weighted mean of source
+(lensed position, magnified flux), lens (if luminous) and each neighbour (fixed position, constant
+flux). The Fisher derivatives then pick up the blend term automatically. Store the per-band neighbour
+offsets in `source`. Check: fishertest is unaffected (no neighbours); on a stub, sigma(theta_E) should
+change mostly for Rubin. Needs one more stub and, ideally, a re-timing.
+

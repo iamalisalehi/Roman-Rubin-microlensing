@@ -243,7 +243,7 @@ constexpr int N1 = 396593, N2 = 3568010, N3 = 646090, N4 = 3171; //CMD_BESANCON:
 // every pointing that can image the distance-rule scan region; was 3686 from a box) from
 // baseline_v5.1.0_10yrs.db; readbaselineBulge.py prints the value to use here. The
 // previous 7373 counted a doubled file (append-mode bug) and read 3687 phantom rows.
-constexpr int Nl = 12308;
+constexpr int Nl = 12915;   // Deviation 80: pointings within scan reach + 1.94 deg (was 12308 at + 1.75)
 
 // Data rows in RomanBaseline.dat, EXCLUDING the header. generateRomanBaseline.py prints
 // the value to use here; it must be updated whenever the season pattern, cadence or
@@ -899,13 +899,14 @@ struct lsst {
     std::vector<double> tim;    // Nl
     std::vector<double> sig5;   // Nl
     std::vector<double> dist;   // Nl
+    std::vector<double> rot;    // Nl -- OpSim rotSkyPos [deg] (Deviation 80)
 
     //ID  RA  Dec  l  b  start  filter  airmass  seeing  skyBrightness visittime sigma5 targetname distance
     lsst()
         : mag(Na), err(Na),
           filter(Nl),
           ct(Nl),
-          RA(Nl), DEC(Nl), l(Nl), b(Nl), tim(Nl), sig5(Nl), dist(Nl)
+          RA(Nl), DEC(Nl), l(Nl), b(Nl), tim(Nl), sig5(Nl), dist(Nl), rot(Nl)
     {}
 };
 
@@ -1393,6 +1394,17 @@ double errRomanM(const roman & ro, double mag);
 
 // matchVisibleEpochs is a template (the coverage test is a predicate) and is defined in
 // Bulge_LSST.cpp, its only caller.
+
+// LSSTCam's footprint (Deviation 80): the active-silicon map OpSim/MAF use (rubin_scheduler
+// LsstCameraFootprint, fov_map.npz), exported to Baseline/lsstcam_fov/fov_map.txt. A sky point is on
+// a Rubin visit's silicon if its gnomonic projection about the boresight, rotated by rotSkyPos,
+// falls on an active pixel -- rubin_scheduler's own algorithm, mirrored. Replaces the 1.75-deg circle.
+constexpr double RUBIN_MAX_RADIUS = 1.94;   //deg: rubin_scheduler's max_radius; no active pixel beyond
+struct LsstCamMap { int n = 0; double x0 = 0.0, step = 0.0; std::vector<unsigned char> on; };
+inline LsstCamMap gLsstCam;
+void   readLsstCamMap(const std::string& path);
+bool   onLsstCam(double ra, double dec, double ra0, double dec0, double rotSkyPos);   // all deg
+void   galToIcrs(double l, double b, double& ra, double& dec);                       // deg (J2000)
 
 // GBTDS detector layout (helper.cpp). readGbtdsLayout exits with the file named on any
 // malformed input; inDetector tests a sky offset (dl, db) from a field centre against one

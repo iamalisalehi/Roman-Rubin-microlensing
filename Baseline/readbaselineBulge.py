@@ -31,9 +31,9 @@ nam0 = ['observationId','fieldRA','fieldDec','observationStartMJD','flush_by_mjd
 'rotTelPos','rotTelPos_backup','moonAz','sunAz','sunRA','sunDec','moonRA','moonDec','moonDistance','solarElong',
 'moonPhase','cummTelAz','observation_reason','science_program','cloud_extinction', 'test1','test2']##49
 
-nam1 = ['ID','RA', 'DEC', 't', 'texp', 'filter', 'air', 'see', 'skyB', 'Tv', 'sig5', 'target']#12
+nam1 = ['ID','RA', 'DEC', 't', 'texp', 'filter', 'air', 'see', 'skyB', 'Tv', 'sig5', 'target', 'rot']#13
 
-idx = [0, 1, 2, 3, 5, 7, 11, 13, 15, 18, 20, 29]
+idx = [0, 1, 2, 3, 5, 7, 11, 13, 15, 18, 20, 29, 8]   # 8 = rotSkyPos (Deviation 80)
 
 assert len(idx) == len(nam1), "idx and new_names must match"
 assert max(idx) < len(nam0), "idx out of range"
@@ -51,7 +51,10 @@ assert max(idx) < len(nam0), "idx out of range"
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "analysis"))
 import gbtds_geometry as G          # noqa: E402
-REACH = G.scan_reach() + G.FOV_RUBIN
+# Deviation 80: Rubin's coverage is now LSSTCam's active silicon (Baseline/lsstcam_fov), which
+# reaches 1.94 deg from the boresight (the radius rubin_scheduler crops it at), not 1.75.
+RUBIN_MAX_RADIUS = 1.94
+REACH = G.scan_reach() + RUBIN_MAX_RADIUS
 
 # DAY 0 OF THE SIMULATION CLOCK, PINNED. It used to be "the earliest selected visit", which
 # made the clock depend on the selection: the rule above reaches pointings observed from MJD
@@ -104,7 +107,7 @@ l = df["l"].values
 b = df["b"].values
 
 nvis = int(len(df))
-tstA = np.zeros((nvis, 13))
+tstA = np.zeros((nvis, 14))
 nfil = 0
 nr   = 0
 
@@ -128,7 +131,7 @@ for i in range(nm):
         if(df['filter'][i]=='z'):  nfil=4
         if(df['filter'][i]=='y'):  nfil=5
         
-        tstA[nr,:] = np.array([df['ID'][i], df['RA'][i], df['DEC'][i], df['l'][i], df['b'][i], df['t'][i], nfil, df['air'][i], df['see'][i], df['skyB'][i], df['Tv'][i], df['sig5'][i], df['texp'][i]])##13
+        tstA[nr,:] = np.array([df['ID'][i], df['RA'][i], df['DEC'][i], df['l'][i], df['b'][i], df['t'][i], nfil, df['air'][i], df['see'][i], df['skyB'][i], df['Tv'][i], df['sig5'][i], df['texp'][i], df['rot'][i]])##14
         
         nr+=1
 
@@ -141,25 +144,27 @@ dist  = np.zeros((nr))
 # which embeds a second header mid-file. The C++ reader's operator>> then fails on
 # that header and zero-fills every remaining record without any CHECK firing.
 fil   = open("./BulgeBaseline.dat", "w")
-fil.write("#ID  RA  Dec  l  b  time  filter  airmass  seeing  skyBrightness visittime sigma5 targetname distance\n")
+fil.write("#ID  RA  Dec  l  b  time  filter  airmass  seeing  skyBrightness visittime sigma5 texp distance rotSkyPos\n")
 print(f"BulgeBaseline.dat: writing {nr} visit rows -- set Nl = {nr} in Bulge.h")
 
-tst   = np.zeros((nr, 14))
+tst   = np.zeros((nr, 15))
 idx   = np.argsort(tstA[:nr, 5])
 
 time0 = TIME0_MJD
 
 for i in range(nr):
-    tst[i,:-1] = tstA[int(idx[i]), :]
-    tst[i,5] = tst[i, 5] - time0
+    row = tstA[int(idx[i]), :]
+    tst[i, :13] = row[:13]
+    tst[i, 5] = tst[i, 5] - time0
 
     if(i > 0): 
         dist[i] = np.sqrt((tst[i, 1] - tst[i-1, 1]) ** 2.0 + (tst[i, 2] - tst[i-1, 2]) ** 2.0)
 
-    tst[i,-1] = dist[i]
+    tst[i, 13] = dist[i]
+    tst[i, 14] = row[13]          # rotSkyPos [deg] (Deviation 80)
 
-    np.savetxt(fil, tst[i,:].reshape((-1, 14)),
-               fmt ="%d  %.6f  %.6f  %.6f  %.6f  %.6f  %d  %.6f  %.6f  %.6f  %.1f  %.6f  %.1f  %.6f") ##14 
+    np.savetxt(fil, tst[i,:].reshape((-1, 15)),
+               fmt ="%d  %.6f  %.6f  %.6f  %.6f  %.6f  %d  %.6f  %.6f  %.6f  %.1f  %.6f  %.1f  %.6f  %.6f") ##15 
             
 fil.close()
 print("Distance:  ", np.mean(dist[1:nr]), np.min(dist[1:nr]), np.max(dist[1:nr]))

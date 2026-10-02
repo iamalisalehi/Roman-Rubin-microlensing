@@ -34,7 +34,7 @@ Plan these notes follow: `/home/ali/.claude/plans/i-want-to-do-resilient-humming
 | M4 | Telescopes with < 3 epochs left out of the photometric fit (fixes the x8.3 mass event); gap geometry (t0zone, dt_edge) from the observed peak t0obs | 76 | 3952f9a |
 | M5-M7 | Per-sightline random streams (chunked runs exact), output hygiene, DET_ANOMALY explained | 77-79 | see DEVIATIONS |
 | M8 | Rubin coverage = LSSTCam active silicon (rubin_scheduler map, rotSkyPos): 88% of the old circle; 12,915 visits | 80 | ce537a9 |
-| SC | Source catalogue = complete Besancon population (no visibility filter; dark entries for brown/white dwarfs); same lists for sources and blend neighbours; Nstart mean masses = catalogue's (bulge 0.3086 -> 0.4199, Nstart -14%) | 81 | (this commit) | absolute yields (down), blend fractions, who-detects-what fractions, Roman-only share |
+| SC | Source catalogue = complete Besancon population (no visibility filter; dark entries for brown/white dwarfs); same lists for sources and blend neighbours; Nstart mean masses = catalogue's (bulge 0.3086 -> 0.4199, Nstart -14%) | 81 | 13d0cca | absolute yields (down), blend fractions, who-detects-what fractions, Roman-only share |
 | 3 | Astrometric reference position freed; sqrt(2) per-coordinate fix; correlated-floor bracket | 71 | 39b50c0 | every theta_E / mass number |
 
 ## Section by section

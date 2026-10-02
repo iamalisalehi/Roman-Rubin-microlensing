@@ -5336,4 +5336,4 @@ costly Roman-detector sightline is unchanged (3.4 vs 3.6 s), so the M9 estimate 
 within its error. On 795 the 50 detections split Roman+joint 45 / Rubin+joint 4 / both 1 (old: 68 / 4
 / 8 of 80). Too few to quote; the production runs will measure the shift.
 
-**Commit:** see git log (source catalogue fix).
+**Commit:** `13d0cca`.

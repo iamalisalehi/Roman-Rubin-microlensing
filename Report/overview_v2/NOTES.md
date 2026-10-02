@@ -33,7 +33,7 @@ Plan these notes follow: `/home/ali/.claude/plans/i-want-to-do-resilient-humming
 | M3 | Astrometric derivative steps swept; central stencil | 75 | 0a518f0 |
 | M4 | Telescopes with < 3 epochs left out of the photometric fit (fixes the x8.3 mass event); gap geometry (t0zone, dt_edge) from the observed peak t0obs | 76 | 3952f9a |
 | M5-M7 | Per-sightline random streams (chunked runs exact), output hygiene, DET_ANOMALY explained | 77-79 | see DEVIATIONS |
-| M8 | Rubin coverage = LSSTCam active silicon (rubin_scheduler map, rotSkyPos): 88% of the old circle; 12,915 visits | 80 | (next) |
+| M8 | Rubin coverage = LSSTCam active silicon (rubin_scheduler map, rotSkyPos): 88% of the old circle; 12,915 visits | 80 | ce537a9 |
 | 3 | Astrometric reference position freed; sqrt(2) per-coordinate fix; correlated-floor bracket | 71 | 39b50c0 | every theta_E / mass number |
 
 ## Section by section

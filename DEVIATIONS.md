@@ -5275,4 +5275,4 @@ round-half-even vs lround). fixture/extinctiontest unaffected.
 `make_timeline.py` still count Rubin visits with the 1.75-deg circle; port them to the map when the
 new report's figures are made.
 
-**Commit:** see the next commit.
+**Commit:** `ce537a9`.

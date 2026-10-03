@@ -21,6 +21,10 @@ a report of everything from M0 to M8 along with those estimations and ask my app
 - **Deviation 82 (2026-10-02):** bulge/thick/halo M dwarfs (< 0.6-0.7 Msun) moved onto lens_ml.dat's M-L
   relation (were 1-2.6 mag too bright); catalogue rebuilt; stubs fine. Old visibility-filtered catalogue
   DELETED at the user's request (noted in Report/overview_v2/NOTES.md).
+- **2026-10-03: `Report/roman_astrometry/roman_astrometry_report.{tex,pdf}`** (4 pp): a model note
+  on Roman's astrometric error (errRomanA, its constants, the data path, and the W/N/P Fisher
+  treatment), with line numbers for commit 36c7fd2. refs.bib gains Lam2026BHbinaries,
+  McKinnon2026RomanGaia (checked on arXiv). If the code moves, refresh the line numbers.
 - **WRAP-UP STATE (2026-10-02).** Code is ready for production; NOT launched. Deferred by the user:
   neighbour positions in the astrometric centroid (OPEN_ITEMS, "Blended field stars are placed at the
   source's position") -- after the runs. Launch: `runs/` timing harness flags (--stride 10

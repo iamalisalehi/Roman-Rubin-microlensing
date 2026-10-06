@@ -39,11 +39,11 @@ COMPONENT_FILES = {
 }
 
 # Set to None to skip auto-detection and rely purely on MANUAL_N below.
-BULGE_H_PATH = "../Bulge.h"
+BULGE_H_PATH = "../config/data_products.h"
 
-# Fallback expected row counts (N1..N4 in Bulge.h), used only for any
+# Fallback expected row counts (N1..N4 in config/data_products.h), used only for any
 # component where BULGE_H_PATH couldn't be read or didn't contain the
-# matching constant. Fill these in as a backup if you don't have Bulge.h
+# matching constant. Fill these in as a backup if you don't have config/data_products.h
 # handy, or leave as None to skip the row-count check for that component.
 MANUAL_N = {
     "thin_disk":  None,
@@ -83,11 +83,11 @@ MAG_COLUMNS = ["Roman_F146", "LSST_u", "LSST_g", "LSST_r", "LSST_i", "LSST_z", "
 
 
 # ---------------------------------------------------------------------------
-# Bulge.h constant extraction
+# config/data_products.h constant extraction
 # ---------------------------------------------------------------------------
 
 def extract_N_from_bulge_h(path):
-    """Pulls N1..N4 directly out of Bulge.h so this script can't silently
+    """Pulls N1..N4 directly out of config/data_products.h so this script can't silently
     drift out of sync with the compiled C++ constants. Falls back to
     MANUAL_N (component-by-component) if the file or a given constant
     can't be found."""
@@ -145,20 +145,20 @@ def check_component(name, path, expected_n):
             print(f"   {i}. {msg}")
         return False
 
-    # --- row count vs. Bulge.h's compiled-in constant ---
+    # --- row count vs. config/data_products.h's compiled-in constant ---
     n_rows = len(df)
     if expected_n is not None:
         if n_rows != expected_n:
             issues.append(
-                f"Row count mismatch: file has {n_rows} rows, Bulge.h's constant "
+                f"Row count mismatch: file has {n_rows} rows, config/data_products.h's constant "
                 f"expects {expected_n}. read_cmd's CHECK(j == N...) WILL fire on this "
-                f"file as-is -- either update the constant in Bulge.h to {n_rows}, "
+                f"file as-is -- either update the constant in config/data_products.h to {n_rows}, "
                 f"or find out why the row count changed (e.g. dropna() removing more "
                 f"rows than expected)."
             )
     else:
         warnings.append(
-            "No expected row count available for this component (Bulge.h constant "
+            "No expected row count available for this component (config/data_products.h constant "
             "not found/not provided) -- row-count mismatch against read_cmd's "
             "CHECK(j == N...) cannot be checked here."
         )

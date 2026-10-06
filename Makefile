@@ -8,7 +8,10 @@ CXX = g++
 # -O3 was measured too and gives no further gain. Do NOT add -ffast-math: it would
 # let the compiler reassociate the chi-squared and Fisher sums and silently change
 # the forecast. -g is kept so the CHECK() aborts still produce a usable backtrace.
-CXXFLAGS = -O2 -g -Wall -Wextra -std=c++17
+CXXFLAGS = -O2 -g -Wall -Wextra -std=c++17 -Iinclude -Iconfig
+# Every header a source can include: the main one plus the split-out constants and the hand-edited
+# parameter files (config/parameters.h, config/data_products.h). Editing any of them rebuilds.
+HEADERS = Bulge.h $(wildcard include/*.h config/*.h)
 # Stamped into every run's provenance block so a result can be traced back to
 # the exact source it came from. Falls back to "unknown" outside a git checkout.
 # A "-dirty" suffix matters more than the hash: a stamp naming a clean commit that
@@ -40,7 +43,7 @@ $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDLIBS)
 
 # Compile each .cpp into .o
-%.o: %.cpp Bulge.h
+%.o: %.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) -c $<
 
 Bulge_LSST.o: $(GIT_STAMP)
@@ -59,7 +62,7 @@ Bulge_LSST.o: $(GIT_STAMP)
 # ---------------------------------------------------------------------------
 FIXTURE_TARGET = fishertest
 
-$(FIXTURE_TARGET): tests/fisher_fixture.cpp Bulge_LSST.cpp Lensing.cpp helper.cpp Bulge.h
+$(FIXTURE_TARGET): tests/fisher_fixture.cpp Bulge_LSST.cpp Lensing.cpp helper.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) -DFISHER_FIXTURE_BUILD -I. -o $@ \
 	    tests/fisher_fixture.cpp Bulge_LSST.cpp Lensing.cpp helper.cpp $(LDLIBS)
 
@@ -75,7 +78,7 @@ fishertest-run: $(FIXTURE_TARGET)
 # ---------------------------------------------------------------------------
 EXT_TARGET = extinctiontest
 
-$(EXT_TARGET): tests/extinction_test.cpp helper.cpp Bulge.h
+$(EXT_TARGET): tests/extinction_test.cpp helper.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) -I. -o $@ tests/extinction_test.cpp helper.cpp $(LDLIBS)
 
 # Clean

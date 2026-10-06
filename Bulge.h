@@ -29,9 +29,15 @@
 #include <gsl/gsl_linalg.h>
 #include <gsl/gsl_eigen.h>
 
+// Project configuration, in dependency order: physical constants, parameter types, hand-edited
+// parameters (config/parameters.h), and data-file descriptions (config/data_products.h).
+#include "physical_constants.h"
+#include "parameter_types.h"
+#include "parameters.h"
+#include "data_products.h"
+
 ////
 #include <random>
-constexpr int seed = 42;   // default base seed; --seed overrides it at run time (Deviation 77)
 inline std::mt19937_64 rng{seed};
 
 // Deviation 77: the generator is RE-SEEDED at the start of every sightline from (base seed,
@@ -78,56 +84,8 @@ using std::cin;
     } while (0)
 
 
-// ======================= WHICH LENS POPULATION IS BEING SIMULATED =======================
-//
-// This was a compile-time constant (`IMnum`), which meant a second population needed a
-// rebuild and silently reused the first one's output filenames if you forgot to change it.
-// It is now a runtime object chosen by `--population`, because the whole point of a
-// population study is to run several and compare them.
-//
-// A population owns FOUR things, and they must travel together or a run is mislabelled:
-//   the mass function it draws from, the mass range that function is defined on, the grid
-//   spacing the mass-efficiency histogram uses, and the tag every output file carries.
-//
-// THE TAG IS THE SAFETY CATCH. `test<tag>.dat`, `MapLMC<tag>.dat` and the rest are named
-// from it, so two populations cannot overwrite each other, and a table always says which
-// population produced it. The default keeps tag "5", so existing filenames and every
-// analysis command that names them are unchanged.
-enum class MassFunction {
-    KROUPA_REMNANTS,   // Kroupa IMF, then the initial-final mass relation: the bulge today
-    LOG_UNIFORM,       // flat in log M -- the honest prior when the mass function is unknown
-    NEUTRON_STAR,      // a measured NS mass distribution (Ozel & Freire 2016)
-    UNIFORM,           // legacy MACHO-search options, inherited from the LMC simulation
-    POWER_LAW_05,      //   dN/dM ~ M^-0.5
-    POWER_LAW_10,      //   dN/dM ~ M^-1
-    POWER_LAW_20       //   dN/dM ~ M^-2
-};
-
-struct LensPopulation {
-    const char*  name;      // what --population takes
-    const char*  tag;       // output-file suffix
-    MassFunction mf;
-    double       mlMin;     // Msun; also the low edge of the Mls efficiency grid
-    double       mlMax;
-    bool         logGrid;   // log-spaced mass bins: mandatory once the range spans decades
-    int          legacyId;  // the old IMnum, for the two IMnum==1 debug dumps
-    const char*  note;
-};
-
-// The bulge entry is first and is the default: it reproduces the pre-2026-09-17 behaviour
-// exactly, tag included.
-inline constexpr LensPopulation POPULATIONS[] = {
-    {"bulge", "5", MassFunction::KROUPA_REMNANTS, 0.01, 30.0, false, 5,
-     "Kroupa IMF + remnants; the present-day bulge population"},
-    {"bh",    "bh", MassFunction::LOG_UNIFORM,     3.0, 1000.0, true, 0,
-     "black holes, flat in log M over 3-1000 Msun"},
-    {"ns",    "ns", MassFunction::NEUTRON_STAR,    1.0,    2.5, false, 0,
-     "neutron stars, Gaussian about 1.35 Msun (Ozel & Freire 2016)"},
-    {"macho-uniform", "1", MassFunction::UNIFORM,      3.0, 5000.0, true, 1, "legacy MACHO search"},
-    {"macho-m05",     "2", MassFunction::POWER_LAW_05, 3.0, 5000.0, true, 2, "legacy MACHO search"},
-    {"macho-m1",      "3", MassFunction::POWER_LAW_10, 3.0, 5000.0, true, 3, "legacy MACHO search"},
-    {"macho-m2",      "4", MassFunction::POWER_LAW_20, 3.0, 5000.0, true, 4, "legacy MACHO search"},
-};
+// Lens-population table (POPULATIONS), MassFunction and LensPopulation: see config/parameters.h,
+// section 6, and include/parameter_types.h.
 
 // Set once, from --population, before any `lens` is constructed -- the mass-efficiency grid
 // is built in that constructor from the bounds below.
@@ -136,84 +94,12 @@ inline const LensPopulation* gPop = &POPULATIONS[0];
 inline double mlMin() { return gPop->mlMin; }
 inline double mlMax() { return gPop->mlMax; }
 
-constexpr double u0m   = 3.0;
 
+// Physical constants: include/physical_constants.h. Model/survey parameters: config/parameters.h.
+// Data-file row counts and catalogue mean masses: config/data_products.h.
 
-constexpr double RAa = 180.0 / M_PI;
-constexpr double pi  = M_PI;
-constexpr double binary_fraction = double(2.0 / 3.0);
-constexpr double velocity = 299792458.0;//velosity of light
-constexpr double Msun = 1.98892 * std::pow(10., 30); //in [kg].
-constexpr double Rsun = 6.957 * std::pow(10.0, 8.0); ///solar radius [meter]
-constexpr double KP = 3.08568025 * std::pow(10., 19); // in meter.
-constexpr double G = 6.67384 * std::pow(10., -11.0);// in [m^3/s^2*kg].
-constexpr double AU = 1.4960 * std::pow(10.0, 11.0);
-constexpr double vro_sun = 226.0;
-constexpr double VSunR = 11.1;
-constexpr double VSunT = vro_sun*(1.00762 + 0.00712) + 12.24;
-constexpr double VSunZ = 7.25;
-constexpr double year = 365.2425;//days
-constexpr double eps = double(0.000000000000005463263454624313654);
-
-///============================ Besancon constant ==========================///
-constexpr double Dsun = 8.0;
-constexpr std::array<double, 8> rho0 = {4.0, 7.9, 6.2, 4.0, 5.8, 4.9, 6.6, 3.96}; //considering WD
-constexpr std::array<double, 8> d0   = {0.073117, 0.0216524, 0.0217405, 0.0217901, 0.0218061, 0.0218118, 0.0218121, 0.0218121};
-constexpr std::array<double, 8> epci = {0.014, 0.0268, 0.0375, 0.0551, 0.0696, 0.0785, 0.0791, 0.0791};
-constexpr std::array<double, 8> corr = {1.0, 7.9/4.48419, 6.2/3.52112, 4.0/2.27237, 5.8/3.29525, 4.9/2.78402, 6.6/3.74991, 3.96/2.24994};
-constexpr std::array<double, 4> Rv   = {3.1, 2.5 ,3.1 ,3.1}; //Disk, Bulge, Thick, Halo
 
 ///=============================LSST constant===============================///
-constexpr int    M = 6 + 1;    //No. of filter  ugrizy  of LSST + Roman's F146 filter
-constexpr double Tobs = 10.0 * year;///LSST observational time 10 years
-constexpr double delta2 = 0.005;///systematic errors
-
-
-// gamma of the LSST photometric error model, sigma_rand^2 = (0.04 - gamma) x + gamma x^2 (Ivezic
-// et al. 2019 eq. 5, Table 2; Deviation 73 -- the values were an older version, 0.037-0.040). Rubin
-// only (index 6, F146, is unused). delta2 above is the 5 mmag bright-end repeatability (Ivezic
-// et al. 2019, requirement 3). The unused seeing/msky/Cm/Dci/km constants (an older Table 2) and
-// cade1 were deleted in Deviation 73.
-constexpr std::array<double, M> gama = {0.038, 0.039, 0.039, 0.039, 0.039, 0.039, 0.0};
-
-// Rubin's saturation, relative to each visit's own 5-sigma depth (Deviation 73): saturation =
-// fiveSigmaDepth - RUBIN_SATU_BELOW_M5. Ivezic et al. 2019 give "the LSST saturation limit at r ~ 16"
-// for a 24.35 design depth (8.35 mag); the previous fixed constants were exactly depth - 8.3.
-constexpr double RUBIN_SATU_BELOW_M5 = 8.3;
-
-
-constexpr std::array<double, M> sigma = {0.022, 0.02, 0.017, 0.017, 0.027, 0.027, 0.04}; // PLACEHOLDER: K-band value, not F146
-// thre / satu: single-visit 5-sigma depth and saturation, AB. ugrizy are the SRD minimum depths
-// (Ivezic et al. 2019 Table 1, "min.") and depth - 8.3 (M1b replaces their use in the Rubin gate
-// by each visit's own depth). F146 (Deviation 72): depth 25.45 = STScI's 5-sigma point-source
-// sensitivity in 57 s, 25.37 AB (roman-technical-information, AB_mag_limiting_sensitivity.ecsv,
-// 2x minimum zodi), scaled to the GBTDS's 66-s exposure, +1.25 log10(66/57); saturation 14.8 =
-// Penny et al. 2019 Table 3 ("W149 saturation ~14.8", brightest pixel 1e5 e- before the first read,
-// usable up-the-ramp). Both were placeholders (29.0, 12.0) until Deviation 72.
-constexpr double ROMAN_DEPTH5_AB = 25.37 + 1.25 * 0.06368;   // log10(66/57) = 0.06368 -> 25.4496
-constexpr double ROMAN_SATU_AB   = 14.8;
-constexpr std::array<double, M> thre  = {23.4, 24.6, 24.3, 23.6, 22.9, 21.7, ROMAN_DEPTH5_AB};
-constexpr std::array<double, M> satu  = {15.2, 16.3, 16.0, 15.3, 14.6, 13.4, ROMAN_SATU_AB};
-// PSF FWHM [arcsec]: the image-resolution bar (Step R1) and the blending disc (Lensing.cpp).
-// ugrizy (Deviation 73): the median GEOMETRIC seeing, OpSim seeingFwhmGeom (= 0.822 seeingFwhmEff +
-// 0.052, verified exactly in the database), of the 12,308 bulge visits in Baseline/BulgeBaseline.dat
-// (baseline_v5.1.0); per-visit 16-84% spans ~0.77-1.4". The previous values (1.221 ... 0.937) were an
-// older OpSim's, 1-10% wider. F146: 0.105", STScI SummaryPSFstats (centre and corner).
-constexpr std::array<double, M> FWHM  = {1.1140, 1.0420, 0.9819, 0.9487, 0.9320, 0.8992, 0.105};
-//constexpr std::array<double, M> a0    = {0.9429, 1.0138, 0.94027, 0.8139, 0.6641, 0.5703, 0.1615}; //for calculating the extinction + F146 Filter (value needs to change)
-//constexpr std::array<double, M> b0    = {1.9788, 0.5575, -0.2197, -0.4982, -0.6097, -0.5236, -0.1483}; // PLACEHOLDER: K-band value, not F146
-constexpr std::array<double, M> lambda_um = {0.367, 0.482, 0.622, 0.755, 0.869, 0.971, 1.464};
-
-// Which LSST filter(s) (indices 0-5 = u,g,r,i,z,y) form the single "Rubin representative
-// band" standing in for the whole LSST light curve in the Fisher matrix, the recorded
-// per-epoch Rubin model magnitude, and the LSST astrometric-error evaluation magnitude.
-// {2} = r-band only, matching the pre-existing hardcoded behavior. Listing more than one
-// index combines them by *summing* their baseline fluxes and source fluxes separately
-// (see Lensing.cpp) -- an equal-weighted flux sum, not throughput-weighted (no per-filter
-// throughput curve exists in this codebase yet). Does NOT change which real filter's noise
-// model (errlsstM) applies to a given epoch -- that always reflects the epoch's own actual
-// filter, regardless of this setting.
-inline const std::vector<int> RUBIN_REF_BANDS = {2};
 
 //constexpr double cade2 = 10.0;//ELT [days]
 
@@ -225,49 +111,8 @@ inline const std::vector<int> RUBIN_REF_BANDS = {2};
 //constexpr int nex = 2518 * 3686; //number of ext files * lines in each file
 // NFILES/NROWS (the 2,518 x 3,686 per-pointing extinction tables) are gone: the single table file
 // carries its own sizes (Deviation 70; struct extin).
-constexpr int nrd = 10000; //rows in "convert_coordinate_2.dat"
-constexpr int Na = 96;     //rows in "sigmaA_LSST.txt"
-constexpr int NaRoman = 123;  // rows in sigma_roman.txt
-// Roman's photometric error (Deviation 72). files/sigma_roman.txt is Penny et al. 2019 Fig. 4: single-
-// epoch precision vs W149 (= F146) AB magnitude for a 46.8-s Cycle-7 exposure, with a 1 mmag floor.
-// At load time its photon-noise part, sqrt(err^2 - floor^2), is shifted in magnitude so that the
-// 5-sigma point (err = 1.0857/5) falls at ROMAN_DEPTH5_AB, the current STScI depth for the GBTDS's
-// 66-s exposure, and the floor is re-added; errRomanM then interpolates log(err) linearly in
-// magnitude (was nearest neighbour). Penny's curve rescaled by exposure time alone would sit at
-// ~25.71 (0.26 mag deeper than STScI's current figure), because it was made for an older design;
-// anchoring to STScI's number moves it by only ~-0.07 mag.
-constexpr double ROMAN_PHOT_FLOOR = 0.001;   //mag, Penny et al. 2019 Table 2 "Error floor 1.0 mmag"
 constexpr int nq = 15;     //resu
-// CMD/components/*.dat row counts (CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo). The lists are the
-// COMPLETE Besancon population (no visibility filter; the bulge is a 3.5M random subsample of
-// 7,256,344). Since bos10 (Deviation 88) they come from the noise-free catalogue bos10 with Besancon's
-// own stellar types; Deviation 81 had built them from bos9, and those lists (889406 / 3500000 / 1058765 /
-// 5025 rows) are kept in CMD/components_v2_bos9dev82/. CMD/components/provenance.txt has the counts.
-constexpr int N1 = 1288584, N2 = 3500000, N3 = 2008646, N4 = 18541;
-// Mean stellar mass of each POPULATION (provenance.txt, mean_mass_population: before the bulge subsample;
-// dark entries included). Disk_model's star count Nstart = rho / <m>, so these make Nstart count exactly
-// the population a draw comes from. bos10 values (Deviation 88); they replace the bos9 values
-// 0.4212 / 0.4199 / 0.4594 / 0.3774 of Deviation 81 and, before that, the legacy 0.403445 (thin), 0.4542
-// (thick, halo) and 0.308571 (bulge) of an unrecorded "mass_averaged.cpp". Mirrored in
-// analysis/galaxy_model.py (MBAR_*) and analysis/besancon_sample.py (MEANMASS): change all three together.
-constexpr double MEANMASS_THIN  = 0.3664;
-constexpr double MEANMASS_BULGE = 0.4148;
-constexpr double MEANMASS_THICK = 0.4849;
-constexpr double MEANMASS_HALO  = 0.4224;
-// Magnitude of a "dark" list entry (brown dwarf, white dwarf: no MIST track) -- zero light.
-constexpr double DARK_MAG = 99.0;
-// Data rows in BulgeBaseline.dat, EXCLUDING the header. Regenerated 2026-10-01 (Deviation 69:
-// every pointing that can image the distance-rule scan region; was 3686 from a box) from
-// baseline_v5.1.0_10yrs.db; readbaselineBulge.py prints the value to use here. The
-// previous 7373 counted a doubled file (append-mode bug) and read 3687 phantom rows.
-constexpr int Nl = 12915;   // Deviation 80: pointings within scan reach + 1.94 deg (was 12308 at + 1.75)
 
-// Data rows in RomanBaseline.dat, EXCLUDING the header. generateRomanBaseline.py prints
-// the value to use here; it must be updated whenever the season pattern, cadence or
-// mission start day changes, or the read guard in Bulge_LSST.cpp will fire.
-// Current: 6 high-cadence seasons (F146 every 12.1 min) + 4 low-cadence (every 5 days),
-// on STScI's real alternating spring/fall visibility windows.
-constexpr int NlRoman = 302406;
 
 // `coun` bounds the length of one event's light-curve buffers (lens::timn/magn/errm/
 // soux/souy/erra/tele). `ndw`, the running count of accepted epochs (Rubin + Roman
@@ -277,19 +122,6 @@ constexpr int NlRoman = 302406;
 // is allocated once, not per event: (Nl+NlRoman) * 7 buffers * 8 bytes ~= 17.7 MB.
 constexpr int    coun  = Nl + NlRoman;
 
-// Roman's footprint is the ADOPTED GBTDS layout (Step 1 of the 2026-10 pre-production fixes,
-// Deviation 69): six fields, each a mosaic of 18 rectangular detectors (SCAs) with gaps between
-// them, placed differently in spring and autumn because the telescope rolls by 180 deg between
-// the two seasons. The field centres travel with every visit in RomanBaseline.dat (columns l, b,
-// layout); the detector rectangles, as (l, b) offsets from the centre, are read at start-up from
-// the vendored files below (Baseline/gbtds_layout/README.md: source, commit, checks). A sightline
-// sees a Roman visit only if it falls ON a detector of that visit's layout -- not, as until
-// Deviation 69, if it lies within an equal-area circle of 0.3003 deg about the field centre.
-constexpr int    GBTDS_NLAYOUT = 2;    // 0 = spring roll, 1 = autumn roll
-constexpr int    GBTDS_NSCA    = 18;   // detectors per field
-inline const char* const GBTDS_SCA_FILES[GBTDS_NLAYOUT] = {
-    "./Baseline/gbtds_layout/sca_layout_spring.txt",
-    "./Baseline/gbtds_layout/sca_layout_fall.txt"};
 
 struct ScaRect { double l0, l1, b0, b1; };   // offsets from the field centre [deg], l0<l1, b0<b1
 
@@ -307,181 +139,9 @@ struct FieldPlacement { double l, b; int layout; };
 
 constexpr double tetp   = double(M_PI / 3.0);        //parallax
 
-// Sun-Earth L2, where Roman flies, as a fraction of an AU (Step H1).
-//
-// L2 is on the Sun-Earth line, ~1.5e6 km beyond the Earth, so to leading order Roman's
-// heliocentric position is Earth's scaled by (1 + L2_OFFSET_AU). This is what makes the two
-// observatories different places and gives the joint fit a *spatial* baseline to go with its
-// temporal one: the difference in impact parameter the two see is
-//     delta_u ~ L2_OFFSET_AU * piE  ~  1e-3  for a typical bulge event.
-// Small, and concentrated in high-magnification, short-tE events -- PHASE_H_PLAN.md 0.3.
-//
-// Roman's halo orbit about L2 (amplitude ~1e5-1e6 km) is NOT modelled; this is the mean
-// offset only. OPEN_ITEMS.md.
-constexpr double L2_KM        = 1.5e6;
-constexpr double AU_KM        = 1.496e8;
-constexpr double L2_OFFSET_AU = L2_KM / AU_KM;   // ~0.01003
 
-// ---------------------------------------------------------------------------------------
-// Roman WFI per-exposure astrometric precision, F146 (a.k.a. W149), in milliarcseconds.
-// Step H4; used by errRomanA() in helper.cpp.
-//
-// Sources:
-//   [1] Sanderson et al. 2019, "Astrometry with the Wide-Field Infrared Survey Telescope",
-//       arXiv:1712.05420 sec 1.1: "single-exposure precision for well-exposed point sources
-//       is 0.01 pixel, or about 1.1 mas", improving by ~10x when ~100 exposures are stacked.
-//   [2] "Black hole astrometric binaries in the Roman Galactic Bulge Time Domain Survey",
-//       arXiv:2608.24998, Fig. 5 and surrounding text: 1% centroiding => "a floor of 1.1 mas
-//       for Roman"; the floor "impacts bright sources F146_Vega < 20.62 mag"; sources become
-//       background dominated near "F146_Vega < 23.5 mag, which corresponds to sigma_ast ~ 10
-//       mas"; pixels are "0.11 arcsec"; each GBTDS exposure is "66 seconds" at a "12.1
-//       minute" cadence. Their curve derives from Pandeia and the Roman astrometry
-//       simulation tool of Bellini et al. 2024.
-//
-// PER EXPOSURE, and this is a factor of ten waiting to be got wrong. The 0.1 mas figure that
-// appears in both sources is the DAILY-BINNED precision -- ~100 exposures stacked. Our
-// l.erra[] is a per-epoch error and one row of RomanBaseline.dat is one 12.1-minute exposure
-// (measured: median inter-epoch gap 0.008403 d = 12.1 min, 50,401 epochs per field x 6
-// fields = 302,406 = NlRoman). So 1.1 mas is the right floor here. Using 0.1 would overstate
-// Roman's astrometry tenfold and flatter every tetE and lens-mass forecast in the project.
-// ---------------------------------------------------------------------------------------
-// MAGNITUDE SYSTEM (Deviation 72). [2]'s anchors (20.62, 23.5) are F146 VEGA magnitudes; the
-// simulator's magnitudes are AB (the MIST bolometric-correction tables in CMD/ are "Roman (AB)").
-// errRomanA therefore converts first: m_Vega = m_AB - F146_AB_MINUS_VEGA. The offset is synphot's
-// AB magnitude of Vega (CALSPEC alpha_lyr_stis_011) through STScI's F146 effective area
-// (roman-technical-information Roman_effarea_v8_SCA01_20240301): 1.0324 mag (EXOZIPPy #313 gets
-// 1.037; it lies between STScI-000825's 2MASS J 0.913 and H 1.391, as F146 spans both). Before
-// Deviation 72 the AB magnitude was used as if Vega: every Roman astrometric error ~2.2-2.6x too big.
-constexpr double F146_AB_MINUS_VEGA = 1.0324;
-constexpr double ROMAN_PIX_MAS   = 110.0;  //0.11 arcsec pixels [2]
-constexpr double ROMAN_AST_FLOOR = 0.01 * ROMAN_PIX_MAS;  //1.1 mas: 1% centroiding [1][2]
-constexpr double ROMAN_AST_MFLR  = 20.62;  //mag below which the floor dominates [2]
-constexpr double ROMAN_AST_MBKG  = 23.5;   //mag where the background starts to dominate [2]
-constexpr double ROMAN_AST_SBKG  = 10.0;   //mas, sigma_ast at ROMAN_AST_MBKG [2]
-// Slope between the two anchors above. NOT a physical constant and NOT a free choice:
-// log10(10.0/1.1)/(23.5-20.62) = 0.3329 per mag. Source-dominated photon noise
-// (SNR ~ sqrt(counts)) would give 0.2/mag and pure background domination (SNR ~ counts)
-// gives 0.4/mag; 0.333 sits between them because the transition is already under way across
-// this range. A later step could replace this interpolation with a Pandeia-derived table,
-// exactly as errlsstA reads files/sigmaA_LSST.txt.
-constexpr double ROMAN_AST_SLOPE_SRC = 0.33285;
 constexpr double ROMAN_AST_SLOPE_BKG = 0.4;
 
-// ---------------------------------------------------------------------------------------
-// Step 3c (Deviation 71). The astrometric noise model, three ways.
-//
-// PER COORDINATE. errRomanA / errlsstA give the 1D (x or y) per-exposure precision, as every
-// source defines it (Lam et al. 2026 fn. 14; McKinnon & van der Marel 2026; Ivezic et al. "per
-// observation per coordinate"). Each coordinate's variance is erra^2 -- not 2 erra^2, which the
-// code used until Deviation 71 (every astrometric sigma was sqrt(2) too large).
-//
-// THE REFERENCE POSITION IS FREE. Real astrometric fits solve for the source's position offset;
-// the model's -u0 tetE sin(xi) term otherwise lets every exposure measure tetE from the source's
-// absolute position (fixture: sigma(tetE) x1.4-10 optimistic). An offset per "frame group" is
-// marginalised in closed form: F_g = sum_blocks F_k - (sum b_k)(sum b_k)^T / sum c_k, per coordinate.
-//
-// WHETHER THE 1.1 mas FLOOR AVERAGES DOWN is unknown: the literature adds it as white noise
-// (justified by the GBTDS's sub-pixel dithers) and quantifies no correlated part (Deviation 71).
-// So every event carries three forecasts:
-//   W  white (the literature's assumption): one free offset per telescope; Roman's errors white.
-//   N  nominal: one free offset per Roman ROLL (crowding biases flip with the PSF orientation) and
-//      a per-coordinate error AST_SIGC_N shared by all Roman exposures of the same day (distortion
-//      residuals at "a few x 0.1% of a pixel", Bellini 2024 via Lam et al. 2026).
-//   P  pessimistic: one free offset per Roman SEASON (each season its own frame) and the WHOLE
-//      floor, AST_SIGC_P = 1.1 mas, shared within each day (it averages only across days).
-// Rubin's errors are white with one offset in all three. The day blocks enter by Sherman-Morrison:
-// for a block with weights w_i = 1/erra_i^2 and derivatives d_i, F_k = S_wdd - s^2 S_wd S_wd^T /
-// (1 + s^2 S_w), b_k = S_wd / (1 + s^2 S_w), c_k = S_w / (1 + s^2 S_w), s = sigma_c.
-// The main table columns (sigtetE_*, relMl_*, okB_*, condB_*) are W.
-// ---------------------------------------------------------------------------------------
-enum AstroVariant { AV_W = 0, AV_N = 1, AV_P = 2, NAVAR = 3 };
-constexpr double AST_SIGC_N = 0.3;               //mas per coordinate per Roman day
-constexpr double AST_SIGC_P = ROMAN_AST_FLOOR;   //1.1 mas
-constexpr std::array<double, NAVAR> AST_SIGC = {0.0, AST_SIGC_N, AST_SIGC_P};
-constexpr int    AST_MAX_SEASONS = 16;           //Roman seasons a P-variant offset can be keyed on
-
-// ---------------------------------------------------------------------------------------
-// Rubin/LSST astrometric error: renormalising files/sigmaA_LSST.txt from mission-averaged
-// to PER VISIT.
-//
-// Sources:
-//   [3] Ivezic et al. 2019, "LSST: From Science Drivers to Reference Design and Anticipated
-//       Data Products", ApJ 873, 111 (arXiv:0805.2366): the survey's proper-motion and
-//       parallax requirements are derived from "an assumed astrometric accuracy of 10 mas
-//       per observation per coordinate", with ~1000 observations needed to reach the ~0.6-1
-//       mas mission parallax accuracy.
-//   [4] SITCOMTN-159 (Rubin commissioning, Operations Rehearsal 3): single-visit source
-//       positions carry a systematic uncertainty of 3-7 mas to be added in quadrature to
-//       the pipeline uncertainty.
-//
-// THE DEFECT. files/sigmaA_LSST.txt is a MISSION-AVERAGED curve, not a per-visit one, and
-// errlsstA() was feeding it straight into l.erra[], which FisherM divides by per epoch and
-// then sums over ~2,300 epochs -- applying the sqrt(N) averaging a second time. Two
-// independent checks identify the factor:
-//
-//   * the table's bright-star floor is 0.3739576 mas; 10.0/0.3739576 = 26.74, i.e. exactly
-//     [3]'s 10 mas per visit divided by sqrt(715), and ~715 visits is the right order for a
-//     10-year all-band LSST count;
-//   * scaled by that same 26.74 the faint end reads 132 mas at r = 24.44, against an
-//     independent seeing-limited estimate FWHM/SNR ~ 700 mas / 5 ~ 140 mas.
-//
-// The shape of the table is therefore right and only its normalisation is wrong, so the fix
-// renormalises rather than replaces: multiply by LSST_AST_FLOOR / LSST_AST_TABLE_FLOOR so
-// the bright end sits on [3]'s published per-visit figure and the magnitude dependence
-// already encoded in the file is preserved untouched.
-//
-// Uncorrected, this made Rubin's per-epoch astrometry 26.7x better than reality and its
-// astrometric Fisher information ~715x too large -- which is why a ground-based telescope
-// was out-centroiding Roman (0.374 mas against Roman's sourced 1.1 mas) before this.
-// 10 mas is the conservative choice of the two sources: [4] suggests the delivered
-// single-visit floor may be nearer 3-7 mas, which would make Rubin better than assumed here.
-// ---------------------------------------------------------------------------------------
-constexpr double LSST_AST_FLOOR       = 10.0;      //mas per visit per coordinate [3]
-constexpr double LSST_AST_TABLE_FLOOR = 0.3739576; //mas, the bright-star floor as shipped
-constexpr double LSST_AST_RENORM      = LSST_AST_FLOOR / LSST_AST_TABLE_FLOOR; //26.74
-// ---------------------------------------------------------------------------------------
-// Step R1. Resolving the two lensing-induced images.
-//
-// A point lens makes TWO images of the source, at
-//     theta_pm = 0.5 * (u +- sqrt(u^2+4)) * theta_E,
-// so their angular separation is
-//     Delta_theta(u) = theta_E * sqrt(u^2 + 4).
-// Ordinarily we never see them apart: for a bulge event with a stellar lens theta_E ~ 0.3 mas
-// and 2*theta_E is far below any of our resolutions, so what reaches the detector is the sum
-// of the two fluxes -- the magnification A -- and their flux-weighted centroid, which is the
-// astrometric shift of Step H5. A BLACK-HOLE lens is the interesting case, because
-// theta_E scales as sqrt(Ml): at 1000 Msun it is ~30x the stellar value.
-//
-// TWO THINGS FIGHT EACH OTHER, which is the whole reason this needs counting per epoch rather
-// than once per event. The separation is SMALLEST at closest approach, sqrt(u0^2+4)*theta_E,
-// and grows without bound as the source moves away. But the minor image's magnification,
-//     A_minus = (u^2+2) / (2 u sqrt(u^2+4)) - 1/2,
-// collapses toward zero on the same motion. So the images are least separated exactly when
-// both are bright, and are well separated only once one of them has faded. A criterion applied
-// at peak would be far too optimistic, and one applied at maximum separation would be
-// meaningless. Sajadian & Makler (arXiv:2608.16448, their sec. 3) resolve this by counting
-// DATA POINTS that satisfy both conditions at once, and calling the images resolvable if at
-// least three do. That count cannot be reconstructed from a per-event summary row, which is
-// why it is accumulated here inside the epoch loop.
-//
-// THE RESOLUTION THRESHOLD. That paper takes the Rubin criterion as Delta_theta >= sigma_r
-// with sigma_r = D * sigma_a, where sigma_a is the per-visit astrometric precision and D runs
-// over [5, 100] with the source's signal-to-noise: ~5 at the faint limit (SNR 5), ~20 at
-// SNR 100 for two stars of similar brightness, and higher still -- by 40% for a 2-3 mag
-// difference, 3x beyond that -- when one image is much fainter than the other (Ivezic, priv.
-// comm. quoted therein). We record the count at BOTH anchors rather than picking one, because
-// the answer depends strongly on D and a single number would hide that.
-//
-// We add a third, independent criterion the paper does not need: Delta_theta >= the PSF FWHM.
-// Their target is Rubin alone, where the empirical D*sigma_a captures seeing-limited reality.
-// Roman is diffraction limited at 0.105 arcsec in F146, and for a space telescope the PSF
-// width is the honest physical bar -- D*sigma_a on Roman's 1.1 mas floor would claim a
-// resolution of a few mas, which no 2.4 m telescope delivers. Quoting all three makes the
-// assumption visible instead of buried.
-// ---------------------------------------------------------------------------------------
-constexpr double RESOLVE_D_FAINT  = 5.0;   //D at the faint detection limit, SNR ~ 5
-constexpr double RESOLVE_D_BRIGHT = 20.0;  //D at SNR ~ 100, images of similar brightness
-constexpr double ARCSEC_TO_MAS    = 1000.0;
 
 // The two images of one source at impact parameter u, with their own (unblended) magnitudes.
 // `magBase`/`blendFrac` are the BLENDED baseline magnitude and the source's flux share in the
@@ -520,48 +180,7 @@ inline ImagePair imagePair(double u, double tetE, double magBase, double blendFr
                          ip.magMinus <= thrMag and ip.magMinus >= satMag);
     return ip;
 }
-// ---------------------------------------------------------------------------------------
-// Step H7. The detection threshold.
-//
-// A microlensing detection is declared when the lensing model beats a flat-baseline model by
-// enough chi-squared. The statistic is
-//
-//     dchi = chi2(flat baseline) - chi2(lensing model)
-//
-// which is a chi-squared DIFFERENCE between nested models. Under the null hypothesis of no
-// lensing it is distributed as chi-squared with p degrees of freedom, where p is the number of
-// extra parameters the lensing model carries -- NOT the number of epochs. Its expectation is p
-// and its variance 2p, both fixed and small. The bar therefore does not scale with the epoch
-// count, and a detection threshold that does scale with it is thresholding the MEAN per-epoch
-// improvement rather than the total significance.
-//
-// This is the whole content of Step H7. The previous form, dchi > 2*ndw, made the bar grow
-// with the number of epochs, so pooling a survey with many low-signal epochs raised the joint
-// bar without adding signal: in Roman's footprint Roman's own bar was 2*50401 = 100,802 while
-// the joint bar was 105,530, and Rubin's ~2,300 near-flat epochs lifted it by ~4,728. An event
-// clearing Roman's bar by less than that failed the JOINT test -- measured at 21.3% of all
-// detections inside the footprint on the 2026-09-05 v2 run.
-//
-// A fixed bar also restores monotonicity by construction, which is the property that actually
-// matters: chi1 and chi3 are accumulated over both instruments' epochs, so chi1 = chi1_L +
-// chi1_R and chi3 = chi3_L + chi3_R exactly, hence dchi = dchi_L + dchi_R. With the same
-// threshold on all three tests, either survey clearing the bar alone forces the joint sum over
-// it too, so detL or detR implies detJ and DET_ANOMALY cannot occur. (This requires the SIGNED
-// difference; see the note on fabs at the test site in Bulge_LSST.cpp.)
-//
-// The value 500 is Penny et al. 2019 (ApJS 241, 3), the reference Roman/WFIRST microlensing
-// yield forecast, which adopts dchi2 > 500 against a flat baseline. Matching it keeps this
-// project's yields comparable with the number the Roman community already quotes. It is
-// deliberately conservative -- a nominal 3-sigma bar on a few parameters would be nearer 20 --
-// because the real false-alarm population is systematics, variable stars and blending, not
-// Gaussian noise, and a high bar is the standard defence. Overridable with --dchi-det for
-// sensitivity tests, and recorded in run_provenance.txt because every yield in this project
-// is conditioned on it.
-// ---------------------------------------------------------------------------------------
-constexpr double DCHI_DET_DEFAULT = 500.0; //delta-chi2 against a flat baseline [Penny+2019]
 
-constexpr double omegae = double(2.0 * M_PI / year); //radian per day
-constexpr double vearth = omegae;                    //radian per day
 // Finite-difference stencils used by FisherM. For each parameter it evaluates the model at
 // theta + Delta*s[h] for h = 0,1, forms (model - stored)/(Delta*s[h]), and averages the two.
 //
@@ -580,19 +199,10 @@ constexpr double vearth = omegae;                    //radian per day
 // parameter, so theta - Delta stays positive, and after Step C3 they are smaller still.
 // The photometric tE and piE now use sig. The two astrometric uses are unchanged pending a
 // step-size sweep of Delta2 -- see OPEN_ITEMS.md.
-// Step-size multipliers on the astrometric Delta2[] (tetE, mus1, mus2, piE), chosen by the M3 sweep
-// (Deviation 75; ./fishertest --sweep-astro). 1.0 = the legacy 25%-of-value steps. tetE, mus1, mus2:
-// the modelled centroid is LINEAR in them (blending and lens light included), so every finite
-// difference is exact -- the sweep is flat to all digits over 1e-8..2. piE (through the parallax-
-// bent trajectory) is not: plateau 1e-8..1e-2, 0.4% off at the legacy step, 2.5% at 2x; 1e-2 chosen.
-constexpr std::array<double, 4> kFDStepScaleB = {1.0, 1.0, 1.0, 1.0e-2};
 constexpr std::array<double, 2> sig  = {+1.0 ,-1.0};
 constexpr std::array<double, 2> sig2 = {+0.5 ,+1.0};
 
 
-constexpr int GG = 100;
-constexpr double tE_min  = 0.0;///days
-constexpr double tE_max  = 50.0*year;//days
 // Lens mass range: now a property of the selected population (see POPULATIONS above), not a
 // constant, because a bulge population and a black-hole population share no sensible bounds.
 // The same numbers set the Mls grid the mass-efficiency histogram is binned on, so they must
@@ -602,72 +212,12 @@ constexpr double tE_max  = 50.0*year;//days
 #define Ml_min (mlMin())
 #define Ml_max (mlMax())
 
-// ---- Kroupa (2001) initial mass function, dN/dM ~ M^-alpha, with the standard breaks ----
-// Coefficients enforcing continuity at the breaks are derived in drawKroupaInitialMass();
-// only the breaks and slopes are named here.
-constexpr double KROUPA_MI_MIN = 0.01;   //below the hydrogen-burning limit: brown dwarfs
-constexpr double KROUPA_MI_MAX = 120.0;  //initial mass; nothing this heavy survives to today
-constexpr double KROUPA_BREAK1 = 0.08;   //hydrogen-burning limit
-constexpr double KROUPA_BREAK2 = 0.50;
-constexpr double KROUPA_ALPHA1 = 0.3;    //0.01 - 0.08
-constexpr double KROUPA_ALPHA2 = 1.3;    //0.08 - 0.50
-constexpr double KROUPA_ALPHA3 = 2.3;    //0.50 - 120   (Salpeter-like)
 
-// ---- Initial-to-final mass, for the remnants ----
-// A bulge population is ~10 Gyr old, so everything born above the turnoff is already dead.
-// Which remnant it left is set by its INITIAL mass, and that is what makes the long-tE tail
-// this project cares about: a black hole lens is heavy, so tE ~ sqrt(Ml) is long, and a long
-// event is exactly the one that spans Roman's season gaps.
-// ---- Neutron star masses, for the NEUTRON_STAR population ----
-// The observed distribution is narrow and well measured. Ozel & Freire (2016) review the
-// measured sample: double neutron stars cluster at 1.33 +/- 0.09 Msun, slow pulsars sit
-// slightly higher and recycled ones spread wider, and the population as a whole is often
-// summarised as a Gaussian near 1.35 Msun with a ~0.15 Msun spread. The truncation is
-// physics, not tidiness: below ~1.1 Msun no supernova is known to leave a neutron star, and
-// above ~2.2 Msun the equation of state gives a black hole instead.
-//
-// UNCERTAINTY, STATED: the real distribution is arguably bimodal (a recycled population
-// above the canonical peak), and a single Gaussian will understate the high-mass tail. The
-// alternative is one line in drawNeutronStarMass(); this is the simpler model, chosen
-// deliberately and recorded rather than presented as settled.
-constexpr double NS_MEAN_MASS = 1.35;  //Msun
-constexpr double NS_MASS_SIG  = 0.15;  //Msun
-constexpr double NS_MASS_LO   = 1.10;  //Msun, below which no NS is expected to form
-constexpr double NS_MASS_HI   = 2.20;  //Msun, near the maximum the equation of state allows
-
-constexpr double MS_TURNOFF   = 1.0;   //Msun; below this the star is still on the main sequence
-constexpr double WD_MI_MAX    = 8.0;   //Mi 1-8   -> white dwarf
-constexpr double NS_MI_MAX    = 20.0;  //Mi 8-20  -> neutron star; above -> black hole
-constexpr double NS_MASS      = 1.4;   //Msun, the canonical value
-constexpr double BH_MI_SLOPE  = 0.24;  //Ml = 0.24*Mi, giving ~4.8-28.8 Msun over Mi 20-120
-constexpr double pi_min  = -0.45;
-constexpr double pi_max  = 0.85;
-constexpr double u0_min  = 0.0;
-constexpr double u0_max  = u0m;
-constexpr double mb_min  = 15.0;
-constexpr double mb_max  = 26.0;
-constexpr double fb_min  = 0.0;
-constexpr double fb_max  = 1.0;
-constexpr double mu_min  = 0.0; //mu_relative
-constexpr double mu_max  = 100.0;
-
+// Bulge distance grid (Num, MaxD, step, dd): see config/parameters.h, section 2.
 ////=================================== Bulge ====================================
-constexpr int    Num  = 9500;
-constexpr double MaxD = 12.0; //kpc
-constexpr double step = double(MaxD / Num / 1.0); //step in kpc
 //const double RaLMC  =  80.89375;
 //const double DecLMC = -68.2438888888889;
 //const double DLMC =  49.97;///KPC
-constexpr double DBulge = 8; //Kpc
-constexpr double dd  = 0.02;
-constexpr double FoV = double(3.5 / 2.0);  //the radius of teh Rubin Field of View
-// The scan region (Deviation 69; replaces the l1/l2/b1/b2 box and its lx/bx corner cut, which
-// were built from an older field layout and cut the wrong corner). A sky point is scanned if a
-// Rubin pointing that ALSO images a Roman field could image it: such a pointing is centred within
-// FoV + rField of a Roman field centre, and images points within FoV of its own centre, so the
-// region is every point within SCAN_RUBIN_REACH + rField of any field centre, spring or autumn.
-// rField comes from the detector layout at run time (GbtdsLayout::rField, ~0.48 deg).
-constexpr double SCAN_RUBIN_REACH = 2.0 * FoV;
 
 ///============================================================================
 struct GSLMatrixDeleter {
@@ -989,12 +539,7 @@ enum SurveyIdx { SJOINT = 0, SRUBIN = 1, SROMAN = 2, NSURV = 3 };
 // reconciled against STScI's current pages). Deriving means the C++ can never disagree
 // with the visit list it is actually integrating.
 //
-// Clustering rule: consecutive distinct epoch times more than SEASON_GAP_MIN_DAYS apart
-// begin a new season. This is safe by a wide margin on the current schedule -- the
-// largest spacing INSIDE a season is 5.0 d (the low-cadence seasons' five-day sampling)
-// and the smallest gap BETWEEN seasons is 108.2 d -- but the margin is checked at
-// runtime rather than assumed; see the guard in main().
-constexpr double SEASON_GAP_MIN_DAYS = 20.0;
+// Clustering rule and the SEASON_GAP_MIN_DAYS constant: see config/parameters.h, section 5.
 
 // Where t0 sits relative to Roman's mission. Three states, not two.
 //
@@ -1072,12 +617,8 @@ inline int surveyOfTele(int tele) { return (tele == 0) ? SRUBIN : SROMAN; }
 // A short event peaking in a Roman gap has no Roman data at all, so the joint fit cannot solve for
 // Roman's flux scale either and must fall back to Rubin's parameter set. Without this the joint
 // matrix would go singular on exactly the gap-peaking events the project is about.
-// A telescope contributing fewer than kMinTeleEpochs epochs to an event is left out of the
-// photometric matrices altogether (Deviation 76): its flux pair (fb, mbs) cannot be constrained,
-// and with one epoch the joint matrix went singular (condition 1.5e16 on the bulge event whose joint
-// mass error was 8.3x Roman's -- one Rubin epoch). Its epochs carry next to no information on the
-// event anyway. The counts passed to activePhotParams are therefore >= kMinTeleEpochs or zero.
-constexpr int kMinTeleEpochs = 3;
+// kMinTeleEpochs (the minimum epochs a telescope needs to enter the photometric matrices,
+// Deviation 76): see config/parameters.h, section 7.
 
 inline std::vector<int> activePhotParams(int surv, int nRubinEpochs, int nRomanEpochs)
 {
@@ -1416,7 +957,7 @@ double errRomanM(const roman & ro, double mag);
 // LsstCameraFootprint, fov_map.npz), exported to Baseline/lsstcam_fov/fov_map.txt. A sky point is on
 // a Rubin visit's silicon if its gnomonic projection about the boresight, rotated by rotSkyPos,
 // falls on an active pixel -- rubin_scheduler's own algorithm, mirrored. Replaces the 1.75-deg circle.
-constexpr double RUBIN_MAX_RADIUS = 1.94;   //deg: rubin_scheduler's max_radius; no active pixel beyond
+// RUBIN_MAX_RADIUS (1.94 deg, rubin_scheduler's max_radius): see config/parameters.h, section 4.
 struct LsstCamMap { int n = 0; double x0 = 0.0, step = 0.0; std::vector<unsigned char> on; };
 inline LsstCamMap gLsstCam;
 void   readLsstCamMap(const std::string& path);

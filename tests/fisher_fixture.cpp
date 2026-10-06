@@ -39,7 +39,12 @@
 // later fixed in commit d5c8867 (FisherM overwrote instead of summing over epochs, leaving a
 // rank-1 matrix). The fixture idea was sound; the code under test was broken.
 
-#include "Bulge.h"
+#include "common.h"
+#include "types.h"
+#include "events/lightcurve.h"
+#include "surveys/visits.h"
+#include "surveys/schedule.h"
+#include "fisher/fisher.h"
 
 namespace {
 

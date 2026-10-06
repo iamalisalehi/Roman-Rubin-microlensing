@@ -220,7 +220,7 @@ def check_component(name, path, expected_n):
         warnings.append(
             f"{frac_ages} row(s) have non-integer Age values (e.g. 0.15 Gyr, from the "
             f"youngest thin-disk sub-population). Confirm the corresponding age_* "
-            f"field in the CMD struct (Bulge.h) is declared as a floating-point type, "
+            f"field in the CMD struct (include/galaxy/catalogue.h) is declared as a floating-point type, "
             f"not int -- reading '0.15' into an int with operator>> only consumes "
             f"the leading '0' and desynchronizes every field read after it for that row."
         )

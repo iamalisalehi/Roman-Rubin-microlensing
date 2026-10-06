@@ -9,9 +9,6 @@ CXX = g++
 # let the compiler reassociate the chi-squared and Fisher sums and silently change
 # the forecast. -g is kept so the CHECK() aborts still produce a usable backtrace.
 CXXFLAGS = -O2 -g -Wall -Wextra -std=c++17 -Iinclude -Iconfig
-# Every header a source can include: the main one plus the split-out constants and the hand-edited
-# parameter files (config/parameters.h, config/data_products.h). Editing any of them rebuilds.
-HEADERS = Bulge.h $(wildcard include/*.h config/*.h)
 # Stamped into every run's provenance block so a result can be traced back to
 # the exact source it came from. Falls back to "unknown" outside a git checkout.
 # A "-dirty" suffix matters more than the hash: a stamp naming a clean commit that
@@ -22,7 +19,7 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)$(s
 CXXFLAGS += -DGIT_COMMIT='"$(GIT_COMMIT)"'
 # Deviation 78: keep the stamp honest. A commit changes no source file, so make used to say
 # "nothing to be done" and keep the old stamp. .git_stamp is rewritten whenever the description
-# differs, and Bulge_LSST.o (which prints it into run_provenance.txt) depends on it.
+# differs, and build/main.o (which prints it into run_provenance.txt) depends on it.
 GIT_STAMP := .git_stamp
 $(shell echo '$(GIT_COMMIT)' | cmp -s - $(GIT_STAMP) 2>/dev/null || echo '$(GIT_COMMIT)' > $(GIT_STAMP))
 
@@ -31,22 +28,34 @@ LDLIBS = -lgsl -lgslcblas -lm
 # Target executable
 TARGET = roman
 
-# Source files
-SRCS = Bulge_LSST.cpp Lensing.cpp helper.cpp
-OBJS = $(SRCS:.cpp=.o)
+# Sources: everything under src/ (src/main.cpp holds main() alone; the modules sit in
+# src/<area>/). Objects mirror that tree under build/, e.g. src/galaxy/density.cpp ->
+# build/galaxy/density.o. LIB_OBJS is everything except main(): the two test programs link it
+# and supply their own main().
+SRCS     = $(wildcard src/*.cpp src/*/*.cpp)
+OBJS     = $(SRCS:src/%.cpp=build/%.o)
+LIB_OBJS = $(filter-out build/main.o,$(OBJS))
 
 # Default target
 all: $(TARGET)
 
-# Link step
+# Link step. Must be run from the repo root: every data path is a relative path.
 $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDLIBS)
 
-# Compile each .cpp into .o
-%.o: %.cpp $(HEADERS)
-	$(CXX) $(CXXFLAGS) -c $<
+# Compile each .cpp into build/. -MMD -MP write build/<name>.d listing the headers each object
+# actually includes (included below), so editing a header rebuilds exactly the objects that use it.
+build/%.o: src/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
 
-Bulge_LSST.o: $(GIT_STAMP)
+build/tests/%.o: tests/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
+
+# main.o prints GIT_COMMIT into run_provenance.txt, so it is the one object that must be rebuilt
+# when the stamp changes.
+build/main.o: $(GIT_STAMP)
 
 # ---------------------------------------------------------------------------
 # Fisher-matrix regression fixture (tests/fisher_fixture.cpp)
@@ -56,15 +65,13 @@ Bulge_LSST.o: $(GIT_STAMP)
 # to FisherM moves sigma the way you expect:
 #     make fishertest && ./fishertest > after.txt && diff before.txt after.txt
 #
-# Bulge_LSST.cpp is recompiled here with -DFISHER_FIXTURE_BUILD, which drops its main()
-# so the fixture can supply its own while still linking against FisherM, ErrorCal,
-# lightcurve and invert_matrix.
+# It links every object in build/ except main.o (the fixture supplies its own main()), so it
+# exercises the real FisherM, ErrorCal, lightcurve and invert_matrix.
 # ---------------------------------------------------------------------------
 FIXTURE_TARGET = fishertest
 
-$(FIXTURE_TARGET): tests/fisher_fixture.cpp Bulge_LSST.cpp Lensing.cpp helper.cpp $(HEADERS)
-	$(CXX) $(CXXFLAGS) -DFISHER_FIXTURE_BUILD -I. -o $@ \
-	    tests/fisher_fixture.cpp Bulge_LSST.cpp Lensing.cpp helper.cpp $(LDLIBS)
+$(FIXTURE_TARGET): build/tests/fisher_fixture.o $(LIB_OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDLIBS)
 
 fishertest-run: $(FIXTURE_TARGET)
 	./$(FIXTURE_TARGET)
@@ -78,8 +85,9 @@ fishertest-run: $(FIXTURE_TARGET)
 # ---------------------------------------------------------------------------
 EXT_TARGET = extinctiontest
 
-$(EXT_TARGET): tests/extinction_test.cpp helper.cpp $(HEADERS)
-	$(CXX) $(CXXFLAGS) -I. -o $@ tests/extinction_test.cpp helper.cpp $(LDLIBS)
+# Links only galaxy/extinction.o, the one module it tests.
+$(EXT_TARGET): build/tests/extinction_test.o build/galaxy/extinction.o
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDLIBS)
 
 # Verify config/data_products.h against the data files on disk (row counts, mean masses, ...).
 # Run before a production launch. NOT part of `all`: CI has no data files. To refresh the header,
@@ -89,6 +97,9 @@ check-data:
 
 .PHONY: check-data
 
+# Header dependencies written by -MMD
+-include $(OBJS:.o=.d) build/tests/fisher_fixture.d build/tests/extinction_test.d
+
 # Clean
 clean:
-	rm -f $(OBJS) $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET)
+	rm -rf build $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET)

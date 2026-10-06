@@ -12,7 +12,8 @@
 // decreasing profile, a short row, an extra value, a wrong row count) must each make it exit
 // non-zero -- run in a forked child, since refusing means exiting. The old reader accepted all of
 // these silently.
-#include "Bulge.h"
+#include "common.h"
+#include "galaxy/extinction.h"
 #include <cstdio>
 #include <cmath>
 #include <sys/wait.h>

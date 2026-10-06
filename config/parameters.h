@@ -29,6 +29,12 @@ constexpr int    DEFAULT_EVENTS_TARGET = 850;    //detected events per sightline
 constexpr int    DEFAULT_LENSES_TARGET = 150;    //Fisher-characterised events per sightline (nlens)
 constexpr double DEFAULT_NERR_TARGET   = 2.0;    //accumulated Fisher-error weight
 constexpr double DEFAULT_MAXDRAWS      = 5.0e4;  //hard cap on stars drawn at one sightline
+// Dense model-curve sampling of the s2 sample light curves (defaults of the sample spec keys step_te /
+// span_te / dt_coarse, Bulge_LSST.cpp SampleSpec): fine steps of DEFAULT_S2_STEP_TE * tE within
+// +-DEFAULT_S2_SPAN_TE * tE of the peak, steps of DEFAULT_S2_DT_COARSE days over the rest of the mission.
+constexpr double DEFAULT_S2_STEP_TE   = 0.01;   //peak-window step, in units of tE
+constexpr double DEFAULT_S2_SPAN_TE   = 3.0;    //peak-window half-width, in units of tE
+constexpr double DEFAULT_S2_DT_COARSE = 2.0;    //step over the rest of the mission [days]
 
 // ==========================================================================================
 // (2) GALACTIC MODEL
@@ -149,6 +155,21 @@ constexpr std::array<double, M> gama = {0.038, 0.039, 0.039, 0.039, 0.039, 0.039
 // The 0.04 of the same equation: sigma_rand^2 = (LSST_ERR_C04 - gamma) x + gamma x^2 (Ivezic et al. 2019
 // eq. 5), used by errlsstM in helper.cpp.
 constexpr double LSST_ERR_C04 = 0.04;
+
+// Truncation of the per-epoch measurement-noise draws, RandN(err, n): a draw is rejected if it lies
+// beyond n sigma (Bulge_LSST.cpp, photometric and astrometric noise of every Rubin and Roman epoch).
+constexpr double NOISE_TRUNC_NSIGMA = 3.0;
+// Truncation of the per-band extinction scatter A_i = Av*A_i/A_V + RandN(sigma[i], n) (Lensing.cpp).
+constexpr double EXT_SCATTER_TRUNC_NSIGMA = 1.0;
+// Per-epoch outlier flag and run test (Bulge_LSST.cpp, per instrument): an epoch is flagged when its noisy
+// magnitude departs from the baseline by more than OUTLIER_FLAG_NSIGMA times its error; a run is declared
+// (flag_det_*) when the sum of the last three epochs' flags exceeds OUTLIER_RUN_THRESHOLD, i.e. all three
+// consecutive epochs are flagged (and more than 2 epochs have been taken).
+constexpr double OUTLIER_FLAG_NSIGMA = 3.0;
+constexpr double OUTLIER_RUN_THRESHOLD = 2.0;
+// Light-curve time-loop step [days] while the epoch is outside the Rubin visit window (the loop then
+// advances by min(this, Roman's cadence); inside the window it follows the local visit spacing).
+constexpr double TIME_STEP_OUTSIDE_LSST_DAYS = 3.0;
 
 // Rubin's saturation, relative to each visit's own 5-sigma depth (Deviation 73): saturation =
 // fiveSigmaDepth - RUBIN_SATU_BELOW_M5. Ivezic et al. 2019 give "the LSST saturation limit at r ~ 16"
@@ -423,6 +444,7 @@ constexpr double KROUPA_ALPHA3 = 2.3;    //0.50 - 120   (Salpeter-like)
 // deliberately and recorded rather than presented as settled.
 constexpr double NS_MEAN_MASS = 1.35;  //Msun
 constexpr double NS_MASS_SIG  = 0.15;  //Msun
+constexpr double NS_MASS_TRUNC_NSIGMA = 4.0;   //truncation of the Gaussian NS-mass draw [sigma]
 constexpr double NS_MASS_LO   = 1.10;  //Msun, below which no NS is expected to form
 constexpr double NS_MASS_HI   = 2.20;  //Msun, near the maximum the equation of state allows
 

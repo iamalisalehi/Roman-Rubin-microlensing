@@ -153,7 +153,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
 //        cout << "Av: " << Av << endl;
         for (int i = 0; i < M; ++i) {
             Alv = AlAv(lambda_um[i], Rv[static_cast<int>(struc)]); // A_lambda / A_V
-            Ai[i] = Av * Alv + RandN(sigma[i], 1.0); //extinction in other bands
+            Ai[i] = Av * Alv + RandN(sigma[i], EXT_SCATTER_TRUNC_NSIGMA); //extinction in other bands
 
             if (Ai[i] < 0.0) {
                 Ai[i] = 0.0;

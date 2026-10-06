@@ -444,9 +444,9 @@ struct SampleSpec {
     // timescale: 0.2 d steps are wasteful for a 900 d black-hole event and too coarse for
     // a 5 d one. This keeps the peak window at a fixed ~2*spanTE/stepTE points whatever
     // the event, so the file size cannot blow up on the long-tE population.
-    double      stepTE   = 0.01;  //peak-window step, in units of tE
-    double      spanTE   = 3.0;   //peak-window half-width, in units of tE
-    double      dtCoarse = 2.0;   //step over the rest of the mission [days]
+    double      stepTE   = DEFAULT_S2_STEP_TE;  //peak-window step, in units of tE
+    double      spanTE   = DEFAULT_S2_SPAN_TE;   //peak-window half-width, in units of tE
+    double      dtCoarse = DEFAULT_S2_DT_COARSE;   //step over the rest of the mission [days]
     std::vector<SampleClass> classes;
 };
 
@@ -2055,7 +2055,7 @@ int main(int argc, char** argv) {
                                 }
 
                                 deltaA = std::fabs(std::pow(10.0, -0.4 * errg) - 1.0) * (s->blend[fi] * s->Astar + 1.0 - s->blend[fi]);
-                                magnio = magni[fi] + RandN(errg, 3.0);
+                                magnio = magni[fi] + RandN(errg, NOISE_TRUNC_NSIGMA);
     
                                 chi1 += std::fabs((magnio -   magni[fi]) * (magnio -   magni[fi]) / (errg * errg)); //real
                                 chi2 += std::fabs((magnio -  magni0[fi]) * (magnio -  magni0[fi]) / (errg * errg)); //real no parallax
@@ -2066,8 +2066,8 @@ int main(int argc, char** argv) {
 
                                 // erra is the per-coordinate sigma (Deviation 71; was drawn and
                                 // divided as if each coordinate had variance 2 errs^2).
-                                sil  = RandN(errs, 3.0);
-                                sil2 = RandN(errs, 3.0);
+                                sil  = RandN(errs, NOISE_TRUNC_NSIGMA);
+                                sil2 = RandN(errs, NOISE_TRUNC_NSIGMA);
 
                                 chi1a += std::fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs)); //real trajectory
                                 chi2a += std::fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs)); //real without lensing
@@ -2099,12 +2099,12 @@ int main(int argc, char** argv) {
                                         l->pos1,  l->pos2,  errs});
     
                                 flag2 = 0.0;
-                                if (std::fabs(magnio - s->magb[fi]) > std::fabs(3.0 * errg))    flag2 = 1.0;
-                                if (ndw_L > 2 and float(flag0 + flag1 + flag2) > 2.0)   flag_det = 1;
+                                if (std::fabs(magnio - s->magb[fi]) > std::fabs(OUTLIER_FLAG_NSIGMA * errg))    flag2 = 1.0;
+                                if (ndw_L > 2 and float(flag0 + flag1 + flag2) > OUTLIER_RUN_THRESHOLD)   flag_det = 1;
                                 flag0 = flag1;
                                 flag1 = flag2;
                                 flag2_L = flag2; // identical test; kept as an explicit Rubin-labeled copy
-                                if (ndw_L > 2 and float(flag0_L + flag1_L + flag2_L) > 2.0)   flag_det_L = 1;
+                                if (ndw_L > 2 and float(flag0_L + flag1_L + flag2_L) > OUTLIER_RUN_THRESHOLD)   flag_det_L = 1;
                                 flag0_L = flag1_L;
                                 flag1_L = flag2_L;
     
@@ -2167,7 +2167,7 @@ int main(int argc, char** argv) {
                             if (magni[fiR] >= satu[fiR] and magni[fiR] <= thre[fiR]) {
                                 errgR = errRomanM(*ro, magni[fiR]); //[mag] (Deviation 72)
 
-                                magnioR = magni[fiR] + RandN(errgR, 3.0);
+                                magnioR = magni[fiR] + RandN(errgR, NOISE_TRUNC_NSIGMA);
                                 chi1 += std::fabs((magnioR -   magni[fiR]) * (magnioR -   magni[fiR]) / (errgR * errgR));
                                 chi2 += std::fabs((magnioR -  magni0[fiR]) * (magnioR -  magni0[fiR]) / (errgR * errgR));
                                 chi3 += std::fabs((magnioR - s->magb[fiR]) * (magnioR - s->magb[fiR]) / (errgR * errgR));
@@ -2195,8 +2195,8 @@ int main(int argc, char** argv) {
                                     }
                                 }
 
-                                silR  = RandN(errsR, 3.0);
-                                sil2R = RandN(errsR, 3.0);
+                                silR  = RandN(errsR, NOISE_TRUNC_NSIGMA);
+                                sil2R = RandN(errsR, NOISE_TRUNC_NSIGMA);
                                 chi1a += std::fabs((trajp + silR - trajp) * (trajp + silR - trajp) / (errsR * errsR));
                                 chi2a += std::fabs((trajp + silR - trajm) * (trajp + silR - trajm) / (errsR * errsR));
                                 chi3a += std::fabs( sil2R * sil2R / (errsR * errsR));
@@ -2205,8 +2205,8 @@ int main(int argc, char** argv) {
                                 chi3a_R += std::fabs( sil2R * sil2R / (errsR * errsR));
 
                                 flag2_R = 0.0;
-                                if (std::fabs(magnioR - s->magb[fiR]) > std::fabs(3.0 * errgR))    flag2_R = 1.0;
-                                if (ndw_R > 2 and float(flag0_R + flag1_R + flag2_R) > 2.0)   flag_det_R = 1;
+                                if (std::fabs(magnioR - s->magb[fiR]) > std::fabs(OUTLIER_FLAG_NSIGMA * errgR))    flag2_R = 1.0;
+                                if (ndw_R > 2 and float(flag0_R + flag1_R + flag2_R) > OUTLIER_RUN_THRESHOLD)   flag_det_R = 1;
                                 flag0_R = flag1_R;
                                 flag1_R = flag2_R;
 
@@ -2275,7 +2275,7 @@ int main(int argc, char** argv) {
                                 if (gi > 0 and gi < ndd) cade = float(ls->tim[int(ls->ct[gi])] - ls->tim[int(ls->ct[gi - 1])]); //days
                                 else cade = minc;
                             } else {
-                                cade = 3.0; //days — matches the original "outside LSST window" fallback
+                                cade = TIME_STEP_OUTSIDE_LSST_DAYS; //days — matches the original "outside LSST window" fallback
                             }
 
                             if (romanInWindow) {

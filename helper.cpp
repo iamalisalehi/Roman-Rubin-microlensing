@@ -1026,7 +1026,7 @@ double drawLogUniformMass(double lo, double hi)
 double drawNeutronStarMass()
 {
     for (int guard = 0; guard < 1000; ++guard) {
-        const double M = NS_MEAN_MASS + RandN(NS_MASS_SIG, 4.0);
+        const double M = NS_MEAN_MASS + RandN(NS_MASS_SIG, NS_MASS_TRUNC_NSIGMA);
         if (M >= NS_MASS_LO and M <= NS_MASS_HI) return M;
     }
     // Unreachable in practice: the truncation is +/-1.7 sigma at the tighter end, so a

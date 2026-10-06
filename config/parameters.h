@@ -23,6 +23,12 @@
 // ==========================================================================================
 
 constexpr int seed = 42;   // default base seed; --seed overrides it at run time (Deviation 77)
+// Per-sightline Monte Carlo budgets (defaults of --events / --lenses / --nerr / --maxdraws; the do/while over
+// stars stops once events, lenses and nerr are ALL met, or at the draw cap; see Bulge_LSST.cpp RunConfig).
+constexpr int    DEFAULT_EVENTS_TARGET = 850;    //detected events per sightline (icon)
+constexpr int    DEFAULT_LENSES_TARGET = 150;    //Fisher-characterised events per sightline (nlens)
+constexpr double DEFAULT_NERR_TARGET   = 2.0;    //accumulated Fisher-error weight
+constexpr double DEFAULT_MAXDRAWS      = 5.0e4;  //hard cap on stars drawn at one sightline
 
 // ==========================================================================================
 // (2) GALACTIC MODEL
@@ -31,6 +37,8 @@ constexpr int seed = 42;   // default base seed; --seed overrides it at run time
 constexpr double binary_fraction = double(2.0 / 3.0);
 constexpr double vro_sun = 226.0;
 constexpr double VSunR = 11.1;
+// 1.00762 and 0.00712 are ROT_A and ROT_B (section 2b) evaluated at R = Dsun; kept as literals here so
+// the rounding of this expression is exactly what it always was.
 constexpr double VSunT = vro_sun*(1.00762 + 0.00712) + 12.24;
 constexpr double VSunZ = 7.25;
 ///============================ Besancon constant ==========================///
@@ -43,6 +51,10 @@ constexpr std::array<double, 4> Rv   = {3.1, 2.5 ,3.1 ,3.1}; //Disk, Bulge, Thic
 constexpr int    Num  = 9500;
 constexpr double MaxD = 12.0; //kpc
 constexpr double step = double(MaxD / Num / 1.0); //step in kpc
+// Source distance draw: the distance-grid index is drawn uniformly in [SRC_IDX_MIN, Num - SRC_IDX_END_MARGIN]
+// (Lensing.cpp, func_source), i.e. it skips the first 5 grid cells (~0 kpc) and the last 2.
+constexpr double SRC_IDX_MIN = 5.0;
+constexpr double SRC_IDX_END_MARGIN = 2.0;
 constexpr double dd  = 0.02;   // native sightline grid step [deg]; the scan steps by stride*dd
 
 // ---- (2a) Galactic model: density laws (Disk_model, Bulge_LSST.cpp) ----
@@ -134,6 +146,9 @@ constexpr double delta2 = 0.005;///systematic errors
 // et al. 2019, requirement 3). The unused seeing/msky/Cm/Dci/km constants (an older Table 2) and
 // cade1 were deleted in Deviation 73.
 constexpr std::array<double, M> gama = {0.038, 0.039, 0.039, 0.039, 0.039, 0.039, 0.0};
+// The 0.04 of the same equation: sigma_rand^2 = (LSST_ERR_C04 - gamma) x + gamma x^2 (Ivezic et al. 2019
+// eq. 5), used by errlsstM in helper.cpp.
+constexpr double LSST_ERR_C04 = 0.04;
 
 // Rubin's saturation, relative to each visit's own 5-sigma depth (Deviation 73): saturation =
 // fiveSigmaDepth - RUBIN_SATU_BELOW_M5. Ivezic et al. 2019 give "the LSST saturation limit at r ~ 16"
@@ -153,12 +168,18 @@ constexpr double ROMAN_DEPTH5_AB = 25.37 + 1.25 * 0.06368;   // log10(66/57) = 0
 constexpr double ROMAN_SATU_AB   = 14.8;
 constexpr std::array<double, M> thre  = {23.4, 24.6, 24.3, 23.6, 22.9, 21.7, ROMAN_DEPTH5_AB};
 constexpr std::array<double, M> satu  = {15.2, 16.3, 16.0, 15.3, 14.6, 13.4, ROMAN_SATU_AB};
+// 5-sigma depth [AB] assumed for the r band at an epoch-less draw (errlsstM in the no-light-curve fallback of
+// Bulge_LSST.cpp), where no visit supplies its own depth.
+constexpr double RUBIN_R_DEPTH5_FALLBACK = 24.43;
 // PSF FWHM [arcsec]: the image-resolution bar (Step R1) and the blending disc (Lensing.cpp).
 // ugrizy (Deviation 73): the median GEOMETRIC seeing, OpSim seeingFwhmGeom (= 0.822 seeingFwhmEff +
 // 0.052, verified exactly in the database), of the 12,308 bulge visits in Baseline/BulgeBaseline.dat
 // (baseline_v5.1.0); per-visit 16-84% spans ~0.77-1.4". The previous values (1.221 ... 0.937) were an
 // older OpSim's, 1-10% wider. F146: 0.105", STScI SummaryPSFstats (centre and corner).
 constexpr std::array<double, M> FWHM  = {1.1140, 1.0420, 0.9819, 0.9487, 0.9320, 0.8992, 0.105};
+// The blending disc has radius FWHM * BLEND_RADIUS_FWHM_FRAC (= the HWHM), Lensing.cpp func_source: the
+// expected number of stars in it is lambda, and the source's own blend is 1 + Poisson(lambda).
+constexpr double BLEND_RADIUS_FWHM_FRAC = 0.5;
 //constexpr std::array<double, M> a0    = {0.9429, 1.0138, 0.94027, 0.8139, 0.6641, 0.5703, 0.1615}; //for calculating the extinction + F146 Filter (value needs to change)
 //constexpr std::array<double, M> b0    = {1.9788, 0.5575, -0.2197, -0.4982, -0.6097, -0.5236, -0.1483}; // PLACEHOLDER: K-band value, not F146
 constexpr std::array<double, M> lambda_um = {0.367, 0.482, 0.622, 0.755, 0.869, 0.971, 1.464};
@@ -368,6 +389,10 @@ inline constexpr LensPopulation POPULATIONS[] = {
     {"macho-m2",      "4", MassFunction::POWER_LAW_20, 3.0, 5000.0, true, 4, "legacy MACHO search"},
 };
 constexpr double u0m   = 3.0;
+// Event-parameter draws (Lensing.cpp, func_lens): u0 is uniform in [U0_MIN_DRAW, u0m]; the peak time t0 is
+// uniform in [T0_MARGIN_DAYS, Tobs - T0_MARGIN_DAYS] days, i.e. at least 2 days inside the survey ends.
+constexpr double U0_MIN_DRAW = 0.001;
+constexpr double T0_MARGIN_DAYS = 2.0;
 // ---- Kroupa (2001) initial mass function, dN/dM ~ M^-alpha, with the standard breaks ----
 // Coefficients enforcing continuity at the breaks are derived in drawKroupaInitialMass();
 // only the breaks and slopes are named here.
@@ -498,6 +523,27 @@ constexpr double DCHI_DET_DEFAULT = 500.0; //delta-chi2 against a flat baseline 
 // difference is exact -- the sweep is flat to all digits over 1e-8..2. piE (through the parallax-
 // bent trajectory) is not: plateau 1e-8..1e-2, 0.4% off at the legacy step, 2.5% at 2x; 1e-2 chosen.
 constexpr std::array<double, 4> kFDStepScaleB = {1.0, 1.0, 1.0, 1.0e-2};
+
+// Photometric finite-difference steps of FisherM (Delta1[], Bulge_LSST.cpp). u0, tE, piE, xi, t0 came from
+// the legacy LMC code and are ~25% of the parameter (u0 is perturbed by 0.15, tE and t0 by 0.25*tE). Step
+// C3 (DEVIATIONS.md 10; ./fishertest --sweep, tests/c3_step_sweep.py) showed that sat far up the
+// truncation-error branch (sigma(u0) off ~57%, sigma(t0) ~71%), and scaled them all by kFDStepScale into
+// the convergence plateau (flat to <0.2% over 1e-6..1e-3 of the legacy steps; 1e-4 sits two decades clear
+// of the round-off wall). The legacy values are kept and the scale factored out so the change stays
+// auditable and the sweep, defined in these units, stays comparable. Re-run the sweep after changing any.
+constexpr double FD_STEP_U0       = 0.1507586576;      //u0 (absolute)
+constexpr double FD_STEP_TE_FRAC  = 0.254674;          //tE and t0: step = tE * this [days]
+constexpr double FD_STEP_PIE_FRAC = 0.2509463534656;   //piE: step = this * piE
+constexpr double FD_STEP_XI_DEG   = 3.0;               //xi [deg]; converted to radians at the use
+constexpr double FD_STEP_MBS      = 0.05;              //mbs0 / mbs1 [mag]; the model is linear in mbs, so exact
+constexpr double kFDStepScale     = 1.0e-4;            //Step C3 plateau scale applied to every Delta1[] and fb step
+// fb0 / fb1 steps (blend fraction, bounded to [0,1]). The step pair is chosen from the epoch's own
+// telescope's fb so that fb + step never leaves the range: fb < FB_BIN_LO -> {+SMALL, +LARGE};
+// fb < FB_BIN_HI -> {-SMALL, +SMALL}; else {-SMALL, -LARGE}. Production behaviour (then * kFDStepScale).
+constexpr double FB_BIN_LO     = 0.15;
+constexpr double FB_BIN_HI     = 0.85;
+constexpr double FB_STEP_SMALL = 0.07;
+constexpr double FB_STEP_LARGE = 0.15;
 // A telescope contributing fewer than kMinTeleEpochs epochs to an event is left out of the
 // photometric matrices altogether (Deviation 76): its flux pair (fb, mbs) cannot be constrained,
 // and with one epoch the joint matrix went singular (condition 1.5e16 on the bulge event whose joint

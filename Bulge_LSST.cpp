@@ -227,9 +227,9 @@ struct RunConfig {
     // met. icon counts detected events, nlens those also Fisher-characterised,
     // nerr an accumulated Fisher-error weight. These set the Poisson precision of
     // every per-sightline quantity.
-    int    iconTarget  = 850;
-    int    nlensTarget = 150;
-    double nerrTarget  = 2.0;
+    int    iconTarget  = DEFAULT_EVENTS_TARGET;
+    int    nlensTarget = DEFAULT_LENSES_TARGET;
+    double nerrTarget  = DEFAULT_NERR_TARGET;
 
     // Hard cap on stars drawn at ONE sightline, regardless of the budgets above.
     //
@@ -252,7 +252,7 @@ struct RunConfig {
     // count, so the sightlines that could approach the cap are the sparse ones, where a
     // draw is ~1 ms (measured: 331,931 draws in 5.5 min at a zero-epoch sightline) and
     // 5e4 draws costs under a minute.
-    double maxDraws    = 5.0e4;
+    double maxDraws    = DEFAULT_MAXDRAWS;
 
     // Restrict the scan to the old hardcoded 0.1x0.1 deg patch instead of the full
     // region. Kept only so a run can be compared against the pre-Step-4 numbers.
@@ -2316,7 +2316,7 @@ int main(int argc, char** argv) {
                 //cout << "flagf: " << flagf << "ndw: " << ndw << endl;
 
                 if (flagf == 0 or ndw <= 2) {
-                    errg    = errlsstM(s->magb[2], 2, double(24.43)); //r-band
+                    errg    = errlsstM(s->magb[2], 2, double(RUBIN_R_DEPTH5_FALLBACK)); //r-band
                     s->errA = errlsstA(*ls, s->magb[2]); //r-band
                     s->errM = std::fabs(std::pow(10.0, - 0.4 * errg) - 1.0); //r-band
                     dchiL = 0.0;
@@ -3320,15 +3320,15 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 ///        Photometry                                  ///
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
-    co.Delta1[0] = 0.1507586576;//u0
-    co.Delta1[1] = l.tE * 0.254674;//tE [days]
-    co.Delta1[3] = 0.2509463534656 * l.piE;//piE
-    co.Delta1[4] = 3.0 * M_PI / 180.0; //for xi [radian]
-    co.Delta1[5] = l.tE * 0.254674; // t0 [days] -- same fractional-of-tE step as tE itself,
+    co.Delta1[0] = FD_STEP_U0;//u0
+    co.Delta1[1] = l.tE * FD_STEP_TE_FRAC;//tE [days]
+    co.Delta1[3] = FD_STEP_PIE_FRAC * l.piE;//piE
+    co.Delta1[4] = FD_STEP_XI_DEG * M_PI / 180.0; //for xi [radian]
+    co.Delta1[5] = l.tE * FD_STEP_TE_FRAC; // t0 [days] -- same fractional-of-tE step as tE itself,
     // since t0's local curvature scale is set by the same characteristic timescale.
     // Placeholder pending Step C3's step-size convergence sweep, like the other four.
-    co.Delta1[6] = 0.05; // mbs0 [mag] -- Rubin baseline magnitude
-    co.Delta1[8] = 0.05; // mbs1 [mag] -- Roman baseline magnitude
+    co.Delta1[6] = FD_STEP_MBS; // mbs0 [mag] -- Rubin baseline magnitude
+    co.Delta1[8] = FD_STEP_MBS; // mbs1 [mag] -- Roman baseline magnitude
 
     // Step C3. The five constants above came from the legacy LMC codebase and are ~25% of the
     // parameter value -- u0 is perturbed by 0.15 on a u0 of ~0.3, tE and t0 by 0.25*tE. That is
@@ -3354,7 +3354,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     // rise correspondingly and are now genuine. The joint-vs-single-survey RATIOS, which the
     // thesis rests on, are unchanged in ordering and magnitude (Step C5's paired comparison
     // cancels the common inflation); see DEVIATIONS.md.
-    constexpr double kFDStepScale = 1.0e-4;
+    // kFDStepScale (= 1.0e-4): see config/parameters.h, section 7.
     for (int q = 0; q < Nx; ++q) co.Delta1[q] *= kFDStepScale * co.deltaScale[q];
     // The model magnitude depends on mbs linearly with unit slope, so the finite difference is
     // exact for any step and this value only has to avoid underflow. fb0 (index 2) and fb1
@@ -3405,9 +3405,9 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         // that hard-crashed the whole program. Discovered running Step C1's
         // acceptance test; unrelated to that step, fixed here first because it
         // blocks numerical verification of every Fisher-matrix step.
-        if (s.fb[tt] < 0.15)      {co.bb[0] =+ 0.07; co.bb[1] =+ 0.15;}
-        else if (s.fb[tt] < 0.85) {co.bb[0] =- 0.07; co.bb[1] =+ 0.07;}
-        else                      {co.bb[0] =- 0.07; co.bb[1] =- 0.15;}
+        if (s.fb[tt] < FB_BIN_LO)      {co.bb[0] =+ FB_STEP_SMALL; co.bb[1] =+ FB_STEP_LARGE;}
+        else if (s.fb[tt] < FB_BIN_HI) {co.bb[0] =- FB_STEP_SMALL; co.bb[1] =+ FB_STEP_SMALL;}
+        else                      {co.bb[0] =- FB_STEP_SMALL; co.bb[1] =- FB_STEP_LARGE;}
 
         // Step C3: apply the same plateau scaling as Delta1[] above, then clamp so the step
         // still cannot leave the physical range [0,1]. The bin edges above guarantee

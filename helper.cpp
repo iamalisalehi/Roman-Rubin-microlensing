@@ -186,7 +186,7 @@ double errlsstM(double mag, int fi, double sig5){ //LSST Photometric Error
 
     double x, Delta1 = 0.0;
     x = std::pow(10.0, 0.4 * (mag - sig5));
-    Delta1 = std::sqrt(std::fabs((0.04 - gama[fi]) * x + gama[fi] * x * x));
+    Delta1 = std::sqrt(std::fabs((LSST_ERR_C04 - gama[fi]) * x + gama[fi] * x * x));
     
     if (Delta1 < 0.0001)   Delta1 = 0.0001;
 

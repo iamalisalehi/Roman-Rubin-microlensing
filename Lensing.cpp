@@ -57,7 +57,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
         // This moves Rubin slightly as well: its mean count goes from lambda to 1 + lambda,
         // about +8% in r band. That is the same Palm-conditioning correction, previously
         // missing, and it is not separable from the Roman fix -- they are one line.
-        const double lambda = std::fabs(s.Nstart * std::pow(FWHM[i] * 0.5, 2) * M_PI
+        const double lambda = std::fabs(s.Nstart * std::pow(FWHM[i] * BLEND_RADIUS_FWHM_FRAC, 2) * M_PI
                                         / (3600.0 * 3600.0));
         s.nsbl[i] = 1.0 + double(RandPois(lambda));
         if (s.nsbl[i] > maxnb) {
@@ -68,7 +68,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
 
     for (int k = 1; k <= int(maxnb + 0.000000034756346); ++k) {
         do {
-            nums = int(RandR(5.0, Num - 2.0));
+            nums = int(RandR(SRC_IDX_MIN, Num - SRC_IDX_END_MARGIN));
             rho  = RandR(s.Romins, s.Romaxs);
             Ds   = double(nums * step);
         } while (rho > s.Rostari[nums] or Ds < 0.0 or Ds > MaxD); //distance larger than 20.0
@@ -331,8 +331,8 @@ void func_lens(lens & l, source & s, const extin & ex, int sightlineIdx){
         }
     }
 
-    l.u0     = RandR(0.001, u0m);
-    l.t0     = RandR(2.0, Tobs - 2.0);
+    l.u0     = RandR(U0_MIN_DRAW, u0m);
+    l.t0     = RandR(T0_MARGIN_DAYS, Tobs - T0_MARGIN_DAYS);
     l.DeltaT = std::sqrt(4.0 + l.u0 * l.u0) * l.tetE; //[mas]
 
     vrel(s,l);

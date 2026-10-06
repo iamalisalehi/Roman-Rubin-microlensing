@@ -238,18 +238,22 @@ constexpr int NaRoman = 123;  // rows in sigma_roman.txt
 // anchoring to STScI's number moves it by only ~-0.07 mag.
 constexpr double ROMAN_PHOT_FLOOR = 0.001;   //mag, Penny et al. 2019 Table 2 "Error floor 1.0 mmag"
 constexpr int nq = 15;     //resu
-// CMD/components/*.dat row counts (CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo). Since Deviation 81
-// the lists are the COMPLETE Besancon population (no visibility filter; the bulge is a 3.5M random
-// subsample of 5,949,004); CMD/components/provenance.txt has the counts.
-constexpr int N1 = 889406, N2 = 3500000, N3 = 1058765, N4 = 5025;
-// Mean stellar mass of each list, dark entries included (provenance.txt). Disk_model's star count
-// Nstart = rho / <m>, so these make Nstart count exactly the population a draw comes from. They
-// replace the legacy 0.403445 (thin), 0.4542 (thick, halo) and 0.308571 (bulge) of an unrecorded
-// "mass_averaged.cpp" (Deviation 81).
-constexpr double MEANMASS_THIN  = 0.4212;
-constexpr double MEANMASS_BULGE = 0.4199;
-constexpr double MEANMASS_THICK = 0.4594;
-constexpr double MEANMASS_HALO  = 0.3774;
+// CMD/components/*.dat row counts (CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo). The lists are the
+// COMPLETE Besancon population (no visibility filter; the bulge is a 3.5M random subsample of
+// 7,256,344). Since bos10 (Deviation 88) they come from the noise-free catalogue bos10 with Besancon's
+// own stellar types; Deviation 81 had built them from bos9, and those lists (889406 / 3500000 / 1058765 /
+// 5025 rows) are kept in CMD/components_v2_bos9dev82/. CMD/components/provenance.txt has the counts.
+constexpr int N1 = 1288584, N2 = 3500000, N3 = 2008646, N4 = 18541;
+// Mean stellar mass of each POPULATION (provenance.txt, mean_mass_population: before the bulge subsample;
+// dark entries included). Disk_model's star count Nstart = rho / <m>, so these make Nstart count exactly
+// the population a draw comes from. bos10 values (Deviation 88); they replace the bos9 values
+// 0.4212 / 0.4199 / 0.4594 / 0.3774 of Deviation 81 and, before that, the legacy 0.403445 (thin), 0.4542
+// (thick, halo) and 0.308571 (bulge) of an unrecorded "mass_averaged.cpp". Mirrored in
+// analysis/galaxy_model.py (MBAR_*) and analysis/besancon_sample.py (MEANMASS): change all three together.
+constexpr double MEANMASS_THIN  = 0.3664;
+constexpr double MEANMASS_BULGE = 0.4148;
+constexpr double MEANMASS_THICK = 0.4849;
+constexpr double MEANMASS_HALO  = 0.4224;
 // Magnitude of a "dark" list entry (brown dwarf, white dwarf: no MIST track) -- zero light.
 constexpr double DARK_MAG = 99.0;
 // Data rows in BulgeBaseline.dat, EXCLUDING the header. Regenerated 2026-10-01 (Deviation 69:

@@ -35,10 +35,12 @@ CORR = np.array([1.0, 7.9 / 4.48419, 6.2 / 3.52112, 4.0 / 2.27237,
 BAR_MASS_RESCALE = 0.24529       # calibrated to the Han & Gould (2003) Baade's Window benchmark
 
 # Mean stellar mass per component, the divisors in Nstari: Bulge.h's MEANMASS_*, the mean mass of
-# each complete CMD list (Deviation 81). Runs before Deviation 81 used the legacy
-# 0.403445 / 0.4542 / 0.4542 / 0.308571 (thin, thick, halo, bulge); their Nstart is in their own map
-# files, which is what the weights read.
-MBAR_THIN, MBAR_THICK, MBAR_HALO, MBAR_BULGE = 0.4212, 0.4594, 0.3774, 0.4199
+# each complete CMD population (provenance.txt, mean_mass_population). Current values are the bos10
+# lists' (Deviation 88; thin 0.3664, bulge 0.4148, thick 0.4849, halo 0.4224). Runs before that used the
+# bos9 lists' 0.4212 / 0.4199 / 0.4594 / 0.3774 (thin, bulge, thick, halo; Deviation 81), and runs before
+# Deviation 81 the legacy 0.403445 / 0.4542 / 0.4542 / 0.308571 (thin, thick, halo, bulge); their Nstart
+# is in their own map files, which is what the weights read.
+MBAR_THIN, MBAR_THICK, MBAR_HALO, MBAR_BULGE = 0.3664, 0.4849, 0.4224, 0.4148
 
 
 class Profile:

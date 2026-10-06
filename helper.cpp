@@ -300,13 +300,6 @@ void read_cmd(CMD & cm)
 
     std::getline(fp2, header);   // Skip the header line
     for (size_t j = 0; j < N1; ++j) {
-        CHECK(cm.mass_thin[j]   >= 0.0);
-        CHECK(cm.logT_thin[j]   >= 0.0);
-        CHECK(cm.Mab_thin[j][2] <= 20.0 or cm.Mab_thin[j][2] == DARK_MAG);
-        CHECK(cm.age_thin[j]    <= 10);
-        CHECK(cm.cl_thin[j]     <= 7);
-        CHECK(cm.typ_thin[j]    <= 9.0);
-
           if (!(fp2 >> cm.mass_thin[j]
                     >> cm.logT_thin[j]
                     >> Mbol
@@ -323,6 +316,15 @@ void read_cmd(CMD & cm)
                     >> cm.typ_thin[j])) {
               throw std::runtime_error("Unexpected end of thin_disk.dat");
           }
+        // The CHECKs follow the read: placed before it they tested the zero-initialised slot, never the value read.
+        // M_r <= 30: the thin disc's luminous brown-dwarf-limit stars reach M_r = 28.86 (bos10, Deviation 88);
+        // Typ <= 9.2: white dwarfs are Typ 9.0-9.2 and sit in the list as dark entries.
+        CHECK(cm.mass_thin[j]   >= 0.0);
+        CHECK(cm.logT_thin[j]   >= 0.0);
+        CHECK(cm.Mab_thin[j][2] <= 30.0 or cm.Mab_thin[j][2] == DARK_MAG);
+        CHECK(cm.age_thin[j]    <= 10);
+        CHECK(cm.cl_thin[j]     <= 7);
+        CHECK(cm.typ_thin[j]    <= 9.2);
       }
 
     // Make sure there's no extra data.
@@ -337,12 +339,6 @@ void read_cmd(CMD & cm)
 
     std::getline(fp2, header);   // Skip the header line
     for (size_t j = 0; j < N2; ++j) {
-        CHECK(cm.mass_bulge[j]   >= 0.0);
-        CHECK(cm.logT_bulge[j]   >= 0.0);
-        CHECK(cm.Mab_bulge[j][2] <= 20.0 or cm.Mab_bulge[j][2] == DARK_MAG);
-        CHECK(cm.age_bulge[j]    <= 10);
-        CHECK(cm.cl_bulge[j]     <= 7);
-        CHECK(cm.typ_bulge[j]    <= 9.0);
           if (!(fp2 >> cm.mass_bulge[j]
                     >> cm.logT_bulge[j]
                     >> Mbol
@@ -359,6 +355,13 @@ void read_cmd(CMD & cm)
                     >> cm.typ_bulge[j])) {
               throw std::runtime_error("Unexpected end of bulge.dat");
           }
+        // CHECKs follow the read (see the thin disk); same bounds.
+        CHECK(cm.mass_bulge[j]   >= 0.0);
+        CHECK(cm.logT_bulge[j]   >= 0.0);
+        CHECK(cm.Mab_bulge[j][2] <= 30.0 or cm.Mab_bulge[j][2] == DARK_MAG);
+        CHECK(cm.age_bulge[j]    <= 10);
+        CHECK(cm.cl_bulge[j]     <= 7);
+        CHECK(cm.typ_bulge[j]    <= 9.2);
     }
 
     CHECK(!(fp2 >> dummy));
@@ -372,13 +375,6 @@ void read_cmd(CMD & cm)
 
     std::getline(fp2, header);   // Skip the header line
     for (size_t j = 0; j < N3; ++j) {
-        CHECK(cm.mass_thick[j]   >= 0.0);
-        CHECK(cm.logT_thick[j]   >= 0.0);
-        CHECK(cm.Mab_thick[j][2] <= 20.0 or cm.Mab_thick[j][2] == DARK_MAG);
-//        CHECK(cm.age_thick[j]    <= 8);
-        CHECK(cm.age_thick[j]    <= 13);
-        CHECK(cm.cl_thick[j]     <= 7);
-        CHECK(cm.typ_thick[j]    <= 9.0);
           if (!(fp2 >> cm.mass_thick[j]
                     >> cm.logT_thick[j]
                     >> Mbol
@@ -395,6 +391,14 @@ void read_cmd(CMD & cm)
                     >> cm.typ_thick[j])) {
               throw std::runtime_error("Unexpected end of thick_disk.dat");
           }
+        // CHECKs follow the read (see the thin disk); same bounds.
+        CHECK(cm.mass_thick[j]   >= 0.0);
+        CHECK(cm.logT_thick[j]   >= 0.0);
+        CHECK(cm.Mab_thick[j][2] <= 30.0 or cm.Mab_thick[j][2] == DARK_MAG);
+//        CHECK(cm.age_thick[j]    <= 8);
+        CHECK(cm.age_thick[j]    <= 13);
+        CHECK(cm.cl_thick[j]     <= 7);
+        CHECK(cm.typ_thick[j]    <= 9.2);
     }
 
     CHECK(!(fp2 >> dummy));
@@ -408,13 +412,6 @@ void read_cmd(CMD & cm)
 
     std::getline(fp2, header);   // Skip the header line
     for (size_t j = 0; j < N4; ++j) {
-        CHECK(cm.mass_halo[j]   >= 0.0);
-        CHECK(cm.logT_halo[j]   >= 0.0);
-        CHECK(cm.Mab_halo[j][2] <= 20.0 or cm.Mab_halo[j][2] == DARK_MAG);
-//        CHECK(cm.age_halo[j]    <= 9);
-        CHECK(cm.age_halo[j]    <= 14);
-        CHECK(cm.cl_halo[j]     <= 7);
-        CHECK(cm.typ_halo[j]   <= 9.0);
           if (!(fp2 >> cm.mass_halo[j]
                     >> cm.logT_halo[j]
                     >> Mbol
@@ -431,6 +428,14 @@ void read_cmd(CMD & cm)
                     >> cm.typ_halo[j])) {
               throw std::runtime_error("Unexpected end of halo.dat");
           }
+        // CHECKs follow the read (see the thin disk); same bounds.
+        CHECK(cm.mass_halo[j]   >= 0.0);
+        CHECK(cm.logT_halo[j]   >= 0.0);
+        CHECK(cm.Mab_halo[j][2] <= 30.0 or cm.Mab_halo[j][2] == DARK_MAG);
+//        CHECK(cm.age_halo[j]    <= 9);
+        CHECK(cm.age_halo[j]    <= 14);
+        CHECK(cm.cl_halo[j]     <= 7);
+        CHECK(cm.typ_halo[j]    <= 9.2);
     }
 
     CHECK(!(fp2 >> dummy));

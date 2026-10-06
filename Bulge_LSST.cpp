@@ -95,7 +95,7 @@ int matchVisibleEpochs(const char* label, Covers covers,
     return ndd;
 }
 // Roman's per-exposure F146 photometric error [mag] at AB magnitude `mag` (Deviation 72): the
-// Penny et al. 2019 curve, anchored at load time to the 66-s 5-sigma depth (see Bulge.h), with
+// Penny et al. 2019 curve, anchored at load time to the 66-s 5-sigma depth (see config/parameters.h), with
 // log(err) interpolated linearly in magnitude. Brighter than the table: its first value (the 1 mmag
 // floor dominates there); fainter: extrapolated along the last segment (the recording gate stops at
 // the 5-sigma depth, well inside the table, so this branch only serves diagnostics).
@@ -206,7 +206,7 @@ struct RunConfig {
 
     // Step H7. The delta-chi2 a lensing model must beat a flat baseline by before the event
     // counts as detected, for each of detL, detR and detJ. A FIXED bar, not one scaled by the
-    // epoch count: see the derivation at DCHI_DET_DEFAULT in Bulge.h. Exposed because every
+    // epoch count: see the derivation at DCHI_DET_DEFAULT in config/parameters.h. Exposed because every
     // yield this project reports is conditioned on it, so it belongs in run_provenance.txt
     // and has to be variable for a sensitivity test.
     double dchiDet     = DCHI_DET_DEFAULT;
@@ -928,7 +928,7 @@ int main(int argc, char** argv) {
     }
     fil.close();
     {
-        // Deviation 72: anchor the curve's 5-sigma point to ROMAN_DEPTH5_AB (see Bulge.h).
+        // Deviation 72: anchor the curve's 5-sigma point to ROMAN_DEPTH5_AB (see config/parameters.h).
         const double e5 = 1.0857 / 5.0;
         double m5 = -1.0;
         for (int i = 1; i < NaRoman; ++i)
@@ -1001,7 +1001,7 @@ int main(int argc, char** argv) {
                   << "       shortest season " << sched.minSeasonLength << " d\n"
                   << "       (" << sched.seasons.size() << " season(s) found over days "
                   << sched.missionStart << " - " << sched.missionEnd << ").\n"
-                  << "       Retune SEASON_GAP_MIN_DAYS in Bulge.h against the cadence in\n"
+                  << "       Retune SEASON_GAP_MIN_DAYS in config/parameters.h against the cadence in\n"
                   << "       Baseline/generateRomanBaseline.py before trusting dt_edge/t0zone.\n";
         return 2;
     }
@@ -1297,7 +1297,7 @@ int main(int argc, char** argv) {
     }
 
     // Scan bounds (Deviation 69). The region is every point within scanReach of a field centre
-    // (see SCAN_RUBIN_REACH in Bulge.h); the grid's bounding box is that, with its origin on a
+    // (see SCAN_RUBIN_REACH in config/parameters.h); the grid's bounding box is that, with its origin on a
     // multiple of the coarse step so sightlines sit at round coordinates. The stub is a 0.1 x
     // 0.1 deg test patch inside field 3, which both rolls image (spring centre l 0.500, autumn
     // 0.350; it was l 0.5-0.6, b -1.0..-0.9 before, which the adopted fields do not reach).
@@ -2015,7 +2015,7 @@ int main(int argc, char** argv) {
                             magni0[i] = s->magb[i] - 2.5 * std::log10(Astar0   * s->blend[i] + 1.0 - s->blend[i]);
                             magni[i]  = s->magb[i] - 2.5 * std::log10(s->Astar * s->blend[i] + 1.0 - s->blend[i]);
                         }
-                        // Rubin's representative-band model magnitude (RUBIN_REF_BANDS, Bulge.h) --
+                        // Rubin's representative-band model magnitude (RUBIN_REF_BANDS, config/parameters.h) --
                         // replaces the old hardcoded magni[2] (r-band) at the two use sites below.
                         // Reduces to exactly magni[2] when RUBIN_REF_BANDS = {2} (the default), since
                         // s->mbs[0]/s->fb[0] were built from the same combination in func_source.
@@ -2177,7 +2177,7 @@ int main(int argc, char** argv) {
 
                                 // Step H4: Roman's own per-exposure astrometric error, replacing the
                                 // errlsstA() placeholder (Rubin's curve at Roman's magnitude, which had
-                                // no reason to be right). Constants and sources in Bulge.h; the model
+                                // no reason to be right). Constants and sources in config/parameters.h; the model
                                 // is per EXPOSURE, which is what one row of RomanBaseline.dat is.
                                 errsR = errRomanA(magni[fiR]); //[mas]
 
@@ -3380,7 +3380,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 
 
 
-    // Deviation 76: a telescope with fewer than kMinTeleEpochs epochs is left out (see Bulge.h).
+    // Deviation 76: a telescope with fewer than kMinTeleEpochs epochs is left out (see config/parameters.h).
     std::array<int, 2> nTele{0, 0};
     for (int i = 0; i < ndw; ++i) nTele[int(l.tele[i]) == 1 ? 1 : 0] += 1;
 
@@ -3698,7 +3698,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     }
 
     // ---- Step 3c (Deviation 71): per-coordinate weights, free reference positions, and the
-    // three noise variants (AST_SIGC in Bulge.h), from ONE pass over the epochs. ----
+    // three noise variants (AST_SIGC in config/parameters.h), from ONE pass over the epochs. ----
     //
     // Per epoch the 4-vector of derivatives of each sky coordinate is computed once (Ny x 2 model
     // evaluations). Until Deviation 71 the matrix was built element by element and re-evaluated

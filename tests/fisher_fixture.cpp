@@ -889,7 +889,7 @@ bool checkSeasonClustering()
 }
 
 // ---------------------------------------------------------------------------------------------
-// Step 3c (Deviation 71): the astrometric noise variants W / N / P (AST_SIGC in Bulge.h).
+// Step 3c (Deviation 71): the astrometric noise variants W / N / P (AST_SIGC in config/parameters.h).
 //
 // Prints, per event and partition, sigma(tetE), the astrometric sigma(piE) and relMl under each
 // variant, and ASSERTS the ordering sigma_W <= sigma_N <= sigma_P on tetE. It is a theorem, not a

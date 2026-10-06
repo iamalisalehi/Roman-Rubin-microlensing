@@ -29,7 +29,7 @@ import os
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DGRID = np.arange(0.05, 20.0, 0.05)            # kpc; 399 distances (Bulge.h MaxD = 12 kpc)
+DGRID = np.arange(0.05, 20.0, 0.05)            # kpc; 399 distances (config/parameters.h MaxD = 12 kpc)
 RV_DECAPS = 3.32
 DECAPS_AV_MAX = 12.0
 K_NOMINAL_LEGACY = 0.0805                      # U5/U6 on the notional layout (Deviation 63)

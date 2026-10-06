@@ -64,7 +64,7 @@ REACH = G.scan_reach() + RUBIN_MAX_RADIUS
 # and the generator's MISSION_START_DAY are defined. Visits before it, or after Tobs, fall
 # outside the simulated window and are dropped (40 before day 0, none after, on v5.1.0).
 TIME0_MJD = 61141.312002288
-TOBS_DAYS = 10.0 * 365.2425          # Bulge.h Tobs
+TOBS_DAYS = 10.0 * 365.2425          # config/parameters.h Tobs
 
 #RA0, RA1, DEC0, DEC1 = float(75.0 - 3.5 / 2.0), float(90.0 + 3.5 / 2.0),  float(-75.0 -3.5 / 2.0), float(-60.0 + 3.5 / 2.0)##Bulge
 #fil = open("./Bulgebaseline.dat", "w")
@@ -145,7 +145,7 @@ dist  = np.zeros((nr))
 # that header and zero-fills every remaining record without any CHECK firing.
 fil   = open("./BulgeBaseline.dat", "w")
 fil.write("#ID  RA  Dec  l  b  time  filter  airmass  seeing  skyBrightness visittime sigma5 texp distance rotSkyPos\n")
-print(f"BulgeBaseline.dat: writing {nr} visit rows -- set Nl = {nr} in Bulge.h")
+print(f"BulgeBaseline.dat: writing {nr} visit rows -- afterwards run `python3 tools/sync_data_products.py` from the repo root to update Nl in config/data_products.h")
 
 tst   = np.zeros((nr, 15))
 idx   = np.argsort(tstA[:nr, 5])

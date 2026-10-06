@@ -42,7 +42,7 @@ import plotstyle as ps        # noqa: E402
 # because a single qualifying epoch is as likely to be noise as signal.
 RESOLVE_MIN_EPOCHS = 3
 
-# Roman's per-exposure astrometric floor [mas] -- Bulge.h ROMAN_AST_FLOOR. Used only as a
+# Roman's per-exposure astrometric floor [mas] -- config/parameters.h ROMAN_AST_FLOOR. Used only as a
 # reference line; the per-event precision is a function of magnitude and is far worse than
 # this for a typical bulge source (measured median 6.69 mas in the v3 run).
 ROMAN_AST_FLOOR = 1.1

@@ -74,8 +74,9 @@ with TODO(Ali) below too):
 -------------------------------------------------------------------------------
 USAGE:
     python3 generateRomanBaseline.py
-Writes ./Baseline/RomanBaseline.dat and prints the row count to set as
-`NlRoman` in Bulge.h.
+Writes ./Baseline/RomanBaseline.dat and prints the row count; run
+`python3 tools/sync_data_products.py` from the repo root afterwards to update
+`NlRoman` in config/data_products.h.
 -------------------------------------------------------------------------------
 """
 
@@ -142,7 +143,7 @@ LOW_CADENCE_DAYS  = 5.0
 #
 # Still a modelling choice; override at run time with --mission-start DAYS.
 MISSION_START_DAY = 306.0
-TOBS_DAYS = 10.0 * YEAR_DAYS  # must match Tobs in Bulge.h -- the C++ read CHECKs against it
+TOBS_DAYS = 10.0 * YEAR_DAYS  # must match Tobs in config/parameters.h -- the C++ read CHECKs against it
 
 # The adopted GBTDS fields, one list per roll (layout 0 = spring, 1 = autumn), read from the
 # vendored layout files so the numbers live in one place (Baseline/gbtds_layout/README.md).
@@ -243,7 +244,7 @@ def main():
             )
 
     print(f"Wrote {len(rows)} Roman F146 visits to {OUTPUT_PATH}")
-    print(f"NlRoman = {len(rows)}   <-- set this constant in Bulge.h")
+    print(f"NlRoman = {len(rows)}   <-- run `python3 tools/sync_data_products.py` from the repo root to update config/data_products.h")
     print(f"Time span: {rows[:, 5].min():.1f} to {rows[:, 5].max():.1f} days "
           f"(mission start = {args.mission_start:g} d on the Rubin clock)")
     print(f"Fields: {len(FIELDS_BY_LAYOUT[0])} per roll, 2 rolls | Seasons: {N_SEASONS} "

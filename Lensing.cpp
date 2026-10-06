@@ -206,7 +206,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
     }
 
     // For purposes of Fisher Matrix calculations.
-    // Rubin's representative band is configurable (RUBIN_REF_BANDS, Bulge.h) rather than
+    // Rubin's representative band is configurable (RUBIN_REF_BANDS, config/parameters.h) rather than
     // hardcoded to r: combine the listed filters' fluxes into one synthetic baseline flux
     // and one synthetic source-only flux, the same way a single filter already worked.
     // RUBIN_REF_BANDS = {2} reduces to exactly the old r-only behavior, bit-for-bit.
@@ -276,7 +276,7 @@ void func_lens(lens & l, source & s, const extin & ex, int sightlineIdx){
      //cout<<"Dl:  "<<l.Dl<<"\t struc_lens :  "<<l.struc<<endl;
 
     // Which mass function this draws from is a property of the population selected by
-    // --population (POPULATIONS in Bulge.h), not of the build. Every branch that used to
+    // --population (POPULATIONS in config/parameters.h), not of the build. Every branch that used to
     // live here -- uniform, three power laws, Kroupa+remnants -- now lives in drawLensMass()
     // beside the two new ones, so a population is one table entry rather than an `if` here
     // plus a constant there plus a filename suffix somewhere else.

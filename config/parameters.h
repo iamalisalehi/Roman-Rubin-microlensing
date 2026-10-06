@@ -16,6 +16,7 @@
 
 #include "physical_constants.h"
 #include "parameter_types.h"
+#include "data_products.h"   // LSST_AST_TABLE_FLOOR (generated from files/sigmaA_LSST.txt)
 
 // ==========================================================================================
 // (1) RUN DEFAULTS
@@ -215,7 +216,8 @@ constexpr double Tobs = 10.0 * year;///LSST observational time 10 years
 // single-visit floor may be nearer 3-7 mas, which would make Rubin better than assumed here.
 // ---------------------------------------------------------------------------------------
 constexpr double LSST_AST_FLOOR       = 10.0;      //mas per visit per coordinate [3]
-constexpr double LSST_AST_TABLE_FLOOR = 0.3739576; //mas, the bright-star floor as shipped
+// LSST_AST_TABLE_FLOOR (0.3739576 mas, the bright-star floor of the table as shipped) is a property of the
+// table, so it lives in the generated config/data_products.h.
 constexpr double LSST_AST_RENORM      = LSST_AST_FLOOR / LSST_AST_TABLE_FLOOR; //26.74
 constexpr double FoV = double(3.5 / 2.0);  //the radius of teh Rubin Field of View
 // The scan region (Deviation 69; replaces the l1/l2/b1/b2 box and its lx/bx corner cut, which

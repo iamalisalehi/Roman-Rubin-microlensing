@@ -34,7 +34,7 @@ CORR = np.array([1.0, 7.9 / 4.48419, 6.2 / 3.52112, 4.0 / 2.27237,
                  5.8 / 3.29525, 4.9 / 2.78402, 6.6 / 3.74991, 3.96 / 2.24994])
 BAR_MASS_RESCALE = 0.24529       # calibrated to the Han & Gould (2003) Baade's Window benchmark
 
-# Mean stellar mass per component, the divisors in Nstari: Bulge.h's MEANMASS_*, the mean mass of
+# Mean stellar mass per component, the divisors in Nstari: config/data_products.h's MEANMASS_*, the mean mass of
 # each complete CMD population (provenance.txt, mean_mass_population). Current values are the bos10
 # lists' (Deviation 88; thin 0.3664, bulge 0.4148, thick 0.4849, halo 0.4224). Runs before that used the
 # bos9 lists' 0.4212 / 0.4199 / 0.4594 / 0.3774 (thin, bulge, thick, halo; Deviation 81), and runs before

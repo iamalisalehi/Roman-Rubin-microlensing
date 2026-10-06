@@ -84,7 +84,7 @@ LABEL = {"joint": "joint fit", "roman": "Roman alone", "rubin": "Rubin alone"}
 ACCENT = "#7c3aed"
 
 # Roman WFI per-exposure astrometric precision, F146, in mas.
-# KEEP IN SYNC WITH Bulge.h (ROMAN_AST_* constants, Step H4). Sources: Sanderson et al. 2019
+# KEEP IN SYNC WITH config/parameters.h (ROMAN_AST_* constants, Step H4). Sources: Sanderson et al. 2019
 # (arXiv:1712.05420) and arXiv:2608.24998. Duplicated here rather than parsed out of the
 # header because parsing a C++ expression is more fragile than a cross-reference; if the C++
 # constants move, move these.

@@ -8,7 +8,7 @@ with Nstart = rho / <m>. A draw therefore stands for a random member of the popu
 and the lists must be that population -- complete, not "the stars someone could see".
 
 There is NO visibility filter. Until Deviation 81 one kept a star only if it was visible in F146 AND
->= 1 LSST band at its Besancon distance, against thre/satu parsed from Bulge.h. That excluded
+>= 1 LSST band at its Besancon distance, against thre/satu parsed from config/parameters.h. That excluded
 Roman-only stars, stars visible only when magnified, stars saturated at their catalogue distance --
 40% of the bulge -- and, because the neighbours come from the same lists, made every blend too
 bright. Visibility is decided where it belongs: per event in the simulator, with magnification,
@@ -20,7 +20,7 @@ of what Nstart counts, so dropping it would bias the list bright, but it contrib
 
 MEAN MASSES. <m> per component over the whole list (dark entries included) is printed and written
 to <out-dir>/provenance.txt, twice: over the WRITTEN list and over the full pre-subsample population
-(real catalogue stars plus any synthetic ones). Bulge.h's MEANMASS_* must equal the population value,
+(real catalogue stars plus any synthetic ones). config/data_products.h's MEANMASS_* (generated from provenance.txt by tools/sync_data_products.py) must equal the population value,
 so that Nstart counts the very population the draws come from.
 
 COMMAND LINE (paths are relative to CMD/; the script changes into it):
@@ -827,7 +827,7 @@ def build(a):
     with open(os.path.join(out_dir, "provenance.txt"), "w") as f:
         f.write(prov)
     print("\n" + prov)
-    print("Bulge.h at adoption: N1..N4 = written counts (thin, bulge, thick, halo); MEANMASS_* = mean_mass_population.")
+    print("To adopt: run `python3 tools/sync_data_products.py` from the repo root -- it sets N1..N4 (written counts: thin, bulge, thick, halo) and MEANMASS_* (mean_mass_population) in config/data_products.h.")
 
 
 def provenance_text(a, out_dir, clamp, rep, info, offsets, fill_info, emp, elapsed, peak_mb):
@@ -847,7 +847,7 @@ def provenance_text(a, out_dir, clamp, rep, info, offsets, fill_info, emp, elaps
         L.append(f"{nm} {i['n_catalogue']} {i['n_synthetic']} {i['n_population']} {i['n_written']} "
                  f"{i['n_dark']} {i['n_dark_wd']} {i['n_dark_nobc']} {i['mean_mass_population']:.4f} "
                  f"{i['mean_mass_catalogue']:.4f} {i['mean_mass_written']:.4f} {i['median_Mr_lum']:.3f}")
-    L.append("# mean_mass_population -> Bulge.h MEANMASS_* (real catalogue stars + synthetic, before the subsample);"
+    L.append("# mean_mass_population -> config/data_products.h MEANMASS_* via tools/sync_data_products.py (real catalogue stars + synthetic, before the subsample);"
              " n_written -> N1..N4")
     L.append("# stars with no MIST BC that are not white dwarfs (mass, Teff, logg, [M/H], [a/Fe]):")
     for nm, i in info.items():

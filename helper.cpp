@@ -224,7 +224,7 @@ double errlsstA(lsst & ls, double ghadr){ //LSST Astrometric Error  //Change it!
     CHECK(ghadr >= 0.0);
 
     // Renormalise the shipped mission-averaged curve to a PER-VISIT error, which is what
-    // l.erra[] means and what FisherM assumes. See the LSST_AST_* block in Bulge.h for the
+    // l.erra[] means and what FisherM assumes. See the LSST_AST_* block in config/parameters.h for the
     // two independent checks that fix the factor at 26.74. Applied here rather than by
     // editing files/sigmaA_LSST.txt so the input data stay as delivered and the correction
     // is visible in the code that depends on it.
@@ -242,7 +242,7 @@ double errlsstA(lsst & ls, double ghadr){ //LSST Astrometric Error  //Change it!
 //
 // Replaces the errlsstA() placeholder that stood in for Roman -- Rubin's astrometric error
 // curve evaluated at Roman's magnitude, which had no reason to be right and was flagged in
-// OPEN_ITEMS.md. Constants, their sources and the per-exposure caveat are in Bulge.h.
+// OPEN_ITEMS.md. Constants, their sources and the per-exposure caveat are in config/parameters.h.
 //
 // Three regimes:
 //   m <= 20.62   1.1 mas       centroiding floor, 1% of the 110 mas pixel. A systematic,
@@ -773,7 +773,7 @@ double AlAv(double lambda_um, double Rv)
 /// from the Sun, separated by ~110-day gaps when it is not. Everything downstream that
 /// asks "did Roman have data near this event's peak?" needs those windows, and the only
 /// authoritative statement of them is the epoch times themselves. So they are recovered
-/// from the data rather than restated -- see the note above SEASON_GAP_MIN_DAYS in Bulge.h.
+/// from the data rather than restated -- see the note above SEASON_GAP_MIN_DAYS in config/parameters.h.
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 RomanSchedule buildRomanSchedule(const roman& ro)
 {
@@ -1018,7 +1018,7 @@ double drawLogUniformMass(double lo, double hi)
 
 
 // A measured neutron-star mass distribution: Gaussian, truncated to the range in which
-// neutron stars actually exist (Ozel & Freire 2016; constants in Bulge.h).
+// neutron stars actually exist (Ozel & Freire 2016; constants in config/parameters.h).
 //
 // Redraw rather than clamp. Clamping to an edge piles probability onto 1.10 and 2.20 exactly
 // -- a spike at the boundary that no physical population has, and one that would show up in

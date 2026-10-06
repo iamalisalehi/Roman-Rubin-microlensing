@@ -81,6 +81,14 @@ EXT_TARGET = extinctiontest
 $(EXT_TARGET): tests/extinction_test.cpp helper.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) -I. -o $@ tests/extinction_test.cpp helper.cpp $(LDLIBS)
 
+# Verify config/data_products.h against the data files on disk (row counts, mean masses, ...).
+# Run before a production launch. NOT part of `all`: CI has no data files. To refresh the header,
+# run `python3 tools/sync_data_products.py`.
+check-data:
+	python3 tools/sync_data_products.py --check
+
+.PHONY: check-data
+
 # Clean
 clean:
 	rm -f $(OBJS) $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET)

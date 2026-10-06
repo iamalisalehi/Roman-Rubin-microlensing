@@ -293,9 +293,9 @@ void read_cmd(CMD & cm)
 //    double logL, gravity, metal, B, V, R, I, J, H;
 
     // ================================ THIN DISK =============================
-    std::ifstream fp2("./CMD/components/thin_disk.dat");
+    std::ifstream fp2(PATH_CMD_THIN);
     if (!fp2.is_open()) {
-        throw std::runtime_error("cannot read ./CMD/components/thin_disk.dat");
+        throw std::runtime_error(std::string("cannot read ") + PATH_CMD_THIN);
     }
 
     std::getline(fp2, header);   // Skip the header line
@@ -332,9 +332,9 @@ void read_cmd(CMD & cm)
     fp2.close();
 
     // ================================ BULGE ==================================
-    fp2.open("./CMD/components/bulge.dat");
+    fp2.open(PATH_CMD_BULGE);
     if (!fp2.is_open()) {
-        throw std::runtime_error("cannot read ./CMD/components/bulge.dat");
+        throw std::runtime_error(std::string("cannot read ") + PATH_CMD_BULGE);
     }
 
     std::getline(fp2, header);   // Skip the header line
@@ -368,9 +368,9 @@ void read_cmd(CMD & cm)
     fp2.close();
 
     // ================================ THICK DISK =============================
-    fp2.open("./CMD/components/thick_disk.dat");
+    fp2.open(PATH_CMD_THICK);
     if (!fp2.is_open()) {
-        throw std::runtime_error("cannot read ./CMD/components/thick_disk.dat");
+        throw std::runtime_error(std::string("cannot read ") + PATH_CMD_THICK);
     }
 
     std::getline(fp2, header);   // Skip the header line
@@ -405,9 +405,9 @@ void read_cmd(CMD & cm)
     fp2.close();
 
     // ================================ STELLAR HALO ===========================
-    fp2.open("./CMD/components/halo.dat");
+    fp2.open(PATH_CMD_HALO);
     if (!fp2.is_open()) {
-        throw std::runtime_error("cannot read ./CMD/components/halo.dat");
+        throw std::runtime_error(std::string("cannot read ") + PATH_CMD_HALO);
     }
 
     std::getline(fp2, header);   // Skip the header line

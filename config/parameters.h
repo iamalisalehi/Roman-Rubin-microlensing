@@ -44,6 +44,79 @@ constexpr double MaxD = 12.0; //kpc
 constexpr double step = double(MaxD / Num / 1.0); //step in kpc
 constexpr double dd  = 0.02;   // native sightline grid step [deg]; the scan steps by stride*dd
 
+// ---- (2a) Galactic model: density laws (Disk_model, Bulge_LSST.cpp) ----
+// Mass fractions of each component are set by the *_NORM factors below; the per-population number
+// densities then follow from Disk_model's rho / <m> with the MEANMASS_* of config/data_products.h.
+
+// Star-count completeness factors per component.
+constexpr double DENS_FD = 1.0;  //see the program mass_averaged.cpp.  we do not apply any limitation
+constexpr double DENS_FB = 1.0;  //just stars brighter than V=11.5, but we change to consider all stars
+constexpr double DENS_FH = 1.0;  //No limitation
+
+// Thin disc (8 age bins; rho0, d0, epci, corr above are its per-bin parameters).
+constexpr double THIN_RDD = 2.17;       //scale length of the old bins (ii > 0) [kpc]; 2.53; ///2.17;
+constexpr double THIN_RHH = 1.33;       //hole scale length of the old bins (ii > 0) [kpc]; 1.32; //1.33;
+constexpr double THIN_YOUNG_L1 = 25.0;  //young (ii == 0) bin: outer scale, exp(-rdi/25)
+constexpr double THIN_YOUNG_L2 = 9.0;   //young (ii == 0) bin: inner scale, exp(-rdi/9)
+constexpr double THIN_CORE = 0.25;      //softening inside sqrt(0.25 + rdi/R^2) of the old bins
+constexpr double THIN_NORM = 1.2;       // totalmass= 4.25e10
+
+// Thick disc.
+constexpr double THICK_RHO00 = 1.34 * 0.001 + 3.04 * 0.0001;  //local density, Msun/pc^3
+constexpr double THICK_RHO_DIV = 0.999719;                    //normalisation divisor of rho00
+constexpr double THICK_SCALE_LEN = 2.5;                       //radial scale length [kpc]
+constexpr double THICK_H1 = 0.4;                              //height of the parabolic core [kpc]
+constexpr double THICK_H2 = 0.8;                              //exponential scale height [kpc]
+constexpr double THICK_NNF = 0.4 / 0.8;                       //THICK_H1 / THICK_H2
+constexpr double THICK_NORM = 2.67;                           //total_mass=0.8e10
+
+// Stellar halo.
+constexpr double HALO_FLATTEN = 0.76;                         //axis ratio
+constexpr double HALO_CORE = 0.5;                             //core radius [kpc]
+constexpr double HALO_RHO0 = (0.932 * 0.00001 / 867.067);     //local density, Msun/pc^3
+constexpr double HALO_SLOPE = -2.44;                          //power-law index
+constexpr double HALO_NORM = 5281.0;                          //Total_mass=1.2e9
+
+// Bulge / bar: two triaxial components, S (boxy, 1/cosh^2 profile) and E (exponential).
+constexpr double BAR_ANGLE_DEG = 12.89;                       //bar angle [deg]
+constexpr double BAR_MASS_RESCALE = 0.24529; // calibrated so bulge column density toward
+                                             // Baade's Window (l=1, b=-3.9) matches the
+                                             // Han & Gould (2003) HST benchmark: 2086 Msun/pc^2
+constexpr double BAR_CUTOFF_K = 4.0;                          //Gaussian cut-off exp(-K (r2-Rc)^2) beyond Rc
+constexpr double BAR_NORM = 0.45;                             //total mass= 1.7e10
+constexpr double BAR_S_RX0 = 1.46;
+constexpr double BAR_S_RY0 = 0.49;
+constexpr double BAR_S_RZ0 = 0.39;
+constexpr double BAR_S_RC  = 3.43;
+constexpr double BAR_S_CP  = 3.007;
+constexpr double BAR_S_CN  = 3.329;
+constexpr double BAR_S_MASS_NUM = 35.45;                      //mBarre = NUM / DEN * BAR_MASS_RESCALE
+constexpr double BAR_S_MASS_DEN = 3.84723;
+constexpr double BAR_E_RX0 = 4.44;
+constexpr double BAR_E_RY0 = 1.31;
+constexpr double BAR_E_RZ0 = 0.80;
+constexpr double BAR_E_RC  = 6.83;
+constexpr double BAR_E_CP  = 2.786;
+constexpr double BAR_E_CN  = 3.917;
+constexpr double BAR_E_MASS_NUM = 2.27;                       //mBarre = NUM / DEN * BAR_MASS_RESCALE
+constexpr double BAR_E_MASS_DEN = 87.0;                       // normalized
+
+// ---- (2b) Galactic model: kinematics (vrel, Lensing.cpp) ----
+// Velocity dispersions [km/s] in the Galactic (R, T, Z) frame, drawn as truncated Gaussians.
+constexpr double VEL_NSIGMA_TRUNC = 3.5;   //truncation of the Gaussian velocity draws [sigma]
+// Thin disc: one row per age bin, chosen by the bin's share of Rho[0..3] = rho0*corr/d0.
+constexpr std::array<double, 4> THIN_AGE     = {0.075, 0.575, 1.5, 2.5};   //Gyr
+constexpr std::array<double, 4> THIN_SIGMA_R = {16.7, 19.8, 27.2, 30.2};
+constexpr std::array<double, 4> THIN_SIGMA_T = {10.8, 12.8, 17.6, 19.5};
+constexpr std::array<double, 4> THIN_SIGMA_Z = {6.0, 8.0, 10.0, 13.2};
+constexpr double THICK_SIGMA_R = 67.0,  THICK_SIGMA_T = 51.0,  THICK_SIGMA_Z = 42.0;
+constexpr double HALO_SIGMA_R  = 131.0, HALO_SIGMA_T  = 106.0, HALO_SIGMA_Z  = 85.0;
+constexpr double BULGE_SIGMA_R = 113.0, BULGE_SIGMA_T = 115.0, BULGE_SIGMA_Z = 100.0;
+// Rotation of the disc: V_T += vro_sun * (ROT_A * (R/Dsun)^ROT_SLOPE + ROT_B), thin and thick disc only.
+constexpr double ROT_A = 1.00762;
+constexpr double ROT_SLOPE = 0.0394;
+constexpr double ROT_B = 0.00712;
+
 // ==========================================================================================
 // (3) FILTERS: LSST ugrizy + Roman F146
 // ==========================================================================================
@@ -454,5 +527,26 @@ constexpr double mu_max  = 100.0;
 
 // Magnitude of a "dark" list entry (brown dwarf, white dwarf: no MIST track) -- zero light.
 constexpr double DARK_MAG = 99.0;
+
+// ==========================================================================================
+// (10) DATA FILES
+// ==========================================================================================
+
+// Paths are relative to the repository root: ./roman must be run from there.
+inline constexpr const char* PATH_BULGE_BASELINE = "./Baseline/BulgeBaseline.dat";
+inline constexpr const char* PATH_ROMAN_BASELINE = "./Baseline/RomanBaseline.dat";
+inline constexpr const char* PATH_LSSTCAM_FOV    = "./Baseline/lsstcam_fov/fov_map.txt";
+inline constexpr const char* PATH_SIGMA_A_LSST   = "./files/sigmaA_LSST.txt";
+inline constexpr const char* PATH_SIGMA_ROMAN    = "./files/sigma_roman.txt";
+inline constexpr const char* PATH_EXT_TABLES     = "./files/ext/ext_tables.dat";
+inline constexpr const char* PATH_LENS_ML        = "./CMD/components/lens_ml.dat";
+inline constexpr const char* PATH_CMD_THIN       = "./CMD/components/thin_disk.dat";
+inline constexpr const char* PATH_CMD_BULGE      = "./CMD/components/bulge.dat";
+inline constexpr const char* PATH_CMD_THICK      = "./CMD/components/thick_disk.dat";
+inline constexpr const char* PATH_CMD_HALO       = "./CMD/components/halo.dat";
+// Output directory (LpLMC / EfLMC / MapLMC / run_provenance) and the Disk_model debug dumps;
+// both end in a slash.
+inline constexpr const char* PATH_OUT_DIR        = "./files/MONTLMC/files/";
+inline constexpr const char* PATH_DENSITY_DIR    = "./files/density/";
 
 #endif // PARAMETERS_H

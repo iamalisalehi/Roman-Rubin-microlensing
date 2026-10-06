@@ -392,13 +392,13 @@ void vrel(source & s, lens & l){
     double  VSunx, vls2, vls1;
     double  tetd ;
 
-    double NN = 3.5;
+    double NN = VEL_NSIGMA_TRUNC;
     double sigma_R_Disk,          sigma_T_Disk,          sigma_Z_Disk;
     double sigma_R_DiskL,         sigma_T_DiskL,         sigma_Z_DiskL;
     double sigma_R_DiskS,         sigma_T_DiskS,         sigma_Z_DiskS;
-    double sigma_R_TDisk = 67.0,  sigma_T_TDisk = 51.0,  sigma_Z_TDisk = 42.0;
-    double sigma_R_halo  = 131.0, sigma_T_halo  = 106.0, sigma_Z_halo  = 85.0;
-    double sigma_R_Bulge = 113.0, sigma_T_Bulge = 115.0, sigma_Z_Bulge = 100.0;
+    double sigma_R_TDisk = THICK_SIGMA_R,  sigma_T_TDisk = THICK_SIGMA_T,  sigma_Z_TDisk = THICK_SIGMA_Z;
+    double sigma_R_halo  = HALO_SIGMA_R, sigma_T_halo  = HALO_SIGMA_T, sigma_Z_halo  = HALO_SIGMA_Z;
+    double sigma_R_Bulge = BULGE_SIGMA_R, sigma_T_Bulge = BULGE_SIGMA_T, sigma_Z_Bulge = BULGE_SIGMA_Z;
 
     double Rho[4] = {0.0};
     double maxr = 0.0;
@@ -411,10 +411,10 @@ void vrel(source & s, lens & l){
     for (int i = 0; i < 2; ++i) {
         test = RandR(0.0, maxr); ///total ages
 
-        if      (test <=  Rho[0])                       {sigma_R_Disk = 16.7; sigma_T_Disk = 10.8; sigma_Z_Disk = 6.0;  age = 0.075;}
-        else if (test <= (Rho[0]+Rho[1]))               {sigma_R_Disk = 19.8; sigma_T_Disk = 12.8; sigma_Z_Disk = 8.0;  age = 0.575;}
-        else if (test <= (Rho[0]+Rho[1]+Rho[2]))        {sigma_R_Disk = 27.2; sigma_T_Disk = 17.6; sigma_Z_Disk = 10.0; age = 1.5;  }
-        else if (test <= (Rho[0]+Rho[1]+Rho[2]+Rho[3])) {sigma_R_Disk = 30.2; sigma_T_Disk = 19.5; sigma_Z_Disk = 13.2; age = 2.5;  }
+        if      (test <=  Rho[0])                       {sigma_R_Disk = THIN_SIGMA_R[0]; sigma_T_Disk = THIN_SIGMA_T[0]; sigma_Z_Disk = THIN_SIGMA_Z[0]; age = THIN_AGE[0];}
+        else if (test <= (Rho[0]+Rho[1]))               {sigma_R_Disk = THIN_SIGMA_R[1]; sigma_T_Disk = THIN_SIGMA_T[1]; sigma_Z_Disk = THIN_SIGMA_Z[1]; age = THIN_AGE[1];}
+        else if (test <= (Rho[0]+Rho[1]+Rho[2]))        {sigma_R_Disk = THIN_SIGMA_R[2]; sigma_T_Disk = THIN_SIGMA_T[2]; sigma_Z_Disk = THIN_SIGMA_Z[2]; age = THIN_AGE[2];}
+        else if (test <= (Rho[0]+Rho[1]+Rho[2]+Rho[3])) {sigma_R_Disk = THIN_SIGMA_R[3]; sigma_T_Disk = THIN_SIGMA_T[3]; sigma_Z_Disk = THIN_SIGMA_Z[3]; age = THIN_AGE[3];}
 
         if (i == 0) {
             sigma_R_DiskS = sigma_R_Disk;
@@ -469,7 +469,7 @@ void vrel(source & s, lens & l){
     }
 
     if (s.struc == GalacticComponent::THIN_DISK or s.struc == GalacticComponent::THICK_DISK) {
-        SVT = SVT + vro_sun * (1.00762 * std::pow(Rsc / Dsun, 0.0394) + 0.00712);
+        SVT = SVT + vro_sun * (ROT_A * std::pow(Rsc / Dsun, ROT_SLOPE) + ROT_B);
     }
 
     s.vs = std::sqrt(SVR * SVR + SVT * SVT + SVZ * SVZ);
@@ -504,7 +504,7 @@ void vrel(source & s, lens & l){
     }
 
     if (l.struc == GalacticComponent::THIN_DISK or l.struc == GalacticComponent::THICK_DISK) {
-        LVT = LVT + vro_sun * (1.00762 * std::pow(Rlc / Dsun, 0.0394) + 0.00712);
+        LVT = LVT + vro_sun * (ROT_A * std::pow(Rlc / Dsun, ROT_SLOPE) + ROT_B);
     }
 
     l.vl = std::sqrt(LVT * LVT + LVZ * LVZ + LVR * LVR);

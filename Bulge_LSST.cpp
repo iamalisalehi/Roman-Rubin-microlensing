@@ -861,7 +861,7 @@ int main(int argc, char** argv) {
     records.reserve(1000); // rough upper bound on icon per field
 
     // --------------------- Read BulgeBaseline.dat ------------------
-    std::ifstream fil("./Baseline/BulgeBaseline.dat");
+    std::ifstream fil(PATH_BULGE_BASELINE);
     if (!fil) {
         std::cerr << "Cannot read BulgeBaseline.dat\n";
         return 1;
@@ -900,7 +900,7 @@ int main(int argc, char** argv) {
 
     // --------------------- Read sigmaA_LSST.txt -------------------
     // Atrometric error?
-    fil.open("./files/sigmaA_LSST.txt");
+    fil.open(PATH_SIGMA_A_LSST);
     if (!fil) { std::cerr << "Cannot read sigmaA_LSST.txt\n"; return 1; }
 
     for (int i = 0; i < Na; ++i) {
@@ -916,7 +916,7 @@ int main(int argc, char** argv) {
 
     // --------------------- Read sigma_Roman.txt ---------------------
     // Photometric error
-    fil.open("./files/sigma_roman.txt");
+    fil.open(PATH_SIGMA_ROMAN);
     if (!fil) { std::cerr << "Cannot read sigma_roman.txt\n"; return 1; }
 
     for (int i = 0; i < NaRoman; ++i) {
@@ -952,7 +952,7 @@ int main(int argc, char** argv) {
     // --------------------- Read RomanBaseline.dat -------------------
     // Written by Baseline/generateRomanBaseline.py (adopted GBTDS layout, Deviation 69):
     // ID RA DEC l b time sig5 field layout.
-    fil.open("./Baseline/RomanBaseline.dat");
+    fil.open(PATH_ROMAN_BASELINE);
     if (!fil) {
         std::cerr << "Cannot read RomanBaseline.dat\n";
         return 1;
@@ -1009,9 +1009,9 @@ int main(int argc, char** argv) {
               << sched.missionStart << " - " << sched.missionEnd << " ****\n";
 
     // --------------------- Read extinction ------------------------
-    readExtinction(*ex, "./files/ext/ext_tables.dat");
-    readLensML("./CMD/components/lens_ml.dat");   // luminous lenses (Deviation 74)
-    readLsstCamMap("./Baseline/lsstcam_fov/fov_map.txt");   // Rubin's footprint (Deviation 80)
+    readExtinction(*ex, PATH_EXT_TABLES);
+    readLensML(PATH_LENS_ML);   // luminous lenses (Deviation 74)
+    readLsstCamMap(PATH_LSSTCAM_FOV);   // Rubin's footprint (Deviation 80)
     {
         // The galactic->ICRS conversion the coverage test relies on, checked against OpSim's own
         // RA/Dec for every Rubin visit (whose l, b readbaselineBulge.py derived with astropy).
@@ -1111,10 +1111,10 @@ int main(int argc, char** argv) {
     // table. The default population's tag is "5", which is what these files were called
     // before --population existed.
     const std::string tag(gPop->tag);
-    std::string fnLDt   = "./files/MONTLMC/files/LpLMC"  + tag +  ".dat";
-    std::string fnEff   = "./files/MONTLMC/files/EfLMC"  + tag +  ".dat";
-    std::string fnEffB  = "./files/MONTLMC/files/EfLMC"  + tag + "B.dat";
-    std::string fnGam   = "./files/MONTLMC/files/MapLMC" + tag +  ".dat";
+    std::string fnLDt   = std::string(PATH_OUT_DIR) + "LpLMC"  + tag +  ".dat";
+    std::string fnEff   = std::string(PATH_OUT_DIR) + "EfLMC"  + tag +  ".dat";
+    std::string fnEffB  = std::string(PATH_OUT_DIR) + "EfLMC"  + tag + "B.dat";
+    std::string fnGam   = std::string(PATH_OUT_DIR) + "MapLMC" + tag +  ".dat";
     std::string testf   = "./test"                       + tag +  ".dat";
     std::string fnPair  = "./h3_pair.dat";   //Step H3, written only under --pair-satellite
 
@@ -1689,7 +1689,7 @@ int main(int argc, char** argv) {
              << "# dchi_det            " << cfg.dchiDet
              << "   # Step H7 fixed detection bar; every yield is conditioned on it\n";
         if (!cfg.dryRun) {   // Deviation 78: a dry run must not overwrite the last run's provenance
-            std::ofstream fprov("./files/MONTLMC/files/run_provenance.txt");
+            std::ofstream fprov(std::string(PATH_OUT_DIR) + "run_provenance.txt");
             if (!fprov) {
                 std::cerr << "Cannot write run_provenance.txt\n";
                 return 1;
@@ -3245,7 +3245,7 @@ int main(int argc, char** argv) {
     {
         // Appended, not written with the startup block: these counts are only known now,
         // and the area weighting downstream depends on them.
-        std::ofstream fprov("./files/MONTLMC/files/run_provenance.txt", std::ios::app);
+        std::ofstream fprov(std::string(PATH_OUT_DIR) + "run_provenance.txt", std::ios::app);
         if (fprov) {
             fprov << "# ---- sightline outcome (written at end of run) ----\n"
                   << "# sightlines_aggregated   " << nAggregated << "\n"
@@ -4149,20 +4149,20 @@ void optical_depth(source& s)
 void Disk_model(source& s, int numt)
 {
     double x, xb, yb, zb, r4, r2, rdi, Rb;
-    double nnf = 0.4 / 0.8;
+    double nnf = THICK_NNF;
     double mBarre; //stars/pc^3
     double Rx0, Ry0, Rz0, Rc, cp, cn, rhoE, rhoS;
-    double alfa = 12.89 / RAa;
+    double alfa = BAR_ANGLE_DEG / RAa;
     double xf, yf, zf, rho;
 
     s.Romaxs = s.Nstart = s.Rostart = 0.0;
     s.Romins = 10000000000.0;
 
-    double fd    = 1.0;  //see the program mass_averaged.cpp.  we do not apply any limitation
-    double fb    = 1.0;  //just stars brighter than V=11.5, but we change to consider all stars
-    double fh    = 1.0;  //No limitation
-    double Rdd   = 2.17; //2.53; ///2.17;
-    double Rhh   = 1.33; //1.32; //1.33;
+    double fd    = DENS_FD;  //see config/parameters.h, section 2a
+    double fb    = DENS_FB;
+    double fh    = DENS_FH;
+    double Rdd   = THIN_RDD;
+    double Rhh   = THIN_RHH;
 
 //    double frac = 0.05; //fraction of halo in the form of compact objects
 //    frac was replaced with 1.0 and some rescaling was applyed manually
@@ -4174,8 +4174,8 @@ void Disk_model(source& s, int numt)
     int flagf = 0;
     if (numt < 10) {
        flagf = 1;
-       filj  = fopen("./files/density/lb.txt", "a+");
-       sprintf(filename, "./files/density/%c%d.dat", 'D', numt);
+       filj  = fopen((std::string(PATH_DENSITY_DIR) + "lb.txt").c_str(), "a+");
+       sprintf(filename, "%s%c%d.dat", PATH_DENSITY_DIR, 'D', numt);
        fill = fopen(filename, "w");
     }
 
@@ -4194,50 +4194,48 @@ void Disk_model(source& s, int numt)
         for (int ii = 0; ii < 8; ++ii) {
             rdi = Rb * Rb + zb * zb / (epci[ii] * epci[ii]);
             if (ii == 0) {
-                rho = std::exp(-rdi / 25.0) - std::exp(-rdi / 9.0);
+                rho = std::exp(-rdi / THIN_YOUNG_L1) - std::exp(-rdi / THIN_YOUNG_L2);
             }
             else if (ii > 0) {
-                rho = std::exp(-std::sqrt(0.25 + rdi / (Rdd * Rdd))) - std::exp(-std::sqrt(0.25 + rdi / (Rhh * Rhh)));
+                rho = std::exp(-std::sqrt(THIN_CORE + rdi / (Rdd * Rdd))) - std::exp(-std::sqrt(THIN_CORE + rdi / (Rhh * Rhh)));
             }
-            rho *= 1.2; // totalmass= 4.25e10
+            rho *= THIN_NORM;
             s.rho_thin[i] = std::fabs(s.rho_thin[i] + rho0[ii] * corr[ii] * 0.001 * rho/d0[ii]);
         } //Msun/pc^3
 
 ///========== Galactic Thick Disk =====================
-        double rho00 = 1.34 * 0.001 + 3.04 * 0.0001;
-        if (std::fabs(zb) < 0.4) {
-            s.rho_thick[i] = std::fabs((rho00 / 0.999719) * std::exp(-(Rb - Dsun) / 2.5) * (1.0 - zb * zb / (0.4 * 0.8 * (2.0 + nnf))));
+        double rho00 = THICK_RHO00;
+        if (std::fabs(zb) < THICK_H1) {
+            s.rho_thick[i] = std::fabs((rho00 / THICK_RHO_DIV) * std::exp(-(Rb - Dsun) / THICK_SCALE_LEN) * (1.0 - zb * zb / (THICK_H1 * THICK_H2 * (2.0 + nnf))));
         }
         else {
-            s.rho_thick[i] = std::fabs((rho00 / 0.999719) * std::exp(-(Rb - Dsun) / 2.5) * std::exp(nnf) * std::exp(-std::fabs(zb) / 0.8) / (1.0 + 0.5 * nnf)); //Msun/pc^3
+            s.rho_thick[i] = std::fabs((rho00 / THICK_RHO_DIV) * std::exp(-(Rb - Dsun) / THICK_SCALE_LEN) * std::exp(nnf) * std::exp(-std::fabs(zb) / THICK_H2) / (1.0 + 0.5 * nnf)); //Msun/pc^3
         }
-        s.rho_thick[i] *= 2.67; //total_mass=0.8e10
+        s.rho_thick[i] *= THICK_NORM;
 
 ///========== Galactic Stellar Halo=================
-        rdi = std::sqrt(Rb * Rb + zb * zb / (0.76 * 0.76));
-        if (rdi <= 0.5) {
-            s.rho_halo[i] = std::fabs(1.0 * (0.932 * 0.00001 / 867.067) * std::pow(0.5 / Dsun, - 2.44));
+        rdi = std::sqrt(Rb * Rb + zb * zb / (HALO_FLATTEN * HALO_FLATTEN));
+        if (rdi <= HALO_CORE) {
+            s.rho_halo[i] = std::fabs(1.0 * HALO_RHO0 * std::pow(HALO_CORE / Dsun, HALO_SLOPE));
         }
         else {
-            s.rho_halo[i] = std::fabs(1.0 * (0.932 * 0.00001 / 867.067) * std::pow(rdi / Dsun, - 2.44)); //Msun/pc^3
+            s.rho_halo[i] = std::fabs(1.0 * HALO_RHO0 * std::pow(rdi / Dsun, HALO_SLOPE)); //Msun/pc^3
         }
-        s.rho_halo[i] *= 5281.0; //Total_mass=1.2e9
+        s.rho_halo[i] *= HALO_NORM;
 
 ///========== Galactic bulge =====================
-        constexpr double barMassRescale = 0.24529; // calibrated so bulge column density toward
-                                                   // Baade's Window (l=1, b=-3.9) matches the
-                                                   // Han & Gould (2003) HST benchmark: 2086 Msun/pc^2
+        constexpr double barMassRescale = BAR_MASS_RESCALE;   // see config/parameters.h, section 2a
         xf =  xb * std::cos(alfa) + yb * std::sin(alfa);
         yf = -xb * std::sin(alfa) + yb * std::cos(alfa);
         zf =  zb;
 
-        Rx0    = 1.46;
-        Ry0    = 0.49;
-        Rz0    = 0.39;
-        Rc     = 3.43;
-        cp     = 3.007;
-        cn     = 3.329;
-        mBarre = 35.45 / 3.84723 * barMassRescale;
+        Rx0    = BAR_S_RX0;
+        Ry0    = BAR_S_RY0;
+        Rz0    = BAR_S_RZ0;
+        Rc     = BAR_S_RC;
+        cp     = BAR_S_CP;
+        cn     = BAR_S_CN;
+        mBarre = BAR_S_MASS_NUM / BAR_S_MASS_DEN * barMassRescale;
 
         r4  = std::pow(std::pow(std::fabs(xf / Rx0), cn)
                      + std::pow(std::fabs(yf / Ry0), cn), cp / cn)
@@ -4249,16 +4247,16 @@ void Disk_model(source& s, int numt)
             rhoS = mBarre * 1.0 / (std::cosh(-r4) * std::cosh(-r4));
         }
         else {
-            rhoS = mBarre * 1.0 / (std::cosh(-r4) * std::cosh(-r4)) * std::exp(-4.0 * (r2 - Rc) * (r2 - Rc));
+            rhoS = mBarre * 1.0 / (std::cosh(-r4) * std::cosh(-r4)) * std::exp(-BAR_CUTOFF_K * (r2 - Rc) * (r2 - Rc));
         }
 
-        Rx0    = 4.44;
-        Ry0    = 1.31;
-        Rz0    = 0.80;
-        Rc     = 6.83;
-        cp     = 2.786;
-        cn     = 3.917;
-        mBarre = 2.27 / 87.0 * barMassRescale; // normalized
+        Rx0    = BAR_E_RX0;
+        Ry0    = BAR_E_RY0;
+        Rz0    = BAR_E_RZ0;
+        Rc     = BAR_E_RC;
+        cp     = BAR_E_CP;
+        cn     = BAR_E_CN;
+        mBarre = BAR_E_MASS_NUM / BAR_E_MASS_DEN * barMassRescale; // normalized
 
         r4  = std::pow(std::fabs(std::pow(std::fabs(xf / Rx0), cn)
                                + std::pow(std::fabs(yf / Ry0), cn)), cp / cn)
@@ -4270,11 +4268,11 @@ void Disk_model(source& s, int numt)
             rhoE = mBarre * std::exp(-r4);
         }
         else {
-            rhoE = mBarre * std::exp(-r4) * std::exp(-4.0 * (r2 - Rc) * (r2 - Rc));
+            rhoE = mBarre * std::exp(-r4) * std::exp(-BAR_CUTOFF_K * (r2 - Rc) * (r2 - Rc));
         }
 
         s.rho_bulge[i]  = std::fabs(rhoS) + std::fabs(rhoE); ///Msun/pc^3
-        s.rho_bulge[i] *= 0.45; //total mass= 1.7e10
+        s.rho_bulge[i] *= BAR_NORM;
 ///==================================================================
 
         s.Rostar0[i] = std::fabs(s.rho_thin[i] + s.rho_thick[i] + s.rho_bulge[i] + s.rho_halo[i]); //[Msun/pc^3]

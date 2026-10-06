@@ -106,4 +106,22 @@ struct RunConfig {
 
 void printUsage(const char* prog);
 
+// Parse and validate argv into `cfg` (the population choice lands in gPop). Returns true when the
+// run should go on; false means main() must return `exitCode` -- 0 after --help, the code of
+// the error message already printed otherwise.
+bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode);
+
+// The sightline-grid steps, derived from the flags and the GBTDS detector size.
+struct GridSteps {
+    double gridStep;   // coarse grid step [deg] = stride * dd
+    int    kSub;       // fine cells per coarse cell, per axis
+    double fineStep;   // footprint grid step [deg] = strideRoman * dd
+};
+
+struct GbtdsLayout;
+// Step E1: resolve --stride-roman against the detector size (Deviation 69), fill `steps`, and
+// refuse a grid that steps over whole detectors. May set cfg.strideRoman. Returns 0, or the exit
+// code of the error printed.
+int resolveGridSteps(RunConfig& cfg, const GbtdsLayout& gl, GridSteps& steps);
+
 #endif // ROMAN_RUN_CONFIG_H

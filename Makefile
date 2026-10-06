@@ -19,7 +19,7 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)$(s
 CXXFLAGS += -DGIT_COMMIT='"$(GIT_COMMIT)"'
 # Deviation 78: keep the stamp honest. A commit changes no source file, so make used to say
 # "nothing to be done" and keep the old stamp. .git_stamp is rewritten whenever the description
-# differs, and build/main.o (which prints it into run_provenance.txt) depends on it.
+# differs, and build/run/outputs.o (which prints it into run_provenance.txt) depends on it.
 GIT_STAMP := .git_stamp
 $(shell echo '$(GIT_COMMIT)' | cmp -s - $(GIT_STAMP) 2>/dev/null || echo '$(GIT_COMMIT)' > $(GIT_STAMP))
 
@@ -53,9 +53,9 @@ build/tests/%.o: tests/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
 
-# main.o prints GIT_COMMIT into run_provenance.txt, so it is the one object that must be rebuilt
-# when the stamp changes.
-build/main.o: $(GIT_STAMP)
+# run/outputs.o prints GIT_COMMIT into run_provenance.txt, so it is the one object that must be
+# rebuilt when the stamp changes.
+build/run/outputs.o: $(GIT_STAMP)
 
 # ---------------------------------------------------------------------------
 # Fisher-matrix regression fixture (tests/fisher_fixture.cpp)

@@ -61,6 +61,13 @@ POPULATION_LABEL = {
     "ns":    "neutron stars",
 }
 
+# Galactic components of the stellar catalogue (Besancon Pop codes: thin 1-7, bulge 10, thick 8+11,
+# halo 9). Checked with the dataviz validator (2026-10-04), all pairs, white surface: CVD dE >= 9.2,
+# normal-vision dE >= 16.3. The aqua is below 3:1 contrast on white, so every figure that uses these
+# must label the lines (legend or direct labels), never rely on colour alone.
+COMPONENT = {"thin": "#2a78d6", "bulge": "#eb6834", "thick": "#1baf7a", "halo": "#4a3aa7"}
+COMPONENT_LABEL = {"thin": "thin disc", "bulge": "bulge", "thick": "thick disc", "halo": "halo"}
+
 INK = "#1a1a1a"      # axis labels, tick labels, data text
 MUTED = "#6b6b6b"    # annotations, secondary text, the provenance stamp
 GRID = "#e8e8e8"

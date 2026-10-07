@@ -402,6 +402,8 @@ inline constexpr LensPopulation POPULATIONS[] = {
      "black holes, flat in log M over 3-1000 Msun"},
     {"ns",    "ns", MassFunction::NEUTRON_STAR,    1.0,    2.5, false, 0,
      "neutron stars, Gaussian about 1.35 Msun (Ozel & Freire 2016)"},
+    {"besancon", "bes", MassFunction::BESANCON_CATALOGUE, 0.01, 30.0, false, 0,
+     "ordinary stars; the lens is a random member of its component's Besancon list (mass and light)"},
     {"macho-uniform", "1", MassFunction::UNIFORM,      3.0, 5000.0, true, 1, "legacy MACHO search"},
     {"macho-m05",     "2", MassFunction::POWER_LAW_05, 3.0, 5000.0, true, 2, "legacy MACHO search"},
     {"macho-m1",      "3", MassFunction::POWER_LAW_10, 3.0, 5000.0, true, 3, "legacy MACHO search"},

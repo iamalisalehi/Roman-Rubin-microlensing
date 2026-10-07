@@ -26,7 +26,8 @@ enum class MassFunction {
     UNIFORM,           // legacy MACHO-search options, inherited from the LMC simulation
     POWER_LAW_05,      //   dN/dM ~ M^-0.5
     POWER_LAW_10,      //   dN/dM ~ M^-1
-    POWER_LAW_20       //   dN/dM ~ M^-2
+    POWER_LAW_20,      //   dN/dM ~ M^-2
+    BESANCON_CATALOGUE // the lens is a random member of its component's Besancon list: mass and light
 };
 
 struct LensPopulation {

@@ -18,7 +18,7 @@ EfficiencyBins drawEvent(SimContext& ctx, SightlineState& st, int prevNdw) {
 
     st.nsim += 1.0;
     func_source(s, cm, ex, st.sightlineIdx);
-    func_lens(l, s, ex, st.sightlineIdx);
+    func_lens(l, s, cm, ex, st.sightlineIdx);
 //                std::cerr << "nsim=" << nsim << "  Ds=" << s->Ds << "  mass=" << s->mass
 //                          << "  nums=" << s->nums << "  Ml=" << l->Ml << "  u0=" << l->u0 << "\n";
     optical_depth(s);

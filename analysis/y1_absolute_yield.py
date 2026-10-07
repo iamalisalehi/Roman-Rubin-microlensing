@@ -62,7 +62,7 @@ COLS = ["tE", "Ml", "Vt", "Ds", "u0", "opt_1e6", "struc", "lon", "lat", "w_area"
 #   BH ~0.03        Gould 2000 (bulge census 69:22:6:3 MS:WD:NS:BH by mass); Olejak et al. 2020
 #                   (1.2e8 BHs x 14 Msun over ~6e10 Msun); Lam et al. 2020 (2e8 BHs, 5-16 Msun)
 #   NS ~0.06        Gould 2000, no natal kicks; Sweeney et al. 2022 find 40% of NSs escape
-DEFAULT_F = {"bh": [0.005, 0.01, 0.03], "ns": [0.005, 0.01, 0.03, 0.06], "bulge": [1.0]}
+DEFAULT_F = {"bh": [0.005, 0.01, 0.03], "ns": [0.005, 0.01, 0.03, 0.06], "bulge": [1.0], "besancon": [1.0]}
 
 YEAR_S = 365.25 * 86400.0
 
@@ -259,7 +259,7 @@ def main():
                   for k, v in tc.items()] + [""]
         print(f"[{name}] tau check: {tc}", flush=True)
 
-        if run.pop_key == "bulge":
+        if run.pop_key in ("bulge", "besancon"):
             og = ogle_check(run)
             lines += ["### Check 2: rate per star (I < 21, u0 < 1) vs OGLE-IV (Mroz et al. 2019)",
                       "", "| b | draws | Gamma model [1e-6/yr] | Gamma OGLE | ratio | tau model [1e-6] "

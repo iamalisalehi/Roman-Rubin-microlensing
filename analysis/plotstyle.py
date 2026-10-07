@@ -52,13 +52,14 @@ SURVEY_LABEL = {"joint": "joint fit", "roman": "Roman alone", "rubin": "Rubin al
 
 # Lens populations. Distinct in hue AND in lightness, so a greyscale print still separates
 # them; deliberately not reusing the survey colours, since a figure may show both dimensions.
-POPULATION = {"bulge": "#3f3f46", "bh": "#1d4ed8", "ns": "#b45309"}
+POPULATION = {"bulge": "#3f3f46", "bh": "#1d4ed8", "ns": "#b45309", "besancon": "#0f766e"}
 # Labels are kept short because they sit inside a 3.5-inch panel; the mass ranges and the
 # distribution parameters belong in the caption, where there is room for them.
 POPULATION_LABEL = {
     "bulge": "bulge: Kroupa + remnants",
     "bh":    "black holes: log-uniform",
     "ns":    "neutron stars",
+    "besancon": "stars: Besancon list",
 }
 
 # Galactic components of the stellar catalogue (Besancon Pop codes: thin 1-7, bulge 10, thick 8+11,

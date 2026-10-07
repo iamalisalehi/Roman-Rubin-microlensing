@@ -57,6 +57,8 @@ void printUsage(const char* prog) {
         << "                 populations never overwrite each other: 'bulge' writes\n"
         << "                 test5.dat as before, 'bh' writes testbh.dat, 'ns' testns.dat.\n"
         << "                 bulge = Kroupa IMF + remnants, 0.01-30 Msun\n"
+        << "                 besancon = ordinary stars, mass and light of a random member of\n"
+        << "                            the lens's component Besancon list (no BH/NS/BD)\n"
         << "                 bh    = flat in log M, 3-1000 Msun\n"
         << "                 ns    = neutron stars, Gaussian about 1.35 Msun\n"
         << "                 macho-uniform/-m05/-m1/-m2 = the legacy 3-5000 Msun options\n"

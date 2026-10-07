@@ -10,7 +10,7 @@
 //                         Func lens  calculations                    //
 //                                                                    //
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
-void func_lens(lens & l, source & s, const extin & ex, int sightlineIdx){
+void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sightlineIdx){
 
     double test, tt, Am, DD;
     double mmin = mlMin();
@@ -60,7 +60,14 @@ void func_lens(lens & l, source & s, const extin & ex, int sightlineIdx){
     // live here -- uniform, three power laws, Kroupa+remnants -- now lives in drawLensMass()
     // beside the two new ones, so a population is one table entry rather than an `if` here
     // plus a constant there plus a filename suffix somewhere else.
-    l.Ml = drawLensMass(&l.luminous);
+    std::array<double, 7> mab{};
+    bool mabFromCatalogue = false;
+    if (gPop->mf == MassFunction::BESANCON_CATALOGUE) {
+        l.Ml = drawCatalogueLens(cm, l.struc, &l.luminous, mab);
+        mabFromCatalogue = true;
+    } else {
+        l.Ml = drawLensMass(&l.luminous);
+    }
 
     // The bounds bracket the masses the population can produce and also set the Mls
     // efficiency grid, so a draw outside them would land outside every efficiency bin.
@@ -82,8 +89,7 @@ void func_lens(lens & l, source & s, const extin & ex, int sightlineIdx){
     // which pulls the astrometric centroid toward the lens (lightcurve()).
     s.fLens = {0.0, 0.0};
     if (l.luminous) {
-        std::array<double, 7> mab;
-        if (lensAbsMag(static_cast<int>(l.struc), l.Ml, mab)) {
+        if (mabFromCatalogue or lensAbsMag(static_cast<int>(l.struc), l.Ml, mab)) {
             const double AvL = interpExtinctionAlongSightline(ex, sightlineIdx, l.Dl);
             std::array<double, M> fluxL{};
             for (int i = 0; i < M; ++i) {
@@ -292,6 +298,39 @@ double drawNeutronStarMass()
 }
 
 
+// A lens that is a random member of its Galactic component's Besancon list (population "besancon").
+//
+// The four lists in CMD/components/ are the complete present-day Besancon population of each
+// component -- the same population Nstart = rho/<m> counts, with <m> the catalogue mean mass
+// MEANMASS_* -- so drawing the lens from them makes the lens mass function consistent with the
+// density normalisation. It supplies the mass AND the light: the lens takes the row's own absolute
+// magnitudes (ugrizy, F146), so a giant is a luminous lens at its own magnitude, and a row
+// with DARK_MAG in every band (a white dwarf) is dark.
+// What it lacks against Kroupa+remnants: no brown dwarfs (the lists start at 0.073 Msun in the
+// thin disc and ~0.155 in the others), no neutron stars or black holes, and no white dwarfs
+// at all in the bulge list (Besancon's bulge has none). The bh and ns populations simulate those.
+//
+// One RNG call. (func_source's own pick, RandR(0, N-1), can never reach the last row; this one can.)
+double drawCatalogueLens(const CMD& cm, GalacticComponent comp, bool* luminous, std::array<double, 7>& mab)
+{
+    const std::vector<double>* mass = nullptr;
+    const std::vector<std::array<double, M>>* Mab = nullptr;
+    switch (comp) {
+    case GalacticComponent::THIN_DISK:  mass = &cm.mass_thin;  Mab = &cm.Mab_thin;  break;
+    case GalacticComponent::BULGE:      mass = &cm.mass_bulge; Mab = &cm.Mab_bulge; break;
+    case GalacticComponent::THICK_DISK: mass = &cm.mass_thick; Mab = &cm.Mab_thick; break;
+    case GalacticComponent::HALO:       mass = &cm.mass_halo;  Mab = &cm.Mab_halo;  break;
+    }
+    CHECK(mass != nullptr);
+    const int n = static_cast<int>(mass->size());
+    int j = int(RandR(0.0, double(n)));
+    if (j >= n) j = n - 1;
+    for (int i = 0; i < 7; ++i) mab[i] = (*Mab)[j][i];
+    if (luminous) *luminous = ((*Mab)[j][2] != DARK_MAG);
+    return (*mass)[j];
+}
+
+
 // The one entry point func_lens uses. Which mass function runs is a property of the
 // population selected by --population, not of the build.
 double drawLensMass(bool* luminous)
@@ -320,6 +359,8 @@ double drawLensMass(bool* luminous)
         return drawPowerLawMass(mlMin(), mlMax(), 1.0);
     case MassFunction::POWER_LAW_20:
         return drawPowerLawMass(mlMin(), mlMax(), 2.0);
+    case MassFunction::BESANCON_CATALOGUE:
+        throw std::runtime_error("drawLensMass: the Besancon-catalogue population is drawn in func_lens from the catalogue");
     }
     throw std::runtime_error("drawLensMass: unhandled mass function");
 }

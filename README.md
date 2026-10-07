@@ -9,6 +9,14 @@ The code focuses on Galactic bulge microlensing simulations, including:
 - Roman and LSST observing simulations,
 - microlensing event modeling and analysis.
 
+## Running the whole pipeline
+
+To go from a fresh clone to the analysis plots on another computer or a Slurm cluster (download the
+Besancon catalogue and a Rubin baseline, set the populations and grid, preprocess, run `./roman` in parallel
+chunks, merge, analyse), copy `pipeline/config.example.sh`, edit it, and run
+`pipeline/pipeline.sh <config> all`. Each stage can also be run on its own and is safe to repeat. See
+[`pipeline/README.md`](pipeline/README.md).
+
 ## Structure
 
 ```

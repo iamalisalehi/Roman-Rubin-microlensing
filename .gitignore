@@ -108,3 +108,12 @@ STATUS_REPORT.md
 # gbtds_optimizer): small, source-of-truth inputs, not generated data. Must come AFTER the
 # data rules above (**/*.txt), since the last matching rule wins.
 !Baseline/gbtds_layout/*
+
+# Small static inputs ./roman and the star-list builder read, with no generator: the LSST astrometric error
+# curve, Penny+2019's Roman photometric error curve, and the Pecaut & Mamajek dwarf table. Source, not
+# produced data, so a fresh clone must have them (the pipeline needs them). After the **/*.txt rule.
+!files/sigmaA_LSST.txt
+!files/sigma_roman.txt
+!CMD/empirical/EEM_dwarf_UBVIJHK_colors_Teff.txt
+# The pipeline's Python requirements (after the *.txt rule, like the entries above).
+!pipeline/requirements.txt

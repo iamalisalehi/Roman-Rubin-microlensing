@@ -1,3 +1,4 @@
+import argparse
 import pandas as pd 
 import sqlite3
 import numpy as np
@@ -73,13 +74,28 @@ TOBS_DAYS = P.Tobs                   # config/parameters.h Tobs
 
 #################################################################################
 
+# Command line. Both options default to the behaviour this script always had: read
+# baseline_v5.1.0_10yrs.db from the current directory and make the diagnostic figures.
+#   --db PATH     another OpSim baseline (an sqlite file with the same `observations` table)
+#   --no-plots    stop after BulgeBaseline.dat is written. The figures below need LaTeX
+#                 (rcParams text.usetex) and ../pics/, neither of which a cluster node has.
+ap = argparse.ArgumentParser(description="Select the Rubin bulge visits from an OpSim baseline "
+                                         "and write ./BulgeBaseline.dat (run from Baseline/).")
+ap.add_argument("--db", default="baseline_v5.1.0_10yrs.db", metavar="PATH",
+                help="OpSim sqlite database (default: %(default)s, in the current directory)")
+ap.add_argument("--no-plots", dest="plots", action="store_false",
+                help="skip the diagnostic figures after BulgeBaseline.dat is written")
+args = ap.parse_args()
+if not os.path.isfile(args.db):      # sqlite3.connect would silently create an empty file here
+    sys.exit(f"readbaselineBulge.py: no such OpSim database: {args.db}")
+
 selected_cols = [nam0[i] for i in idx]
 query = f"""
 SELECT {', '.join(selected_cols)}
 FROM observations
 """
 
-conn = sqlite3.connect("baseline_v5.1.0_10yrs.db")
+conn = sqlite3.connect(args.db)
 df = pd.read_sql_query(query, conn)
 conn.close()
 
@@ -169,6 +185,9 @@ for i in range(nr):
             
 fil.close()
 print("Distance:  ", np.mean(dist[1:nr]), np.min(dist[1:nr]), np.max(dist[1:nr]))
+
+if not args.plots:
+    sys.exit(0)        # --no-plots: everything below only draws figures
 
 ###############################################################################
 

@@ -87,7 +87,10 @@ int main(int argc, char** argv) {
     SimContext ctx{cfg, gl, sched, *s, *l, *as, *cm, *ex, *ls, *ro, *co, *coNS, outs, totals};
     SightlineState st;
     st.records.reserve(1000);   // rough upper bound on icon per field
-    EventState ev;
+
+    // Light-curve slots (l.timn, l.magn, ...) the previous draw filled; drawEvent clears exactly those, so
+    // the count must survive from one draw to the next and across sightlines (see drawEvent).
+    int prevNdw = 0;
 
     for (const auto& sightline : grid.scan) {
         const SightlineStart go = setupSightline(ctx, st, sightline);
@@ -95,10 +98,12 @@ int main(int argc, char** argv) {
         if (go == SightlineStart::Stop)  break;
 
         do {
-            drawEvent(ctx, st, ev);
-            if (preselectEvent(ctx, st)) simulateLightCurve(ctx, st, ev);
-            characterizeEvent(ctx, st, ev);
-            recordEvent(ctx, st, ev);
+            const EfficiencyBins bins = drawEvent(ctx, st, prevNdw);
+            LightCurveStats lc;                                    // all zero: no light curve
+            if (preselectEvent(ctx, st)) lc = simulateLightCurve(ctx, st);
+            const Characterization ch = characterizeEvent(ctx, st, bins, lc);
+            recordEvent(ctx, st, bins, lc, ch);
+            prevNdw = lc.ndw;
         } while ((st.icon < cfg.iconTarget or st.nlens < cfg.nlensTarget or st.nerr < cfg.nerrTarget)
                  and st.nsim < cfg.maxDraws);
 

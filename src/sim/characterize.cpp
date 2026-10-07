@@ -4,7 +4,8 @@
 #include "fisher/fisher.h"
 #include "surveys/noise.h"
 
-void characterizeEvent(SimContext& ctx, SightlineState& st, EventState& ev) {
+Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins,
+                                   const LightCurveStats& lc) {
     const RunConfig& cfg = ctx.cfg;
     source& s = ctx.s;
     lens& l = ctx.l;
@@ -15,6 +16,7 @@ void characterizeEvent(SimContext& ctx, SightlineState& st, EventState& ev) {
     const std::string& fnLDt = ctx.outs.fnLDt;
 
     double errg;
+    Characterization ch;
 
     for (int i = 0; i < nq; ++i) co.resu[i] = -1.0;
     // Same sentinel discipline for the per-survey results: an event that never
@@ -32,49 +34,31 @@ void characterizeEvent(SimContext& ctx, SightlineState& st, EventState& ev) {
         }
     }
 
-    ev.FFG[0] = 0;
-    ev.FFG[1] = 0;
-    ev.FFG[2] = 0;
-    ev.detL = 0; ev.detR = 0; ev.detJ = 0;
-
     //cout << "flagf: " << flagf << "ndw: " << ndw << endl;
 
-    if (ev.flagf == 0 or ev.ndw <= 2) {
+    if (lc.flagf == 0 or lc.ndw <= 2) {
         errg    = errlsstM(s.magb[2], 2, double(RUBIN_R_DEPTH5_FALLBACK)); //r-band
         s.errA = errlsstA(ls, s.magb[2]); //r-band
         s.errM = std::fabs(std::pow(10.0, - 0.4 * errg) - 1.0); //r-band
-        ev.dchiL = 0.0;
-        ev.dchiP = 0.0;
-        ev.dchiA = 0.0;
-        ev.dchiL_L = 0.0; ev.dchiP_L = 0.0; ev.dchiA_L = 0.0;
-        ev.dchiL_R = 0.0; ev.dchiP_R = 0.0; ev.dchiA_R = 0.0;
-        ev.vsave = s.mus;
+        ch.vMean = s.mus;   // the delta-chi-squared statistics keep their zero defaults
     }
 
-    // Step H3's second forecast for this event. Declared one scope out from the
-    // detection block below, because the row is written further down, where the
-    // satellite observable and the coverage counts have been computed.
-    // Step H3's no-satellite forecast for this same event. Declared here, before
-    // the detection block, so the row write further down can see them whether or
-    // not the Fisher step ran. -1.0 is the not-measured sentinel used everywhere
-    // else in this code: a sigma that never inverted is not a large sigma.
-    ev.sigtE_ns   = -1.0, ev.sigpiE_ns  = -1.0, ev.sigpiER_ns = -1.0;
-    ev.sigtetE_ns = -1.0, ev.sigpiEb_ns = -1.0, ev.relMl_ns   = -1.0;
-    ev.condA_ns   = -1.0, ev.condB_ns   = -1.0;
-    ev.okNS       = 0,    ev.okNSb      = 0;
+    // Step H3's no-satellite forecast for this same event is ch.pair, whose defaults are the -1.0
+    // not-measured sentinel used everywhere else in this code: a sigma that never inverted is not a
+    // large sigma. It is filled below only if the Fisher step runs.
 
-    if (ev.flagf > 0 and ev.ndw > 2) { //if star is visible
+    if (lc.flagf > 0 and lc.ndw > 2) { //if star is visible
         cout << "************** DETECTABLE!!!!!! ********" << endl;
         st.icon +=1;
-        ev.vsave = double(ev.vsave / (ev.ndw + 0.000065645));
-        s.errM   = double(s.errM   / (ev.ndw + 0.000065645));
-        s.errA   = double(s.errA   / (ev.ndw + 0.000065645));
-        detectEvent(ctx, ev);
+        ch.vMean = double(lc.vsave / (lc.ndw + 0.000065645));
+        s.errM   = double(s.errM   / (lc.ndw + 0.000065645));
+        s.errA   = double(s.errA   / (lc.ndw + 0.000065645));
+        ch.det = detectEvent(ctx, lc);
 
-        if (ev.detL or ev.detR or ev.detJ) { //lensing — detected by Rubin, Roman, or the joint test
-            ev.FFG[0] = 1; //Lensing
-            st.nlens += ev.FFG[0];
-            FisherM(s, l, as, co, ev.ndw);
+        if (ch.det.detL or ch.det.detR or ch.det.detJ) { //lensing — detected by Rubin, Roman, or the joint test
+            ch.fisher = 1; //Lensing
+            st.nlens += ch.fisher;
+            FisherM(s, l, as, co, lc.ndw);
 
             if (co.flagi > 0) {
                 // flagi is always +1: FisherM's F*F^-1 checks are commented out
@@ -118,7 +102,7 @@ void characterizeEvent(SimContext& ctx, SightlineState& st, EventState& ev) {
             if (cfg.pairSat) {
                 const double keepScale = as.satScale;
                 as.satScale = 0.0;
-                FisherM(s, l, as, coNS, ev.ndw);
+                FisherM(s, l, as, coNS, lc.ndw);
                 if (coNS.flagi > 0) ErrorCal(coNS, l, s);
                 as.satScale = keepScale;
 
@@ -148,24 +132,26 @@ void characterizeEvent(SimContext& ctx, SightlineState& st, EventState& ev) {
                 // Condition numbers for both matrices and both observers, so the
                 // conditioning question can be answered from the data instead of
                 // hypothesised. This is the diagnostic OPEN_ITEMS asked for.
-                ev.okNS  = coNS.okA[SJOINT];
-                ev.okNSb = coNS.okB[SJOINT];
-                ev.sigtE_ns   = ev.okNS  ? coNS.Era[SJOINT][1] : -1.0;
-                ev.sigpiE_ns  = ev.okNS  ? coNS.Era[SJOINT][3] : -1.0;
-                ev.sigpiER_ns = coNS.okA[SROMAN] ? coNS.Era[SROMAN][3] : -1.0;
-                ev.sigtetE_ns = ev.okNSb ? coNS.Erb[SJOINT][0] : -1.0;
-                ev.sigpiEb_ns = ev.okNSb ? coNS.Erb[SJOINT][3] : -1.0;
-                ev.relMl_ns   = coNS.relMl[SJOINT];
-                ev.condA_ns   = coNS.condA[SJOINT];
-                ev.condB_ns   = coNS.condB[SJOINT];
+                ch.pair.okNS  = coNS.okA[SJOINT];
+                ch.pair.okNSb = coNS.okB[SJOINT];
+                ch.pair.sigtE_ns   = ch.pair.okNS  ? coNS.Era[SJOINT][1] : -1.0;
+                ch.pair.sigpiE_ns  = ch.pair.okNS  ? coNS.Era[SJOINT][3] : -1.0;
+                ch.pair.sigpiER_ns = coNS.okA[SROMAN] ? coNS.Era[SROMAN][3] : -1.0;
+                ch.pair.sigtetE_ns = ch.pair.okNSb ? coNS.Erb[SJOINT][0] : -1.0;
+                ch.pair.sigpiEb_ns = ch.pair.okNSb ? coNS.Erb[SJOINT][3] : -1.0;
+                ch.pair.relMl_ns   = coNS.relMl[SJOINT];
+                ch.pair.condA_ns   = coNS.condA[SJOINT];
+                ch.pair.condB_ns   = coNS.condB[SJOINT];
             }
         }
 
-        tallyDetection(ctx, st, ev);
+        tallyDetection(ctx, st, bins, lc, ch.det);
     }
+    return ch;
 }
 
-void writeSatellitePair(SimContext& ctx, const SightlineState& st, const EventState& ev) {
+void writeSatellitePair(SimContext& ctx, const SightlineState& st, const Characterization& ch,
+                        const PeakCoverage& pk) {
     const RunConfig& cfg = ctx.cfg;
     source& s = ctx.s;
     lens& l = ctx.l;
@@ -176,23 +162,23 @@ void writeSatellitePair(SimContext& ctx, const SightlineState& st, const EventSt
     // event. Written here rather than beside the Fisher call because duSat and the
     // contemporaneous-coverage counts are computed above, and they are the axes
     // every H3 figure uses.
-    if (cfg.pairSat and (ev.detL or ev.detR or ev.detJ)) {
+    if (cfg.pairSat and (ch.det.detL or ch.det.detR or ch.det.detJ)) {
         std::ofstream fpair(fnPair, std::ios::app);
         const int okAs = co.okA[SJOINT], okBs = co.okB[SJOINT];
         fpair << std::setprecision(7)
               << s.lon << " " << s.lat << " "
               << l.tE  << " " << l.u0  << " " << l.piE << " " << l.tetE << " "
-              << ev.duSat << " "
-              << okAs << " " << ev.okNS << " " << okBs << " " << ev.okNSb << " "
-              << (okAs ? co.Era[SJOINT][1] : -1.0) << " " << ev.sigtE_ns   << " "
-              << (okAs ? co.Era[SJOINT][3] : -1.0) << " " << ev.sigpiE_ns  << " "
-              << (co.okA[SROMAN] ? co.Era[SROMAN][3] : -1.0) << " " << ev.sigpiER_ns << " "
-              << (okBs ? co.Erb[SJOINT][0] : -1.0) << " " << ev.sigtetE_ns << " "
-              << (okBs ? co.Erb[SJOINT][3] : -1.0) << " " << ev.sigpiEb_ns << " "
-              << co.relMl[SJOINT] << " " << ev.relMl_ns << " "
-              << co.condA[SJOINT] << " " << ev.condA_ns << " "
-              << co.condB[SJOINT] << " " << ev.condB_ns << " "
-              << ev.nepLpk << " " << ev.nepRpk << " " << st.wArea << " "
+              << pk.duSat << " "
+              << okAs << " " << ch.pair.okNS << " " << okBs << " " << ch.pair.okNSb << " "
+              << (okAs ? co.Era[SJOINT][1] : -1.0) << " " << ch.pair.sigtE_ns   << " "
+              << (okAs ? co.Era[SJOINT][3] : -1.0) << " " << ch.pair.sigpiE_ns  << " "
+              << (co.okA[SROMAN] ? co.Era[SROMAN][3] : -1.0) << " " << ch.pair.sigpiER_ns << " "
+              << (okBs ? co.Erb[SJOINT][0] : -1.0) << " " << ch.pair.sigtetE_ns << " "
+              << (okBs ? co.Erb[SJOINT][3] : -1.0) << " " << ch.pair.sigpiEb_ns << " "
+              << co.relMl[SJOINT] << " " << ch.pair.relMl_ns << " "
+              << co.condA[SJOINT] << " " << ch.pair.condA_ns << " "
+              << co.condB[SJOINT] << " " << ch.pair.condB_ns << " "
+              << pk.nepLpk << " " << pk.nepRpk << " " << st.wArea << " "
               << l.Ml << " " << l.Dl << " " << s.Ds << " " << l.Vt << "\n";
         fpair.close();
     }

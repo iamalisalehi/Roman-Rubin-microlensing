@@ -7,13 +7,14 @@
 #include "run/histograms.h"
 #include "surveys/noise.h"
 
-void drawEvent(SimContext& ctx, SightlineState& st, EventState& ev) {
+EfficiencyBins drawEvent(SimContext& ctx, SightlineState& st, int prevNdw) {
     source& s = ctx.s;
     lens& l = ctx.l;
     CMD& cm = ctx.cm;
     extin& ex = ctx.ex;
     std::vector<DumpEpoch>& dumpBuf = ctx.outs.dumpBuf;
     RunTotals& run = ctx.run;
+    EfficiencyBins bins;
 
     st.nsim += 1.0;
     func_source(s, cm, ex, st.sightlineIdx);
@@ -28,8 +29,8 @@ void drawEvent(SimContext& ctx, SightlineState& st, EventState& ev) {
     // inside the detection branch and neither counter was ever incremented, so
     // ndtE stayed identically zero and EFF, Gamma and Neven with it (the run then
     // aborted on CHECK(EFF > 0.0) as soon as a field managed to complete).
-    ev.gg = FunctE(l);
-    l.nstE[ev.gg] += 1.0;
+    bins.gg = FunctE(l);
+    l.nstE[bins.gg] += 1.0;
     run.nSimTot += 1;
 
     // The other six efficiency axes, on the same principle as tE: the DENOMINATOR
@@ -42,30 +43,27 @@ void drawEvent(SimContext& ctx, SightlineState& st, EventState& ev) {
     // Unlike the tE pair there is no per-sightline lowercase pair for these; the
     // N* arrays accumulate over the whole run, which is what the EfLMC writer
     // reports and why nothing resets them per sightline.
-    ev.ss = FuncMl(l);                    // lens mass
-    ev.qq = FuncPi(l);                    // log10 relative parallax
-    ev.ww = Funcu0(l);                    // impact parameter
-    ev.vv = FuncMu(l);                    // relative proper motion
-    ev.zz = FuncMb(l, s.Map[2]);         // source baseline magnitude, r band
-    ev.pp = FuncFb(l, s.blend[2]);       // blend fraction, r band
-    l.NsMl[ev.ss] += 1.0;
-    l.Nspi[ev.qq] += 1.0;
-    l.Nsu0[ev.ww] += 1.0;
-    l.Nsmu[ev.vv] += 1.0;
-    l.Nsmb[ev.zz] += 1.0;
-    l.Nsfb[ev.pp] += 1.0;
+    bins.ss = FuncMl(l);                    // lens mass
+    bins.qq = FuncPi(l);                    // log10 relative parallax
+    bins.ww = Funcu0(l);                    // impact parameter
+    bins.vv = FuncMu(l);                    // relative proper motion
+    bins.zz = FuncMb(l, s.Map[2]);         // source baseline magnitude, r band
+    bins.pp = FuncFb(l, s.blend[2]);       // blend fraction, r band
+    l.NsMl[bins.ss] += 1.0;
+    l.Nspi[bins.qq] += 1.0;
+    l.Nsu0[bins.ww] += 1.0;
+    l.Nsmu[bins.vv] += 1.0;
+    l.Nsmb[bins.zz] += 1.0;
+    l.Nsfb[bins.pp] += 1.0;
 
     s.nssim[s.nums] += 1.0;
-    ev.flagf   = 0;
     dumpBuf.clear(); //Step S1: this draw's epoch buffer. See the note on `ndw`.
-    ev.dclsEvent = DET_NONE; //DetClass for this draw; stays NONE if no light curve
-    ev.initial = 0.0;
     // (Step B2: the old single `test = RandR(0.0,1.0)` draw consumed here by
     // `test <= s->blend[2]` is gone — testL/testR are now drawn fresh right
     // before the per-survey pre-selection check, below.)
 
-    // Clear only the prefix the PREVIOUS event dirtied -- `ndw` is not reset
-    // until a few lines below, so it still holds that count here. Clearing all
+    // Clear only the prefix the PREVIOUS event dirtied -- `prevNdw`, the
+    // ndw of its LightCurveStats, which the caller carries from draw to draw. Clearing all
     // `coun` slots (Nl + NlRoman = 306,092, times seven arrays = 2.1M writes)
     // to reset the ~2,000 an event actually uses was ~150x of pure waste per
     // draw, and got 16x more expensive when NlRoman became the real visit count.
@@ -83,29 +81,17 @@ void drawEvent(SimContext& ctx, SightlineState& st, EventState& ev) {
     // NOTE: the untouched tail of tele[] is 0 (its constructed value), not the
     // -1 the old full clear wrote. Unobservable today -- tele is only read at
     // [0, ndw) -- but relevant if anything ever scans the whole array.
-    for (int i = 0; i < ev.ndw; ++i) {
+    for (int i = 0; i < prevNdw; ++i) {
         l.timn[i] = 0.0;  l.magn[i] = 0.0; l.soux[i] = 0.0;  l.souy[i] = 0.0;
         l.errm[i] = 0.0;  l.erra[i] = 0.0; l.tele[i] = -1;
     }
 
-    ev.ndw     = 0;   ev.flag_det = 0;
-    ev.ndw_L   = 0;   ev.ndw_R    = 0;
-    ev.nres5_L = 0; ev.nres20_L = 0; ev.nresPSF_L = 0; ev.dsepMax_L = -1.0;
-    ev.nres5_R = 0; ev.nres20_R = 0; ev.nresPSF_R = 0; ev.dsepMax_R = -1.0;
-    ev.flag_det_L = 0; ev.flag_det_R = 0;
-    ev.chi1    = 0.0; ev.chi2     = 0.0; ev.chi3  = 0.0;
-    ev.chi1_L  = 0.0; ev.chi2_L   = 0.0; ev.chi3_L = 0.0;
-    ev.chi1_R  = 0.0; ev.chi2_R   = 0.0; ev.chi3_R = 0.0;
-    ev.chi1a   = 0.0; ev.chi2a    = 0.0; ev.chi3a = 0.0;
-    ev.chi1a_L = 0.0; ev.chi2a_L  = 0.0; ev.chi3a_L = 0.0;
-    ev.chi1a_R = 0.0; ev.chi2a_R  = 0.0; ev.chi3a_R = 0.0;
-    s.def1c = 0.0; ev.vsave = 0.0;
+    // The per-event accumulators (LightCurveStats, Detection) are fresh value structs, zeroed by their
+    // defaults; what lives in the shared objects is reset here.
+    s.def1c = 0.0;
     s.def2c = 0.0;
     s.errM = 0.0; s.errA  = 0.0;
-    ev.dchiL   = 0.0; ev.dchiP    = 0.0; ev.dchiA = 0.0;
-    ev.dchiL_L = 0.0; ev.dchiP_L  = 0.0; ev.dchiA_L = 0.0;
-    ev.dchiL_R = 0.0; ev.dchiP_R  = 0.0; ev.dchiA_R = 0.0;
-
+    return bins;
 }
 
 bool preselectEvent(SimContext& ctx, const SightlineState& st) {

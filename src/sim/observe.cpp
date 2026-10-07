@@ -1,14 +1,15 @@
 // The light curve as the two surveys record it: the time loop over epochs, with Rubin's ugrizy block,
 // Roman's F146 block and the adaptive step size. The hot path -- ~10^5 iterations per draw in the
-// Roman footprint -- so the loop's working variables are locals of this function (loaded from the
-// EventState on entry, stored back on exit) rather than members reached through a reference.
+// Roman footprint -- so the loop's working variables are locals of this function (set to the
+// LightCurveStats defaults on entry, copied into the returned struct on exit) rather than members
+// reached through a reference.
 #include "sim/observe.h"
 #include "util/random.h"
 #include "events/lightcurve.h"
 #include "surveys/noise.h"
 #include "run/sample_dump.h"
 
-void simulateLightCurve(SimContext& ctx, const SightlineState& st, EventState& ev) {
+LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
     source& s = ctx.s;
     lens& l = ctx.l;
     astromet& as = ctx.as;
@@ -22,19 +23,21 @@ void simulateLightCurve(SimContext& ctx, const SightlineState& st, EventState& e
     const int    ndd = st.ndd, nddR = st.nddR;
     const double minc = st.minc, mincR = st.mincR;
 
-    // Hot working variables: this event's accumulators, loaded here and stored back at the end.
-    int    ndw = ev.ndw, ndw_L = ev.ndw_L, ndw_R = ev.ndw_R;
-    int    flag_det = ev.flag_det, flag_det_L = ev.flag_det_L, flag_det_R = ev.flag_det_R;
-    long   nres5_L = ev.nres5_L, nres20_L = ev.nres20_L, nresPSF_L = ev.nresPSF_L;
-    long   nres5_R = ev.nres5_R, nres20_R = ev.nres20_R, nresPSF_R = ev.nresPSF_R;
-    double dsepMax_L = ev.dsepMax_L, dsepMax_R = ev.dsepMax_R;
-    double chi1 = ev.chi1, chi2 = ev.chi2, chi3 = ev.chi3, chi1a = ev.chi1a, chi2a = ev.chi2a, chi3a = ev.chi3a;
-    double chi1_L = ev.chi1_L, chi2_L = ev.chi2_L, chi3_L = ev.chi3_L;
-    double chi1a_L = ev.chi1a_L, chi2a_L = ev.chi2a_L, chi3a_L = ev.chi3a_L;
-    double chi1_R = ev.chi1_R, chi2_R = ev.chi2_R, chi3_R = ev.chi3_R;
-    double chi1a_R = ev.chi1a_R, chi2a_R = ev.chi2a_R, chi3a_R = ev.chi3a_R;
-    double vsave = ev.vsave;
-    const double initial = ev.initial;
+    // Hot working variables: this event's accumulators, starting from the LightCurveStats defaults and
+    // copied into the returned struct at the end.
+    int    ndw = 0, ndw_L = 0, ndw_R = 0;
+    int    flag_det = 0, flag_det_L = 0, flag_det_R = 0;   // the loop sets the joint flag, but detectEvent
+                                                            // recomputes it, so it is not returned
+    long   nres5_L = 0, nres20_L = 0, nresPSF_L = 0;
+    long   nres5_R = 0, nres20_R = 0, nresPSF_R = 0;
+    double dsepMax_L = -1.0, dsepMax_R = -1.0;
+    double chi1 = 0, chi2 = 0, chi3 = 0, chi1a = 0, chi2a = 0, chi3a = 0;
+    double chi1_L = 0, chi2_L = 0, chi3_L = 0;
+    double chi1a_L = 0, chi2a_L = 0, chi3a_L = 0;
+    double chi1_R = 0, chi2_R = 0, chi3_R = 0;
+    double chi1a_R = 0, chi2a_R = 0, chi3a_R = 0;
+    double vsave = 0.0;
+    const double initial = 0.0;   // legacy padding of the time window [days]; always 0
 
     // Loop-private state (reset to these values at the start of every event, never read outside).
     double flag0 = 0.0, flag1 = 0.0, flag2 = 0.0;
@@ -50,7 +53,6 @@ void simulateLightCurve(SimContext& ctx, const SightlineState& st, EventState& e
 
     cout << "************** DETECTABLE!!!!!! ********" << endl;
     s.nsdet[s.nums] += 1.0;
-    ev.flagf = 1;
     // (The legacy magC/datC/BHLSSTMONTS demo dump that was gated here could never
     // fire -- save < 0 with save = 0 -- and was removed in Deviation 78, with the
     // random draw that fed it.)
@@ -357,15 +359,19 @@ void simulateLightCurve(SimContext& ctx, const SightlineState& st, EventState& e
     }//end of loop time
 
     // Hand the accumulators back.
-    ev.ndw = ndw; ev.ndw_L = ndw_L; ev.ndw_R = ndw_R;
-    ev.flag_det = flag_det; ev.flag_det_L = flag_det_L; ev.flag_det_R = flag_det_R;
-    ev.nres5_L = nres5_L; ev.nres20_L = nres20_L; ev.nresPSF_L = nresPSF_L;
-    ev.nres5_R = nres5_R; ev.nres20_R = nres20_R; ev.nresPSF_R = nresPSF_R;
-    ev.dsepMax_L = dsepMax_L; ev.dsepMax_R = dsepMax_R;
-    ev.chi1 = chi1; ev.chi2 = chi2; ev.chi3 = chi3; ev.chi1a = chi1a; ev.chi2a = chi2a; ev.chi3a = chi3a;
-    ev.chi1_L = chi1_L; ev.chi2_L = chi2_L; ev.chi3_L = chi3_L;
-    ev.chi1a_L = chi1a_L; ev.chi2a_L = chi2a_L; ev.chi3a_L = chi3a_L;
-    ev.chi1_R = chi1_R; ev.chi2_R = chi2_R; ev.chi3_R = chi3_R;
-    ev.chi1a_R = chi1a_R; ev.chi2a_R = chi2a_R; ev.chi3a_R = chi3a_R;
-    ev.vsave = vsave;
+    (void)flag_det;
+    LightCurveStats lc;
+    lc.flagf = 1;
+    lc.ndw = ndw; lc.ndw_L = ndw_L; lc.ndw_R = ndw_R;
+    lc.flag_det_L = flag_det_L; lc.flag_det_R = flag_det_R;
+    lc.nres5_L = nres5_L; lc.nres20_L = nres20_L; lc.nresPSF_L = nresPSF_L;
+    lc.nres5_R = nres5_R; lc.nres20_R = nres20_R; lc.nresPSF_R = nresPSF_R;
+    lc.dsepMax_L = dsepMax_L; lc.dsepMax_R = dsepMax_R;
+    lc.chi1 = chi1; lc.chi2 = chi2; lc.chi3 = chi3; lc.chi1a = chi1a; lc.chi2a = chi2a; lc.chi3a = chi3a;
+    lc.chi1_L = chi1_L; lc.chi2_L = chi2_L; lc.chi3_L = chi3_L;
+    lc.chi1a_L = chi1a_L; lc.chi2a_L = chi2a_L; lc.chi3a_L = chi3a_L;
+    lc.chi1_R = chi1_R; lc.chi2_R = chi2_R; lc.chi3_R = chi3_R;
+    lc.chi1a_R = chi1a_R; lc.chi2a_R = chi2a_R; lc.chi3a_R = chi3a_R;
+    lc.vsave = vsave;
+    return lc;
 }

@@ -6,8 +6,9 @@
 #include "sim/state.h"
 
 // func_source, func_lens, optical_depth, the seven efficiency-axis bins and their denominators, then
-// the per-event resets. Draws random numbers.
-void drawEvent(SimContext& ctx, SightlineState& st, EventState& ev);
+// the per-event resets. Draws random numbers. `prevNdw` is the epoch count of the PREVIOUS draw's light
+// curve (LightCurveStats::ndw): the number of light-curve slots in ctx.l that it dirtied and this call clears.
+EfficiencyBins drawEvent(SimContext& ctx, SightlineState& st, int prevNdw);
 
 // The Step B2 pre-selection: is the event bright enough to be seen by Rubin (>= 2 bands) or by
 // Roman, then one accept draw per survey. Returns true if either accepts, i.e. a light curve is

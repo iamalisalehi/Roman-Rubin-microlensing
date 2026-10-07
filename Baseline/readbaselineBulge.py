@@ -51,6 +51,7 @@ assert max(idx) < len(nam0), "idx out of range"
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "analysis"))
 import gbtds_geometry as G          # noqa: E402
+from cparams import P               # noqa: E402
 # Deviation 80: Rubin's coverage is now LSSTCam's active silicon (Baseline/lsstcam_fov), which
 # reaches 1.94 deg from the boresight (the radius rubin_scheduler crops it at), not 1.75.
 RUBIN_MAX_RADIUS = 1.94
@@ -64,7 +65,7 @@ REACH = G.scan_reach() + RUBIN_MAX_RADIUS
 # and the generator's MISSION_START_DAY are defined. Visits before it, or after Tobs, fall
 # outside the simulated window and are dropped (40 before day 0, none after, on v5.1.0).
 TIME0_MJD = 61141.312002288
-TOBS_DAYS = 10.0 * 365.2425          # config/parameters.h Tobs
+TOBS_DAYS = P.Tobs                   # config/parameters.h Tobs
 
 #RA0, RA1, DEC0, DEC1 = float(75.0 - 3.5 / 2.0), float(90.0 + 3.5 / 2.0),  float(-75.0 -3.5 / 2.0), float(-60.0 + 3.5 / 2.0)##Bulge
 #fil = open("./Bulgebaseline.dat", "w")

@@ -33,6 +33,8 @@ import warnings
 import numpy as np
 import pandas as pd
 
+from cparams import P            # the C++ headers' own numbers (analysis/cparams.py)
+
 SENTINEL = -1.0
 
 # Detection taxonomy -- see DetClass in Bulge.h.
@@ -578,10 +580,10 @@ def attach_weight(df, map_path=None, log_paths=(), unweighted=False):
 # -- the rate is per lens, and F rho / <M> is the lens number density -- taken per Galactic
 # component because the `bulge` population's mass function differs between them.
 #
-# Mirrored from Bulge.h, like galaxy_model's constants: u0m = 3.0 (u0 is drawn uniform on
+# Read from config/parameters.h, like galaxy_model's constants: u0m = 3.0 (u0 is drawn uniform on
 # [0.001, u0m]) and t0 uniform on [2 d, Tobs - 2 d].
-U0M = 3.0
-T0_MARGIN_DAYS = 2.0
+U0M = P.u0m
+T0_MARGIN_DAYS = P.T0_MARGIN_DAYS
 _G, _C, _MSUN = 6.67430e-11, 2.99792458e8, 1.98847e30
 _PC = 3.0856775814913673e16                           # m
 _KPC = 1.0e3 * _PC
@@ -590,10 +592,13 @@ RATE_UNIT = (2.0 * U0M * np.sqrt(4.0 * _G * _MSUN / _C**2)   # m^0.5
              * 1.0e3)                                        # v_t km/s -> m/s
 # RATE_UNIT * Z * sqrt(M) * Vt / <M> is gamma_i in s^-1 per source star (F = 1).
 
-# Per-filter single-visit depth and saturation, mirrored from Bulge.h `thre` / `satu`
-# (ugrizy, F146). Needed to rebuild which surveys could have accepted a draw.
-THRE = np.array([23.4, 24.6, 24.3, 23.6, 22.9, 21.7, 29.0])
-SATU = np.array([15.2, 16.3, 16.0, 15.3, 14.6, 13.4, 12.0])
+# Per-filter single-visit depth and saturation, read from config/parameters.h `thre` / `satu` (ugrizy, F146).
+# Needed to rebuild which surveys could have accepted a draw. The F146 entries are the C++'s. The ugrizy
+# entries are NOT what the C++ uses for Rubin's acceptance: it takes per-sightline medians of the matched
+# visits' 5-sigma depths (st.rubinDepthMed, src/sim/draw.cpp:126) with saturation = depth - RUBIN_SATU_BELOW_M5,
+# which the event table does not carry, so acceptance_probability's Rubin half is an approximation (OPEN_ITEMS).
+THRE = P.thre
+SATU = P.satu
 FILTERS = ["u", "g", "r", "i", "z", "y", "F146"]
 
 

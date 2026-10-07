@@ -73,6 +73,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import romanlib as R
+from cparams import P
 
 INK = "#1a1a1a"
 MUTED = "#6b6b6b"
@@ -88,12 +89,13 @@ ACCENT = "#7c3aed"
 # (arXiv:1712.05420) and arXiv:2608.24998. Duplicated here rather than parsed out of the
 # header because parsing a C++ expression is more fragile than a cross-reference; if the C++
 # constants move, move these.
-ROMAN_AST_FLOOR = 1.1        # mas, 1% of the 110 mas pixel
-ROMAN_AST_MFLR = 20.62
-ROMAN_AST_MBKG = 23.5
-ROMAN_AST_SBKG = 10.0
-ROMAN_AST_SLOPE_SRC = 0.33285
-ROMAN_AST_SLOPE_BKG = 0.4
+# read from config/parameters.h / include/common.h
+ROMAN_AST_FLOOR = P.ROMAN_AST_FLOOR        # mas, 1% of the 110 mas pixel
+ROMAN_AST_MFLR = P.ROMAN_AST_MFLR
+ROMAN_AST_MBKG = P.ROMAN_AST_MBKG
+ROMAN_AST_SBKG = P.ROMAN_AST_SBKG
+ROMAN_AST_SLOPE_SRC = P.ROMAN_AST_SLOPE_SRC
+ROMAN_AST_SLOPE_BKG = P.ROMAN_AST_SLOPE_BKG
 
 U_AST_PEAK = np.sqrt(2.0)    # the separation at which the centroid shift is maximal
 

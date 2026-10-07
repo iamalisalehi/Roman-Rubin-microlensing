@@ -22,15 +22,17 @@ import os
 
 import numpy as np
 
+from cparams import P            # the C++ headers' own numbers (analysis/cparams.py)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LAYOUT_DIR = os.path.join(ROOT, "Baseline", "gbtds_layout")
 CENTERS_FILES = ("gbtds_spring_2026.4.3.centers", "gbtds_autumn_2026.4.3.centers")
 SCA_FILES = ("sca_layout_spring.txt", "sca_layout_fall.txt")
 LAYOUT_NAMES = ("spring", "autumn")
 
-FOV_RUBIN = 1.75                     # config/parameters.h FoV: Rubin's matching radius [deg]
-SCAN_RUBIN_REACH = 2.0 * FOV_RUBIN   # config/parameters.h SCAN_RUBIN_REACH
-DD = 0.02                            # config/parameters.h dd: the native grid unit [deg]
+FOV_RUBIN = P.FoV                        # config/parameters.h FoV: Rubin's matching radius [deg]
+SCAN_RUBIN_REACH = P.SCAN_RUBIN_REACH    # config/parameters.h
+DD = P.dd                                # config/parameters.h dd: the native grid unit [deg]
 
 # The superseded notional layout (mtpenny/gbtds_optimizer layout_40395), for pre-Deviation-69 runs.
 LEGACY_FIELDS = [(-0.417948, -1.2), (-0.008974, -1.2), (0.4, -1.2), (0.808974, -1.2),

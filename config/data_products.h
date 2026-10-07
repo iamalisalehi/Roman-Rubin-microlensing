@@ -30,9 +30,8 @@ constexpr int N1 = 1288584, N2 = 3500000, N3 = 2008646, N4 = 18541;
 // dark entries included). Disk_model's star count Nstart = rho / <m>, so these make Nstart count exactly
 // the population a draw comes from. bos10 values (Deviation 88); they replace the bos9 values
 // 0.4212 / 0.4199 / 0.4594 / 0.3774 of Deviation 81 and, before that, the legacy 0.403445 (thin), 0.4542
-// (thick, halo) and 0.308571 (bulge) of an unrecorded "mass_averaged.cpp". Mirrored in
-// analysis/galaxy_model.py (MBAR_*) and analysis/besancon_sample.py (MEANMASS): the script warns when
-// they disagree, but does not edit them.
+// (thick, halo) and 0.308571 (bulge) of an unrecorded "mass_averaged.cpp". The Python side reads these
+// through analysis/cparams.py.
 constexpr double MEANMASS_THIN  = 0.3664;
 constexpr double MEANMASS_BULGE = 0.4148;
 constexpr double MEANMASS_THICK = 0.4849;

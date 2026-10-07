@@ -34,12 +34,14 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import romanlib as R
+from cparams import P
 
 BG = "#fcfcfb"
 C_J, C_L, C_R = "#1f4e79", "#c1121f", "#2a9d8f"   # joint, Rubin, Roman
 
-ROMAN_AST_FLOOR, ROMAN_AST_MFLR, ROMAN_AST_MBKG = 1.1, 20.62, 23.5
-ROMAN_AST_SLOPE_SRC, ROMAN_AST_SBKG, ROMAN_AST_SLOPE_BKG = 0.3329, 10.0, 0.4
+# errRomanA's constants, read from config/parameters.h and include/common.h
+ROMAN_AST_FLOOR, ROMAN_AST_MFLR, ROMAN_AST_MBKG = P.ROMAN_AST_FLOOR, P.ROMAN_AST_MFLR, P.ROMAN_AST_MBKG
+ROMAN_AST_SLOPE_SRC, ROMAN_AST_SBKG, ROMAN_AST_SLOPE_BKG = P.ROMAN_AST_SLOPE_SRC, P.ROMAN_AST_SBKG, P.ROMAN_AST_SLOPE_BKG
 
 
 def roman_ast_error(mag):

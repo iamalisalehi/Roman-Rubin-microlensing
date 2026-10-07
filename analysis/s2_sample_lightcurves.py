@@ -82,11 +82,12 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import romanlib as R          # noqa: E402
 import plotstyle as ps        # noqa: E402
+from cparams import P         # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402  (after plotstyle, which selects the backend)
 from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 
-YEAR = 365.2425
+YEAR = P.year
 FILTERS = ["u", "g", "r", "i", "z", "y", "F146"]
 ROMAN_FILT = 6
 
@@ -417,7 +418,7 @@ def sanity_checks(p, ep, mo):
 # light curves; consistency within one figure wins.)
 TRACK = {"src_u": "#0891b2", "src_d": "#1e3a8a", "lens": "#c026d3", "lens0": "#dc2626",
          "rel": "#7f1d1d", "defl": "#1a1a1a"}
-TOBS = 10.0 * YEAR     # Rubin's 10-year window; the tracks are dotted outside it
+TOBS = P.Tobs          # Rubin's 10-year window; the tracks are dotted outside it
 
 # ONE RULE FOR EVERY PANEL: a point or bin is drawn only if its 1-sigma is below this fraction
 # of the signal it is plotted against -- the event's amplitude, the parallax signal, the peak

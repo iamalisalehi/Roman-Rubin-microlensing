@@ -36,6 +36,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import romanlib as R          # noqa: E402
 import plotstyle as ps        # noqa: E402
+from cparams import P         # noqa: E402
 
 # The paper's criterion: the images count as resolvable when at least three recorded data
 # points have both images detectable AND separated by more than the bar. Three, not one,
@@ -45,7 +46,7 @@ RESOLVE_MIN_EPOCHS = 3
 # Roman's per-exposure astrometric floor [mas] -- config/parameters.h ROMAN_AST_FLOOR. Used only as a
 # reference line; the per-event precision is a function of magnitude and is far worse than
 # this for a typical bulge source (measured median 6.69 mas in the v3 run).
-ROMAN_AST_FLOOR = 1.1
+ROMAN_AST_FLOOR = P.ROMAN_AST_FLOOR   # mas, read from config/parameters.h
 
 U_AST_PEAK = np.sqrt(2.0)   # the impact parameter at which the centroid shift is maximal
 

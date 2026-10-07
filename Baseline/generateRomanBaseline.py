@@ -85,6 +85,9 @@ import argparse
 import numpy as np
 from astropy.coordinates import SkyCoord
 import astropy.units as u
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "analysis"))
+from cparams import P  # noqa: E402
 
 # ============================================================================
 # Configuration — every value here should be checked against the ROTAC 2025
@@ -93,7 +96,7 @@ import astropy.units as u
 
 OUTPUT_PATH = "./Baseline/RomanBaseline.dat"
 
-YEAR_DAYS          = 365.2425
+YEAR_DAYS          = P.year                              # config: physical_constants.h
 MISSION_YEARS      = 5
 SEASONS_PER_YEAR   = 2                                   # bulge visible ~twice/year
 N_SEASONS          = MISSION_YEARS * SEASONS_PER_YEAR    # 10 total bulge seasons
@@ -143,7 +146,7 @@ LOW_CADENCE_DAYS  = 5.0
 #
 # Still a modelling choice; override at run time with --mission-start DAYS.
 MISSION_START_DAY = 306.0
-TOBS_DAYS = 10.0 * YEAR_DAYS  # must match Tobs in config/parameters.h -- the C++ read CHECKs against it
+TOBS_DAYS = P.Tobs  # config/parameters.h Tobs -- the C++ read CHECKs against it
 
 # The adopted GBTDS fields, one list per roll (layout 0 = spring, 1 = autumn), read from the
 # vendored layout files so the numbers live in one place (Baseline/gbtds_layout/README.md).

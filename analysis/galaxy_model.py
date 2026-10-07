@@ -19,28 +19,25 @@ change to `Disk_model`.
 
 import numpy as np
 
-# ---- mirrored from Bulge.h ----
-NUM = 9500
-MAXD = 12.0                      # kpc
-STEP = MAXD / NUM                # kpc
-DSUN = 8.0                       # kpc
-RAA = 180.0 / np.pi
-BINARY_FRACTION = 2.0 / 3.0
-RHO0 = np.array([4.0, 7.9, 6.2, 4.0, 5.8, 4.9, 6.6, 3.96])
-D0 = np.array([0.073117, 0.0216524, 0.0217405, 0.0217901,
-               0.0218061, 0.0218118, 0.0218121, 0.0218121])
-EPCI = np.array([0.014, 0.0268, 0.0375, 0.0551, 0.0696, 0.0785, 0.0791, 0.0791])
-CORR = np.array([1.0, 7.9 / 4.48419, 6.2 / 3.52112, 4.0 / 2.27237,
-                 5.8 / 3.29525, 4.9 / 2.78402, 6.6 / 3.74991, 3.96 / 2.24994])
-BAR_MASS_RESCALE = 0.24529       # calibrated to the Han & Gould (2003) Baade's Window benchmark
+from cparams import P            # the C++ headers' own numbers (analysis/cparams.py)
 
-# Mean stellar mass per component, the divisors in Nstari: config/data_products.h's MEANMASS_*, the mean mass of
-# each complete CMD population (provenance.txt, mean_mass_population). Current values are the bos10
+# ---- read from config/parameters.h ----
+NUM = P.Num
+MAXD = P.MaxD                    # kpc
+STEP = MAXD / NUM                # kpc
+DSUN = P.Dsun                    # kpc
+RAA = 180.0 / np.pi
+BINARY_FRACTION = P.binary_fraction
+RHO0, D0, EPCI, CORR = P.rho0, P.d0, P.epci, P.corr
+BAR_MASS_RESCALE = P.BAR_MASS_RESCALE   # calibrated to the Han & Gould (2003) Baade's Window benchmark
+
+# Mean stellar mass per component, the divisors in Nstari: read from config/data_products.h's MEANMASS_*, the mean
+# mass of each complete CMD population (provenance.txt, mean_mass_population). The current values are the bos10
 # lists' (Deviation 88; thin 0.3664, bulge 0.4148, thick 0.4849, halo 0.4224). Runs before that used the
 # bos9 lists' 0.4212 / 0.4199 / 0.4594 / 0.3774 (thin, bulge, thick, halo; Deviation 81), and runs before
 # Deviation 81 the legacy 0.403445 / 0.4542 / 0.4542 / 0.308571 (thin, thick, halo, bulge); their Nstart
 # is in their own map files, which is what the weights read.
-MBAR_THIN, MBAR_THICK, MBAR_HALO, MBAR_BULGE = 0.3664, 0.4849, 0.4224, 0.4148
+MBAR_THIN, MBAR_THICK, MBAR_HALO, MBAR_BULGE = P.MEANMASS_THIN, P.MEANMASS_THICK, P.MEANMASS_HALO, P.MEANMASS_BULGE
 
 
 class Profile:

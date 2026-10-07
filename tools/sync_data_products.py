@@ -141,9 +141,8 @@ constexpr int N1 = {N1}, N2 = {N2}, N3 = {N3}, N4 = {N4};
 // dark entries included). Disk_model's star count Nstart = rho / <m>, so these make Nstart count exactly
 // the population a draw comes from. bos10 values (Deviation 88); they replace the bos9 values
 // 0.4212 / 0.4199 / 0.4594 / 0.3774 of Deviation 81 and, before that, the legacy 0.403445 (thin), 0.4542
-// (thick, halo) and 0.308571 (bulge) of an unrecorded "mass_averaged.cpp". Mirrored in
-// analysis/galaxy_model.py (MBAR_*) and analysis/besancon_sample.py (MEANMASS): the script warns when
-// they disagree, but does not edit them.
+// (thick, halo) and 0.308571 (bulge) of an unrecorded "mass_averaged.cpp". The Python side reads these
+// through analysis/cparams.py.
 constexpr double MEANMASS_THIN  = {MEANMASS_THIN};
 constexpr double MEANMASS_BULGE = {MEANMASS_BULGE};
 constexpr double MEANMASS_THICK = {MEANMASS_THICK};
@@ -183,33 +182,6 @@ def parse_existing(text):
     return old
 
 
-def mirror_warnings(root, v):
-    msgs = []
-    gm = root / "analysis/galaxy_model.py"
-    if gm.is_file():
-        m = re.search(r"^MBAR_THIN,\s*MBAR_THICK,\s*MBAR_HALO,\s*MBAR_BULGE\s*=\s*([^\n#]+)", gm.read_text(), re.M)
-        if m:
-            vals = [x.strip() for x in m.group(1).split(",")]
-            for key, val in zip(["THIN", "THICK", "HALO", "BULGE"], vals):
-                want = v["MEANMASS_" + key]
-                if float(val) != float(want):
-                    msgs.append(f"analysis/galaxy_model.py MBAR_{key} = {val}, data say {want}")
-        else:
-            msgs.append("analysis/galaxy_model.py: could not parse the MBAR_* line")
-    bs = root / "analysis/besancon_sample.py"
-    if bs.is_file():
-        m = re.search(r"^MEANMASS\s*=\s*\{([^}]*)\}", bs.read_text(), re.M)
-        if m:
-            d = dict((a, b) for a, b in re.findall(r'"(\w+)"\s*:\s*([0-9.]+)', m.group(1)))
-            for _, _, _, mconst, key in COMPONENTS:
-                want = v[mconst]
-                if key not in d or float(d[key]) != float(want):
-                    msgs.append(f"analysis/besancon_sample.py MEANMASS[{key!r}] = {d.get(key)}, data say {want}")
-        else:
-            msgs.append("analysis/besancon_sample.py: could not parse the MEANMASS dict")
-    return msgs
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--check", action="store_true", help="do not write; exit 1 if the header is stale")
@@ -232,8 +204,6 @@ def main():
         if mark:
             changed.append(k)
         print(f"  {k:22s} = {val}{mark}")
-    for w in mirror_warnings(root, v):
-        print(f"WARNING: mirror out of sync: {w}")
     stale = new != oldtext
     if a.check:
         if stale:

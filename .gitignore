@@ -158,3 +158,5 @@ STATUS_REPORT.md
 # The private backup repo of the files above (a second git dir over this same tree) and its sync script
 /.git-private/
 /private_sync.sh
+# Private session notes (backed up by private_sync.sh)
+/notes/

@@ -84,7 +84,13 @@ MAP_COLS = ([f"{n}_{i}" for n in _MAP_PAIRS for i in (0, 1)]
                # pooled yield needs as its denominator -- was unreachable from the event
                # table. Files written before Step E1 have none of the three;
                # load_sightlines() detects that by width.
-               "w_area", "lon", "lat"])
+               "w_area", "lon", "lat",
+               # Deviation 94: the sightline's median 5-sigma depth per LSST band
+               # (st.rubinDepthMed; -inf where the band has no visit), which Rubin's
+               # acceptance in preselectEvent compares each draw's peak with. Files written
+               # before it have none of the six (NaN here).
+               "depth5_u", "depth5_g", "depth5_r", "depth5_i", "depth5_z", "depth5_y"])
+_N_DEPTH, _N_E1 = 6, 3
 
 
 def _narrow(df, keep64):
@@ -239,15 +245,17 @@ def load_sightlines(path):
         ncol = expected
     else:
         ncol = len(pd.read_csv(path, sep=r"\s+", header=None, nrows=1).columns)
-    if ncol == len(MAP_COLS) - 3:
-        # Written before Step E1 added the per-sightline area weight. Positional file with
-        # no header, so the only way to tell is the width -- and guessing wrong shifts every
-        # column by one, which produces a plausible plot of the wrong quantity.
-        df = pd.read_csv(path, sep=r"\s+", header=None, names=MAP_COLS[:-3])
-        for c in ("w_area", "lon", "lat"):
-            df[c] = np.nan
-        return df
-    df = pd.read_csv(path, sep=r"\s+", header=None, names=MAP_COLS)
+    # Positional file with no header, so the only way to tell the vintage is the width -- and
+    # guessing wrong shifts every column, which produces a plausible plot of the wrong
+    # quantity. Three widths exist: before Step E1 (no w_area/lon/lat), before Deviation 94
+    # (no depths), and current. Columns a file lacks come back NaN.
+    full = len(MAP_COLS)
+    if ncol not in (full - _N_DEPTH - _N_E1, full - _N_DEPTH, full):
+        raise ValueError(f"{path}: {ncol} columns; expected {full - _N_DEPTH - _N_E1}, "
+                         f"{full - _N_DEPTH} or {full}")
+    df = pd.read_csv(path, sep=r"\s+", header=None, names=MAP_COLS[:ncol])
+    for c in MAP_COLS[ncol:]:
+        df[c] = np.nan
     return df
 
 
@@ -593,10 +601,10 @@ RATE_UNIT = (2.0 * U0M * np.sqrt(4.0 * _G * _MSUN / _C**2)   # m^0.5
 # RATE_UNIT * Z * sqrt(M) * Vt / <M> is gamma_i in s^-1 per source star (F = 1).
 
 # Per-filter single-visit depth and saturation, read from config/parameters.h `thre` / `satu` (ugrizy, F146).
-# Needed to rebuild which surveys could have accepted a draw. The F146 entries are the C++'s. The ugrizy
-# entries are NOT what the C++ uses for Rubin's acceptance: it takes per-sightline medians of the matched
-# visits' 5-sigma depths (st.rubinDepthMed, src/sim/draw.cpp:126) with saturation = depth - RUBIN_SATU_BELOW_M5,
-# which the event table does not carry, so acceptance_probability's Rubin half is an approximation (OPEN_ITEMS).
+# Roman's F146 entries are what the C++ uses. For Rubin it uses per-sightline medians of the matched visits'
+# 5-sigma depths (st.rubinDepthMed) with saturation = depth - RUBIN_SATU_BELOW_M5; the map file carries them
+# since Deviation 94 (depth5_*), and acceptance_probability reads them from there. The ugrizy entries below
+# are the fixed SRD-style values, used only with fixed_rubin_depths=True (an approximation for older runs).
 THRE = P.thre
 SATU = P.satu
 FILTERS = ["u", "g", "r", "i", "z", "y", "F146"]
@@ -633,24 +641,54 @@ def mean_lens_mass(df):
     return m.to_numpy()
 
 
-def acceptance_probability(df):
-    """P that the simulator KEPT this draw, rebuilt from the table (acceptRubin/acceptRoman in src/sim/draw.cpp).
+def acceptance_probability(df, sightlines, fixed_rubin_depths=False):
+    """P that the simulator KEPT this draw, rebuilt from the table (preselectEvent in src/sim/draw.cpp).
 
     A drawn star is kept for light-curve generation if Rubin could see its peak (Mpeak below
-    depth and baseline above saturation in >= 2 of ugrizy) AND a uniform draw falls below its
+    the depth and baseline above saturation in >= 2 of ugrizy) AND a uniform draw falls below its
     r-band blend fraction -- or likewise for Roman in F146. That thinning is the legacy
     convention (Sajadian & Makler, criterion ii): the blend fraction is the probability of
     "realising" one star of an unresolved blend, which counts events per RESOLVED OBJECT.
     Both light curves are generated whenever either survey accepts, so detection is
     independent of which acceptance fired and 1/P undoes the thinning exactly.
+
+    Rubin's depth is the sightline's median 5-sigma depth per band, taken from the map file's
+    depth5_* columns (`sightlines` = load_sightlines()), matched to each row on (lon, lat) to
+    3 dp; saturation is that depth - RUBIN_SATU_BELOW_M5. A band with no visit has depth -inf
+    and cannot be seen. A row whose sightline has no map row, or whose map predates Deviation 94
+    (depths NaN), raises ValueError. fixed_rubin_depths=True instead uses the fixed THRE/SATU for
+    Rubin -- an explicit APPROXIMATION for runs whose map file has no depths; it can disagree
+    with the C++ for any draw whose peak lies between the fixed and the per-sightline depth.
     """
     u0 = df["u0"].to_numpy()
     A0 = (u0**2 + 2.0) / np.sqrt(u0**2 * (u0**2 + 4.0))
+    if fixed_rubin_depths:
+        depth = np.broadcast_to(np.asarray(THRE[:6], dtype=float), (len(df), 6))
+        satu = np.broadcast_to(np.asarray(SATU[:6], dtype=float), (len(df), 6))
+    else:
+        codes, keys = sightline_index(df)
+        cols = [f"depth5_{f}" for f in FILTERS[:6]]
+        table = {(round(a, 3), round(b, 3)): d for a, b, d in
+                 zip(sightlines["lon"], sightlines["lat"], sightlines[cols].to_numpy())}
+        missing = [k for k in keys if k not in table]
+        if missing:
+            raise ValueError(f"{len(missing)} sightline(s) of the table have no row in the map "
+                             f"file (first: {missing[0]}); their Rubin depths are unknown")
+        per_sl = np.array([table[k] for k in keys])
+        if np.isnan(per_sl).any():
+            raise ValueError("the map file has no per-sightline Rubin depths (it predates "
+                             "Deviation 94); rerun, or pass fixed_rubin_depths=True for the "
+                             "approximate fixed-depth acceptance")
+        depth = per_sl[codes]
+        satu = depth - P.RUBIN_SATU_BELOW_M5
     seen = np.empty((len(df), 7), dtype=bool)
     for i, f in enumerate(FILTERS):
         mb, fb = df[f"magb_{f}"].to_numpy(), df[f"blend_{f}"].to_numpy()
         mpeak = mb - 2.5 * np.log10(A0 * fb + 1.0 - fb)
-        seen[:, i] = (mpeak <= THRE[i]) & (mb > SATU[i])
+        if i < 6:
+            seen[:, i] = (mpeak <= depth[:, i]) & (mb > satu[:, i])
+        else:
+            seen[:, i] = (mpeak <= THRE[i]) & (mb > SATU[i])
     pL = np.where(seen[:, :6].sum(axis=1) > 1, df["blend_r"].to_numpy(), 0.0)
     pR = np.where(seen[:, 6], df["blend_F146"].to_numpy(), 0.0)
     return 1.0 - (1.0 - pL) * (1.0 - pR)

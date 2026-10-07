@@ -402,7 +402,14 @@ void finishSightline(SimContext& ctx, SightlineState& st) {
          //           (lon, lat) and the correct pooled weight, w_area/nsim, is computable.
          << " " << std::setprecision(8) << st.wArea
          << " " << std::setprecision(6) << s.lon << " " << s.lat
-         << "\n";
+         // Deviation 94. Six columns appended after lat: this sightline's median 5-sigma depth
+         //   in each of ugrizy (st.rubinDepthMed, -inf for a band with no visit). preselectEvent
+         //   keeps a draw for Rubin by comparing its peak with THESE, not with a fixed depth,
+         //   so romanlib.acceptance_probability cannot rebuild which draws were kept without
+         //   them. The visit list gives sigma5 to 6 decimals, so they round-trip exactly.
+         << std::fixed << std::setprecision(6);
+    for (int b = 0; b < 6; ++b) fil3 << " " << st.rubinDepthMed[b];
+    fil3 << "\n";
 
     // Flush the per-sightline outputs now rather than when the stream is destroyed. Every
     // production pause so far has been a kill, and a kill discards whatever is still

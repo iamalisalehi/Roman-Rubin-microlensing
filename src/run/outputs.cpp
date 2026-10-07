@@ -267,7 +267,7 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
     // whole run: footprint sightlines stand for a fine cell and outside ones for
     // (up to) a coarse cell. area_per_sightline below is therefore only meaningful
     // when stratified=0, and the authoritative weight is the per-row `w_area`
-    // column of the event table (and the last column of the map file). The header
+    // column of the event table (and the w_area column of the map file). The header
     // says so, so that a downstream script cannot quietly use the wrong one.
     // ----------------------------------------------------------------------
     const double areaPerSightline = gridStep * gridStep; // deg^2; unstratified runs only

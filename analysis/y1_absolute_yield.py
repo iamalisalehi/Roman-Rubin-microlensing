@@ -75,7 +75,7 @@ I_AB_MINUS_VEGA = 0.4
 
 
 class Run:
-    def __init__(self, name, directory, chunksize):
+    def __init__(self, name, directory, chunksize, fixed_rubin_depths=False):
         self.name, self.dir = name, directory
         prov_path = os.path.join(directory, "files/MONTLMC/files/run_provenance.txt")
         self.prov = R.load_provenance(prov_path) if os.path.exists(prov_path) else {}
@@ -99,7 +99,7 @@ class Run:
         df["y"] = np.asarray(R.yield_weight(df, self.sl, self.tobs_days, nsim_override=override),
                              dtype=np.float64)
         df["gamma"] = np.asarray(R.draw_rate(df), dtype=np.float64)
-        df["P"] = np.asarray(R.acceptance_probability(df), dtype=np.float64)
+        df["P"] = np.asarray(R.acceptance_probability(df, self.sl, fixed_rubin_depths), dtype=np.float64)
         # An int32 sightline code, not a (lon, lat) tuple per row: the tuples were ~1 KB a row
         # and made the post-fix tables unreadable in 8 GB. self.keys[code] is the tuple.
         codes, self.keys = R.sightline_index(df)
@@ -225,6 +225,9 @@ def main():
                     help="population=f1,f2,... (default: the literature grid in DEFAULT_F)")
     ap.add_argument("-o", "--out", required=True, help="output directory")
     ap.add_argument("--chunksize", type=int, default=500_000)
+    ap.add_argument("--fixed-rubin-depths", action="store_true",
+                    help="for runs whose map file predates Deviation 94; Rubin acceptance then "
+                         "uses the fixed SRD depths, an approximation")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     Fgrid = dict(DEFAULT_F)
@@ -241,7 +244,7 @@ def main():
     csv_rows = []
     for spec in a.run:
         name, directory = spec.split("=", 1)
-        run = Run(name, directory, a.chunksize)
+        run = Run(name, directory, a.chunksize, a.fixed_rubin_depths)
         commit = run.prov.get("git_commit", "?")
         lines += [f"## `{name}` -- {run.population}, commit `{commit}`", ""]
 

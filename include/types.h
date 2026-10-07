@@ -144,7 +144,7 @@ struct lens {
           tele(coun), rseas(coun, -1), rroll(coun, -1),
 
           tEs(make_grid(tE_min, tE_max)),
-          Mls(gPop->logGrid ? make_grid_log(Ml_min, Ml_max) : make_grid(Ml_min, Ml_max)),
+          Mls(gPop->logGrid ? make_grid_log(mlMin(), mlMax()) : make_grid(mlMin(), mlMax())),
           pis(make_grid(pi_min, pi_max)),
           u0s(make_grid(u0_min, u0_max)),
           mbs(make_grid(mb_min, mb_max)),

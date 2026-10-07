@@ -32,8 +32,8 @@ int FunctE(lens & l) {
 int FuncMl(lens & l) {
    int gg = -1;
 
-   if (l.Ml <= Ml_min)      gg = 0;
-   else if (l.Ml >= Ml_max) gg = GG;
+   if (l.Ml <= mlMin())      gg = 0;
+   else if (l.Ml >= mlMax()) gg = GG;
    else {
       for(int i = 1; i <= GG; ++i) {
           if (double((l.Ml - l.Mls[i-1]) * (l.Ml - l.Mls[i])) < 0.0 or l.Ml == l.Mls[i-1]) { gg = i - 1;  break; }

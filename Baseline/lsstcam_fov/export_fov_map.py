@@ -1,4 +1,4 @@
-"""Export LSSTCam's active-silicon map for Bulge_LSST.cpp (Deviation 80, step M8).
+"""Export LSSTCam's active-silicon map for src/surveys/footprints.cpp (readLsstCamMap) (Deviation 80, step M8).
 
 Source: the map OpSim/MAF itself use, rubin_scheduler.utils.LsstCameraFootprint's default
 `fov_map.npz`, from the rubin_sim_data bundle utils_2023_11_02.tgz

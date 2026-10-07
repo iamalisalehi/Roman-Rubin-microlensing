@@ -24,13 +24,13 @@
 
 constexpr int seed = 42;   // default base seed; --seed overrides it at run time (Deviation 77)
 // Per-sightline Monte Carlo budgets (defaults of --events / --lenses / --nerr / --maxdraws; the do/while over
-// stars stops once events, lenses and nerr are ALL met, or at the draw cap; see Bulge_LSST.cpp RunConfig).
+// stars stops once events, lenses and nerr are ALL met, or at the draw cap; see src/run/config.cpp RunConfig).
 constexpr int    DEFAULT_EVENTS_TARGET = 850;    //detected events per sightline (icon)
 constexpr int    DEFAULT_LENSES_TARGET = 150;    //Fisher-characterised events per sightline (nlens)
 constexpr double DEFAULT_NERR_TARGET   = 2.0;    //accumulated Fisher-error weight
 constexpr double DEFAULT_MAXDRAWS      = 5.0e4;  //hard cap on stars drawn at one sightline
 // Dense model-curve sampling of the s2 sample light curves (defaults of the sample spec keys step_te /
-// span_te / dt_coarse, Bulge_LSST.cpp SampleSpec): fine steps of DEFAULT_S2_STEP_TE * tE within
+// span_te / dt_coarse, include/run/sample_dump.h SampleSpec): fine steps of DEFAULT_S2_STEP_TE * tE within
 // +-DEFAULT_S2_SPAN_TE * tE of the peak, steps of DEFAULT_S2_DT_COARSE days over the rest of the mission.
 constexpr double DEFAULT_S2_STEP_TE   = 0.01;   //peak-window step, in units of tE
 constexpr double DEFAULT_S2_SPAN_TE   = 3.0;    //peak-window half-width, in units of tE
@@ -58,12 +58,12 @@ constexpr int    Num  = 9500;
 constexpr double MaxD = 12.0; //kpc
 constexpr double step = double(MaxD / Num / 1.0); //step in kpc
 // Source distance draw: the distance-grid index is drawn uniformly in [SRC_IDX_MIN, Num - SRC_IDX_END_MARGIN]
-// (Lensing.cpp, func_source), i.e. it skips the first 5 grid cells (~0 kpc) and the last 2.
+// (src/events/source.cpp, func_source), i.e. it skips the first 5 grid cells (~0 kpc) and the last 2.
 constexpr double SRC_IDX_MIN = 5.0;
 constexpr double SRC_IDX_END_MARGIN = 2.0;
 constexpr double dd  = 0.02;   // native sightline grid step [deg]; the scan steps by stride*dd
 
-// ---- (2a) Galactic model: density laws (Disk_model, Bulge_LSST.cpp) ----
+// ---- (2a) Galactic model: density laws (Disk_model, src/galaxy/density.cpp) ----
 // Mass fractions of each component are set by the *_NORM factors below; the per-population number
 // densities then follow from Disk_model's rho / <m> with the MEANMASS_* of config/data_products.h.
 
@@ -120,7 +120,7 @@ constexpr double BAR_E_CN  = 3.917;
 constexpr double BAR_E_MASS_NUM = 2.27;                       //mBarre = NUM / DEN * BAR_MASS_RESCALE
 constexpr double BAR_E_MASS_DEN = 87.0;                       // normalized
 
-// ---- (2b) Galactic model: kinematics (vrel, Lensing.cpp) ----
+// ---- (2b) Galactic model: kinematics (vrel, src/galaxy/kinematics.cpp) ----
 // Velocity dispersions [km/s] in the Galactic (R, T, Z) frame, drawn as truncated Gaussians.
 constexpr double VEL_NSIGMA_TRUNC = 3.5;   //truncation of the Gaussian velocity draws [sigma]
 // Thin disc: one row per age bin, chosen by the bin's share of Rho[0..3] = rho0*corr/d0.
@@ -153,15 +153,15 @@ constexpr double delta2 = 0.005;///systematic errors
 // cade1 were deleted in Deviation 73.
 constexpr std::array<double, M> gama = {0.038, 0.039, 0.039, 0.039, 0.039, 0.039, 0.0};
 // The 0.04 of the same equation: sigma_rand^2 = (LSST_ERR_C04 - gamma) x + gamma x^2 (Ivezic et al. 2019
-// eq. 5), used by errlsstM in helper.cpp.
+// eq. 5), used by errlsstM in src/surveys/noise.cpp.
 constexpr double LSST_ERR_C04 = 0.04;
 
 // Truncation of the per-epoch measurement-noise draws, RandN(err, n): a draw is rejected if it lies
-// beyond n sigma (Bulge_LSST.cpp, photometric and astrometric noise of every Rubin and Roman epoch).
+// beyond n sigma (src/sim/observe.cpp, photometric and astrometric noise of every Rubin and Roman epoch).
 constexpr double NOISE_TRUNC_NSIGMA = 3.0;
-// Truncation of the per-band extinction scatter A_i = Av*A_i/A_V + RandN(sigma[i], n) (Lensing.cpp).
+// Truncation of the per-band extinction scatter A_i = Av*A_i/A_V + RandN(sigma[i], n) (src/events/source.cpp).
 constexpr double EXT_SCATTER_TRUNC_NSIGMA = 1.0;
-// Per-epoch outlier flag and run test (Bulge_LSST.cpp, per instrument): an epoch is flagged when its noisy
+// Per-epoch outlier flag and run test (src/sim/observe.cpp, per instrument): an epoch is flagged when its noisy
 // magnitude departs from the baseline by more than OUTLIER_FLAG_NSIGMA times its error; a run is declared
 // (flag_det_*) when the sum of the last three epochs' flags exceeds OUTLIER_RUN_THRESHOLD, i.e. all three
 // consecutive epochs are flagged (and more than 2 epochs have been taken).
@@ -190,19 +190,17 @@ constexpr double ROMAN_SATU_AB   = 14.8;
 constexpr std::array<double, M> thre  = {23.4, 24.6, 24.3, 23.6, 22.9, 21.7, ROMAN_DEPTH5_AB};
 constexpr std::array<double, M> satu  = {15.2, 16.3, 16.0, 15.3, 14.6, 13.4, ROMAN_SATU_AB};
 // 5-sigma depth [AB] assumed for the r band at an epoch-less draw (errlsstM in the no-light-curve fallback of
-// Bulge_LSST.cpp), where no visit supplies its own depth.
+// src/sim/characterize.cpp), where no visit supplies its own depth.
 constexpr double RUBIN_R_DEPTH5_FALLBACK = 24.43;
-// PSF FWHM [arcsec]: the image-resolution bar (Step R1) and the blending disc (Lensing.cpp).
+// PSF FWHM [arcsec]: the image-resolution bar (Step R1) and the blending disc (src/events/source.cpp).
 // ugrizy (Deviation 73): the median GEOMETRIC seeing, OpSim seeingFwhmGeom (= 0.822 seeingFwhmEff +
 // 0.052, verified exactly in the database), of the 12,308 bulge visits in Baseline/BulgeBaseline.dat
 // (baseline_v5.1.0); per-visit 16-84% spans ~0.77-1.4". The previous values (1.221 ... 0.937) were an
 // older OpSim's, 1-10% wider. F146: 0.105", STScI SummaryPSFstats (centre and corner).
 constexpr std::array<double, M> FWHM  = {1.1140, 1.0420, 0.9819, 0.9487, 0.9320, 0.8992, 0.105};
-// The blending disc has radius FWHM * BLEND_RADIUS_FWHM_FRAC (= the HWHM), Lensing.cpp func_source: the
+// The blending disc has radius FWHM * BLEND_RADIUS_FWHM_FRAC (= the HWHM), src/events/source.cpp func_source: the
 // expected number of stars in it is lambda, and the source's own blend is 1 + Poisson(lambda).
 constexpr double BLEND_RADIUS_FWHM_FRAC = 0.5;
-//constexpr std::array<double, M> a0    = {0.9429, 1.0138, 0.94027, 0.8139, 0.6641, 0.5703, 0.1615}; //for calculating the extinction + F146 Filter (value needs to change)
-//constexpr std::array<double, M> b0    = {1.9788, 0.5575, -0.2197, -0.4982, -0.6097, -0.5236, -0.1483}; // PLACEHOLDER: K-band value, not F146
 constexpr std::array<double, M> lambda_um = {0.367, 0.482, 0.622, 0.755, 0.869, 0.971, 1.464};
 
 // Which LSST filter(s) (indices 0-5 = u,g,r,i,z,y) form the single "Rubin representative
@@ -210,7 +208,7 @@ constexpr std::array<double, M> lambda_um = {0.367, 0.482, 0.622, 0.755, 0.869, 
 // per-epoch Rubin model magnitude, and the LSST astrometric-error evaluation magnitude.
 // {2} = r-band only, matching the pre-existing hardcoded behavior. Listing more than one
 // index combines them by *summing* their baseline fluxes and source fluxes separately
-// (see Lensing.cpp) -- an equal-weighted flux sum, not throughput-weighted (no per-filter
+// (see src/events/source.cpp, lens.cpp) -- an equal-weighted flux sum, not throughput-weighted (no per-filter
 // throughput curve exists in this codebase yet). Does NOT change which real filter's noise
 // model (errlsstM) applies to a given epoch -- that always reflects the epoch's own actual
 // filter, regardless of this setting.
@@ -318,7 +316,7 @@ constexpr double L2_OFFSET_AU = L2_KM / AU_KM;   // ~0.01003
 constexpr double ROMAN_PHOT_FLOOR = 0.001;   //mag, Penny et al. 2019 Table 2 "Error floor 1.0 mmag"
 // ---------------------------------------------------------------------------------------
 // Roman WFI per-exposure astrometric precision, F146 (a.k.a. W149), in milliarcseconds.
-// Step H4; used by errRomanA() in helper.cpp.
+// Step H4; used by errRomanA() in src/surveys/noise.cpp.
 //
 // Sources:
 //   [1] Sanderson et al. 2019, "Astrometry with the Wide-Field Infrared Survey Telescope",
@@ -410,7 +408,7 @@ inline constexpr LensPopulation POPULATIONS[] = {
     {"macho-m2",      "4", MassFunction::POWER_LAW_20, 3.0, 5000.0, true, 4, "legacy MACHO search"},
 };
 constexpr double u0m   = 3.0;
-// Event-parameter draws (Lensing.cpp, func_lens): u0 is uniform in [U0_MIN_DRAW, u0m]; the peak time t0 is
+// Event-parameter draws (src/events/lens.cpp, func_lens): u0 is uniform in [U0_MIN_DRAW, u0m]; the peak time t0 is
 // uniform in [T0_MARGIN_DAYS, Tobs - T0_MARGIN_DAYS] days, i.e. at least 2 days inside the survey ends.
 constexpr double U0_MIN_DRAW = 0.001;
 constexpr double T0_MARGIN_DAYS = 2.0;
@@ -527,7 +525,7 @@ constexpr double RESOLVE_D_BRIGHT = 20.0;  //D at SNR ~ 100, images of similar b
 // chi1_R and chi3 = chi3_L + chi3_R exactly, hence dchi = dchi_L + dchi_R. With the same
 // threshold on all three tests, either survey clearing the bar alone forces the joint sum over
 // it too, so detL or detR implies detJ and DET_ANOMALY cannot occur. (This requires the SIGNED
-// difference; see the note on fabs at the test site in Bulge_LSST.cpp.)
+// difference; see the note on fabs at the test site in src/sim/detect.cpp.)
 //
 // The value 500 is Penny et al. 2019 (ApJS 241, 3), the reference Roman/WFIRST microlensing
 // yield forecast, which adopts dchi2 > 500 against a flat baseline. Matching it keeps this
@@ -546,7 +544,7 @@ constexpr double DCHI_DET_DEFAULT = 500.0; //delta-chi2 against a flat baseline 
 // bent trajectory) is not: plateau 1e-8..1e-2, 0.4% off at the legacy step, 2.5% at 2x; 1e-2 chosen.
 constexpr std::array<double, 4> kFDStepScaleB = {1.0, 1.0, 1.0, 1.0e-2};
 
-// Photometric finite-difference steps of FisherM (Delta1[], Bulge_LSST.cpp). u0, tE, piE, xi, t0 came from
+// Photometric finite-difference steps of FisherM (Delta1[], src/fisher/fisher.cpp). u0, tE, piE, xi, t0 came from
 // the legacy LMC code and are ~25% of the parameter (u0 is perturbed by 0.15, tE and t0 by 0.25*tE). Step
 // C3 (DEVIATIONS.md 10; ./fishertest --sweep, tests/c3_step_sweep.py) showed that sat far up the
 // truncation-error branch (sigma(u0) off ~57%, sigma(t0) ~71%), and scaled them all by kFDStepScale into

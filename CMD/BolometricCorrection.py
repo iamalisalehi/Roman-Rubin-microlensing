@@ -137,12 +137,12 @@ DARK_TYP = (9.0, 9.2)                 # Besancon white dwarfs: no MIST track, fa
 MAX_ROWS = 3_500_000                  # per component; only the bulge exceeds it
 SUBSAMPLE_SEED = 20261002
 FILL_SEED = 20261005
-# Besancon Pop codes -> component, as in Bulge.h's GalacticComponent order of the files.
+# Besancon Pop codes -> component, as in include/common.h's GalacticComponent order of the files.
 COMPONENTS = {"thin_disk": list(range(1, 8)), "bulge": [10], "thick_disk": [8, 11], "halo": [9]}
 MS_FIX_LO, MS_FIX_HI = 0.6, 0.7       # Msun: full shift below LO, none above HI (Deviation 82, option E)
 MS_FIX_COMP = {"bulge": 1, "thick_disk": 2, "halo": 3}   # lens_ml.dat comp codes
 MS_FIX_BIN = 0.02                     # Msun, running-median bin (Deviation 82)
-# Upper age bounds read_cmd() CHECKs (helper.cpp); a violation stops the build, it does not drop.
+# Upper age bounds read_cmd() CHECKs (src/galaxy/catalogue.cpp); a violation stops the build, it does not drop.
 AGE_MAX = {"thin_disk": 10, "bulge": 10, "thick_disk": 13, "halo": 14}
 
 STAGING_ROOT = "components_staging"
@@ -251,7 +251,7 @@ class MISTBolometricCorrection:
             np.zeros(len(self.input_data)),  # AV = 0, always -- extinction is applied
                                                # exactly once, downstream, by
                                                # interpExtinctionAlongSightline in
-                                               # Lensing.cpp, at each star's *simulated*
+                                               # src/galaxy/extinction.cpp, at each star's *simulated*
                                                # distance -- not here, at its Besancon
                                                # distance.
             feh,

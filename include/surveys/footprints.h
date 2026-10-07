@@ -30,7 +30,7 @@ void   readLsstCamMap(const std::string& path);
 bool   onLsstCam(double ra, double dec, double ra0, double dec0, double rotSkyPos);   // all deg
 void   galToIcrs(double l, double b, double& ra, double& dec);                       // deg (J2000)
 
-// GBTDS detector layout (helper.cpp). readGbtdsLayout exits with the file named on any
+// GBTDS detector layout (src/surveys/footprints.cpp). readGbtdsLayout exits with the file named on any
 // malformed input; inDetector tests a sky offset (dl, db) from a field centre against one
 // layout's 18 detector rectangles.
 GbtdsLayout readGbtdsLayout();

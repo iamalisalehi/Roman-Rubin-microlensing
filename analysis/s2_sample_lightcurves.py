@@ -114,7 +114,7 @@ ASTR_MAX_BINS = 60
 HIGH_CADENCE_PER_DAY = 10.0
 
 # Consecutive Roman epochs further apart than this start a new season. The same threshold
-# RomanSchedule uses in C++ (SEASON_GAP_MIN_DAYS in Bulge.h), so the shaded windows are the
+# RomanSchedule uses in C++ (SEASON_GAP_MIN_DAYS in config/parameters.h), so the shaded windows are the
 # seasons the simulation itself believed in.
 SEASON_GAP_MIN_DAYS = 20.0
 

@@ -14,10 +14,10 @@ double RandN(double sigm, double nnd) {
 }
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 // Poisson deviate, for counting things that are counted rather than measured -- currently
-// the number of unresolved neighbours in a seeing disc (Lensing.cpp). A Gaussian of width
+// the number of unresolved neighbours in a seeing disc (src/events/source.cpp). A Gaussian of width
 // sqrt(mean) is the right approximation only for mean >> 1; at mean < 1 it is qualitatively
 // wrong, because it cannot produce the integer 1 with the right probability and, truncated,
-// cannot produce it at all. See the blending block in Lensing.cpp.
+// cannot produce it at all. See the blending block in src/events/source.cpp.
 int RandPois(double mean) {
     CHECK(mean >= 0.0);
     CHECK(std::isfinite(mean));

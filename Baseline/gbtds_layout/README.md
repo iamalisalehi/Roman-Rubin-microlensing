@@ -1,7 +1,7 @@
 # Adopted GBTDS field layout (vendored)
 
 Inputs that define where Roman looks. Read by `Baseline/generateRomanBaseline.py` (field
-centres), by `Bulge_LSST.cpp` at start-up (detector rectangles), and by
+centres), by `src/surveys/footprints.cpp` (readGbtdsLayout) at start-up (detector rectangles), and by
 `analysis/gbtds_geometry.py`. Copied unchanged from M. Penny's GBTDS field-layout tool:
 
 - repository: https://github.com/mtpenny/gbtds_optimizer

@@ -80,7 +80,7 @@ constexpr double kErrMagRubin  = 0.020; // [mag]
 constexpr double kErrMagRoman  = 0.005; // [mag] -- space-based, no atmosphere
 constexpr double kErrAstRubin  = 0.500; // [mas]
 // NOTE: Roman has no real astrometric error model yet (see OPEN_ITEMS.md). This is a
-// placeholder standing in for one, consistent with what Bulge_LSST.cpp currently does.
+// placeholder standing in for one, consistent with what src/sim/characterize.cpp currently does.
 constexpr double kErrAstRoman  = 0.050; // [mas]
 
 // ---------------------------------------------------------------------------------------------
@@ -134,10 +134,10 @@ void setupStatic(source& s, lens& l)
 {
     s.lon = kLon;
     s.lat = kLat;
-    s.TET = (360.0 - s.lon) / RAa;  // same convention as Bulge_LSST.cpp main()
+    s.TET = (360.0 - s.lon) / RAa;  // same convention as src/sim/sightline.cpp
     s.FI  = s.lat / RAa;
 
-    // Reproduce Lensing.cpp's deltao convention for this sight line.
+    // Reproduce src/galaxy/kinematics.cpp (vrel)'s deltao convention for this sight line.
     double tetd = s.TET;
     if (s.TET > pi) tetd = s.TET - 2.0 * pi;
     l.deltao = pi - std::fabs(tetd);
@@ -799,7 +799,7 @@ bool checkSeasonClustering()
     int fails = 0;
     std::cout << "\n# --- Roman season clustering (Step D1) ---\n";
 
-    // Guard predicate, kept identical in form to the one in Bulge_LSST.cpp main().
+    // Guard predicate, kept identical in form to the one in buildRomanSeasons (src/run/inputs.cpp).
     auto guardTrips = [](const RomanSchedule& sc) {
         return sc.seasons.size() < 2
             or sc.maxInSeasonSpacing >= SEASON_GAP_MIN_DAYS

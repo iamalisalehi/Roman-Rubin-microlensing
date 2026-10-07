@@ -1,7 +1,7 @@
 """QC of the simulator's extinction tables, files/ext/ext_tables.dat (Deviation 70).
 
 Run from tests/ (`python ext_nans.py`) or the repo root (`python tests/ext_nans.py`). Checks what
-helper.cpp readExtinction() also refuses -- a non-finite value, a decreasing profile, a row count or
+src/galaxy/extinction.cpp readExtinction() also refuses -- a non-finite value, a decreasing profile, a row count or
 a distance grid that disagrees with the header -- and prints a summary of A_V at 8 kpc. The tables
 before Deviation 70 (one Bayestar/DECaPS file per pointing, 78 of them all-NaN) are archived in
 files/ext_bayestar_v1/ and then deleted (2026-10-01); if regenerated, pass that directory to check

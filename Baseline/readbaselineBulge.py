@@ -47,7 +47,7 @@ assert max(idx) < len(nam0), "idx out of range"
 # region's edge silently undercount their Rubin visits. Until Deviation 69 the list was cut by
 # a box (l0..l1, b0..b1, minus an l2/b2 corner) on the pointing CENTRES around an older layout:
 # 3,686 visits, against 12,348 by this rule (every one of the old 3,686 is among them).
-# Bulge_LSST.cpp refuses a list with a pointing outside this reach.
+# src/run/sightlines.cpp refuses a list with a pointing outside this reach.
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "analysis"))
 import gbtds_geometry as G          # noqa: E402

@@ -7,7 +7,7 @@
 //
 // Numbers that DESCRIBE THE DATA FILES on disk: row counts, catalogue mean masses and the bright-star
 // floor of an error table. These are measurements of the data, not choices; the read guards in
-// Bulge_LSST.cpp fire on a row-count mismatch. Model and survey choices live in config/parameters.h.
+// src/run/inputs.cpp fire on a row-count mismatch. Model and survey choices live in config/parameters.h.
 
 // ---- Error tables: files/sigmaA_LSST.txt (96 rows), files/sigma_roman.txt (123 rows) ----
 constexpr int Na = 96;     //rows in "sigmaA_LSST.txt"
@@ -47,10 +47,10 @@ constexpr int Nl = 12915;
 
 // Data rows in Baseline/RomanBaseline.dat, EXCLUDING the header. Written by
 // Baseline/generateRomanBaseline.py; changes whenever the season pattern, cadence or mission start day
-// changes (the read guard in Bulge_LSST.cpp fires on a mismatch).
+// changes (the read guard in src/run/inputs.cpp fires on a mismatch).
 // Current: 6 high-cadence seasons (F146 every 12.1 min) + 4 low-cadence (every 5 days),
 // on STScI's real alternating spring/fall visibility windows.
-// `coun` in Bulge.h (= Nl + NlRoman) bounds one event's light-curve buffers.
+// `coun` in include/common.h (= Nl + NlRoman) bounds one event's light-curve buffers.
 constexpr int NlRoman = 302406;
 
 #endif // DATA_PRODUCTS_H

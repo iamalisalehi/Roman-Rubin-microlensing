@@ -15,11 +15,6 @@
 #include "sim/characterize.h"
 #include "sim/record.h"
 
-time_t _timeNow;
-unsigned int _randVal;
-unsigned int _dummyVal;
-FILE * _randStream;
-
 ///==============================================================//
 ///                                                              //                                                    /
 ///                  Main program                                //
@@ -28,7 +23,7 @@ FILE * _randStream;
 
 int main(int argc, char** argv) {
     // NOTE: srand(time(0)) used to be called here. Nothing in this project ever
-    // calls rand() -- the RNG is the seeded mt19937_64 in Bulge.h -- so it did
+    // calls rand() -- the RNG is the seeded mt19937_64 in include/util/random.h -- so it did
     // nothing except make the run look clock-seeded, which is the opposite of
     // the reproducibility the provenance block below is for.
 

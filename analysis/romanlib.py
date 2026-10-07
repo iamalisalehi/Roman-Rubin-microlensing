@@ -37,7 +37,7 @@ from cparams import P            # the C++ headers' own numbers (analysis/cparam
 
 SENTINEL = -1.0
 
-# Detection taxonomy -- see DetClass in Bulge.h.
+# Detection taxonomy -- see DetClass in include/fisher/fisher.h.
 DET_CLASS = {
     0: "none",
     1: "joint-only",       # neither telescope alone would have found it
@@ -47,7 +47,7 @@ DET_CLASS = {
     5: "ANOMALY",          # a telescope detected it but the joint test did not
 }
 
-# Characterisability taxonomy -- see SynergyClass in Bulge.h.
+# Characterisability taxonomy -- see SynergyClass in include/fisher/fisher.h.
 SYN_CLASS = {
     0: "none",
     1: "both-alone",
@@ -56,7 +56,7 @@ SYN_CLASS = {
     4: "joint-only",       # NEITHER alone, but the joint fit works -- pure rescue
 }
 
-# Where t0 fell relative to Roman's observing seasons -- see T0Zone in Bulge.h.
+# Where t0 fell relative to Roman's observing seasons -- see T0Zone in include/surveys/schedule.h.
 T0_ZONE = {
     0: "in-season",
     1: "in-gap",           # bracketed by Roman data: the gap-filling regime
@@ -66,7 +66,7 @@ T0_ZONE = {
 SURVEYS = {"joint": "J", "rubin": "L", "roman": "R"}
 
 # Column layout of MapLMC2.dat, one row per AGGREGATED sightline, in the order the
-# `fil3 <<` block in Bulge_LSST.cpp writes them. Each of the first 22 quantities is
+# `fil3 <<` block in src/sim/sightline.cpp writes them. Each of the first 22 quantities is
 # written as a pair: [0] over all recorded events, [1] over detected events only.
 _MAP_PAIRS = ["tE", "RE", "piE", "tetE", "Vt", "u0", "Ml", "opd", "Dl", "Ds", "vl",
               "vs", "mbs", "fb", "fwhm", "vsn", "DelT", "Struc", "murel", "Map",
@@ -284,7 +284,7 @@ def sigma(df, param, survey, noise="W"):
 
     Gating is on the ok flag AND on positivity. Both are needed: the flag can be set while
     an individual parameter is still a sentinel, because each survey partition fits its own
-    active parameter subset (activePhotParams in Bulge.h). An event Roman detects with no
+    active parameter subset (activePhotParams in include/fisher/fisher.h). An event Roman detects with no
     Rubin epochs has a valid joint fit in which the Rubin blend fraction was never a free
     parameter -- exactly the case that aborted the 2026-08-29 run.
     """
@@ -434,7 +434,7 @@ def event_weight(df, sightlines, nsim_override=None):
     # TWO CAUSES, and they must not be treated alike.
     #
     #   BARREN. A sightline that drew stars but ended with no characterised event takes the
-    #   barren branch in Bulge_LSST.cpp, which `continue`s past BOTH the map-row write and the
+    #   barren branch in src/sim/sightline.cpp, which `continue`s past BOTH the map-row write and the
     #   `nsim:` print. Its rows are in the table with nothing to normalise them by. At the
     #   scan's western edge such a sightline runs to the full --maxdraws cap, so these are not
     #   rare: the 2026-09-17 neutron-star run has 77 of them carrying 3,850,000 rows, 77% of
@@ -634,7 +634,7 @@ def mean_lens_mass(df):
 
 
 def acceptance_probability(df):
-    """P that the simulator KEPT this draw, rebuilt from the table (Bulge_LSST.cpp ~1700).
+    """P that the simulator KEPT this draw, rebuilt from the table (acceptRubin/acceptRoman in src/sim/draw.cpp).
 
     A drawn star is kept for light-curve generation if Rubin could see its peak (Mpeak below
     depth and baseline above saturation in >= 2 of ugrizy) AND a uniform draw falls below its
@@ -738,7 +738,7 @@ PROVENANCE_SEARCH = ("run_provenance.txt",
                      "files/MONTLMC/files/run_provenance.txt")
 
 
-# Roman's per-exposure astrometric error, mirrored from helper.cpp errRomanA (Step H4, Deviation 72).
+# Roman's per-exposure astrometric error, mirrored from src/surveys/noise.cpp errRomanA (Step H4, Deviation 72).
 # The anchors are F146 VEGA magnitudes (Lam et al. 2026); the simulator's magnitudes are AB. Runs from
 # Deviation 72 on convert (m_Vega = m_AB - 1.0324) and say so in their provenance ("# roman_noise");
 # earlier runs used the AB magnitude as if Vega, and their analyses must keep doing so to reproduce.

@@ -187,24 +187,6 @@ struct covarian {
     covarian(covarian&&) = default;
     covarian& operator=(covarian&&) = default;
 };
-/*
-struct yfilter{
-    std::vector<double> Age; //Size YZ
-    std::vector<double> B;   //Size YZ
-    std::vector<double> M;   //Size YZ
-    std::vector<double> mm;  //Size YZ
-
-    std::vector<int> number;   //Size met
-    std::vector<int> count;    //Size met
-    std::vector<double> Metal; //Size met
-
-        // Constructor
-    yfilter()
-        : Age(YZ), B(YZ), M(YZ), mm(YZ),
-          number(met), count(met), Metal(met)
-    {}
-};
-*/
 //==========================================//
 // How the three Fisher partitions came out for one event.
 //

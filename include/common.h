@@ -1,5 +1,5 @@
 // What nearly every file needs: system and GSL includes, the project configuration headers,
-// the CHECK/MIN/Nx/Ny macros, the selected lens population, and the structural constants.
+// the Nx/Ny constants, the CHECK/MIN macros, the selected lens population, and the structural constants.
 #ifndef ROMAN_COMMON_H
 #define ROMAN_COMMON_H
 
@@ -53,12 +53,12 @@ using std::cin;
 //   0 u0   1 tE   2 fb0   3 piE   4 xi   5 t0   6 mbs0   7 fb1   8 mbs1
 // fb0/mbs0 are Rubin's source-flux fraction and baseline magnitude; fb1/mbs1 are Roman's.
 // (fb is the fraction of aperture flux coming from the SOURCE, despite the name -- see
-// Lensing.cpp. Together with the baseline magnitude it is a bijective reparametrization of
+// src/events/source.cpp. Together with the baseline magnitude it is a bijective reparametrization of
 // the source-flux / blend-flux pair: F_src = fb * 10^(-0.4 mbs), F_bl = (1-fb) * 10^(-0.4 mbs).)
 // t0, mbs0, fb1 and mbs1 were appended rather than inserted so that indices 0-4 keep the
 // meanings hard-coded throughout co.resu[]. See DEVIATIONS.md.
-#define Nx 9
-#define Ny 4
+constexpr int Nx = 9;
+constexpr int Ny = 4;
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 
 #define CHECK(cond) \
@@ -138,15 +138,9 @@ constexpr std::array<double, 2> sig2 = {+0.5 ,+1.0};
 // The same numbers set the Mls grid the mass-efficiency histogram is binned on, so they must
 // bracket the masses actually drawn or that output collapses into one bin.
 //
-// Kept as names because the rest of the code reads them as names; they are now functions.
-#define Ml_min (mlMin())
-#define Ml_max (mlMax())
 
 // Bulge distance grid (Num, MaxD, step, dd): see config/parameters.h, section 2.
 ////=================================== Bulge ====================================
-//const double RaLMC  =  80.89375;
-//const double DecLMC = -68.2438888888889;
-//const double DLMC =  49.97;///KPC
 
 
 ///============================================================================

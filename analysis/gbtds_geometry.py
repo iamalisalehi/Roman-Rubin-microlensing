@@ -6,7 +6,7 @@ footprint from the vendored adopted layout (Baseline/gbtds_layout/: field centre
 detector rectangles per field) and builds its scan region by a distance rule, so the Python side
 reads the same files and reproduces the same arithmetic here, once.
 
-What it mirrors (Bulge.h / helper.cpp / Bulge_LSST.cpp):
+What it mirrors (config/parameters.h / src/surveys/footprints.cpp / src/run/sightlines.cpp):
   readGbtdsLayout, inDetector      -> sca_rects(), in_detector()
   SCAN_RUBIN_REACH + rField        -> scan_reach()
   the stratified sightline grid    -> scan_sightlines()   (checked against a run's own log by
@@ -120,7 +120,7 @@ def on_detector(lon, lat):
 
 
 def scan_sightlines(stride, stride_roman=0):
-    """Rebuild Bulge_LSST.cpp's stratified scan (full region, not --stub).
+    """Rebuild src/run/sightlines.cpp's stratified scan (full region, not --stub).
 
     Returns a dict of arrays: lon, lat, area (deg^2 represented), fine (in the footprint
     stratum), and the cells (lon, lat, representative index) for drawing. Same arithmetic and

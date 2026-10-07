@@ -7,7 +7,7 @@ holds, and the normaliser of `func_lens`'s lens-distance sampler. The first is i
 as `log10 Nstart` (one decimal, and the v3 file is missing rows); the second is nowhere. Both are
 deterministic functions of (l, b), so they are recomputed here rather than stored.
 
-THIS IS A PORT, NOT A SECOND MODEL. Every constant mirrors `Bulge.h` / `Bulge_LSST.cpp`. If the
+THIS IS A PORT, NOT A SECOND MODEL. Every constant mirrors `config/parameters.h` / `src/galaxy/density.cpp` / `src/galaxy/kinematics.cpp`. If the
 C++ changes, this must change with it -- `check_against_map()` is the guard: it compares the
 recomputed column densities against the map file's own and is the first thing to run after any
 change to `Disk_model`.
@@ -165,5 +165,5 @@ def check_against_map(sightlines, tol=0.05):
     if n and worst > tol:
         raise AssertionError(
             f"galaxy_model.py disagrees with the map file by {worst:.3f} dex over {n} sightlines "
-            f"(tolerance {tol}). The port has drifted from Disk_model() in Bulge_LSST.cpp.")
+            f"(tolerance {tol}). The port has drifted from Disk_model() in src/galaxy/density.cpp.")
     return worst, n

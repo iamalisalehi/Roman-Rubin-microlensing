@@ -129,7 +129,7 @@ class Run:
         """Drop rows from BARREN sightlines, after proving they hold nothing we count.
 
         A sightline that draws stars but ends with no characterised event takes the barren
-        branch in Bulge_LSST.cpp, which `continue`s past BOTH the map-row write and the
+        branch in src/sim/sightline.cpp, which `continue`s past BOTH the map-row write and the
         `nsim:` print. Its rows are therefore in the table with no draw count to normalise
         them by, and `event_weight` refuses the whole table because of them -- correctly, since
         a missing nsim is indistinguishable from a map file truncated by a kill (Deviation 42),

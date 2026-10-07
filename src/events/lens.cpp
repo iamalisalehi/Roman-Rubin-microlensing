@@ -13,8 +13,8 @@
 void func_lens(lens & l, source & s, const extin & ex, int sightlineIdx){
 
     double test, tt, Am, DD;
-    double mmin = Ml_min;
-    double mmax = Ml_max;
+    double mmin = mlMin();
+    double mmax = mlMax();
     l.rhomaxl = 0.0;
 
     for (int k = 1; k < int(s.nums - 1) ;++k) {

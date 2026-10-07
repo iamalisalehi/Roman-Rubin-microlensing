@@ -1,4 +1,4 @@
-// Unit test for the CCM89 reddening law (helper.cpp AlAv), added with Deviation 53 after the
+// Unit test for the CCM89 reddening law (src/galaxy/extinction.cpp AlAv), added with Deviation 53 after the
 // law had run inverted for two months without anything noticing. Needs no data files.
 //
 // Pinned: (1) A_V/A_V = 1 at V (0.549 um) for every R_V the populations use -- the law's
@@ -58,7 +58,7 @@ int main()
         check(std::fabs(v - 1.0) < 0.01, buf, v, 1.0);
     }
 
-    // Survey bands in Bulge.h order: ugrizy, F146.
+    // Survey bands in config/parameters.h order: ugrizy, F146.
     const double lam[7]   = {0.367, 0.482, 0.622, 0.755, 0.869, 0.971, 1.464};
     const char*  name[7]  = {"u", "g", "r", "i", "z", "y", "F146"};
     const double want25[7] = {1.694, 1.216, 0.854, 0.627, 0.460, 0.381, 0.197};

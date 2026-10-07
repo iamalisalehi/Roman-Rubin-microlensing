@@ -12,7 +12,7 @@ source magnitudes (BolometricCorrection.py), so lens and source light are on one
 OUTPUT  <out>: one row per (component, mass bin):
     comp  m_lo  m_hi  n  Mab_u Mab_g Mab_r Mab_i Mab_z Mab_y Mab_F146      (AB)
 comp: 0 thin disk (Besancon Pop 1-7), 1 bulge (Pop 10), 2 thick disk (Pop 8, 11), 3 halo (Pop 9) --
-the GalacticComponent order of Bulge.h. Mass bins 0.08-1.00 Msun in 0.02 steps, in the star's TRUE
+the GalacticComponent order of include/common.h. Mass bins 0.08-1.00 Msun in 0.02 steps, in the star's TRUE
 (catalogue) mass; below 0.08 Msun (brown dwarfs) the lens is treated as dark. n is the number of the
 component's dwarfs in the bin. Comment lines ('#') list what was done; all of them sit above the table.
 

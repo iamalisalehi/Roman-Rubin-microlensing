@@ -74,7 +74,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
             nums = int(RandR(SRC_IDX_MIN, Num - SRC_IDX_END_MARGIN));
             rho  = RandR(s.Romins, s.Romaxs);
             Ds   = double(nums * step);
-        } while (rho > s.Rostari[nums] or Ds < 0.0 or Ds > MaxD); //distance larger than 20.0
+        } while (rho > s.Rostari[nums] or Ds < 0.0 or Ds > MaxD); //distance beyond MaxD
 
 //        cout<<"k:  "<<k<<"\t Ds:  "<<Ds<<"\t nums:  "<<nums<<endl;
 

@@ -14,7 +14,7 @@ plane against the VVV reddening map (Deviations 61-63, OPEN_ITEMS CRITICAL dust 
          Roman's five-field block) where it cannot; non-decreasing in distance. Both through the
          dustmaps library. Bayestar is not used.
   FORMAT one text file, one line per sky position: `l b A_V(d_1) ... A_V(d_n)`, the distance grid
-         and the provenance in `#` header lines; helper.cpp readExtinction() reads it line by line
+         and the provenance in `#` header lines; src/galaxy/extinction.cpp readExtinction() reads it line by line
          into ~25 MB (float). Provenance also in ext_provenance.json (not .txt: nothing in files/ext
          is globbed any more, but the old reader read every .txt there).
 

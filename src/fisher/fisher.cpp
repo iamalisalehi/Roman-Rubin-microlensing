@@ -59,7 +59,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     // (index 7) reuse the telescope-keyed co.bb[] steps set inside the data loop below, which
     // are binned so that fb + step never leaves the physical range [0,1].
 
-    // Three matrices, zeroed together: joint, Rubin-only, Roman-only (see SurveyIdx in Bulge.h).
+    // Three matrices, zeroed together: joint, Rubin-only, Roman-only (see SurveyIdx in include/fisher/fisher.h).
     for (int q = 0; q < NSURV; ++q) {
         co.nepochA[q] = 0;
         co.okA[q] = 0;
@@ -116,7 +116,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         //
         // Note on the stencil: in the middle bin bb = {-0.07, +0.07} is a central difference,
         // but the outer bins are {+0.07, +0.15} and {-0.07, -0.15} -- two forward (or two
-        // backward) differences, i.e. the same first-order bias as sig2 (Bulge.h). fb's
+        // backward) differences, i.e. the same first-order bias as sig2 (include/common.h). fb's
         // accuracy therefore depends on which bin it lands in. kFDStepScale shrinks the steps
         // enough that the residual bias is negligible (the sweep already showed fb0/fb1 flat to
         // <0.3% even unscaled), so this is left as-is rather than restructured here; recorded

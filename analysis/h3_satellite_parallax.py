@@ -55,7 +55,7 @@ TE_LABELS = list(TEMPORAL_GAIN.keys())
 BG = "#fcfcfb"
 # The current h3_pair.dat layout. Order matters absolutely: the file's header line begins with
 # a lone '#', so pandas is told comment="#" and the names are supplied here instead. Get this
-# list out of step with Bulge_LSST.cpp and every column silently shifts by one -- which has
+# list out of step with src/sim/record.cpp and every column silently shifts by one -- which has
 # already happened once in this project and cost a debugging session (PROGRESS.md traps).
 COLS_LEGACY = ("lon lat tE u0 piE tetE du_sat "
                "okA_sat okA_nosat okB_sat okB_nosat "
@@ -94,7 +94,7 @@ def load(path):
     else:
         sys.exit(f"{path} has {n} columns; this script expects {len(COLS)} (or "
                  f"{len(COLS_LEGACY)} for a pre-2026-09-17 file). "
-                 "If Bulge_LSST.cpp changed the row, update COLS to match it.")
+                 "If src/sim/record.cpp changed the row, update COLS to match it.")
     df = pd.read_csv(path, sep=r"\s+", comment="#", names=names, engine="python")
     for c in names:
         df[c] = pd.to_numeric(df[c], errors="coerce")

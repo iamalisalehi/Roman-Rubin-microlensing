@@ -54,7 +54,7 @@ SightlineStart setupSightline(SimContext& ctx, SightlineState& st, const Sightli
     // continuation with a different draw sequence, not a replay.
     if (st.iScan < cfg.startIndex) return SightlineStart::Skip;
     if (cfg.endIndex >= 0 and st.iScan >= cfg.endIndex) return SightlineStart::Stop;   // Deviation 77
-    // Deviation 77: this sightline's own random stream (see sightlineSeed in Bulge.h). The note
+    // Deviation 77: this sightline's own random stream (see sightlineSeed in include/util/random.h). The note
     // above, that a resumed run is "not a replay", no longer applies: it IS one.
     rng.seed(sightlineSeed(cfg.seedBase, st.iScan));
     cout << ">>>>>>>>>>> NEW STEP " << st.nde << " <<<<<<<<\t nri:  " << st.nri << endl;
@@ -290,7 +290,7 @@ void finishSightline(SimContext& ctx, SightlineState& st) {
             // okA[SJOINT] is NOT sufficient on its own. It says the joint photometric
             // matrix inverted -- not that every parameter was in the fit. Since the joint
             // refactor gave each survey partition its own active parameter subset
-            // (activePhotParams in Bulge.h), fb0 and mbs0 enter the joint fit only when the
+            // (activePhotParams in include/fisher/fisher.h), fb0 and mbs0 enter the joint fit only when the
             // event has Rubin epochs, and fb1/mbs1 only when it has Roman ones. An event
             // detected by Roman with no Rubin data therefore has a perfectly valid joint
             // fit in which Era[2] is still the -1.0 sentinel, and ErrorCal divides that by

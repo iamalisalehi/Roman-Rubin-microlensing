@@ -62,7 +62,7 @@ EXPECTED_COLUMNS = [
 ]
 
 # Mirrors read_cmd()'s per-component CHECK() bounds exactly. Keep this in
-# sync with helper.cpp if those bounds ever change there.
+# sync with src/galaxy/catalogue.cpp if those bounds ever change there.
 BOUNDS = {
     "thin_disk":  {"mab_r_max": 20.0, "age_max": 10, "pop_valid": set(range(1, 8))},
     "bulge":      {"mab_r_max": 18.0, "age_max": 10, "pop_valid": {10}},

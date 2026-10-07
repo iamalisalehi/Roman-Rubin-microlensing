@@ -50,7 +50,7 @@ PLATEAU_LO, PLATEAU_HI = 0.1, 10.0
 # by truncation. Curves are normalized to REF_SCALE, deep inside it, so a converged curve reads
 # as a flat line at 1.0.
 #
-# After the Step C3 retune (kFDStepScale in Bulge_LSST.cpp) the production step sits INSIDE the
+# After the Step C3 retune (kFDStepScale in config/parameters.h) the production step sits INSIDE the
 # plateau, so scale 1 is both the reference and the middle of the flat region. Re-point these at
 # 1e-6 / 1e-3 / 1e-6 to re-analyse a pre-retune sweep CSV.
 PLATEAU_FOUND_LO, PLATEAU_FOUND_HI = 1.0e-4, 1.0e+1

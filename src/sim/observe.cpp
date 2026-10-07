@@ -45,7 +45,7 @@ void simulateLightCurve(SimContext& ctx, const SightlineState& st, EventState& e
     double cade = 0.0, cadeR = 0.0;
     int    gi, giR, sq, sqR, fi;
     double errs, errg, errsR, errgR, magnio, magnioR, deltaA;
-    double Astar0, As1, As0, trajm, trajp, vs1, vs2, sil, sil2, silR, sil2R;
+    double Astar0, trajm, trajp, vs1, vs2, sil, sil2, silR, sil2R;
     std::array<double, M> magni, magni0;
 
     cout << "************** DETECTABLE!!!!!! ********" << endl;
@@ -59,14 +59,12 @@ void simulateLightCurve(SimContext& ctx, const SightlineState& st, EventState& e
     gi = 0; giR = 0;
     for (double tim = float(0.0 * year - 100.0 - initial);  tim < float(10.0 * year + 100.0 + initial); tim = tim + dt) {
         // Rubin's geometry (observer on Earth). The quantities derived below and
-        // shared across both branches -- Astar0/As0/As1, vs1/vs2, def1p/def2p,
+        // shared across both branches -- Astar0, vs1/vs2, def1p/def2p,
         // trajm/trajp, magni[] -- are all in this frame; the Roman branch
         // recomputes the ones it needs in its own frame (Step H1).
         lightcurve(s, l, as, tim, 0);
         Astar0   = double(s.ut0 * s.ut0 + 2.0) / std::sqrt(s.ut0 * s.ut0 * (s.ut0 * s.ut0 + 4.0)); //MAgnification equation
         s.Astar = double(s.ut  * s.ut  + 2.0) / std::sqrt(s.ut  * s.ut  * (s.ut  * s.ut  + 4.0)); //MAgnification equation
-        As0      = double(Astar0   * s.blend[2] + 1.0 - s.blend[2]);
-        As1      = double(s.Astar * s.blend[2] + 1.0 - s.blend[2]); //LSST r-band
         vs1      = double(s.mus1 + (s.def1c - def1p) / dt); //[mas/days]
         vs2      = double(s.mus2 + (s.def2c - def2p) / dt); //[mas/days]
         def1p    = s.def1c; //pervious

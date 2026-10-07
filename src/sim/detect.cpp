@@ -88,7 +88,7 @@ void tallyDetection(SimContext& ctx, SightlineState& st, EventState& ev) {
     lens& l = ctx.l;
     RunTotals& run = ctx.run;
 
-    // Detection taxonomy (DetClass, Bulge.h). The joint fit is what makes a
+    // Detection taxonomy (DetClass, include/fisher/fisher.h). The joint fit is what makes a
     // detection meaningful -- it sees strictly more data than either survey
     // alone -- so the classes are distinguished by which telescopes ALSO
     // detect the event unaided. DET_ANOMALY catches the case that should be

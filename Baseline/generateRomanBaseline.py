@@ -3,13 +3,13 @@ generateRomanBaseline.py
 
 Generates RomanBaseline.dat: a synthetic per-visit observation log for Roman's
 Galactic Bulge Time Domain Survey (GBTDS), F146 filter only. Output columns match
-what Bulge_LSST.cpp's new Roman-baseline read block expects:
+what the Roman-baseline read in src/run/inputs.cpp expects:
 
     ID  RA  Dec  l  b  time  sig5  field  layout
 
 `field` is the GBTDS field index (0-4 the contiguous block west to east in the layout file's
 order, 5 the Galactic Centre field) and `layout` the roll angle the visit was taken at (0 =
-spring, 1 = autumn), which selects the detector layout Bulge_LSST.cpp places at (l, b).
+spring, 1 = autumn), which selects the detector layout src/surveys/footprints.cpp places at (l, b).
 
 (all reused from the existing BulgeBaseline.dat convention: `time` is in days
 from a common survey t=0, RA/Dec in degrees, l/b Galactic in degrees.)
@@ -61,13 +61,13 @@ with TODO(Ali) below too):
 4. SIG5_PLACEHOLDER — written as one fixed depth per visit. Roman is space-based
    so per-visit depth is far more uniform than LSST's (airmass/sky-brightness-
    dependent) depth, but this is still a placeholder, not a validated number.
-   errRomanM() in Bulge_LSST.cpp currently ignores this column entirely (it only
+   errRomanM() in src/surveys/noise.cpp currently ignores this column entirely (it only
    uses ro->mag/ro->err) — it's carried here for symmetry with BulgeBaseline.dat
    and in case you later want a per-visit-depth-dependent Roman error model.
 5. No dithering is modelled. Detector gaps and the roll angle ARE: each visit carries
    its field's centre for that season's roll plus the roll (`layout` column), and
-   Bulge_LSST.cpp tests a sightline against the 18 detector rectangles placed there.
-6. F087/F213 are NOT generated here — only F146 (filter index 6 in Bulge.h).
+   src/surveys/footprints.cpp tests a sightline against the 18 detector rectangles placed there.
+6. F087/F213 are NOT generated here — only F146 (filter index 6 in config/parameters.h).
    Add a second generator (or a `filter` column + loop) if you extend the
    Fisher/light-curve code to use Roman's other bands.
 
@@ -195,7 +195,7 @@ def build_season_windows(mission_start=MISSION_START_DAY):
         raise SystemExit(
             f"MISSION_START_DAY={mission_start:.1f} puts the Roman mission at "
             f"[{mission_start:.1f}, {last_end:.1f}] d, outside the simulation window "
-            f"[0, {TOBS_DAYS:.1f}] d. Bulge_LSST.cpp's CHECK(ro->tim[i] <= Tobs) would "
+            f"[0, {TOBS_DAYS:.1f}] d. src/run/inputs.cpp's CHECK(ro->tim[i] <= Tobs) would "
             f"abort. Use a start day <= {TOBS_DAYS - (last_end - mission_start):.1f}.")
     windows = []
     for i in range(N_SEASONS):
@@ -231,7 +231,7 @@ def main():
 
     rows = np.array(rows)
 
-    # Sort by time — matchVisibleEpochs()/main() in Bulge_LSST.cpp assume the
+    # Sort by time — matchVisibleEpochs() and src/run/inputs.cpp assume the
     # baseline file's `tim` column is pre-sorted, same convention as BulgeBaseline.dat.
     order = np.argsort(rows[:, 5], kind="stable")
     rows = rows[order]

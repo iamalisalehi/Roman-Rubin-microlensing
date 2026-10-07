@@ -67,7 +67,7 @@ GbtdsLayout readGbtdsLayout() {
 }
 
 // ---------------------------------------------------------------------------------------
-// LSSTCam footprint (Deviation 80). See Bulge.h.
+// LSSTCam footprint (Deviation 80). See include/surveys/footprints.h.
 // ---------------------------------------------------------------------------------------
 void readLsstCamMap(const std::string& path)
 {

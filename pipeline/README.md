@@ -18,12 +18,12 @@ directory.
 
 | # | You said | Command |
 |---|---|---|
-| 1 | I download a Besancon simulation | download it yourself (below); `BESANCON_CATALOGUE=<path>` in the config |
-| 2 | I download a Rubin baseline | `fetch` downloads v5.1.0 if `OPSIM_DB` is missing; for another baseline put its `.db` at `OPSIM_DB` |
-| 3 | I set parameters (populations, stride, ...) | edit the config: `POPULATIONS`, `STRIDE`, `STRIDE_ROMAN`, `EVENTS`, `LENSES`, ... |
-| 4 | I run the preprocessing Python codes | `setup`, `fetch`, `prep` |
-| 5 | I run the main C++ simulation | `sim` (then `merge`) |
-| 6 | I run the analysis codes | `analyze` |
+| 1 | Download a Besancon simulation | download it yourself (below); `BESANCON_CATALOGUE=<path>` in the config |
+| 2 | Download a Rubin baseline | `fetch` downloads v5.1.0 if `OPSIM_DB` is missing; for another baseline put its `.db` at `OPSIM_DB` |
+| 3 | Set parameters (populations, stride, ...) | edit the config: `POPULATIONS`, `STRIDE`, `STRIDE_ROMAN`, `EVENTS`, `LENSES`, ... |
+| 4 | Run the preprocessing Python codes | `setup`, `fetch`, `prep` |
+| 5 | Run the main C++ simulation | `sim` (then `merge`) |
+| 6 | Run the analysis codes | `analyze` |
 
 ```bash
 git clone <repo> && cd Roman
@@ -45,7 +45,7 @@ pipeline/pipeline.sh my_run.sh all                 # everything, on this machine
      faint dwarfs and white dwarfs of the disc.
    - **Every error law = 0** (Teff, logg, [M/H], [a/Fe], age, mass, and the photometric errors). Besancon's default
      noise makes the catalogue mass a noisy label, and the lens-mass tables bin by it.
-   - Age range [0, 15[, mass [0, 90[, spectral types O0.0 - D5.0.
+   - Age range [0, 15], mass [0, 90], spectral types O0.0 - D5.0.
    - The output must be the usual text file whose first line is a `#` header with the 38 column names (it must
      contain `Teff logg Pop Age Mass Mbol [M/H] [a/Fe] CL Typ`). `check` and `prep` verify this before spending
      minutes; a few damaged rows (wrong field count) are skipped by the builder, as in bos10.

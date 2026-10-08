@@ -109,6 +109,7 @@ validate_config() {
     for v in PAIR_SATELLITE STUB SUBMIT KEEP_CHUNKS; do
         [[ ${!v} == 0 || ${!v} == 1 ]] || err "$v must be 0 or 1 (got '${!v}')"
     done
+    case $GSL in auto|system|build) ;; *) err "GSL must be auto, system or build (got '$GSL')" ;; esac
     [[ $SCHEDULER == local || $SCHEDULER == slurm ]] || err "SCHEDULER must be local or slurm (got '$SCHEDULER')"
     case $CATALOGUE_DWARFS in besancon|empirical) ;; *) err "CATALOGUE_DWARFS must be besancon or empirical (got '$CATALOGUE_DWARFS')" ;; esac
     case $CATALOGUE_FILL in none|kroupa|koshimoto) ;; *) err "CATALOGUE_FILL must be none, kroupa or koshimoto (got '$CATALOGUE_FILL')" ;; esac

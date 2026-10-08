@@ -10,7 +10,7 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Install GSL
       run: |
         sudo apt-get update
@@ -25,3 +25,21 @@ jobs:
       run: python3 -m compileall -q analysis pipeline tools tests CMD Baseline maps.py
     - name: Pipeline script syntax check
       run: for f in pipeline/*.sh; do bash -n "$f"; done
+
+  # The no-root path: pipeline setup creates the venv, installs requirements.txt and builds GSL
+  # from source in deps/gsl; the simulator is then built and tested against that copy.
+  pipeline-setup:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+    - name: pipeline.sh setup with GSL=build
+      run: |
+        sed 's/^GSL=auto/GSL=build/' pipeline/config.example.sh > ci_config.sh
+        pipeline/pipeline.sh ci_config.sh setup || { tail -40 pipeline/logs/*.log; exit 1; }
+    - name: Build and test against deps/gsl
+      run: |
+        make
+        ldd roman | grep -q libgsl && { echo "linked the system GSL, not deps/gsl"; exit 1; } || true
+        make fishertest && ./fishertest
+    - name: Python requirements import
+      run: .roman/bin/python -c "import numpy, scipy, pandas, astropy, matplotlib, dustmaps"

@@ -1,33 +1,19 @@
 #!/usr/bin/env python3
-"""One figure style for every plot this project publishes (Step P5).
+"""One figure style for every plot this project publishes.
 
-WHY THIS EXISTS. The figure scripts grew their own styles: three different ink/grid palettes,
-two different survey colour sets, DPIs from 150 to 200, figure sizes chosen per script, PNG
-only, and the explanatory text baked into the image. That is fine for a working plot and wrong
-for a paper, where figures sit side by side at a fixed column width and the caption -- not the
-image -- carries the words.
+Figures sit side by side at a fixed column width in a paper, and the caption, not the image,
+carries the words. This module sets that up:
 
-WHAT A PUBLICATION FIGURE NEEDS, AND WHAT THIS DOES ABOUT IT.
+  Vector output. save_figure() writes a PDF for the paper and a PNG beside it for quick viewing.
+  Embedded fonts. pdf.fonttype = 42 embeds TrueType so text stays selectable (journals ask for it).
+  Real column widths. WIDTH holds the standard single (3.5 in) and double (7.2 in) column measures,
+    so text sized here prints at that size.
+  No title inside the figure; panels get a short (a)/(b) tag via panel_label().
+  One colourblind-safe palette. The survey colours (deep blue, burnt orange, teal) separate under
+    deuteranopia and protanopia and stay distinct in greyscale by lightness. Check both before
+    adding a fourth.
 
-  Vector, not raster. A PDF stays sharp at any zoom and prints properly; a 200-dpi PNG does
-  not. save_figure() writes BOTH: the PDF for the paper, a PNG beside it for quick viewing.
-
-  Embedded, editable fonts. pdf.fonttype = 42 embeds TrueType rather than converting glyphs
-  to outlines, so the text stays selectable and searchable. Journals ask for this.
-
-  Real column widths. A figure drawn at 16 inches and shrunk to 3.5 has 4-point labels. The
-  widths here are the standard single (3.5 in) and double (7.2 in) column measures, so text
-  sized here is the size it prints at.
-
-  No title inside the figure. set_title() is for working plots; in a paper the caption does
-  that job and a baked-in title is duplicated text you cannot edit at proof stage. Panels get
-  a short (a)/(b) tag instead, via panel_label().
-
-  One palette, colourblind-safe. The survey colours are the ones F4 already used -- deep blue,
-  burnt orange, teal -- which separate under deuteranopia and protanopia, the two common forms,
-  and stay distinct in greyscale by lightness. Do not add a fourth without checking both.
-
-USAGE
+Usage:
 
     import plotstyle as ps
     ps.use_paper_style()
@@ -42,19 +28,15 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-# ---------------------------------------------------------------------------------------
-# Palette
-# ---------------------------------------------------------------------------------------
-# Survey partitions. Same three colours F4 has used since Phase F, kept so the new population
-# figures read as part of the same set as the existing ones.
+# ---- Palette ----
+# Survey partitions.
 SURVEY = {"joint": "#0d366b", "roman": "#c2410c", "rubin": "#0e7490"}
 SURVEY_LABEL = {"joint": "joint fit", "roman": "Roman alone", "rubin": "Rubin alone"}
 
-# Lens populations. Distinct in hue AND in lightness, so a greyscale print still separates
-# them; deliberately not reusing the survey colours, since a figure may show both dimensions.
+# Lens populations. Distinct in hue and lightness; the survey colours are not reused, since a
+# figure may show both dimensions.
 POPULATION = {"bulge": "#3f3f46", "bh": "#1d4ed8", "ns": "#b45309", "besancon": "#0f766e"}
-# Labels are kept short because they sit inside a 3.5-inch panel; the mass ranges and the
-# distribution parameters belong in the caption, where there is room for them.
+# Labels are short to fit a 3.5-inch panel; mass ranges and distribution parameters go in the caption.
 POPULATION_LABEL = {
     "bulge": "bulge: Kroupa + remnants",
     "bh":    "black holes: log-uniform",
@@ -63,9 +45,8 @@ POPULATION_LABEL = {
 }
 
 # Galactic components of the stellar catalogue (Besancon Pop codes: thin 1-7, bulge 10, thick 8+11,
-# halo 9). Checked with the dataviz validator (2026-10-04), all pairs, white surface: CVD dE >= 9.2,
-# normal-vision dE >= 16.3. The aqua is below 3:1 contrast on white, so every figure that uses these
-# must label the lines (legend or direct labels), never rely on colour alone.
+# halo 9). All pairs checked on a white surface: CVD dE >= 9.2, normal-vision dE >= 16.3. The aqua is
+# below 3:1 contrast on white, so figures using these must label the lines, not rely on colour alone.
 COMPONENT = {"thin": "#2a78d6", "bulge": "#eb6834", "thick": "#1baf7a", "halo": "#4a3aa7"}
 COMPONENT_LABEL = {"thin": "thin disc", "bulge": "bulge", "thick": "thick disc", "halo": "halo"}
 
@@ -74,8 +55,7 @@ MUTED = "#6b6b6b"    # annotations, secondary text, the provenance stamp
 GRID = "#e8e8e8"
 SURFACE = "#ffffff"  # white, not off-white: journals composite onto white
 
-# Column widths in inches. ApJ/AAS single column is 3.5 in (246 pt), double 7.2 in (513 pt);
-# MNRAS is within a few per cent of both, so one set serves.
+# Column widths in inches: ApJ/AAS single column 3.5 in, double 7.2 in (MNRAS is within a few per cent).
 WIDTH = {"single": 3.5, "double": 7.2, "wide": 7.2}
 
 
@@ -86,13 +66,11 @@ def use_paper_style():
         "pdf.fonttype": 42,
         "ps.fonttype": 42,
         "svg.fonttype": "none",
-        # A serif face pairs with most journal body text; DejaVu ships with matplotlib, so
-        # this renders identically on any machine rather than silently falling back.
+        # DejaVu ships with matplotlib, so this renders identically on any machine.
         "font.family": "serif",
         "font.serif": ["DejaVu Serif", "Times New Roman", "Nimbus Roman"],
         "mathtext.fontset": "dejavuserif",
-        # Sized for a 3.5-inch column: 8 pt labels, 7 pt ticks. Text set here is text as
-        # printed, which is the whole point of drawing at the real width.
+        # Sized for a 3.5-inch column: 8 pt labels, 7 pt ticks.
         "font.size": 8,
         "axes.labelsize": 8,
         "axes.titlesize": 8,
@@ -100,7 +78,7 @@ def use_paper_style():
         "ytick.labelsize": 7,
         "legend.fontsize": 7,
         "figure.titlesize": 9,
-        # Thin, unobtrusive frame; ticks inside, both sides, the convention in astronomy.
+        # Thin frame; ticks inside on both sides (astronomy convention).
         "axes.edgecolor": "#c8c8c8",
         "axes.labelcolor": INK,
         "axes.linewidth": 0.7,
@@ -138,8 +116,7 @@ def figure(width="single", height=None, nrows=1, ncols=1, **kw):
 def panel_label(ax, text, loc="upper left"):
     """A short (a)/(b) tag inside the axes -- the paper equivalent of a title.
 
-    Inside rather than above, so it survives the tight bounding box and does not add vertical
-    space between stacked panels.
+    Placed inside the axes so it adds no vertical space between stacked panels.
     """
     x, y, ha, va = (0.03, 0.97, "left", "top")
     if loc == "upper right":
@@ -155,10 +132,8 @@ def panel_label(ax, text, loc="upper left"):
 def legend(ax, **kw):
     """Frameless legend with the project's text colour, or nothing if there is nothing to list.
 
-    The guard is not cosmetic. A panel legitimately ends up with no labelled series whenever
-    every bin was too thin to draw -- a partial run, or a population whose events are rare in
-    that panel's cut -- and matplotlib answers that with a UserWarning about missing artists.
-    A warning that fires on normal sparse data trains the reader to ignore warnings.
+    A panel can legitimately have no labelled series (every bin too thin to draw), and matplotlib
+    would warn about missing artists.
     """
     handles, labels = ax.get_legend_handles_labels()
     if not handles:
@@ -173,28 +148,22 @@ def legend(ax, **kw):
 def stamp(fig, text):
     """The provenance line: commit, population, weighting, N_eff.
 
-    Small and grey at the bottom of the figure. It is NOT decoration -- a figure whose
-    weighting or population cannot be read off it is a figure nobody can check. Strip it only
-    for a camera-ready submission, where the same facts belong in the caption.
+    Small and grey at the bottom of the figure, so weighting and population can be read off it.
+    Strip it only for camera-ready submission, where the same facts belong in the caption.
     """
-    # wrap=True: a long stamp must wrap at the figure width, not widen the saved image --
-    # with bbox "tight" an unwrapped line made p7_precision twice as wide as its panels.
+    # wrap=True: with bbox "tight" an unwrapped long stamp would widen the saved image.
     fig.text(0.0, -0.015, text, color=MUTED, fontsize=5.5, ha="left", va="top", wrap=True)
 
 
 def plain_log_ticks(ax, lo, hi, axis="y"):
     """Plain numbers on a log axis that spans only a decade or two.
 
-    Matplotlib labels log MINOR ticks on short ranges, which at column width collides into
-    mush ("6x10^0 4x10^0 3x10^0 ..."); but simply suppressing the minor labels can leave a
-    sub-decade axis with no numbers at all. Explicit ticks with a plain formatter is the only
-    option that avoids both. Above ~2.2 decades the default decade ticks are fine and this
-    does nothing.
+    Matplotlib labels log minor ticks on short ranges, which collide at column width, and
+    suppressing them can leave a sub-decade axis with no numbers. Explicit ticks with a plain
+    formatter avoid both. Above ~2.2 decades the default decade ticks are fine and this does nothing.
 
-    The range is passed IN, from the data, rather than read off the axes: at the point a
-    figure function calls this, matplotlib has not autoscaled yet, so get_ylim() returns
-    provisional limits and the span test silently takes the wrong branch. That mistake makes
-    this function look correct while changing nothing.
+    The range is passed in from the data because the axes have not autoscaled yet when a figure
+    function calls this, so get_ylim() would return provisional limits.
     """
     import numpy as np
     import matplotlib.ticker as mt

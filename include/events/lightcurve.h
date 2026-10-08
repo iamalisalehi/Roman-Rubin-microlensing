@@ -28,12 +28,9 @@ inline ImagePair imagePair(double u, double tetE, double magBase, double blendFr
     const double Aminus = (u * u + 2.0) / (2.0 * u * root) - 0.5;
     if (!(Aminus > 0.0) or !(Aplus > 0.0)) return ip;       //minor image formally extinguished
 
-    // The SOURCE's own magnitude, recovered from the blended baseline: blendFrac is the
-    // source's share of the aperture flux, so m_source = m_base - 2.5 log10(blendFrac) and is
-    // always the FAINTER of the two (blendFrac <= 1). Each image then carries its own
-    // magnification. The blend light is deliberately NOT added back: an image that is resolved
-    // from its twin is resolved from the neighbours too, and re-adding the full blend would
-    // make a faint minor image look detectable on light that is not its own.
+    // Source magnitude from the blended baseline: m_source = m_base - 2.5 log10(blendFrac).
+    // Blend light is deliberately not added back, so a faint minor image is not made to look
+    // detectable on light that is not its own.
     const double magSource = magBase - 2.5 * std::log10(blendFrac);
     ip.magPlus  = magSource - 2.5 * std::log10(Aplus);
     ip.magMinus = magSource - 2.5 * std::log10(Aminus);
@@ -44,9 +41,7 @@ inline ImagePair imagePair(double u, double tetE, double magBase, double blendFr
 }
 
 // A(u) = (u^2 + 2) / (u * sqrt(u^2 + 4)), the point-source point-lens magnification.
-// Written in exactly the form the two call sites inside the time loop use, so the
-// dumped magnification is what the simulation computed and not an algebraically
-// equal rearrangement that could round differently.
+// Written in the form used inside the time loop so dumped values match the simulation bit for bit.
 inline double magnifOf(double u)
 {
     return double(u * u + 2.0) / std::sqrt(u * u * (u * u + 4.0));
@@ -54,7 +49,7 @@ inline double magnifOf(double u)
 
 void   lightcurve(source & s, lens & l, astromet & as, double, int tele);
 
-// Finds the OBSERVED peak (Deviation 76): the Earth-frame, parallax-bent closest approach.
+// Finds the OBSERVED peak: the Earth-frame, parallax-bent closest approach.
 // Returns {time of the peak, impact parameter there}. See the comment in lightcurve.cpp.
 std::pair<double, double> observedPeak(source& s, lens& l, astromet& as);
 

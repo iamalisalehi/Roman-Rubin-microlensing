@@ -67,7 +67,9 @@ pipeline/pipeline.sh my_run.sh all                 # everything, on this machine
   venv and its modules, and every product as `current` / `missing` / `stale`. Exit status is non-zero if anything is
   missing or stale.
 - **setup**: creates the venv named by `PYTHON` (default `.roman/bin/python`) and installs
-  `pipeline/requirements.txt` (numpy, scipy, pandas, astropy, matplotlib, dustmaps; minimum versions only).
+  `requirements.txt` (numpy, scipy, pandas, astropy, matplotlib, dustmaps; minimum versions only). If the GSL
+  headers are not found (`GSL=auto`, the default) or `GSL=build`, it also downloads GSL 2.8 from gnu.org and builds a
+  static copy in `deps/gsl/` (~5 min, no root); the Makefile uses `deps/gsl/` whenever it exists.
 - **fetch**: downloads the above. Never the Besancon file (it prints where the form parameters are).
 - **prep**: star lists `CMD/components/{thin_disk,bulge,thick_disk,halo}.dat` and `lens_ml.dat` (from the Besancon
   file, `CATALOGUE_DWARFS`, `CATALOGUE_FILL`), `Baseline/BulgeBaseline.dat` (Rubin visits from the OpSim db),

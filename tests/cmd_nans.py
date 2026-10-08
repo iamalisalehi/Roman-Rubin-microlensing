@@ -1,23 +1,14 @@
-"""
-qc_bolometric_correction.py
+"""Pre-flight validation of the four CMD component files written by BolometricCorrection.py
+(thin_disk.dat, bulge.dat, thick_disk.dat, halo.dat), to run before they reach read_cmd().
 
-Pre-flight validation for the four CMD component files produced by
-BolometricCorrection.py (thin_disk.dat, bulge.dat, thick_disk.dat, halo.dat),
-meant to run BEFORE those files are ever handed to the C++ simulation's
-read_cmd().
+Mirrors the per-row CHECK()s of read_cmd (src/galaxy/catalogue.cpp), but reports all violations
+per file, with counts and example row indices, instead of stopping at the first. Also checks what
+the C++ side does not: column order, duplicate rows, a broad plausibility band on magnitudes, and
+non-integer Age values.
 
-This mirrors every CHECK() read_cmd performs, using the exact same bounds,
-but reports ALL violations found per file (with counts and example row
-indices) rather than throwing on the first one -- read_cmd's own CHECK()s
-should never actually fire if this script reports a clean pass. It also
-runs a few extra sanity checks the C++ side doesn't perform at all
-(column order/name matching, duplicate rows, a broad physical-plausibility
-band on magnitudes, and an int-vs-double parsing hazard check on Age).
-
-Usage:
-    python qc_bolometric_correction.py
-
-Edit the CONFIGURATION block below to match your file layout.
+Usage (from tests/):
+    python cmd_nans.py
+Edit the Configuration block below to match the file layout.
 """
 
 import re
@@ -38,13 +29,11 @@ COMPONENT_FILES = {
     "halo":       "../CMD/components/halo.dat",
 }
 
-# Set to None to skip auto-detection and rely purely on MANUAL_N below.
+# Set to None to skip auto-detection and use MANUAL_N only.
 BULGE_H_PATH = "../config/data_products.h"
 
-# Fallback expected row counts (N1..N4 in config/data_products.h), used only for any
-# component where BULGE_H_PATH couldn't be read or didn't contain the
-# matching constant. Fill these in as a backup if you don't have config/data_products.h
-# handy, or leave as None to skip the row-count check for that component.
+# Fallback expected row counts (N1..N4 in config/data_products.h), used for a component whose
+# constant cannot be read from BULGE_H_PATH. None skips the row-count check.
 MANUAL_N = {
     "thin_disk":  None,
     "bulge":      None,
@@ -52,17 +41,16 @@ MANUAL_N = {
     "halo":       None,
 }
 
-# The exact column order read_cmd expects. read_cmd reads POSITIONALLY
-# (operator>> in sequence), not by column name, so order matters as much
-# as presence -- this is deliberately checked as an exact list, not a set.
+# The column order read_cmd expects. It reads positionally (operator>> in sequence), not by
+# name, so the order is checked as an exact list.
 EXPECTED_COLUMNS = [
     "mass", "logT", "Mbol", "Age", "Pop",
     "Roman_F146", "LSST_u", "LSST_g", "LSST_r", "LSST_i", "LSST_z", "LSST_y",
     "CL", "Typ",
 ]
 
-# Mirrors read_cmd()'s per-component CHECK() bounds exactly. Keep this in
-# sync with src/galaxy/catalogue.cpp if those bounds ever change there.
+# Per-component bounds meant to mirror read_cmd()'s CHECK()s; keep in sync with
+# src/galaxy/catalogue.cpp.
 BOUNDS = {
     "thin_disk":  {"mab_r_max": 20.0, "age_max": 10, "pop_valid": set(range(1, 8))},
     "bulge":      {"mab_r_max": 18.0, "age_max": 10, "pop_valid": {10}},
@@ -73,10 +61,8 @@ BOUNDS = {
 CL_MAX = 7
 TYP_MAX = 9.0
 
-# Broad plausibility band for any magnitude column -- not asserted anywhere
-# in the C++ code, but a value outside this range almost certainly means a
-# computation bug (e.g. a NaN that dropna() somehow missed, or an
-# interpolator returning garbage) rather than a genuine faint/bright star.
+# Broad plausibility band for any magnitude column. Not asserted in the C++ code; a value outside
+# it almost certainly means a computation bug rather than a real star.
 MAG_PLAUSIBLE_MIN, MAG_PLAUSIBLE_MAX = -15.0, 40.0
 
 MAG_COLUMNS = ["Roman_F146", "LSST_u", "LSST_g", "LSST_r", "LSST_i", "LSST_z", "LSST_y"]
@@ -87,10 +73,8 @@ MAG_COLUMNS = ["Roman_F146", "LSST_u", "LSST_g", "LSST_r", "LSST_i", "LSST_z", "
 # ---------------------------------------------------------------------------
 
 def extract_N_from_bulge_h(path):
-    """Pulls N1..N4 directly out of config/data_products.h so this script can't silently
-    drift out of sync with the compiled C++ constants. Falls back to
-    MANUAL_N (component-by-component) if the file or a given constant
-    can't be found."""
+    """N1..N4 from config/data_products.h, so the check follows the compiled C++ constants.
+    Falls back to MANUAL_N per component if the file or a constant cannot be found."""
     const_to_component = {"N1": "thin_disk", "N2": "bulge", "N3": "thick_disk", "N4": "halo"}
     result = dict(MANUAL_N)
 
@@ -129,7 +113,7 @@ def check_component(name, path, expected_n):
         print(f"  FATAL: could not read file at all: {e}")
         return False
 
-    # --- column presence AND order (read_cmd reads positionally) ---
+    # Column presence and order (read_cmd reads positionally).
     actual_columns = list(df.columns)
     if actual_columns != EXPECTED_COLUMNS:
         issues.append(
@@ -138,14 +122,13 @@ def check_component(name, path, expected_n):
             f"      expected: {EXPECTED_COLUMNS}\n"
             f"      actual:   {actual_columns}"
         )
-        # If columns don't match at all, the rest of the checks below would
-        # just raise KeyError noise -- report what we found and stop here.
+        # The remaining checks would only raise KeyErrors.
         print(f"\n  {len(issues)} ISSUE(S) FOUND:")
         for i, msg in enumerate(issues, 1):
             print(f"   {i}. {msg}")
         return False
 
-    # --- row count vs. config/data_products.h's compiled-in constant ---
+    # Row count vs. the constant in config/data_products.h.
     n_rows = len(df)
     if expected_n is not None:
         if n_rows != expected_n:
@@ -163,7 +146,7 @@ def check_component(name, path, expected_n):
             "CHECK(j == N...) cannot be checked here."
         )
 
-    # --- NaN / inf anywhere (dropna() should have already removed these) ---
+    # NaN / inf anywhere.
     n_nan = int(df.isna().sum().sum())
     numeric_df = df.select_dtypes(include=[np.number])
     n_inf = int(np.isinf(numeric_df.to_numpy()).sum())
@@ -172,7 +155,7 @@ def check_component(name, path, expected_n):
     if n_inf:
         issues.append(f"{n_inf} inf values found across the file")
 
-    # --- exact duplicate rows ---
+    # Exact duplicate rows.
     n_dup = int(df.duplicated().sum())
     if n_dup:
         warnings.append(f"{n_dup} exact duplicate rows (not necessarily wrong, but worth a glance)")
@@ -186,7 +169,7 @@ def check_component(name, path, expected_n):
             bad_idx = df.index[bad][:5].tolist()
             issues.append(f"{label}: {n_bad} row(s) fail (first offending row indices: {bad_idx})")
 
-    # --- exact mirrors of read_cmd's per-row CHECK()s ---
+    # Mirrors of read_cmd's per-row CHECK()s.
     report(df["mass"] >= 0.0, "mass >= 0.0")
     report(df["logT"] >= 0.0, "logT >= 0.0")
     report(df["LSST_r"] <= b["mab_r_max"], f"LSST_r <= {b['mab_r_max']}")
@@ -194,7 +177,7 @@ def check_component(name, path, expected_n):
     report(df["CL"] <= CL_MAX, f"CL <= {CL_MAX}")
     report(df["Typ"] <= TYP_MAX, f"Typ <= {TYP_MAX}")
 
-    # --- population purity: did the Pop-based split in save_components() work? ---
+    # Population purity: each file holds only its own component's Pop codes.
     bad_pop = ~df["Pop"].isin(b["pop_valid"])
     if bad_pop.any():
         found = sorted(df.loc[bad_pop, "Pop"].unique().tolist())
@@ -204,7 +187,7 @@ def check_component(name, path, expected_n):
             f"these rows shouldn't be in this file at all."
         )
 
-    # --- broad magnitude plausibility band (not checked in C++ at all) ---
+    # Broad magnitude plausibility band (not checked in C++).
     for col in MAG_COLUMNS:
         out_of_band = ~df[col].between(MAG_PLAUSIBLE_MIN, MAG_PLAUSIBLE_MAX)
         if out_of_band.any():
@@ -214,7 +197,7 @@ def check_component(name, path, expected_n):
                 f"almost certainly a computation artifact, not a real faint/bright star."
             )
 
-    # --- Age fractional-value hazard: int-vs-double mismatch risk in the C++ struct ---
+    # Non-integer Age: the C++ age field must be floating point, or operator>> desynchronizes.
     frac_ages = int((df["Age"] % 1 != 0).sum())
     if frac_ages:
         warnings.append(
@@ -225,7 +208,7 @@ def check_component(name, path, expected_n):
             f"the leading '0' and desynchronizes every field read after it for that row."
         )
 
-    # --- did every filter actually get computed independently, or all identical? ---
+    # Filters computed independently, not all identical.
     if df[MAG_COLUMNS].nunique(axis=1).eq(1).any():
         n_flat = int(df[MAG_COLUMNS].nunique(axis=1).eq(1).sum())
         warnings.append(
@@ -234,7 +217,7 @@ def check_component(name, path, expected_n):
             f"never produce exactly equal magnitudes for a real star."
         )
 
-    # --- distribution summary, for eyeballing ---
+    # Distribution summary.
     print(df[["mass", "logT", "Mbol", "Age", "Roman_F146", "LSST_r"]].describe().to_string())
 
     if warnings:

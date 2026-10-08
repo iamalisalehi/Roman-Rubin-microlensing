@@ -1,34 +1,26 @@
 #!/usr/bin/env python3
-"""Step C3 -- finite-difference step-size convergence analysis.
+"""Finite-difference step-size convergence analysis for the Fisher matrix.
 
 Input: the CSV written by `./fishertest --sweep` (see tests/fisher_fixture.cpp, runSweep()).
 Each row is one (event, survey partition, photometric parameter, step scale) combination and
 the sigma FisherM/ErrorCal recovered for that parameter with that step.
 
-What we are looking for
------------------------
 A finite-difference derivative df/dp ~ [f(p+h) - f(p-h)] / 2h carries two competing errors:
-
-  * truncation error, ~ h^2 * f''', which grows as the step h grows (the model is not linear
-    over the step, so the secant stops matching the tangent);
-  * round-off error, ~ eps * |f| / h, which grows as h shrinks (we subtract two nearly equal
-    doubles and divide by a small number, so relative precision is destroyed).
-
-Their sum is U-shaped in h. A trustworthy step sits at the flat bottom -- the plateau. The
-plan's acceptance criterion (Step C3) is that sigma must be stable to "well under 1%" across
-that plateau, and that every parameter must have one.
+truncation error ~ h^2 f''', which grows with h, and round-off error ~ eps |f| / h, which grows
+as h shrinks. Their sum is U-shaped in h; a trustworthy step sits on the flat plateau at the
+bottom, with sigma stable to well under 1% across it.
 
 Two controls are built into the sweep:
-  * mbs0 / mbs1 (baseline magnitude): the model magnitude depends on these linearly with unit
-    slope, so the central difference is exact at any step. Their curves must be perfectly flat.
-    Structure there means the sweep harness is broken, not the physics.
+  * mbs0 / mbs1 (baseline magnitude): the model depends on these linearly with unit slope, so
+    the central difference is exact at any step. Their curves must be perfectly flat; structure
+    there means the sweep harness is broken.
   * fb0 / fb1 (blend fraction): FisherM clamps their step so fb + h stays inside [0, 1]. At the
-    largest sweep scales the clamp binds and the curve flattens artificially -- that flattening
-    is the clamp, not a plateau. At the production step the clamp is far from binding.
+    largest sweep scales the clamp binds and the curve flattens artificially; that is the clamp,
+    not a plateau.
 
-Usage
------
+Usage:
     .roman/bin/python tests/c3_step_sweep.py [c3_sweep.csv] [-o c3_step_sweep.png]
+Exit status is non-zero if any parameter's production step is off its plateau.
 """
 
 import argparse
@@ -41,23 +33,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-# The acceptance window: one decade either side of the production step. The plan's Step C3
-# criterion is evaluated here -- sigma must be stable to well under 1% across it. Must contain at
-# least 3 points of the sweep grid, or the check reports "no data" rather than a misleading pass.
+# Acceptance window: one decade either side of the production step; sigma must be stable to well
+# under 1% across it. Must contain at least 3 points of the sweep grid, or the check reports
+# "no data" rather than a misleading pass.
 PLATEAU_LO, PLATEAU_HI = 0.1, 10.0
 
-# The plateau the sweep found, common to every parameter: bounded below by round-off and above
-# by truncation. Curves are normalized to REF_SCALE, deep inside it, so a converged curve reads
-# as a flat line at 1.0.
-#
-# After the Step C3 retune (kFDStepScale in config/parameters.h) the production step sits INSIDE the
-# plateau, so scale 1 is both the reference and the middle of the flat region. Re-point these at
-# 1e-6 / 1e-3 / 1e-6 to re-analyse a pre-retune sweep CSV.
+# The plateau common to every parameter: bounded below by round-off and above by truncation.
+# Curves are normalized to REF_SCALE, so a converged curve reads as a flat line at 1.0. The
+# production step (kFDStepScale in config/parameters.h) sits inside the plateau, so scale 1 is both
+# the reference and the middle of the flat region.
 PLATEAU_FOUND_LO, PLATEAU_FOUND_HI = 1.0e-4, 1.0e+1
 REF_SCALE = 1.0
 
 # Acceptance thresholds, in percent of the production-step sigma.
-ACCEPT_PCT = 1.0    # plan's criterion: "well under 1%"
+ACCEPT_PCT = 1.0    # "well under 1%"
 WARN_PCT = 0.1      # what a genuinely converged parameter looks like
 
 # Plateau detection: sigma must change by less than STEP_TOL from one sweep point to the next,
@@ -72,8 +61,8 @@ SURVEY_STYLE = {"joint": "-", "rubin": "--", "roman": ":"}
 
 def load(path):
     df = pd.read_csv(path)
-    # A partition that could not be characterized reports sigma = -1 (Step C4 sentinel) and
-    # ok = 0. Those rows carry no information about step size; drop them, but count them.
+    # A partition that could not be characterized reports sigma = -1 (not-measured sentinel) and
+    # ok = 0; those rows say nothing about step size. Drop them, but count them.
     bad = (df["ok"] != 1) | (df["sigma"] <= 0) | ~np.isfinite(df["sigma"])
     if bad.any():
         print(f"dropping {bad.sum()} of {len(df)} rows with ok=0 or non-positive sigma "
@@ -96,9 +85,8 @@ def find_plateau(sc, sig, tol=STEP_TOL):
     """Longest run of consecutive sweep points over which sigma barely moves.
 
     Returns (lo_scale, hi_scale, sigma_plateau, npts) or None. "Barely moves" is defined
-    point-to-point rather than against a fixed reference, so a slow monotonic drift across
-    the whole window -- the signature of an unconverged first-order stencil -- does not get
-    mistaken for a plateau.
+    point-to-point rather than against a fixed reference, so a slow monotonic drift (the
+    signature of an unconverged first-order stencil) is not mistaken for a plateau.
     """
     n = len(sc)
     if n < MIN_PLATEAU_PTS:
@@ -127,12 +115,11 @@ def find_plateau(sc, sig, tol=STEP_TOL):
 def summarize(df):
     """One row per (param, survey, event) curve.
 
-    dev_window_pct  -- how much sigma moves across the old +/-3x window around the production
-                       step; this is the plan's literal acceptance test.
+    dev_window_pct  -- how much sigma moves across the acceptance window around the production
+                       step; this is the acceptance test.
     plateau_*       -- where (and whether) the curve actually flattens.
-    prod_bias_pct   -- sigma at the production step divided by the plateau sigma, minus 1.
-                       This is the quantity that matters scientifically: how wrong the sigmas
-                       the pipeline reports today are, purely from the step size.
+    prod_bias_pct   -- sigma at the production step divided by the plateau sigma, minus 1: the
+                       error in the reported sigmas due to the step size alone.
     """
     rows = []
     for ev, surv, par, sc, rat, sig in curves(df):
@@ -178,7 +165,7 @@ def report(summary):
             continue
         win = g["dev_window_pct"].max()
         if not np.isfinite(win):
-            # Fewer than 3 grid points inside the acceptance window -- cannot judge.
+            # Fewer than 3 grid points inside the acceptance window: cannot judge.
             print(f"{par:>6} {'--':>10} {'window too sparse':>18} {'':>8} {'':>22}  NO DATA")
             failures.append(par)
             continue
@@ -223,7 +210,7 @@ def plot(df, out):
     for par, ax in by_panel.items():
         ax.set_xscale("log")
         ax.set_yscale("log")
-        # The plateau, and the production step that sits outside it.
+        # The plateau, and the production step.
         ax.axvspan(PLATEAU_FOUND_LO, PLATEAU_FOUND_HI, color="#cde5cd", zorder=0, lw=0)
         ax.axvline(1.0, color="crimson", lw=1.0, ls="-", zorder=1)
         ax.axhline(1.0, color="0.4", lw=0.8)
@@ -241,7 +228,7 @@ def plot(df, out):
     handles += [plt.Line2D([], [], color="crimson", lw=1.5, label="production step"),
                 plt.Rectangle((0, 0), 1, 1, color="#cde5cd", label="plateau")]
     fig.legend(handles=handles, loc="lower center", ncol=6, fontsize=8, frameon=False)
-    fig.suptitle("Step C3: Fisher $\\sigma$ vs finite-difference step size\n"
+    fig.suptitle("Fisher $\\sigma$ vs finite-difference step size\n"
                  "round-off wall (left) and truncation wall (right) bracket the plateau; "
                  "the production step (red) sits inside it, $\\sigma$ flat to $<0.1\\%$",
                  fontsize=12)

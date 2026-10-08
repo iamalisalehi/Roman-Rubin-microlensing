@@ -1,75 +1,56 @@
 #!/usr/bin/env python3
-"""Step S2: draw one sample event -- light curves and astrometry, with and without parallax.
+"""Draw one sample event: light curves and astrometry, with and without parallax.
 
-Reads the three files Step S1's `--dump-samples` writes per event (Deviation 50):
+Reads the three files `--dump-samples` writes per event:
 
     <class>_<id>_epochs.dat   what Rubin and Roman actually recorded, one row per visit
     <class>_<id>_model.dat    a dense noise-free model, both observer frames, all 7 filters
     <class>_<id>_params.dat   the event's true parameters and its forecast sigmas
 
-and draws one double-column figure per event, 3 x 2 panels under a parameter strip:
+and draws one double-column figure per event: magnification and sky-plane trajectories over the
+decade and at closest approach, then dm per band, the parallax signal, |centroid shift| against
+time, the astrometric ellipse and the sky tracks with proper motion removed, under a parameter
+strip.
 
-    (a) the full decade, dm = m - m_base per filter    (b) the peak, t0 +- 2 tE
-    (c) the parallax signal: data - no-parallax model  (d) |centroid shift| vs time
-    (e) the astrometric ellipse, shift_2 vs shift_1    (f) sky tracks, proper motion removed
+"Without parallax" removes the microlensing parallax only: the bending of the relative
+lens-source track by the observer's orbit, measured by pi_E. The source's own annual parallax
+pi_s = 1/D_s is an ordinary astrometric wobble and stays in the sky track either way (panel i).
 
-WHAT "WITHOUT PARALLAX" MEANS HERE -- read before writing a caption. It removes the
-MICROLENSING parallax only: the bending of the RELATIVE lens-source track by the observer's
-orbit, measured by pi_E, which is what gives the lens distance. The source's own annual
-parallax pi_s = 1/D_s is an ordinary astrometric wobble and stays in the sky track either way;
-panel (f) shows it, labelled as such. Conflating the two in a caption is a physics error.
+Gauge. lightcurve() measures the observer's displacement from Earth's position at t = 0, the
+start of the simulation, and its no-parallax trajectory (u_noplx, def*a, mag0_*) is the straight
+line in that gauge. For an event years later that line is offset from the true trajectory by
+pi_E times the Earth's displacement since t = 0, so plotted as the parallax signal it is
+dominated by constant and linear parts of the Earth's motion that any real fit absorbs into
+u0, t0, tE and the direction of motion, and it overstates parallax by orders of magnitude. The
+default (--noplx geocentric) is the standard geocentric frame (Gould 2004): the no-parallax
+model is the straight line matching the true trajectory's position and velocity at its own peak,
+in each observer's frame, so what remains between the curves is the observer's acceleration. The
+trajectory vector is recovered from the dump as u_vec = def_c (u^2 + 2) / thetaE. --noplx
+simulation draws the simulation's own t = 0-gauge curves, for comparison only. This affects no
+result; the marginalised sigma(pi_E) is invariant to the reparametrisation.
 
-WHICH "WITHOUT PARALLAX" -- the gauge, and why the simulation's own version is not used.
-lightcurve() measures the observer's displacement from Earth's position at t = 0, the START
-of the simulation, and its no-parallax trajectory (u_noplx, def*a, mag0_*) is the straight
-line in that gauge. For an event years later, that line is offset from the true trajectory by
-pi_E times the Earth's displacement since t = 0 -- 1.75 AU projected for the first event this
-script drew -- so the "no-parallax" curve peaks at a different time and height from the
-event itself. Plotted as the parallax signal, it is dominated by the constant and linear
-parts of the Earth's motion, which any real fit absorbs into u0, t0, tE and the direction of
-motion; it would overstate parallax by orders of magnitude.
+Display choices.
+  dm, not m. The bands sit at baselines several magnitudes apart; dm overlays them and shows
+  chromatic blending: a band's amplitude is set by the source's share of the light in it,
+  blend[i], which differs per band.
 
-The default here (--noplx geocentric) is therefore the standard geocentric frame (Gould
-2004): the no-parallax model is the straight line matching the TRUE trajectory's position and
-velocity at its own peak, in each observer's frame. What remains between the two curves is the
-observer's acceleration -- the only part of the parallax a fit can measure. The trajectory
-vector is recovered exactly from the dump as u_vec = def_c (u^2 + 2) / thetaE. --noplx
-simulation draws the simulation's own t = 0-gauge curves, for comparison only.
+  Binned astrometry. A per-visit astrometric error is ~5 mas for Roman and ~10 mas for Rubin at
+  typical bulge magnitudes, against a typical centroid shift of 0.1-4 mas, so points are the
+  inverse-variance mean per bin with error 1/sqrt(sum 1/sigma^2). This assumes independent
+  exposures and takes the scalar `err_ast` as the per-axis 1 sigma, as the simulation's own
+  chi-square does.
 
-None of this touches a result: the simulation's no-parallax chi-square feeds only a dead
-diagnostic file, and the marginalised sigma(pi_E) is invariant to the reparametrisation.
+  Astrometric points sit on the model. The simulation never draws a 2D astrometric measurement
+  (its chi-square uses the scalar |position| and one noise draw), so the points are the model at
+  the observed epochs, binned, with the instrument's error bars. Photometry is different:
+  mag_obs is the simulation's own draw, so the photometric panels show simulated data.
 
-THREE DISPLAY CHOICES, AND WHY. Each was agreed before this was written.
-
-  dm, not m. The bands sit at baselines several magnitudes apart, so on an absolute axis each
-  is a flat line in its own strip. dm overlays them, and makes CHROMATIC BLENDING visible:
-  a band's amplitude is set by the source's share of the light in it, blend[i], which differs
-  per band. Different amplitudes per band are physics, not a plotting artefact.
-
-  Binned astrometry. A per-visit astrometric error is ~5 mas for Roman and ~10 mas for Rubin
-  at typical bulge magnitudes; a typical centroid shift is 0.1-4 mas. Drawn per epoch, the
-  curve disappears inside its own error bars. Astrometric microlensing is detected by
-  averaging many exposures, and the binned points show that averaging: inverse-variance mean
-  per bin, error 1/sqrt(sum 1/sigma^2) -- i.e. sigma/sqrt(N) for equal errors. Two assumptions
-  ride on that and belong in the caption: exposures are treated as independent (which
-  OPEN_ITEMS.md questions for Roman's 1.1 mas floor), and the scalar `err_ast` is taken as the
-  per-axis 1 sigma, as the simulation's own chi-square uses it.
-
-  Astrometric points sit ON the model. The simulation never draws a 2D astrometric
-  measurement -- its chi-square uses the scalar |position| and one scalar noise draw -- so there
-  is no noisy datum to plot, and inventing one here would be a figure of noise we made up. The
-  points are the model at the observed epochs, binned, with the instrument's error bars.
-  Photometry is different: mag_obs IS the simulation's own draw, so panels (a)-(c) are real
-  simulated data.
-
-NOT WEIGHTED, DELIBERATELY. The event-rate weight exists so that a pooled fraction or median
-describes the sky rather than the Monte Carlo sample. A figure of one event pools nothing, so
-there is nothing to weight. The one romanlib rule that does apply is the sentinel: a sigma of
--1.0 is "not measured" and is printed as such, never as a number.
+Not weighted: a figure of one event pools nothing. The romanlib sentinel rule still applies; a
+sigma of -1.0 is printed as "not measured".
 
 USAGE
-    .roman/bin/python analysis/s2_sample_lightcurves.py samples/bh -o figures/samples/bh \\
-        [--prov runs/<dir>/files/MONTLMC/files/run_provenance.txt] [--only both_003]
+    .roman/bin/python analysis/s2_sample_lightcurves.py samples/bh -o OUTDIR \\
+        [--prov RUN_DIR/files/MONTLMC/files/run_provenance.txt] [--only both_003]
 """
 
 import argparse
@@ -91,31 +72,24 @@ YEAR = P.year
 FILTERS = ["u", "g", "r", "i", "z", "y", "F146"]
 ROMAN_FILT = 6
 
-# Bin widths [days]. Roman observes a field every 12.1 min in season (~119 exposures a day),
-# Rubin every few days in some band. The widths are chosen so a bin holds enough exposures to
-# beat the per-visit error down, and short enough not to smear the peak of a ~10 d event.
+# Bin width [days] for Roman photometry (12.1 min cadence in season, ~119 exposures a day): enough
+# exposures per bin to beat down the per-visit error, short enough not to smear a ~10 d peak.
 BIN_ROMAN_PHOT = 0.5
-# Astrometric bins are ADAPTIVE, per event: wide enough that a bin's error is ~1/4 of the peak
-# centroid shift, capped at tE/3 (and 30 d) so the curve is not smeared out of existence. A
-# faint source can hit the cap with error bars still larger than its signal -- which is the
-# physics: that event's shift is not resolvable in time, only across a season. The width
-# actually used is printed in the legend. Bins with fewer than this many exposures are
-# dropped: a one-exposure bin at a season edge is a 5 mas error bar carrying no information.
+# Astrometric bins are adaptive per event: wide enough that a bin's error is ~1/4 of the peak
+# centroid shift, capped at tE/3 (and 30 d). A faint source can hit the cap with error bars still
+# above its signal, meaning the shift is not resolvable in time. The width used is printed in
+# the legend. Bins with fewer than ASTR_BIN_MIN_N exposures are dropped.
 ASTR_TARGET_FRACTION = 0.25
 ASTR_BIN_MAX_DAYS = 30.0
 ASTR_BIN_MIN_N = 3
-# ...and no more than this many Roman bins across the window. A bright source with ~50,000
-# exposures reaches the error target in a couple of days, and hundreds of individually
-# informative crosses overplot into a solid block. Widening the bins MERGES information
-# (each bin's error shrinks) rather than hiding any.
+# At most this many Roman bins across the window, to avoid overplotting for bright sources.
 ASTR_MAX_BINS = 60
 # A season observed at more than this many exposures a day is high-cadence (~119/d at the
 # 12.1-min cycle); the ROTAC low-cadence seasons are one ~1.5 h unit every 5 days.
 HIGH_CADENCE_PER_DAY = 10.0
 
-# Consecutive Roman epochs further apart than this start a new season. The same threshold
-# RomanSchedule uses in C++ (SEASON_GAP_MIN_DAYS in config/parameters.h), so the shaded windows are the
-# seasons the simulation itself believed in.
+# Consecutive Roman epochs further apart than this start a new season (same threshold as
+# SEASON_GAP_MIN_DAYS in config/parameters.h).
 SEASON_GAP_MIN_DAYS = 20.0
 
 # Largest possible point-lens centroid shift: u*thetaE/(u^2+2) peaks at u = sqrt(2).
@@ -133,9 +107,7 @@ MODEL_COLS = (["t", "frame", "u", "u0", "A", "A0"]
 def band_colours():
     """Rubin's six bands in wavelength order along viridis, F146 in the Roman survey colour.
 
-    viridis is perceptually ordered and colourblind-safe, and has no orange in it, so F146
-    cannot be mistaken for a Rubin band. Every band also gets its own marker, so the figure
-    does not depend on colour alone.
+    Every band also has its own marker, so the figure does not depend on colour alone.
     """
     rubin = plt.cm.viridis(np.linspace(0.0, 0.82, 6))
     cols = {f: rubin[i] for i, f in enumerate(FILTERS[:6])}
@@ -234,7 +206,7 @@ class Geocentric:
         i = min(max(i, 1), t.size - 2)
         self.tref = t[i]
         self.w = np.array([u1[i], u2[i]])
-        # central difference on the dense grid, which is sampled at tE/100 around the peak
+        # central difference on the dense grid (sampled at tE/100 around the peak)
         self.v = np.array([(u1[i + 1] - u1[i - 1]) / (t[i + 1] - t[i - 1]),
                            (u2[i + 1] - u2[i - 1]) / (t[i + 1] - t[i - 1])])
         self.tetE = tetE
@@ -260,13 +232,10 @@ class Geocentric:
 
 
 def mag_to_A(m, sig_m, magb, blend):
-    """A measured magnitude as the SOURCE's magnification, and its 1-sigma.
+    """A measured magnitude as the source's magnification, and its 1-sigma.
 
-    m = m_base - 2.5 log10(A fb + 1 - fb), inverted. This is what lets every filter sit on one
-    curve (Figure 2 of Sajadian & Makler plots magnification for exactly this reason): the
-    band-to-band differences in dm are all blending, and dividing it out leaves A, which is
-    achromatic for a point lens. The price is the error bar, which grows as 1/fb -- a band in
-    which the source is 1% of the light has its magnification error inflated 100x.
+    Inverts m = m_base - 2.5 log10(A fb + 1 - fb), so every filter sits on one achromatic curve
+    (as in Figure 2 of Sajadian & Makler). The error bar grows as 1/fb.
     """
     f = 10.0 ** (-0.4 * (m - magb))                 # flux relative to the blended baseline
     A = (f - 1.0 + blend) / blend
@@ -275,13 +244,12 @@ def mag_to_A(m, sig_m, magb, blend):
 
 
 def straight_track(t, pos, mu, t0):
-    """A body's sky track WITHOUT its annual parallax: the straight line mu (t - t0) + c.
+    """A body's sky track without its annual parallax: the straight line mu (t - t0) + c.
 
-    The parallax term in lightcurve() is -pi * (P(X(t)) - P(X(0))): the observer's projected
-    orbit, which for the circular orbit the code uses is a pure first harmonic in time, offset
-    by the constant P(X(0)). So the residual pos - mu (t - t0) is exactly c + a cos wt + b sin wt,
-    and a linear least-squares fit returns the centre c of the parallax ellipse exactly --
-    unlike a plain mean, which is biased over a non-integer number of years.
+    The parallax term in lightcurve() is -pi * (P(X(t)) - P(X(0))); for the circular orbit used
+    it is a pure first harmonic offset by a constant, so pos - mu (t - t0) = c + a cos wt + b sin wt
+    and a linear least-squares fit returns the ellipse centre c exactly (a plain mean is biased
+    over a non-integer number of years).
     """
     w = 2.0 * np.pi / YEAR
     r = pos - mu * (t - t0)
@@ -315,7 +283,7 @@ def omitted_note(ax, n, what="points", loc="lower right"):
 
 
 def astr_bin_width(err_ast, rate_per_day, peak_shift, tE):
-    """Adaptive astrometric bin width [days] -- see ASTR_TARGET_FRACTION."""
+    """Adaptive astrometric bin width [days]; see ASTR_TARGET_FRACTION."""
     if err_ast.size == 0 or peak_shift <= 0 or rate_per_day <= 0:
         return 1.0
     target = ASTR_TARGET_FRACTION * peak_shift
@@ -352,23 +320,22 @@ def fmt_sigma(p, key, true_value):
         return "n/m"
     pct = 100.0 * s / true_value
     if pct >= 1000:
-        return ">1000%"          # measured, in the sense that the matrix inverted; useless
+        return ">1000%"          # the matrix inverted, but the value is useless
     return f"{pct:.2g}%" if pct < 10 else f"{pct:.0f}%"
 
 
 # ---------------------------------------------------------------------------------------
-# Physics sanity checks -- asserted, not just drawn
+# Physics sanity checks
 # ---------------------------------------------------------------------------------------
 def sanity_checks(p, ep, mo):
     """Three checks that the dump is internally consistent. Returns printable lines; raises
-    on a hard violation. These are the checks a figure cannot show you are failing."""
+    on a hard violation."""
     lines = []
     m0 = subset(mo, mo["frame"] == 0)
     m1 = subset(mo, mo["frame"] == 1)
 
     # 1. The epoch file's model magnitude must agree with the dense model at the same instant,
-    #    in the same frame and filter. Two independent writers of one quantity: if they
-    #    disagree, one of them read stale scratch state.
+    #    frame and filter.
     worst = 0.0
     for tele, mf in ((0, m0), (1, m1)):
         e = subset(ep, ep["tele"] == tele)
@@ -386,16 +353,14 @@ def sanity_checks(p, ep, mo):
     smax = max(float(np.max(np.hypot(mo["def1c"], mo["def2c"]))),
                float(np.max(np.hypot(ep["def1c"], ep["def2c"]))) if ep["t"].size else 0.0)
     lines.append(f"max |shift| = {smax:.4g} mas vs point-lens cap {cap:.4g} mas")
-    # Tolerance is the dump's own precision: positions are written to 8 significant digits
-    # and thetaE to 10, so an event that passes through u = sqrt(2) -- every event with
-    # u0 < sqrt(2) does -- sits ON the cap and can round a few parts in 1e8 above it.
+    # Tolerance is the dump's precision (8 significant digits for positions, 10 for thetaE): an
+    # event passing through u = sqrt(2) sits on the cap and can round slightly above it.
     if smax > cap * (1.0 + 1e-6):
         raise AssertionError(f"centroid shift {smax} exceeds thetaE/(2 sqrt 2) = {cap}")
 
-    # 3. The parallax gauge. lightcurve() measures the observer's displacement FROM EARTH'S
-    #    POSITION AT t = 0, so in the geocentric frame u and u_noplx must coincide there. In
-    #    the L2 frame they must NOT: the residual is the satellite-parallax offset, ~1e-3
-    #    (the gauge-trap note in lightcurve()).
+    # 3. Parallax gauge: lightcurve() measures the observer's displacement from Earth's position
+    #    at t = 0, so u and u_noplx must coincide there in the Earth frame; in the L2 frame the
+    #    residual is the satellite-parallax offset, ~1e-3.
     i0 = int(np.argmin(np.abs(m0["t"])))
     i1 = int(np.argmin(np.abs(m1["t"])))
     g0 = abs(m0["u"][i0] - m0["u0"][i0])
@@ -410,21 +375,17 @@ def sanity_checks(p, ep, mo):
 # ---------------------------------------------------------------------------------------
 # The figure
 # ---------------------------------------------------------------------------------------
-# Colours for the sky-trajectory panel. Roles follow Figure 2 of Sajadian & Makler
-# (arXiv:2608.16448) -- cyan undeflected source, blue deflected, magenta lens, red lens without
-# parallax, dark red the relative track, black the deflection -- so the two figures can be read
-# against each other. Line style carries the with/without-parallax distinction everywhere in
-# THIS figure: solid = with, dashed = without. (Figure 2 uses the opposite convention on its
-# light curves; consistency within one figure wins.)
+# Colours for the sky-trajectory panel, following Figure 2 of Sajadian & Makler
+# (arXiv:2608.16448): cyan undeflected source, blue deflected, magenta lens, red lens without
+# parallax, dark red the relative track, black the deflection. Line style carries the
+# with/without-parallax distinction throughout: solid = with, dashed = without.
 TRACK = {"src_u": "#0891b2", "src_d": "#1e3a8a", "lens": "#c026d3", "lens0": "#dc2626",
          "rel": "#7f1d1d", "defl": "#1a1a1a"}
 TOBS = P.Tobs          # Rubin's 10-year window; the tracks are dotted outside it
 
-# ONE RULE FOR EVERY PANEL: a point or bin is drawn only if its 1-sigma is below this fraction
-# of the signal it is plotted against -- the event's amplitude, the parallax signal, the peak
-# centroid shift. At 1/3, every point shown distinguishes that signal at 3 sigma ON ITS OWN;
-# a point that cannot is not information about this curve, and a bar that dwarfs the curve
-# only hides it. Each panel states how many it left out.
+# A point or bin is drawn only if its 1-sigma is below this fraction of the signal it is plotted
+# against (event amplitude, parallax signal, peak centroid shift), so every point shown
+# distinguishes that signal at 3 sigma on its own. Each panel states how many it left out.
 INFO_FRACTION = 1.0 / 3.0
 
 
@@ -443,8 +404,7 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     geo = {f: Geocentric(frames[f], tetE) for f in (0, 1)}
     seasons = classify_seasons(rom["t"])
 
-    # The no-parallax model, per observer frame. See the module docstring: geocentric is the
-    # default and the only one to publish.
+    # The no-parallax model, per observer frame (see the module docstring).
     def A_noplx(frame, t):
         if noplx == "geocentric":
             return geo[frame].A(t)
@@ -462,7 +422,7 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
             return geo[frame].shift(t)
         return tab["def1a"], tab["def2a"]
 
-    # Reference time: the OBSERVED peak (Earth frame), not the parameter t0 (OPEN_ITEMS.md).
+    # Reference time: the observed peak (Earth frame), not the parameter t0.
     tpk = geo[0].tref
     m0, m1 = frames[0], frames[1]
     t_lo, t_hi = float(mo["t"].min()), float(mo["t"].max())
@@ -470,16 +430,16 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     zoom = (max(tpk - 2.0 * tE, t_lo), min(tpk + 2.0 * tE, t_hi))
     checks.append(f"observed peak (Earth) at t - t0 = {tpk - t0:+.2f} d, u_min = "
                   f"{m0['u'].min():.4f}; parameter u0 = {p['u0']:.4f}")
-    # Rubin and Roman see different magnifications (the satellite parallax). The A panels
-    # draw the Earth-frame curves; the L2 curve is added only if it would be distinguishable.
+    # Rubin and Roman see different magnifications (satellite parallax). The A panels draw the
+    # Earth-frame curves; the L2 curve is added only if distinguishable.
     dA = float(np.max(np.abs(m1["A"] - m0["A"]) / m0["A"]))
     draw_l2 = dA > 1e-2
     checks.append(f"satellite parallax: max |A_L2 - A_Earth| / A = {dA:.2e}"
                   + ("  -> L2 curve drawn separately" if draw_l2 else ""))
 
-    # Panel letters, row by row. Rows 1-2 are Figure 2 of Sajadian & Makler, extended: the
-    # magnification (left) beside the sky-plane trajectories (right), first over the decade
-    # and then at the closest approach. Rows 3-5 are the diagnostics.
+    # Panel letters, row by row. Rows 1-2 extend Figure 2 of Sajadian & Makler (magnification
+    # beside sky-plane trajectories, over the decade and at closest approach); rows 3-5 are
+    # diagnostics.
     #   (a) A(t), decade        (b) sky trajectories, decade
     #   (c) A(t), peak          (d) sky trajectories, closest approach
     #   (e) dm per band, peak   (f) the parallax signal
@@ -501,7 +461,7 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     ax_g, ax_h = fig.add_subplot(body[3, 0]), fig.add_subplot(body[3, 1])
     ax_i, key2 = fig.add_subplot(body[4, 0]), fig.add_subplot(body[4, 1])
 
-    # ---- parameter strip: data, not a title --------------------------------------------
+    # ---- parameter strip ---------------------------------------------------------------
     strip.axis("off")
     yes = lambda v: "yes" if int(v) == 1 else "no"          # noqa: E731
     zone = {0: "in a Roman season", 1: "in a mid-mission gap", 2: "outside Roman's mission"}
@@ -565,9 +525,8 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
                        lw=0, zorder=0)
 
     # ---- (a) magnification over the decade, (c) at the peak ----------------------------
-    # One curve pair for every filter: dividing out each band's blending leaves the source
-    # magnification A, which a point lens makes achromatic. Error bars grow as 1/fb, so a
-    # heavily blended band's points mostly fail INFO_FRACTION of the amplitude A_peak - 1.
+    # One curve pair for every filter (blending divided out, see mag_to_A). Error bars grow as
+    # 1/fb, so a heavily blended band's points mostly fail INFO_FRACTION of A_peak - 1.
     amp_A = float(m0["A"].max() - 1.0)
 
     def magnification(ax, xform, xlim):
@@ -587,7 +546,6 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
             ok = sA < INFO_FRACTION * amp_A
             n_out += np.count_nonzero(~ok)
             if ok.any():
-                # Drawn light: ~2,400 Rubin points, most of them informative only in bulk.
                 ax.errorbar(xform(rub["t"][s][ok]), A[ok], yerr=sA[ok], fmt=MARKERS[f],
                             ms=1.8, mew=0, color=cols[f], ecolor=cols[f], elinewidth=0.3,
                             alpha=0.45, zorder=5)
@@ -620,7 +578,7 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     ax_c.set_ylabel("magnification $A$")
     ps.panel_label(ax_c, "(c)", loc="upper left")
 
-    # ---- (e) dm per band at the peak: chromatic blending made visible -------------------
+    # ---- (e) dm per band at the peak (chromatic blending) -------------------------------
     n_out = 0
     for i, f in enumerate(FILTERS):
         fr = 1 if i == ROMAN_FILT else 0
@@ -660,9 +618,7 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
 
     # ---- (f) the parallax signal itself ------------------------------------------------
     # Data minus the no-parallax model, with (model - model_noplx) drawn over it. In the
-    # geocentric frame this is the observer's ACCELERATION: zero at the peak by construction.
-    # A point is drawn only if its error is below INFO_FRACTION of the signal it is compared
-    # with -- otherwise it cannot tell the two curves apart, and says so by its absence.
+    # geocentric frame this is the observer's acceleration, zero at the peak by construction.
     sig = 0.0
     for i, f in enumerate(FILTERS):
         fr = 1 if i == ROMAN_FILT else 0
@@ -786,13 +742,10 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     omitted_note(ax_h, n_out, "bins")
 
     # ---- (b) the sky-plane trajectories: Figure 2's right-hand panel -------------------
-    # Absolute positions over the whole model span, Earth frame. The lens WITHOUT parallax
-    # is its straight proper-motion line through the centre of its parallax ellipse. The
-    # deflection is drawn about the origin, as in Figure 2. At this project's thetaE (0.1 to a
-    # few mas, against 70-80 mas for Figure 2's LMC events) the deflected and undeflected
-    # source coincide on the decade scale, so panel (d) zooms on the closest approach: the
-    # source and lens are within a few thetaE of the origin at the peak, so one box holds
-    # both of them and the deflection loop.
+    # Absolute positions over the whole model span, Earth frame. The lens without parallax is its
+    # straight proper-motion line through the centre of its parallax ellipse. The deflection is
+    # drawn about the origin, as in Figure 2. At thetaE of 0.1 to a few mas the deflected and
+    # undeflected source coincide on the decade scale, so panel (d) zooms on the closest approach.
     t = m0["t"]
     inside = (t >= 0.0) & (t <= TOBS)
     su = (m0["pos1b"], m0["pos2b"])
@@ -836,11 +789,10 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     ax_b.set_ylabel("$y$ (mas)")
     ps.panel_label(ax_b, "(b)", loc="upper left")
 
-    # panel (d): the closest approach, the deflection loop, and Roman's binned positions
-    # The zoom is set by the ANGULAR scale of the lensing, not by a time window: +-1.5 tE is
-    # the whole decade for a slow event. Half-width max(1.5 thetaE, 3 x the peak shift),
-    # centred between the deflected source and the lens at the observed peak and the origin
-    # the deflection is drawn about.
+    # panel (d): closest approach, the deflection loop and Roman's binned positions. The zoom is
+    # set by the angular scale of the lensing, not a time window: half-width
+    # max(1.5 thetaE, 3 x the peak shift), centred between the deflected source, the lens and
+    # the origin at the observed peak.
     ipk = int(np.argmin(np.abs(t - tpk)))
     ih = max(1.5 * tetE, 3.0 * float(np.max(np.hypot(*dfl))), 1e-3)
     ixc = (sd[0][ipk] + ln[0][ipk] + 0.0) / 3.0
@@ -865,16 +817,15 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     ps.panel_label(ins, "(d)", loc="upper left")
     ins.text(0.98, 0.97, "closest approach", transform=ins.transAxes,
              ha="right", va="top", fontsize=6, color=ps.MUTED)
-    # Roman's binned positions outside the box are simply off-panel, not omitted
+    # Binned positions outside the box are off-panel, not omitted
     omitted_note(ins, n_out, "Roman bins")
     # the zoomed region, marked on the decade panel
     ax_b.add_patch(plt.Rectangle((ixc - ih, iyc - ih), 2 * ih, 2 * ih, fill=False,
                                  ec=ps.MUTED, lw=0.6, zorder=7))
 
     # ---- (i) sky tracks with the linear proper motion removed --------------------------
-    # pos - mu (t - t0) leaves each body's own annual-parallax loop (1/D in mas). These are the
-    # SOURCE and LENS parallaxes, pi_s and pi_l -- not pi_E. Without parallax, each collapses
-    # to the centre of its loop, marked x.
+    # pos - mu (t - t0) leaves each body's own annual-parallax loop (1/D in mas): the source and
+    # lens parallaxes pi_s and pi_l, not pi_E. Without parallax each collapses to its loop centre (x).
     dt = t - t0
     lx, ly = m0["lens1"] - p["mul1"] * dt, m0["lens2"] - p["mul2"] * dt
     ux, uy = m0["pos1b"] - p["mus1"] * dt, m0["pos2b"] - p["mus2"] * dt
@@ -893,7 +844,7 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     ally = np.r_[ly, uy, cyd]
     x0, x1 = float(allx.min()), float(allx.max())
     y0, y1 = float(ally.min()), float(ally.max())
-    y0 -= 0.55 * (y1 - y0)                     # the legend's space, below the loops
+    y0 -= 0.55 * (y1 - y0)                     # room for the legend below the loops
     span = 1.06 * max(x1 - x0, y1 - y0)
     xc, yc = 0.5 * (x0 + x1), 0.5 * (y0 + y1)
     ax_i.set_xlim(xc - span / 2, xc + span / 2)

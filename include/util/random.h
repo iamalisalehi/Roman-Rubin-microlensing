@@ -4,13 +4,12 @@
 
 #include "common.h"
 
-////
 #include <random>
 inline std::mt19937_64 rng{seed};
 
-// Deviation 77: the generator is RE-SEEDED at the start of every sightline from (base seed,
-// sightline index), so a sightline's draws do not depend on which sightlines ran before it. A scan
-// split into chunks (--start-index / --end-index), or resumed, reproduces the unsplit run exactly.
+// The generator is re-seeded at the start of every sightline from (base seed, sightline index), so
+// a sightline's draws do not depend on which ran before it; a scan split into chunks
+// (--start-index / --end-index), or resumed, reproduces the unsplit run exactly.
 // SplitMix64 (Steele, Lea & Flood 2014) mixes the pair into well-separated 64-bit seeds.
 inline std::uint64_t splitmix64(std::uint64_t x)
 {
@@ -23,7 +22,6 @@ inline std::uint64_t sightlineSeed(std::uint64_t base, long index)
 {
     return splitmix64(splitmix64(base) ^ static_cast<std::uint64_t>(index));
 }
-//inline std::mt19937_64 rng{std::random_device{}()};
 
 double RandN(double , double);
 double RandR(double , double);

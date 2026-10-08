@@ -53,17 +53,12 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
 
     cout << "************** DETECTABLE!!!!!! ********" << endl;
     s.nsdet[s.nums] += 1.0;
-    // (The legacy magC/datC/BHLSSTMONTS demo dump that was gated here could never
-    // fire -- save < 0 with save = 0 -- and was removed in Deviation 78, with the
-    // random draw that fed it.)
 
     gi = 0;
     gi = 0; giR = 0;
     for (double tim = float(0.0 * year - 100.0 - initial);  tim < float(10.0 * year + 100.0 + initial); tim = tim + dt) {
-        // Rubin's geometry (observer on Earth). The quantities derived below and
-        // shared across both branches -- Astar0, vs1/vs2, def1p/def2p,
-        // trajm/trajp, magni[] -- are all in this frame; the Roman branch
-        // recomputes the ones it needs in its own frame (Step H1).
+        // Rubin's geometry (observer on Earth). Astar0, vs1/vs2, def1p/def2p, trajm/trajp and
+        // magni[] are in this frame; the Roman branch recomputes the ones it needs in its own.
         lightcurve(s, l, as, tim, 0);
         Astar0   = double(s.ut0 * s.ut0 + 2.0) / std::sqrt(s.ut0 * s.ut0 * (s.ut0 * s.ut0 + 4.0)); //MAgnification equation
         s.Astar = double(s.ut  * s.ut  + 2.0) / std::sqrt(s.ut  * s.ut  * (s.ut  * s.ut  + 4.0)); //MAgnification equation
@@ -72,9 +67,7 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
         def1p    = s.def1c; //pervious
         def2p    = s.def2c;
 
-        // Computed once per timestep (not just inside the LSST branch) since both
-        // instruments' astrometric chi-square terms need it, and it only depends on
-        // s->pos1b/pos2b/pos1c/pos2c, which lightcurve() already refreshed above.
+        // Computed once per timestep: both instruments' astrometric chi-square terms need it.
         trajm = std::sqrt(s.pos1b * s.pos1b + s.pos2b * s.pos2b); //stright + parallax
         trajp = std::sqrt(s.pos1c * s.pos1c + s.pos2c * s.pos2c); //stright + parallax+lensing
 
@@ -83,10 +76,9 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
             magni0[i] = s.magb[i] - 2.5 * std::log10(Astar0   * s.blend[i] + 1.0 - s.blend[i]);
             magni[i]  = s.magb[i] - 2.5 * std::log10(s.Astar * s.blend[i] + 1.0 - s.blend[i]);
         }
-        // Rubin's representative-band model magnitude (RUBIN_REF_BANDS, config/parameters.h) --
-        // replaces the old hardcoded magni[2] (r-band) at the two use sites below.
-        // Reduces to exactly magni[2] when RUBIN_REF_BANDS = {2} (the default), since
-        // s->mbs[0]/s->fb[0] were built from the same combination in func_source.
+        // Rubin's representative-band model magnitude (RUBIN_REF_BANDS, config/parameters.h);
+        // equals magni[2] (r-band) for the default {2}, since s.mbs[0]/s.fb[0] are built from the
+        // same combination in func_source.
         double magniRubinRef = s.mbs[0] - 2.5 * std::log10(s.Astar * s.fb[0] + 1.0 - s.fb[0]);
         sq = int(ls.ct[gi]);
         sq  = int(ls.ct[gi]);
@@ -99,18 +91,16 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
 
             fi = int(ls.filter[sq]);
 
-            // Deviation 73: this visit's own depth and saturation, not the SRD
-            // minimum -- the same depth that sets errg below.
+            // This visit's own depth and saturation (not the SRD minimum), the same depth that
+            // sets errg below.
             const double m5v   = double(ls.sig5[sq]);
             const double satuv = m5v - RUBIN_SATU_BELOW_M5;
             if (magni[fi] >= satuv and magni[fi] <= m5v) {
                 errg = errlsstM(magni[fi], int(fi), m5v); //[mag]
                 errs = errlsstA(ls, magniRubinRef); ///[mas]
 
-                // Step R1. Could Rubin have told the two images apart at THIS
-                // epoch? Inside the magnitude gate on purpose: the paper's
-                // criterion counts recorded data points, and an epoch the
-                // survey never recorded is not one.
+                // Could Rubin have told the two images apart at this epoch? Inside the magnitude
+                // gate on purpose: the criterion counts recorded data points.
                 {
                     const ImagePair ip = imagePair(s.ut, l.tetE, s.magb[fi],
                                                    s.blend[fi], m5v, satuv);
@@ -132,8 +122,7 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                 chi2_L += std::fabs((magnio -  magni0[fi]) * (magnio -  magni0[fi]) / (errg * errg));
                 chi3_L += std::fabs((magnio - s.magb[fi]) * (magnio - s.magb[fi]) / (errg * errg));
 
-                // erra is the per-coordinate sigma (Deviation 71; was drawn and
-                // divided as if each coordinate had variance 2 errs^2).
+                // erra is the per-coordinate astrometric sigma.
                 sil  = RandN(errs, NOISE_TRUNC_NSIGMA);
                 sil2 = RandN(errs, NOISE_TRUNC_NSIGMA);
 
@@ -154,9 +143,8 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                 l.tele[ndw] = 0; // 0 = LSST
                 l.rseas[ndw] = -1; l.rroll[ndw] = -1;
 
-                // Step S1. Everything here was computed above for the
-                // detection test; nothing new is drawn. magnio in
-                // particular is the noisy datum chi1/chi2/chi3 just used.
+                // Sample dump: reuses the values computed above (magnio is the noisy datum the
+                // chi-squared sums just used); nothing new is drawn.
                 if (dumpSpec.on)
                     dumpBuf.push_back(DumpEpoch{
                         tim, 0, int(fi),
@@ -195,31 +183,19 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
             }//magnitude limit
             gi += 1;
         }
-        // ---------------- Roman (F146) — new ----------------
-        // Roman now feeds its own chi1_R/chi2_R/chi3_R (+ astrometric _R,
-        // placeholder error — see errsR below) and the joint chi1/chi2/chi3,
-        // alongside the Rubin-only _L versions built in the LSST branch above.
-        // See Step B1 of JOINT_FIT_REFACTOR_PLAN.md. s->errM/s->errA remain
-        // Rubin-only by design (ORIENTATION.md: they're specifically the
-        // LSST-only running-error accumulators, unrelated to detection).
+        // ---------------- Roman (F146) ----------------
+        // Feeds chi1_R/chi2_R/chi3_R (and the astrometric _R sums) and the joint chi1/chi2/chi3.
+        // s.errM/s.errA stay Rubin-only: they are LSST running-error accumulators unrelated to detection.
         if (nddR > 0 and tim >= 0.0 and tim <= Tobs and
             tim >= ro.tim[int(ro.ct[0])] and tim <= ro.tim[int(ro.ct[nddR - 1])] and
             giR < nddR and sqR >= 0 and sqR <= static_cast<int>(NlRoman) and tim >= ro.tim[sqR]) {
 
-            constexpr int fiR = 6; // F146 — the only Roman band modeled so far
+            constexpr int fiR = 6; // F146, the only Roman band modeled
 
-            // ---- Step H1: switch to Roman's observer position ----
-            // Everything above was computed with the observer on Earth, which is
-            // right for Rubin and wrong for Roman by the L2 offset. Roman sees a
-            // slightly different trajectory, so the magnification, the F146
-            // magnitude and the astrometric positions all have to be rebuilt here
-            // before any of them is recorded. `magni`/`magni0`/`trajm`/`trajp` are
-            // per-timestep scratch that the Rubin branch above has already
-            // consumed and that the next timestep overwrites, so they are
-            // rewritten in place rather than shadowed.
-            //
-            // No RNG is consumed by this call, so the random stream is untouched
-            // and L2_OFFSET_AU = 0 reproduces the pre-H1 run exactly.
+            // Switch to Roman's observer position. The Rubin-frame values above are off by the L2
+            // offset, so the magnification, F146 magnitude and astrometric positions are rebuilt
+            // here. magni/magni0/trajm/trajp are per-timestep scratch, rewritten in place.
+            // lightcurve() consumes no random numbers.
             lightcurve(s, l, as, tim, 1);
             {
                 const double Astar0R = double(s.ut0 * s.ut0 + 2.0)
@@ -233,7 +209,7 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
             }
 
             if (magni[fiR] >= satu[fiR] and magni[fiR] <= thre[fiR]) {
-                errgR = errRomanM(ro, magni[fiR]); //[mag] (Deviation 72)
+                errgR = errRomanM(ro, magni[fiR]); //[mag]
 
                 magnioR = magni[fiR] + RandN(errgR, NOISE_TRUNC_NSIGMA);
                 chi1 += std::fabs((magnioR -   magni[fiR]) * (magnioR -   magni[fiR]) / (errgR * errgR));
@@ -243,15 +219,12 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                 chi2_R += std::fabs((magnioR -  magni0[fiR]) * (magnioR -  magni0[fiR]) / (errgR * errgR));
                 chi3_R += std::fabs((magnioR - s.magb[fiR]) * (magnioR - s.magb[fiR]) / (errgR * errgR));
 
-                // Step H4: Roman's own per-exposure astrometric error, replacing the
-                // errlsstA() placeholder (Rubin's curve at Roman's magnitude, which had
-                // no reason to be right). Constants and sources in config/parameters.h; the model
-                // is per EXPOSURE, which is what one row of RomanBaseline.dat is.
+                // Roman's per-exposure astrometric error (one row of RomanBaseline.dat is one
+                // exposure); constants and sources in config/parameters.h.
                 errsR = errRomanA(magni[fiR]); //[mas]
 
-                // Step R1, Roman side. s->ut is Roman's OWN impact parameter
-                // here: lightcurve(..., 1) rebuilt the trajectory in the L2
-                // frame above, so this is not the Rubin value reused.
+                // Resolution test, Roman side. s.ut is Roman's own impact parameter here
+                // (trajectory rebuilt in the L2 frame above).
                 {
                     const ImagePair ip = imagePair(s.ut, l.tetE, s.magb[fiR],
                                                    s.blend[fiR], thre[fiR], satu[fiR]);
@@ -280,33 +253,21 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
 
                 CHECK(ndw < coun); // array-bounds guard — see note on `coun` sizing
                 l.timn[ndw] = tim;
-                l.magn[ndw] = magni[fiR]; // F146 magnitude — NOT magni[2]; FisherM's
-                                            // tt==1 branch compares against s.mbs[1]/s.fb[1],
-                                            // which are F146-based, so the reference point
-                                            // recorded here must be F146 too.
+                l.magn[ndw] = magni[fiR]; // F146 magnitude, not magni[2]: FisherM's tt==1 branch
+                                            // compares against the F146-based s.mbs[1]/s.fb[1]
                 l.errm[ndw] = errgR;
                 l.soux[ndw] = s.pos1c;
                 l.souy[ndw] = s.pos2c;
-                // Step H4. This used to store `errs` -- the RUBIN astrometric error,
-                // left over from whichever Rubin epoch last set it, and in general from
-                // a different timestep entirely. So the astrometric Fisher matrix was
-                // being weighted by a stale value from the other telescope, not even by
-                // the errlsstA(magni[fiR]) the comment above it described: errsR was
-                // computed for the chi-squared terms and then thrown away. Now Roman's
-                // own per-exposure error is both used and stored.
                 l.erra[ndw] = errsR;
                 l.tele[ndw] = 1; // 1 = Roman/F146
-                // Season and roll of this exposure, for the astrometric noise
-                // variants' day blocks and frame groups (Deviation 71).
+                // Season and roll of this exposure, for the astrometric noise variants' day blocks
+                // and frame groups.
                 l.rseas[ndw] = sched.seasonOf(ro.tim[sqR]);
                 l.rroll[ndw] = ro.layout[sqR];
                 CHECK(l.rseas[ndw] >= 0);
 
-                // Step S1, Roman side. s->ut, s->def* and s->pos* are the
-                // L2-frame values lightcurve(..., 1) rebuilt above, not the
-                // Rubin ones from earlier in this timestep. Astar0 is
-                // recomputed from s->ut0 because the Roman branch's own
-                // Astar0R went out of scope before the magnitude gate.
+                // Sample dump, Roman side: s.ut, s.def* and s.pos* are the L2-frame values rebuilt
+                // above; Astar0 is recomputed from s.ut0 (Astar0R is out of scope here).
                 if (dumpSpec.on)
                     dumpBuf.push_back(DumpEpoch{
                         tim, 1, fiR,
@@ -328,9 +289,8 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
         }
 
         // ---------------- Adaptive step size ----------------
-        // dt must respect whichever instrument's *next* epoch is sooner.
-        // Sizing dt to LSST's cadence alone (the original behavior) would
-        // silently step right over Roman's much denser epochs.
+        // dt must respect whichever instrument's next epoch is sooner; LSST's cadence alone
+        // would step over Roman's much denser epochs.
         if ( tim < -50.0 or tim > (10.0 * year + 50.0)) {
             dt = 60.0; //days
         }
@@ -343,7 +303,7 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                 if (gi > 0 and gi < ndd) cade = float(ls.tim[int(ls.ct[gi])] - ls.tim[int(ls.ct[gi - 1])]); //days
                 else cade = minc;
             } else {
-                cade = TIME_STEP_OUTSIDE_LSST_DAYS; //days — matches the original "outside LSST window" fallback
+                cade = TIME_STEP_OUTSIDE_LSST_DAYS; //days
             }
 
             if (romanInWindow) {

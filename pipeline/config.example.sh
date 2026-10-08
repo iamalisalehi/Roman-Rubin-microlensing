@@ -5,8 +5,8 @@
 #     pipeline/pipeline.sh my_run.sh check
 #
 # This is a bash file that is `source`d from the repository root, so relative paths are relative to the
-# repo root and a value may use $HOME or $(...). Every variable has the default shown here (the current
-# production choices) if you delete the line. Do not put whitespace in any path.
+# repo root and a value may use $HOME or $(...). A deleted line falls back to the default shown.
+# Do not put whitespace in any path.
 
 # ---- step 1-2: the two downloads ------------------------------------------------------------------
 # Besancon simulation (model 1612, ONE field, Av = 0, no magnitude limit: see pipeline/README.md).
@@ -27,8 +27,8 @@ MIST_URL_BASE=https://mist.science/BC_tables/v2
 EXT_TABLES=
 
 # ---- step 3: what to simulate ----------------------------------------------------------------------
-# Star-list builder (CMD/BolometricCorrection.py). Production = "variant A": Besancon's own dwarfs,
-# no synthetic dwarfs added. CATALOGUE_DWARFS: besancon | empirical.  CATALOGUE_FILL: none | kroupa | koshimoto.
+# Star-list builder (CMD/BolometricCorrection.py). Default: Besancon's own dwarfs, no synthetic dwarfs
+# added. CATALOGUE_DWARFS: besancon | empirical.  CATALOGUE_FILL: none | kroupa | koshimoto.
 CATALOGUE_DWARFS=besancon
 CATALOGUE_FILL=none
 # Day on the simulation clock (0 = 2026-04-11) at which Roman's season 0 starts.
@@ -59,18 +59,17 @@ EXTRA_FLAGS=""
 
 # ---- step 5: how the simulation is split and where it runs ----------------------------------------
 # Sightlines per chunk. Chunks are independent runs whose concatenation equals the whole run exactly.
-# 20 gives ~100 chunks per population at the production grid (2013 sightlines): a footprint sightline
-# costs 4-6 CPU-min, so a chunk takes ~10 min on average and at most ~2 h even if all 20 sightlines
-# are in the footprint (fits a typical Slurm time limit, and a kill loses little); the ~25 s of input
-# reading at the start of each chunk is then a few percent. Use a smaller value to spread work over
-# more workers (cost is not even over the index range, so have more chunks than workers).
+# 20 gives ~100 chunks per population at the default grid (2013 sightlines): a footprint sightline costs
+# 4-6 CPU-min, so a chunk takes ~10 min on average and at most ~2 h, and the ~25 s of input reading per
+# chunk is a few percent. Use a smaller value to spread work over more workers (cost is uneven over the
+# index range, so have more chunks than workers).
 CHUNK_SIZE=20
 # local | slurm
 SCHEDULER=local
 # local: number of ./roman processes at once. Each needs ~0.7 GB of RAM (and one core).
 JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
 # slurm: words that go into #SBATCH lines of the chunk array jobs (one chunk per task, 1 core).
-# ~2 GB and 2-3 h are comfortable at the production flags. No spaces inside an option.
+# ~2 GB and 2-3 h are comfortable at the default flags. No spaces inside an option.
 SLURM_OPTS="--account=CHANGE_ME --partition=CHANGE_ME --time=03:00:00 --mem=2G --cpus-per-task=1"
 # slurm: the same for the final merge + analysis job (holds a whole population's table in memory:
 # the bulge y1 analysis peaks at ~2.5 GB; give it room and an hour or more). Default: SLURM_OPTS.
@@ -88,3 +87,10 @@ ANALYSES="yields figures"
 # ---- Python ---------------------------------------------------------------------------------------
 # The interpreter every script runs under. `setup` creates the venv if this path ends in /bin/python.
 PYTHON=.roman/bin/python
+
+# ---- C++ library ----------------------------------------------------------------------------------
+# GSL (GNU Scientific Library), the one non-standard library ./roman links.
+#   auto   = use the system's GSL; if its headers are missing, `setup` builds a static copy in deps/gsl
+#   system = system GSL only (check fails if it is missing)
+#   build  = always use the copy in deps/gsl (built once by `setup`, ~5 min, no root needed)
+GSL=auto

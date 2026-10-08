@@ -1,19 +1,13 @@
 // Reading the CMD component files and the lens mass-luminosity table.
 #include "galaxy/catalogue.h"
 
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
-//                                                                    //
-//                         Read CMD                                   //
-//                                                                    //
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
 void read_cmd(CMD & cm)
 {
-// mass  logT  Mbol  Age  Pop  Roman_F146  LSST_u  LSST_g  LSST_r  LSST_i  LSST_z  LSST_y  CL  Type //20/07/2026
+// mass  logT  Mbol  Age  Pop  Roman_F146  LSST_u  LSST_g  LSST_r  LSST_i  LSST_z  LSST_y  CL  Type
 // 0     1     2     3    4    5           6       7       8       9       10      11      12  13
     double Mbol, Pop;
     double dummy;
     std::string header;
-//    double logL, gravity, metal, B, V, R, I, J, H;
 
     // ================================ THIN DISK =============================
     std::ifstream fp2(PATH_CMD_THIN);
@@ -39,8 +33,7 @@ void read_cmd(CMD & cm)
                     >> cm.typ_thin[j])) {
               throw std::runtime_error("Unexpected end of thin_disk.dat");
           }
-        // The CHECKs follow the read: placed before it they tested the zero-initialised slot, never the value read.
-        // M_r <= 30: the thin disc's luminous brown-dwarf-limit stars reach M_r = 28.86 (bos10, Deviation 88);
+        // M_r <= 30: the thin disc's luminous brown-dwarf-limit stars reach M_r = 28.86;
         // Typ <= 9.2: white dwarfs are Typ 9.0-9.2 and sit in the list as dark entries.
         CHECK(cm.mass_thin[j]   >= 0.0);
         CHECK(cm.logT_thin[j]   >= 0.0);
@@ -118,7 +111,6 @@ void read_cmd(CMD & cm)
         CHECK(cm.mass_thick[j]   >= 0.0);
         CHECK(cm.logT_thick[j]   >= 0.0);
         CHECK(cm.Mab_thick[j][2] <= 30.0 or cm.Mab_thick[j][2] == DARK_MAG);
-//        CHECK(cm.age_thick[j]    <= 8);
         CHECK(cm.age_thick[j]    <= 13);
         CHECK(cm.cl_thick[j]     <= 7);
         CHECK(cm.typ_thick[j]    <= 9.2);
@@ -155,7 +147,6 @@ void read_cmd(CMD & cm)
         CHECK(cm.mass_halo[j]   >= 0.0);
         CHECK(cm.logT_halo[j]   >= 0.0);
         CHECK(cm.Mab_halo[j][2] <= 30.0 or cm.Mab_halo[j][2] == DARK_MAG);
-//        CHECK(cm.age_halo[j]    <= 9);
         CHECK(cm.age_halo[j]    <= 14);
         CHECK(cm.cl_halo[j]     <= 7);
         CHECK(cm.typ_halo[j]    <= 9.2);

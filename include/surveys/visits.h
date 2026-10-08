@@ -18,7 +18,7 @@ struct lsst {
     std::vector<double> tim;    // Nl
     std::vector<double> sig5;   // Nl
     std::vector<double> dist;   // Nl
-    std::vector<double> rot;    // Nl -- OpSim rotSkyPos [deg] (Deviation 80)
+    std::vector<double> rot;    // Nl -- OpSim rotSkyPos [deg]
 
     //ID  RA  Dec  l  b  start  filter  airmass  seeing  skyBrightness visittime sigma5 targetname distance
     lsst()
@@ -33,25 +33,21 @@ struct roman {
     std::vector<double> mag;   // NaRoman: mag-vs-error lookup (sigma_roman.txt)
     std::vector<double> err;   // NaRoman
 
-    // --- New: per-visit epoch bookkeeping, mirrors lsst's fields ---
+    // Per-visit epoch bookkeeping, mirrors lsst's fields.
     std::vector<int> ct;        // NlRoman -- visible-epoch indices for the current sightline.
-                                // MUST be the full visit count, not a round number: a
-                                // sightline inside a GBTDS field matches ~51,500 visits, and
-                                // truncating keeps only the earliest, silently ending Roman's
-                                // mission 8 days in. (1.24 MB, allocated once.)
+                                // Must be the full visit count: a sightline inside a GBTDS field
+                                // matches ~51,500 visits and truncation silently ends the mission early.
     std::vector<double> RA;     // NlRoman
     std::vector<double> DEC;    // NlRoman
     std::vector<double> l;      // NlRoman
     std::vector<double> b;      // NlRoman
     std::vector<double> tim;    // NlRoman
-    std::vector<double> sig5;   // NlRoman — only needed if the Roman photometric error
-                                // model varies per-visit; otherwise mag/err alone may suffice.
+    std::vector<double> sig5;   // NlRoman -- only needed if the photometric error varies per visit
     std::vector<int> field;     // NlRoman -- GBTDS field index, 0-4 contiguous block, 5 GC
     std::vector<int> layout;    // NlRoman -- roll of this visit, 0 spring / 1 autumn; selects
                                 // which detector layout is placed at (l, b)
 
-    // NOTE: no `filter` array — currently only F146 (constant filter index 6) is modeled
-    // for Roman. If F087/F213 are added later, give roman a `filter` array like lsst's.
+    // No `filter` array: only F146 (filter index 6) is modeled for Roman.
 
     roman()
         : mag(NaRoman), err(NaRoman),

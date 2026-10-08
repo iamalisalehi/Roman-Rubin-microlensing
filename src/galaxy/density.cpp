@@ -2,12 +2,7 @@
 #include "galaxy/density.h"
 #include "util/random.h"
 
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
-//                                                                    //
-//                         Optical Depth calculations                 //
-//                                                                    //
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
+// Optical depth to the source at distance s.nums*step, summed per Galactic component.
 void optical_depth(source& s)
 {
     double ds = (double)s.nums * step; //kpc
@@ -26,15 +21,11 @@ void optical_depth(source& s)
         s.od_halo  += s.rho_halo[k]  * x * (1.0 - x) * dx * CC;
     }
     s.opt = std::fabs(s.od_thin + s.od_thick + s.od_bulge + s.od_halo);
-//    cout << "total_opticalD: " << s.opt << "\t od_thin: " << s.od_thin << endl;
-//    cout << "od_thick: " << s.od_thick << "\t od_bulge: " << s.od_bulge << "\t od_halo: " << s.od_halo << endl;
 }
 
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
-//                                                                    //
-//                         Galactic model calculations                //
-//                                                                    //
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
+// Densities of the four components along the sightline (s.TET, s.FI), their totals per deg^2, and
+// the source-selection bounds Romins/Romaxs. For the first few sightlines (numt < 10) the profile
+// is also written to PATH_DENSITY_DIR.
 void Disk_model(source& s, int numt)
 {
     double x, xb, yb, zb, r4, r2, rdi, Rb;
@@ -52,9 +43,6 @@ void Disk_model(source& s, int numt)
     double fh    = DENS_FH;
     double Rdd   = THIN_RDD;
     double Rhh   = THIN_RHH;
-
-//    double frac = 0.05; //fraction of halo in the form of compact objects
-//    frac was replaced with 1.0 and some rescaling was applyed manually
 
     char filename[40];
     FILE *filj;
@@ -79,7 +67,7 @@ void Disk_model(source& s, int numt)
         xb = x * std::cos(s.FI) * std::cos(s.TET) - Dsun;
         Rb = std::sqrt(xb * xb + yb * yb);
 
-///========== Galactic Thin Disk =====================
+// Thin disk
         for (int ii = 0; ii < 8; ++ii) {
             rdi = Rb * Rb + zb * zb / (epci[ii] * epci[ii]);
             if (ii == 0) {
@@ -92,7 +80,7 @@ void Disk_model(source& s, int numt)
             s.rho_thin[i] = std::fabs(s.rho_thin[i] + rho0[ii] * corr[ii] * 0.001 * rho/d0[ii]);
         } //Msun/pc^3
 
-///========== Galactic Thick Disk =====================
+// Thick disk
         double rho00 = THICK_RHO00;
         if (std::fabs(zb) < THICK_H1) {
             s.rho_thick[i] = std::fabs((rho00 / THICK_RHO_DIV) * std::exp(-(Rb - Dsun) / THICK_SCALE_LEN) * (1.0 - zb * zb / (THICK_H1 * THICK_H2 * (2.0 + nnf))));
@@ -102,7 +90,7 @@ void Disk_model(source& s, int numt)
         }
         s.rho_thick[i] *= THICK_NORM;
 
-///========== Galactic Stellar Halo=================
+// Stellar halo
         rdi = std::sqrt(Rb * Rb + zb * zb / (HALO_FLATTEN * HALO_FLATTEN));
         if (rdi <= HALO_CORE) {
             s.rho_halo[i] = std::fabs(1.0 * HALO_RHO0 * std::pow(HALO_CORE / Dsun, HALO_SLOPE));
@@ -112,7 +100,7 @@ void Disk_model(source& s, int numt)
         }
         s.rho_halo[i] *= HALO_NORM;
 
-///========== Galactic bulge =====================
+// Bulge: sum of the S and E bar components
         constexpr double barMassRescale = BAR_MASS_RESCALE;   // see config/parameters.h, section 2a
         xf =  xb * std::cos(alfa) + yb * std::sin(alfa);
         yf = -xb * std::sin(alfa) + yb * std::cos(alfa);
@@ -162,7 +150,6 @@ void Disk_model(source& s, int numt)
 
         s.rho_bulge[i]  = std::fabs(rhoS) + std::fabs(rhoE); ///Msun/pc^3
         s.rho_bulge[i] *= BAR_NORM;
-///==================================================================
 
         s.Rostar0[i] = std::fabs(s.rho_thin[i] + s.rho_thick[i] + s.rho_bulge[i] + s.rho_halo[i]); //[Msun/pc^3]
         s.Rostari[i] = s.Rostar0[i] * x * x * step * 1.0e9 * (M_PI / 180.0) * (M_PI / 180.0); //[Msun/deg^2]
@@ -198,5 +185,4 @@ void Disk_model(source& s, int numt)
     cout << "Nstart [Nt/deg^2]: "    << s.Nstart << "\t Ro_star [Mass/deg^2]: " << s.Rostart << endl;
     cout << "Romaxs:  "              << s.Romaxs << "\t Romins:  "              << s.Romins  << endl;
     cout << ">>>>>>>>>>>>>>>>>>>>>> END OF DISK MODLE <<<<<<<<<<<<<<<<<<<<" << endl;
-    //exit(0);
 }

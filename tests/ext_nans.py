@@ -1,11 +1,9 @@
-"""QC of the simulator's extinction tables, files/ext/ext_tables.dat (Deviation 70).
+"""QC of the simulator's extinction tables, files/ext/ext_tables.dat.
 
 Run from tests/ (`python ext_nans.py`) or the repo root (`python tests/ext_nans.py`). Checks what
-src/galaxy/extinction.cpp readExtinction() also refuses -- a non-finite value, a decreasing profile, a row count or
-a distance grid that disagrees with the header -- and prints a summary of A_V at 8 kpc. The tables
-before Deviation 70 (one Bayestar/DECaPS file per pointing, 78 of them all-NaN) are archived in
-files/ext_bayestar_v1/ and then deleted (2026-10-01); if regenerated, pass that directory to check
-them the old way.
+src/galaxy/extinction.cpp readExtinction() also refuses (a non-finite value, a decreasing profile,
+a row count or distance grid that disagrees with the header) and prints a summary of A_V at 8 kpc.
+Passing a directory checks the older one-file-per-table layout for all-NaN sightlines.
 """
 import glob
 import os

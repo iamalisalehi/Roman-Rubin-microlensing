@@ -1,20 +1,19 @@
-"""Main-sequence mass -> absolute magnitude table for LUMINOUS LENSES (Deviation 74, step M2).
+"""Main-sequence mass -> absolute magnitude table for luminous lenses.
 
-WHY. The simulator draws a lens's mass from its population's mass function, with no star attached,
-and until Deviation 74 never added the lens's own light. For the ordinary-star (bulge) population a
-lens below the main-sequence turnoff is a living star; its light dilutes both the magnification and
-the astrometric centroid shift. The per-component CMD files in components/ cannot supply its
-magnitudes by mass alone: they hold stars, not a relation. This script goes back to the RAW Besancon
-catalogue (no visibility filter), keeps dwarfs (CL = 5, Typ < 9), and computes their absolute
-magnitudes with the SAME MIST bolometric corrections (AB) and the same BC-grid clamp that made the
-source magnitudes (BolometricCorrection.py), so lens and source light are on one system.
+The simulator draws a lens's mass from its population's mass function, with no star attached. For
+the ordinary-star (bulge) population a lens below the main-sequence turnoff is a living star, and its
+light dilutes both the magnification and the astrometric centroid shift. The per-component CMD files
+in components/ hold stars, not a mass-magnitude relation, so this script goes back to the raw
+Besancon catalogue (no visibility filter), keeps dwarfs (CL = 5, Typ < 9), and computes their
+absolute magnitudes with the same MIST bolometric corrections (AB) and BC-grid clamp as
+BolometricCorrection.py, so lens and source light are on one system.
 
-OUTPUT  <out>: one row per (component, mass bin):
+Output <out>: one row per (component, mass bin):
     comp  m_lo  m_hi  n  Mab_u Mab_g Mab_r Mab_i Mab_z Mab_y Mab_F146      (AB)
-comp: 0 thin disk (Besancon Pop 1-7), 1 bulge (Pop 10), 2 thick disk (Pop 8, 11), 3 halo (Pop 9) --
-the GalacticComponent order of include/common.h. Mass bins 0.08-1.00 Msun in 0.02 steps, in the star's TRUE
-(catalogue) mass; below 0.08 Msun (brown dwarfs) the lens is treated as dark. n is the number of the
-component's dwarfs in the bin. Comment lines ('#') list what was done; all of them sit above the table.
+comp: 0 thin disk (Besancon Pop 1-7), 1 bulge (Pop 10), 2 thick disk (Pop 8, 11), 3 halo (Pop 9),
+the GalacticComponent order of include/common.h. Mass bins 0.08-1.00 Msun in 0.02 steps, in the
+star's true (catalogue) mass; below 0.08 Msun (brown dwarfs) the lens is treated as dark. n is the
+number of the component's dwarfs in the bin. Comment lines ('#') above the table list what was done.
 
     cd CMD && ../.roman/bin/python lens_ml_table.py [--input Besancon/bos10] [--dwarfs MODE] [--out PATH]
 
@@ -22,27 +21,27 @@ component's dwarfs in the bin. Comment lines ('#') list what was done; all of th
                     the header's are skipped and counted, as in BolometricCorrection.py.
   --dwarfs MODE     empirical (default) or besancon. The thick disc (comp 2) and the halo (comp 3) are
                     always made the besancon way:
-        besancon    per component and bin, the medians of that component's OWN dwarfs -- Teff, logg and
-                    Mbol over ALL distances (bos10 is complete, it has no magnitude limit) -- and the
-                    bolometric corrections of MIST at the component's median [M/H] and [a/Fe] (clamped
-                    onto the BC grid, as for the stars).
-        empirical   for the thin disc and the bulge, the relation the SOURCES use after
+        besancon    per component and bin, the medians of that component's own dwarfs (Teff, logg and
+                    Mbol over all distances; bos10 has no magnitude limit) and the MIST bolometric
+                    corrections at the component's median [M/H] and [a/Fe] (clamped onto the BC grid,
+                    as for the stars).
+        empirical   for the thin disc and the bulge, the relation the sources use after
                     BolometricCorrection.py --dwarfs empirical: Mbol_E and Teff_E of the Pecaut &
-                    Mamajek dwarf sequence at the bin-centre mass, logg from the same formula as the
-                    builder's, BCs at the component's median metallicity. Between 0.6 and 0.7 Msun the
-                    builder's taper blends it with the component's own Besancon medians, (1 - t) own +
-                    t empirical, t = clip((0.7 - m) / 0.1, 0, 1); from 0.7 Msun up the own medians are used.
+                    Mamajek dwarf sequence at the bin-centre mass, logg from the builder's formula,
+                    BCs at the component's median metallicity. Between 0.6 and 0.7 Msun the builder's
+                    taper blends it with the component's own medians, (1 - t) own + t empirical,
+                    t = clip((0.7 - m) / 0.1, 0, 1); from 0.7 Msun up the own medians are used.
   --out PATH        default components_staging/<input>_<dwarfs>_fillnone/lens_ml.dat. Writing
-                    components/lens_ml.dat needs the explicit path. (The fill-floor variants of the
-                    builder share the lens table of their --dwarfs mode: pass --out for them.)
+                    components/lens_ml.dat needs the explicit path. The fill-floor variants of the
+                    builder share the lens table of their --dwarfs mode: pass --out for them.
   --dmax KPC        only for --input Besancon/bos9.dat (default 1.5), whose magnitude limit (V <= 29)
-                    leaves only anomalously bright dwarfs far away: the legacy table is made from nearby
-                    disc dwarfs alone, pooled over the components, and needs --dwarfs besancon. Ignored
-                    for bos10, which has no such limit.
+                    leaves only anomalously bright dwarfs far away: the table is then made from nearby
+                    disc dwarfs alone, pooled over the components, and needs --dwarfs besancon.
+                    Ignored for bos10.
 
-A bin in which a component has NO stars (the bulge below its mass floor of 0.156 Msun; the thick disc and
-the halo below ~0.155; the halo's high-mass bins) takes the empirical relation at the component's median
-metallicity, with n = 0; the output says which bins in a comment line.
+A bin in which a component has no stars (the bulge below its mass floor of 0.156 Msun; the thick disc
+and the halo below ~0.155; the halo's high-mass bins) takes the empirical relation at the component's
+median metallicity, with n = 0; the output lists those bins in a comment line.
 """
 import argparse
 import os
@@ -58,11 +57,11 @@ sys.path.insert(0, here)
 import BolometricCorrection as BC      # noqa: E402  (importing builds nothing)
 
 COLS = ["Teff", "logg", "Pop", "Mass", "Mbol", "[M/H]", "[a/Fe]", "CL", "Typ"]
-COMP_OF_POP = {**{p: 0 for p in range(1, 8)}, 10: 1, 8: 2, 11: 2, 9: 3}   # as save_components()
+COMP_OF_POP = {**{p: 0 for p in range(1, 8)}, 10: 1, 8: 2, 11: 2, 9: 3}   # as in BolometricCorrection.py
 BINS = np.round(np.arange(0.08, 1.0001, 0.02), 4)
 BANDS = ["LSST_u", "LSST_g", "LSST_r", "LSST_i", "LSST_z", "LSST_y", "Roman_F146"]
 COMP_NAMES = ["thin_disk", "bulge", "thick_disk", "halo"]
-EMPIRICAL_COMPS = (0, 1)               # the components whose dwarfs option E moves
+EMPIRICAL_COMPS = (0, 1)               # the components whose dwarfs the empirical shift moves
 
 
 def resolve(path):
@@ -154,7 +153,7 @@ def write_modern(a, rows, comments, rep):
 
 
 def table_legacy(a):
-    """The Deviation 74 table from bos9: nearby dwarfs only, pooled over the components (kept for reproducibility)."""
+    """Legacy bos9 table: nearby dwarfs only, pooled over the components."""
     near, meta = [], []
     rep = {}
     for chunk in BC.iter_catalogue_chunks(a.input, COLS + ["Dist"], 3_000_000, rep):
@@ -176,7 +175,7 @@ def table_legacy(a):
         rows.append(r)
     df = pd.concat(rows, ignore_index=True)
 
-    # Same BC machinery as BolometricCorrection.py (AV = 0: extinction is applied in the simulator).
+    # Same BC machinery as BolometricCorrection.py (AV = 0; the simulator applies extinction).
     rubin = BC.MISTBolometricCorrection("Rubin"); rubin.input_data = df.reset_index(drop=True); rubin.interp()
     roman = BC.MISTBolometricCorrection("F146");  roman.input_data = rubin.input_data; roman.interp()
     out = roman.input_data
@@ -185,7 +184,7 @@ def table_legacy(a):
     with open(a.out, "w") as f:
         f.write(f"# lens mass -> absolute magnitude (AB): median Teff, logg, Mbol of dwarfs (CL=5) within "
                 f"{a.dmax} kpc in {BC.shown(a.input)}, MIST BCs at each component's median [M/H]; "
-                "lens_ml_table.py, Deviation 74\n")
+                "lens_ml_table.py\n")
         f.write("# comp m_lo m_hi n Mab_u Mab_g Mab_r Mab_i Mab_z Mab_y Mab_F146\n")
         for r in out.sort_values(["comp", "bin"]).itertuples(index=False):
             mags = [getattr(r, x) for x in BANDS]

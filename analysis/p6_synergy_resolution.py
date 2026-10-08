@@ -1,30 +1,26 @@
 #!/usr/bin/env python3
-"""Step P6 figures: what the two surveys do for each other, and what the lens reveals.
+"""Figures on what the two surveys do for each other and what the lens reveals.
 
-Four figures, in the order the science reads:
-
-  p6_synergy      -- how Rubin and Roman help EACH OTHER. Not one number: the help runs
-                     both ways and for different reasons, so the figure shows both.
+  p6_synergy      -- how Rubin and Roman help each other (the help runs both ways, for
+                     different reasons).
   p6_astrometry   -- the centroid shift, against the precision that has to measure it.
-  p6_parallax     -- satellite parallax: what Roman-at-L2 buys over Roman-at-Earth, both
-                     in precision and in breaking the degeneracy that limits the lens mass.
+  p6_parallax     -- satellite parallax: what Roman-at-L2 buys over Roman-at-Earth, in precision
+                     and in breaking the degeneracy that limits the lens mass.
   p6_resolution   -- the probability of resolving the two lensing-induced images, after
                      Sajadian & Makler (arXiv:2608.16448).
 
-EVERY POOLED NUMBER HERE IS EVENT-RATE WEIGHTED (DEVIATIONS.md 41), and the script will not
-run without either --map (plus --log) or an explicit --unweighted. A raw fraction over this
-table describes the sample, not the sky: the Monte Carlo draws lens mass from the number IMF
-and velocities from plain Gaussians, so it is missing the rate's sqrt(Ml)*Vt factor. Every
-weighted number is quoted with N_eff, the Kish effective sample size, because the weight costs
-precision.
+Every pooled number is event-rate weighted, and the script will not run without either --map
+(plus --log) or an explicit --unweighted. The Monte Carlo draws lens mass from the number IMF and
+velocities from plain Gaussians, so a raw fraction over the table describes the sample, not the
+sky; it lacks the rate's sqrt(Ml)*Vt factor. Weighted numbers are quoted with N_eff, the Kish
+effective sample size.
 
-POPULATIONS ARE NEVER POOLED. The weight's sqrt(Ml) is valid only for the mass function that
-was sampled, so mixing a black-hole run into a neutron-star run is a wrong number rather than
-a style choice. Each population is a separate series in every panel.
+Populations are never pooled: the weight's sqrt(Ml) is valid only for the mass function that was
+sampled. Each population is a separate series in every panel.
 
 USAGE
     .roman/bin/python analysis/p6_synergy_resolution.py \
-        --run bh=runs/prod_bh_20260917 --run ns=runs/prod_ns_20260917 -o figures/p6
+        --run bh=RUN_DIR_BH --run ns=RUN_DIR_NS -o OUTPREFIX
 """
 
 import argparse
@@ -38,14 +34,12 @@ import romanlib as R          # noqa: E402
 import plotstyle as ps        # noqa: E402
 from cparams import P         # noqa: E402
 
-# The paper's criterion: the images count as resolvable when at least three recorded data
-# points have both images detectable AND separated by more than the bar. Three, not one,
-# because a single qualifying epoch is as likely to be noise as signal.
+# The paper's criterion: the images count as resolvable when at least three data points have
+# both images detectable and separated by more than the bar.
 RESOLVE_MIN_EPOCHS = 3
 
-# Roman's per-exposure astrometric floor [mas] -- config/parameters.h ROMAN_AST_FLOOR. Used only as a
-# reference line; the per-event precision is a function of magnitude and is far worse than
-# this for a typical bulge source (measured median 6.69 mas in the v3 run).
+# Roman's per-exposure astrometric floor [mas]. Used only as a reference line; the per-event
+# precision depends on magnitude and is far worse for a typical bulge source.
 ROMAN_AST_FLOOR = P.ROMAN_AST_FLOOR   # mas, read from config/parameters.h
 
 U_AST_PEAK = np.sqrt(2.0)   # the impact parameter at which the centroid shift is maximal
@@ -89,10 +83,9 @@ class Run:
         self.tag = tag
         self.table = os.path.join(directory, f"test{tag}.dat")
         if detections_only:
-            # test<tag>_detJ.dat: the detJ == 1 rows, header kept (awk in u1_report_numbers.py).
-            # Exact for every number here, which is over detections only, because a detected
-            # row's weight depends on that row and its sightline's nsim, never on the other
-            # rows. What it is NOT is a draw count: the 'draws' line then counts detections.
+            # test<tag>_detJ.dat holds the detJ == 1 rows with the header kept. It is exact for
+            # every detection-only number, since a row's weight depends only on that row and its
+            # sightline's nsim; it is not a draw count.
             self.table = os.path.join(directory, f"test{tag}_detJ.dat")
             if not os.path.exists(self.table):
                 sys.exit(f"{self.table}: no detection-only table; build it or drop "
@@ -101,10 +94,9 @@ class Run:
         self.logs = [os.path.join(directory, f) for f in ("run.log", "run2.log")
                      if os.path.exists(os.path.join(directory, f))]
 
-        # Stream, and drop the barren sightlines' rows as they are read rather than after.
-        # usecols alone is not enough on a 5M-row table: 43 columns x 5M x 8 bytes is ~1.7 GB
-        # per population, and this script holds two at once. The dropped rows have no nsim,
-        # hence weight 0, and carry no detection -- see romanlib.keep_weightable.
+        # Stream, dropping barren sightlines' rows as they are read: usecols alone leaves
+        # ~1.7 GB per population on a 5M-row table. The dropped rows have no nsim, hence weight
+        # 0, and carry no detection (see romanlib.keep_weightable).
         self.df = R.load_events(self.table, usecols=COLS, chunksize=chunksize,
                                 keep=None if unweighted else R.keep_weightable(self.map, self.logs))
         self.n_barren = self._drop_unweightable(unweighted)
@@ -126,21 +118,15 @@ class Run:
               + (f", dropped {self.n_barren:,} barren rows" if self.n_barren else ""))
 
     def _drop_unweightable(self, unweighted):
-        """Drop rows from BARREN sightlines, after proving they hold nothing we count.
+        """Drop rows from barren sightlines, after checking they hold nothing that is counted.
 
-        A sightline that draws stars but ends with no characterised event takes the barren
-        branch in src/sim/sightline.cpp, which `continue`s past BOTH the map-row write and the
-        `nsim:` print. Its rows are therefore in the table with no draw count to normalise
-        them by, and `event_weight` refuses the whole table because of them -- correctly, since
-        a missing nsim is indistinguishable from a map file truncated by a kill (Deviation 42),
-        and guessing would silently mis-weight a real sightline.
+        A sightline that draws stars but ends with no characterised event takes the barren branch
+        in src/sim/sightline.cpp, which skips both the map-row write and the `nsim:` print. Its
+        rows are in the table with no draw count to normalise them by, and `event_weight` refuses
+        the table because a missing nsim is indistinguishable from a map file truncated by a kill.
 
-        These rows are not a loss: barren means nothing survived to be aggregated, and at the
-        scan's western edge such a sightline runs to the full --maxdraws cap, so a handful of
-        them can be a million rows of nothing. But "should be empty" is not "is empty", so the
-        rows are CHECKED before being dropped: if any carries a detection or a characterisation,
-        this refuses instead, because then the drop would bias the very statistics the figures
-        are made of.
+        The rows are checked before being dropped: if any carries a detection or a
+        characterisation, this refuses, because dropping it would bias the statistics.
         """
         self.df, n = self._drop_from(self.df, unweighted, what=self.table)
         return n
@@ -155,11 +141,7 @@ class Run:
         return known
 
     def _drop_from(self, df, unweighted, what):
-        """The drop itself, applied to the event table and to the paired-satellite file alike.
-
-        Both carry lon/lat and both are weighted the same way, so both hit the same wall on a
-        sightline with no draw count. Doing it in one place keeps the two from drifting apart.
-        """
+        """Apply the drop to the event table and to the paired-satellite file alike."""
         if unweighted:
             return df, 0
         known = self._known_sightlines()
@@ -173,18 +155,16 @@ class Run:
         if not bad.any():
             return df, 0
 
-        # A run still in flight has one sightline part-written: its rows are in the table but
-        # its nsim line and map row come only when it finishes. That one is legitimately
-        # droppable -- it is incomplete, and an incomplete sightline must not be weighted as
-        # if it stood for its full sky area. Anything ELSE carrying detections is not.
+        # A run in flight has one part-written sightline whose nsim line and map row come only
+        # when it finishes. It is droppable, since an incomplete sightline must not be weighted
+        # as its full sky area; anything else carrying detections is not.
         inflight = self._last_entered()
         lost = df.loc[bad]
         if inflight is not None:
             not_inflight = bad & ~((lon == inflight[0]) & (lat == inflight[1])).to_numpy()
             lost = df.loc[not_inflight]
 
-        # Only the event table has detection columns; the paired file's rows are all detected
-        # by construction, so for it the presence of ANY non-in-flight row is the alarm.
+        # Only the event table has detection columns; every row of the paired file is detected.
         if {"detL", "detR", "detJ"} <= set(df.columns):
             carried = int(((lost.detL == 1) | (lost.detR == 1) | (lost.detJ == 1)
                            | (lost.okA_J == 1) | (lost.okB_J == 1)).sum())
@@ -199,11 +179,7 @@ class Run:
         return df.loc[~bad].reset_index(drop=True), int(bad.sum())
 
     def _last_entered(self):
-        """(lon, lat) of the last sightline the scan entered, or None.
-
-        Read from the log rather than the table so it is the SCAN's last sightline, not merely
-        the last one that happened to write a row.
-        """
+        """(lon, lat) of the last sightline the scan entered, or None (read from the log)."""
         import re
         last = None
         for p in self.logs:
@@ -215,11 +191,10 @@ class Run:
         return last
 
     def _load_pair(self, path, unweighted):
-        """The --pair-satellite side file, weighted the same way as the main table.
+        """The --pair-satellite side file, weighted like the main table.
 
-        Refuses the LEGACY 30-column layout unless explicitly unweighted: it has no Ml/Vt/Ds,
-        so the event-rate weight cannot be formed and a weighted number off it would be a
-        silently wrong one (DEVIATIONS.md 44).
+        Refuses the legacy 30-column layout unless unweighted: it has no Ml/Vt/Ds, so the
+        event-rate weight cannot be formed.
         """
         import pandas as pd
         with open(path, errors="replace") as fh:
@@ -248,7 +223,6 @@ class Run:
         return ps.POPULATION_LABEL.get(self.name, self.name)
 
     def stamp(self):
-        # wlabel already carries N_eff; repeating it was printing the same number twice.
         commit = self.prov.get("git_commit", "?")
         return f"{self.population}: {self.wlabel} · commit {commit}"
 
@@ -267,29 +241,25 @@ def wfrac(mask, w):
 
 
 def mass_bin_count(lo, hi):
-    """How many log bins a mass range deserves, from how many decades it spans.
+    """Number of log bins for a mass range, scaled with the decades it spans.
 
-    A fixed count is wrong for both ends of this project: nine bins across the black holes'
-    2.5 decades is sensible, but the same nine across the neutron stars' 0.3 decades slices
-    them so thinly that each bin is noise, and the curve dives off the left edge as a binning
-    artifact that reads as a physical cutoff.
+    A fixed count is too fine for narrow ranges (neutron stars span 0.3 decades), where thin bins
+    are noise and the curve dives off the edge as a binning artifact.
     """
     span = np.log10(hi / lo)
     return int(np.clip(round(4 * span) + 4, 5, 11))
 
 
 def plain_log_ticks(ax, lo, hi, axis="y"):
-    """Delegates to plotstyle, which owns the one implementation (p7 needs it too)."""
+    """Delegates to plotstyle."""
     return ps.plain_log_ticks(ax, lo, hi, axis)
 
 
 def max_centroid_shift(df):
     """Largest centroid shift each event reaches, in mas.
 
-    delta(u) = theta_E * u / (u^2 + 2) peaks at u = sqrt(2), NOT at closest approach. So an
-    event whose trajectory crosses u = sqrt(2) reaches theta_E/sqrt(8); one that does not
-    peaks at its own u0. Taking theta_E/sqrt(8) for every event would overstate the shallow
-    ones, and taking the value at u0 would understate the deep ones.
+    delta(u) = theta_E * u / (u^2 + 2) peaks at u = sqrt(2), not at closest approach: an event
+    whose trajectory crosses u = sqrt(2) reaches theta_E/sqrt(8); one that does not peaks at u0.
     """
     te = df["tetE"].to_numpy(float)
     u0 = df["u0"].to_numpy(float)
@@ -301,14 +271,9 @@ def max_centroid_shift(df):
 # 1. Synergy: what each survey does for the other
 # ---------------------------------------------------------------------------------------
 def fig_synergy(runs, out):
-    """Two panels, because the help runs in two directions for two different reasons.
-
-    (a) Who detects what. The weighted share of detections that only Rubin saw, only Roman
-        saw, or that needed the two together. A survey's value is not only what it finds
-        alone -- an event Rubin finds and Roman characterises is a joint result.
-    (b) What the joint fit buys, as a function of tE. sigma_joint/sigma_single is bounded
-        above by 1 by construction (the joint information matrix is the sum of the parts),
-        so the interesting quantity is HOW FAR below 1 it goes and WHERE in tE.
+    """(a) Weighted share of detections seen only by Rubin, only by Roman, or by both.
+    (b) What the joint fit buys as a function of tE: sigma_joint/sigma_single is bounded above by
+    1 (the joint information matrix is the sum of the parts), so the question is how far below 1.
     """
     fig, (ax1, ax2) = ps.figure(width="double", height=3.0, ncols=2)
 
@@ -329,20 +294,13 @@ def fig_synergy(runs, out):
     ax1.set_xticklabels(cats)
     ax1.set_ylabel("share of detected events [%]")
     ps.panel_label(ax1, "(a)")
-    ps.legend(ax1, loc="upper right")   # upper LEFT is where the tallest bar and (a) both sit
+    ps.legend(ax1, loc="upper right")
 
-    # ---- (b) what the joint fit buys, BOTH WAYS ----
-    #
-    # RESTRICTED TO EVENTS BOTH SURVEYS CHARACTERISED ON THEIR OWN, and that restriction is the
-    # whole correctness of the panel. Roman has epochs for only a few per cent of draws -- its
-    # footprint is 2% of the scanned area -- so over all characterised events the "joint" fit
-    # IS the Rubin fit for the overwhelming majority, and the ratio is exactly 1 by
-    # construction. Pooling those in buries the real gain under a tautology: measured on this
-    # run, the unrestricted weighted median is 1.000, while the restricted one is 0.14.
-    #
-    # Two curves per population, because the help is not symmetric and the asymmetry is the
-    # result: Roman's dense cadence sharpens what Rubin alone could do, and Rubin's decade-long
-    # baseline sharpens what Roman alone could do, by very different factors.
+    # ---- (b) what the joint fit buys, both ways ----
+    # Restricted to events both surveys characterised on their own: Roman has epochs for only a
+    # few per cent of draws, so over all events the joint fit is the Rubin fit and the ratio is
+    # 1 by construction, burying the real gain. Two curves per population because the help is
+    # asymmetric: Roman's cadence sharpens Rubin alone, Rubin's long baseline sharpens Roman alone.
     for r in runs:
         d = r.df
         both = ((d.okA_L == 1) & (d.okA_R == 1)).to_numpy()
@@ -373,7 +331,7 @@ def fig_synergy(runs, out):
     ax2.set_xlabel(r"$t_{\rm E}$ [d]")
     ax2.set_ylabel(r"median $\sigma_{t_{\rm E}}({\rm joint})/\sigma_{t_{\rm E}}({\rm single})$")
     ps.panel_label(ax2, "(b)", loc="lower left")
-    ps.legend(ax2, loc="center left")   # upper right is where the "vs Roman" curves run
+    ps.legend(ax2, loc="center left")
 
     ps.stamp(fig, stamp_for(runs))
     return ps.save_figure(fig, f"{out}_synergy")
@@ -385,10 +343,9 @@ def fig_synergy(runs, out):
 def fig_astrometry(runs, out):
     """(a) the shift each event reaches; (b) how much of it survives blending.
 
-    The shift is what makes theta_E -- and through it the lens MASS -- measurable without a
-    degeneracy. But it is measured against a per-exposure precision of order mas, and it is
-    diluted by blending: the centroid is of ALL the light in the aperture, so an unlensed
-    blend of fraction (1 - fb) drags the measured shift down by roughly fb.
+    The shift makes theta_E, and through it the lens mass, measurable without a degeneracy. The
+    centroid is of all the light in the aperture, so an unlensed blend of fraction (1 - fb) drags
+    the measured shift down by roughly fb.
     """
     fig, (ax1, ax2) = ps.figure(width="double", height=3.0, ncols=2)
     yspan = [np.inf, -np.inf]     # data range of panel (b), for the tick formatter
@@ -406,15 +363,8 @@ def fig_astrometry(runs, out):
         cdf = np.cumsum(ww[order]) / ww.sum()
         ax1.plot(s[order], 100 * (1.0 - cdf), color=r.colour, label=r.label)
 
-        # (b) how the signal scales with the lens mass. delta_theta_max is proportional to
-        # theta_E, which goes as sqrt(Ml), so this panel is the mass reach of the astrometric
-        # channel -- and it is the panel that says which lenses are worth chasing.
-        #
-        # Shown against the BLEND-DILUTED shift, because the centroid is of all the light in
-        # the aperture: an unlensed blend of fraction (1 - fb) drags the measurement down by
-        # roughly fb. On this run the F146 source fraction averages 0.95, so the dilution is
-        # small in the median and matters only in the faint tail -- which is exactly why it is
-        # drawn as a band rather than asserted to be negligible.
+        # (b) Shift against lens mass (delta_theta_max scales as theta_E ~ sqrt(Ml)): the mass
+        # reach of the astrometric channel, shown blend-diluted as above.
         ml = d["Ml"].to_numpy(float)[det][good]
         fb = np.clip(d["fb1"].to_numpy(float)[det][good], 0.0, 1.0)
         sd = s * fb
@@ -463,10 +413,9 @@ def fig_astrometry(runs, out):
 def fig_parallax(runs, out):
     """What Roman at L2 buys over the same event seen from Earth.
 
-    This is the one comparison in the project that is genuinely controlled: the SAME event is
-    characterised twice, once with Roman at L2 and once with the offset zeroed, so the two
-    forecasts differ only in the observer's position. Per-event ratios carry NO weight -- the
-    weight enters only when the ratios are pooled.
+    The same event is characterised twice, with Roman at L2 and with the offset zeroed, so the
+    two forecasts differ only in the observer's position. Per-event ratios carry no weight; the
+    weight enters when they are pooled.
     """
     have = [r for r in runs if r.pair is not None and "Ml" in r.pair.columns]
     if not have:
@@ -485,18 +434,16 @@ def fig_parallax(runs, out):
         w = p["W"].to_numpy(float)[ok]
         g = gain[np.isfinite(gain) & (gain > 0)]
         ww = w[np.isfinite(gain) & (gain > 0)]
-        # SURVIVAL, not the CDF. Satellite parallax does nothing for most events -- the ratio
-        # is 1 -- so a CDF is a vertical line at 1 that hides the entire result. What matters
-        # is the tail: the share of events for which L2 helps by MORE than a given factor.
+        # Survival function rather than CDF: for most events the ratio is 1, so a CDF is a
+        # vertical line at 1. The tail is what matters.
         order = np.argsort(g)
         surv = 100 * (1.0 - np.cumsum(ww[order]) / ww.sum())
         ax1.plot(g[order], surv, color=r.colour, label=r.label)
         print(f"  parallax {r.name}: share with sigma(piE) better by >1.1x = "
               f"{100 * wfrac(g > 1.1, ww):.2f}%, >2x = {100 * wfrac(g > 2.0, ww):.2f}%")
 
-        # Degeneracy breaking, which is the physical point rather than the precision gain:
-        # the lens mass follows from Ml = theta_E/(kappa piE), so a piE that is only bounded
-        # leaves the mass unbounded however well tE is measured.
+        # Degeneracy breaking: Ml = theta_E/(kappa piE), so a piE that is only bounded leaves
+        # the mass unbounded however well tE is measured.
         okm = ok & (p.relMl_sat > 0).to_numpy() & (p.relMl_nosat > 0).to_numpy()
         if okm.sum() >= 20:
             rg = (p.relMl_nosat.to_numpy(float)[okm] / p.relMl_sat.to_numpy(float)[okm])
@@ -526,19 +473,16 @@ def fig_parallax(runs, out):
 def fig_resolution(runs, out):
     """P(the two images can be told apart), after Sajadian & Makler (arXiv:2608.16448).
 
-    (a) The probability per survey and per population, at all three bars, because the answer
-        moves by more than a factor of four across the paper's own range of the D factor and
-        a single bar would hide that.
-    (b) The same probability against lens mass, at the most permissive bar. theta_E scales as
-        sqrt(Ml), so this is the panel that shows the mass reach of the technique.
+    (a) The probability per survey and population at all three bars; it changes by more than a
+        factor of four across the paper's range of the D factor.
+    (b) The same probability against lens mass at the most permissive bar (theta_E ~ sqrt(Ml)).
     """
     fig, (ax1, ax2) = ps.figure(width="double", height=3.0, ncols=2)
 
     bars = [("nres5", r"$D{=}5$"), ("nres20", r"$D{=}20$"), ("nresPSF", "PSF")]
     surveys = [("L", "rubin"), ("R", "roman")]
 
-    # Short labels on purpose: "Rubin PSF FWHM" next to "Roman PSF FWHM" collided into mush at
-    # column width. The bar meanings are spelled out in the stamp and the caption instead.
+    # Short labels; the bar meanings are given in the stamp.
     labels, xs, k = [], [], 0
     for bar, blab in bars:
         for suf, skey in surveys:
@@ -559,9 +503,7 @@ def fig_resolution(runs, out):
                 w = d["W"].to_numpy(float)[det]
                 n = d[f"{bar}_{suf}"].to_numpy(float)[det]
                 f = 100 * wfrac(n >= RESOLVE_MIN_EPOCHS, w)
-                # A zero on a log axis is minus infinity, not a short bar. Drawing it would
-                # give a spike to the bottom of the frame; nan simply leaves the slot empty,
-                # which is the honest rendering of "none in this sample".
+                # A zero on a log axis would draw a spike; nan leaves the slot empty.
                 vals.append(f if f > 0 else np.nan)
         x = np.asarray(xs, float) + (j - (len(runs) - 1) / 2) * width
         ax1.bar(x, vals, width=width * 0.9, color=r.colour, label=r.label, linewidth=0)
@@ -570,8 +512,7 @@ def fig_resolution(runs, out):
     ax1.set_ylabel(r"$P(N_{\Delta\theta}\geq 3)$ [%]")
     ax1.set_yscale("log")
     ps.panel_label(ax1, "(a)", loc="upper left")
-    # Above the axes, not inside: with three populations an inside legend sat on the tallest
-    # (black-hole, Roman) bars, and headroom for it would stretch a percentage axis past 100.
+    # Legend above the axes so it does not cover the tallest bars.
     ps.legend(ax1, loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=3, fontsize=6)
 
     # ---- (b) vs lens mass, most permissive bar ----
@@ -592,19 +533,15 @@ def fig_resolution(runs, out):
             cen, frac = [], []
             for i in range(len(bins) - 1):
                 m = (ml >= bins[i]) & (ml < bins[i + 1])
-                # 50, not 20: at 20 the neutron-star panel drew two-point curves that dived
-                # vertically off the left edge -- a binning artifact reading as a physical
-                # cutoff. A bin too thin to measure should be absent, not drawn.
+                # Bins with fewer than 50 events are omitted; thinner ones draw artifacts.
                 if m.sum() < 50 or w[m].sum() <= 0:
                     continue
                 cen.append(np.sqrt(bins[i] * bins[i + 1]))
                 frac.append(100 * wfrac(n[m] >= RESOLVE_MIN_EPOCHS, w[m]))
             cen, frac = np.asarray(cen), np.asarray(frac)
-            vis = frac > 0     # a zero on a log axis is minus infinity, not a data point
+            vis = frac > 0     # a zero cannot be drawn on a log axis
             if vis.sum() >= 3:
-                # Markers as well as a line: where a population resolves almost never, the
-                # curve is a three-bin fragment, and a bare fragment reads as a rendering
-                # artifact rather than as three honest measurements.
+                # Markers as well as a line, so a short fragment reads as data points.
                 ax2.plot(cen[vis], frac[vis],
                          "-o" if suf == "L" else "--s",
                          color=r.colour, lw=1.4, ms=2.5,
@@ -615,12 +552,9 @@ def fig_resolution(runs, out):
     ax2.set_yscale("log")
     ax2.set_xlabel(r"lens mass $M_{\rm L}$ [$M_\odot$]")
     ax2.set_ylabel(r"$P(N_{\Delta\theta}\geq 3)$ at $D=5$ [%]")
-    # With a single narrow-mass population on the axis (neutron stars span 0.3 decades) the log
-    # MINOR ticks get labelled and collide into mush. Same treatment as the astrometry panel.
+    # A narrow-mass population would collide log minor tick labels; see plain_log_ticks.
     plain_log_ticks(ax2, xspan[0], xspan[1], "x")
-    # Legend low-right, label top-left: the curves rise left-to-right, so that corner pair is
-    # the one both populations leave empty. Upper left put the legend on top of the black-hole
-    # curves.
+    # The curves rise left to right, so legend lower right and label upper left stay clear.
     ps.panel_label(ax2, "(b)", loc="upper left")
     ps.legend(ax2, loc="lower right")
 
@@ -631,11 +565,7 @@ def fig_resolution(runs, out):
 
 
 def summary(runs):
-    """Print the numbers the figures are made of.
-
-    A figure is for seeing a shape; a number is for quoting in a paper. Every value here is the
-    weighted one, over the same cuts the corresponding panel uses, so the two cannot drift apart.
-    """
+    """Print the numbers the figures are made of: weighted, over the same cuts as each panel."""
     for r in runs:
         d = r.df
         det = ((d.detL == 1) | (d.detR == 1) | (d.detJ == 1)).to_numpy()

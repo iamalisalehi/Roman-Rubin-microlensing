@@ -10,7 +10,7 @@
 // curve (LightCurveStats::ndw): the number of light-curve slots in ctx.l that it dirtied and this call clears.
 EfficiencyBins drawEvent(SimContext& ctx, SightlineState& st, int prevNdw);
 
-// The Step B2 pre-selection: is the event bright enough to be seen by Rubin (>= 2 bands) or by
+// Pre-selection: is the event bright enough to be seen by Rubin (>= 2 bands) or by
 // Roman, then one accept draw per survey. Returns true if either accepts, i.e. a light curve is
 // to be generated. Draws random numbers (testL, testR).
 bool preselectEvent(SimContext& ctx, const SightlineState& st);

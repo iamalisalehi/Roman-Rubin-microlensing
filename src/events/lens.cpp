@@ -4,12 +4,8 @@
 #include "galaxy/catalogue.h"
 #include "galaxy/kinematics.h"
 
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
-//                                                                    //
-//                         Func lens  calculations                    //
-//                                                                    //
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
+// Draws a lens along the sightline: distance, component, mass, kinematics, and (for a luminous
+// lens) its own light added to the blend.
 void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sightlineIdx){
 
     double test, tt, Am, DD;
@@ -53,13 +49,8 @@ void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sight
     else {
         throw std::runtime_error("Invalid randflag: " + std::to_string(randflag) + ", rho_star0: " + std::to_string(s.Rostar0[l.numl]));
     }
-     //cout<<"Dl:  "<<l.Dl<<"\t struc_lens :  "<<l.struc<<endl;
 
-    // Which mass function this draws from is a property of the population selected by
-    // --population (POPULATIONS in config/parameters.h), not of the build. Every branch that used to
-    // live here -- uniform, three power laws, Kroupa+remnants -- now lives in drawLensMass()
-    // beside the two new ones, so a population is one table entry rather than an `if` here
-    // plus a constant there plus a filename suffix somewhere else.
+    // The mass function is set by --population (POPULATIONS in config/parameters.h); see drawLensMass().
     std::array<double, 7> mab{};
     bool mabFromCatalogue = false;
     if (gPop->mf == MassFunction::BESANCON_CATALOGUE) {
@@ -69,8 +60,7 @@ void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sight
         l.Ml = drawLensMass(&l.luminous);
     }
 
-    // The bounds bracket the masses the population can produce and also set the Mls
-    // efficiency grid, so a draw outside them would land outside every efficiency bin.
+    // The bounds also set the Mls efficiency grid; a draw outside them would fall outside every bin.
     CHECK(l.Ml >= mmin * 0.999);
     CHECK(l.Ml <= mmax * 1.001);
 
@@ -81,12 +71,11 @@ void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sight
     s.ros    = 1.0 * Rsun * l.xls / l.RE;
     l.pirel  = 1.0 / l.Dl - 1.0 / s.Ds; //[mas]
     l.piE    = l.pirel / l.tetE; //[]
-    // ---- Deviation 74: a luminous lens's own light joins the blend ----
-    // Apparent magnitudes from its main-sequence absolute magnitudes (CMD/components/lens_ml.dat),
-    // distance modulus, and the dust in front of the LENS (the same tables, at Dl). No random
-    // scatter is drawn, so the RNG stream is unchanged. The source fraction fb and baseline mbs of
-    // both telescopes are rebuilt from the enlarged blend, and fLens records the lens's share,
-    // which pulls the astrometric centroid toward the lens (lightcurve()).
+    // A luminous lens's own light joins the blend. Apparent magnitudes come from its main-sequence
+    // absolute magnitudes (CMD/components/lens_ml.dat), the distance modulus, and the dust in front
+    // of the LENS (same tables, at Dl). No random scatter is drawn. fb and mbs of both telescopes
+    // are rebuilt from the enlarged blend; fLens records the lens's share, which pulls the
+    // astrometric centroid toward the lens (lightcurve()).
     s.fLens = {0.0, 0.0};
     if (l.luminous) {
         if (mabFromCatalogue or lensAbsMag(static_cast<int>(l.struc), l.Ml, mab)) {
@@ -129,13 +118,6 @@ void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sight
     Am = l.A0 + 1.0;
     DD = double(4.0 - Am * Am + Am * std::sqrt(Am * Am - 4.0)) / (Am * Am * 0.5 - 2.0);
     s.FWHM = 2.0 * l.tE * std::sqrt(std::fabs(DD - l.u0 * l.u0));//days
-    // if(DD<double(l.u0*l.u0))  s.FWHM=l.tE;
-
-    //cout<<"Ml:  "<<l.Ml<<"\t RE:  "<<l.RE/AU<<"\t tE:  "<<l.tE<<endl;
-    //cout<<"ros:  "<<s.ros<<"\t murel:  "<<l.murel<<"\t tetE:  "<<l.tetE<<endl;
-    //cout<<"u0:  "<<l.u0<<"\t pirel:  "<<l.pirel<<"\t piE:  "<<l.piE<<endl;
-    //cout<<"mus1:  "<<s.mus1<<"\t mus2:  "<<s.mus2<<"\t mul1:  "<<l.mul1<<"\t mul2:  "<<l.mul2<<endl;
-    //cout<<"DD:  "<<DD<<"\t FWHM:  "<<s.FWHM<<endl;
 
     CHECK(l.tE > 0.0);
     CHECK(l.Dl <= s.Ds);
@@ -154,50 +136,30 @@ void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sight
     CHECK(DD >= double(l.u0 * l.u0));
     CHECK(s.FWHM >= 0.0);
     CHECK(Am >= 2.0);
-
-//    cout<<">>>>>>>>>>>> End of func_lens <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"<<endl;
 }
 
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
-//                                                                    //
-//            Kroupa initial mass function + stellar remnants         //
-//                                                                    //
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
+// Kroupa initial mass function and stellar remnants.
 
-// Draw an INITIAL stellar mass from the Kroupa (2001) broken power law,
+// Draw an INITIAL stellar mass from the Kroupa (2001) broken power law dN/dM = k_i M^-alpha_i,
+// alpha = 0.3, 1.3, 2.3 on [0.01, 0.08], [0.08, 0.5], [0.5, 120] Msun, by inverse CDF (the
+// segment weights and the inverse follow from the breaks, so retuning them stays correct).
 //
-//     dN/dM  =  k_i * M^-alpha_i
-//
-// with alpha = 0.3, 1.3, 2.3 on [0.01, 0.08], [0.08, 0.5], [0.5, 120] Msun.
-//
-// Sampled by inverse CDF, not rejection. Rejection sampling is what the legacy IMnum 2-4
-// branches use, and each of them carries hardcoded acceptance bounds (CHECK(f >= 1.4) and
-// friends) that are only correct for the 3-5000 Msun range they were written against --
-// change the range and the CHECKs fire. Inverse CDF has no such constants: the segment
-// weights and the inverse are both computed from the breaks themselves, so the sampler
-// stays correct if the breaks are ever retuned.
-//
-// The k_i are fixed by requiring the IMF be CONTINUOUS at each break, not chosen freely:
-//     k1 * 0.08^-0.3 = k2 * 0.08^-1.3  =>  k2 = k1 * 0.08^(1.3-0.3)
-//     k2 * 0.50^-1.3 = k3 * 0.50^-2.3  =>  k3 = k2 * 0.50^(2.3-1.3)
-// A discontinuous IMF would put a step in the mass distribution at 0.08 and 0.5 Msun, and
-// therefore a step in the tE distribution, which is the observable being compared to data.
+// The k_i are fixed by continuity at each break:
+//     k2 = k1 * 0.08^(1.3-0.3),   k3 = k2 * 0.50^(2.3-1.3)
 double drawKroupaInitialMass()
 {
     const double lo[3] = {KROUPA_MI_MIN, KROUPA_BREAK1, KROUPA_BREAK2};
     const double hi[3] = {KROUPA_BREAK1, KROUPA_BREAK2, KROUPA_MI_MAX};
     const double al[3] = {KROUPA_ALPHA1, KROUPA_ALPHA2, KROUPA_ALPHA3};
 
-    // Continuity coefficients, k1 fixed to 1 (overall normalisation is irrelevant here --
-    // we only ever sample from this, never evaluate an absolute number density).
+    // Continuity coefficients, k1 = 1 (only sampled, never evaluated as a number density).
     double k[3];
     k[0] = 1.0;
     k[1] = k[0] * std::pow(KROUPA_BREAK1, KROUPA_ALPHA2 - KROUPA_ALPHA1);
     k[2] = k[1] * std::pow(KROUPA_BREAK2, KROUPA_ALPHA3 - KROUPA_ALPHA2);
 
-    // Number of stars per segment: k_i * integral of M^-alpha over the segment.
-    // None of the Kroupa slopes equals 1, so the (1-alpha) form never divides by zero;
-    // the CHECK keeps that assumption honest if the slopes are ever changed.
+    // Number of stars per segment: k_i * integral of M^-alpha. The CHECK guards the (1-alpha)
+    // division should a slope ever equal 1.
     double w[3], total = 0.0;
     for (int i = 0; i < 3; ++i) {
         CHECK(std::fabs(1.0 - al[i]) > 1e-9);
@@ -228,13 +190,8 @@ double drawKroupaInitialMass()
 
 // Map an initial mass to what is still there to act as a lens ~10 Gyr later.
 //
-// This is where the long-tE tail comes from, and it is not a detail. A star born at 25 Msun
-// is long gone, but it left a ~6 Msun black hole -- and since the Einstein radius and the
-// event timescale both scale as sqrt(Ml), that black hole lenses for roughly five times as
-// long as the 0.3 Msun dwarf next to it. Long events are the ones that span Roman's season
-// gaps, so the remnant prescription is what populates the regime this whole project is
-// about. Dropping remnants would leave the short-tE yield science intact and quietly
-// remove the long-tE precision science.
+// This sets the long-tE tail: tE scales as sqrt(Ml), so a ~6 Msun black hole left by a 25 Msun star
+// lenses ~5x longer than a 0.3 Msun dwarf, and long events are the ones that span Roman's season gaps.
 double remnantMass(double initialMass)
 {
     const double Mi = initialMass;
@@ -247,26 +204,18 @@ double remnantMass(double initialMass)
     // Mf = 0.109*Mi + 0.394, calibrated on open-cluster white dwarfs.
     if (Mi < WD_MI_MAX) return 0.109 * Mi + 0.394;
 
-    // Neutron star. The observed mass distribution is narrow, so a single canonical value
-    // is a better model than a spread invented to look sophisticated.
+    // Neutron star: the observed mass distribution is narrow, so a single canonical value is used.
     if (Mi < NS_MI_MAX) return NS_MASS;
 
-    // Black hole. Rough proportional fallback: Ml = 0.24*Mi gives ~4.8 Msun at Mi = 20 and
-    // ~28.8 at Mi = 120, spanning the observed stellar-mass black hole range. This is the
-    // crudest step in the chain -- black hole remnant masses depend on metallicity and
-    // mass loss in ways no single slope captures -- and is flagged in OPEN_ITEMS.md.
+    // Black hole: rough proportional fallback, Ml = 0.24*Mi (~4.8 Msun at Mi = 20, ~28.8 at 120).
+    // This is the crudest step in the chain; remnant masses depend on metallicity and mass loss.
     return BH_MI_SLOPE * Mi;
 }
 
 
-// Flat in log M over [lo, hi]. The standard choice for a black-hole lens population, and it
-// is a statement about ignorance rather than about stars: no mass function is measured over
-// 3-1000 Msun, so weighting every decade equally is the prior that does not invent structure.
-//
-// Note what this does to a sample: half the draws land above sqrt(lo*hi) = 55 Msun, where
-// tE ~ sqrt(Ml) makes events long. That is the regime Roman's season gaps bite hardest, and
-// it is why this population is worth simulating separately rather than as the tail of a
-// bulge run, where such lenses are a fraction of a per cent of the draws.
+// Flat in log M over [lo, hi]: an uninformative prior for a black-hole population, since no mass
+// function is measured over 3-1000 Msun. Half the draws land above sqrt(lo*hi) = 55 Msun, where
+// tE is long and Roman's season gaps matter most.
 double drawLogUniformMass(double lo, double hi)
 {
     CHECK(lo > 0.0);
@@ -282,18 +231,16 @@ double drawLogUniformMass(double lo, double hi)
 // A measured neutron-star mass distribution: Gaussian, truncated to the range in which
 // neutron stars actually exist (Ozel & Freire 2016; constants in config/parameters.h).
 //
-// Redraw rather than clamp. Clamping to an edge piles probability onto 1.10 and 2.20 exactly
-// -- a spike at the boundary that no physical population has, and one that would show up in
-// every tE histogram as two spurious lines, since tE ~ sqrt(Ml).
+// Redraw rather than clamp: clamping would pile probability onto the two edges and show up as
+// spurious lines in tE histograms.
 double drawNeutronStarMass()
 {
     for (int guard = 0; guard < 1000; ++guard) {
         const double M = NS_MEAN_MASS + RandN(NS_MASS_SIG, NS_MASS_TRUNC_NSIGMA);
         if (M >= NS_MASS_LO and M <= NS_MASS_HI) return M;
     }
-    // Unreachable in practice: the truncation is +/-1.7 sigma at the tighter end, so a
-    // single draw succeeds ~91% of the time and 1000 failures has probability ~1e-1000.
-    // Kept so a future edit to the constants cannot produce a silent infinite loop.
+    // Unreachable in practice (a single draw succeeds ~91% of the time); guards against an infinite
+    // loop if the constants are edited.
     throw std::runtime_error("drawNeutronStarMass: no draw inside [NS_MASS_LO, NS_MASS_HI]");
 }
 
@@ -301,14 +248,12 @@ double drawNeutronStarMass()
 // A lens that is a random member of its Galactic component's Besancon list (population "besancon").
 //
 // The four lists in CMD/components/ are the complete present-day Besancon population of each
-// component -- the same population Nstart = rho/<m> counts, with <m> the catalogue mean mass
-// MEANMASS_* -- so drawing the lens from them makes the lens mass function consistent with the
-// density normalisation. It supplies the mass AND the light: the lens takes the row's own absolute
-// magnitudes (ugrizy, F146), so a giant is a luminous lens at its own magnitude, and a row
-// with DARK_MAG in every band (a white dwarf) is dark.
-// What it lacks against Kroupa+remnants: no brown dwarfs (the lists start at 0.073 Msun in the
-// thin disc and ~0.155 in the others), no neutron stars or black holes, and no white dwarfs
-// at all in the bulge list (Besancon's bulge has none). The bh and ns populations simulate those.
+// component, the same population Nstart = rho/<m> counts (<m> = MEANMASS_*), so the lens mass
+// function is consistent with the density normalisation. The lens takes the row's mass and its
+// absolute magnitudes (ugrizy, F146); a row with DARK_MAG in every band (a white dwarf) is dark.
+// Unlike Kroupa+remnants there are no brown dwarfs (lists start at 0.073 Msun in the thin disc,
+// ~0.155 in the others), no neutron stars or black holes, and no bulge white dwarfs; the bh and
+// ns populations cover those.
 //
 // One RNG call. (func_source's own pick, RandR(0, N-1), can never reach the last row; this one can.)
 double drawCatalogueLens(const CMD& cm, GalacticComponent comp, bool* luminous, std::array<double, 7>& mab)
@@ -331,19 +276,16 @@ double drawCatalogueLens(const CMD& cm, GalacticComponent comp, bool* luminous, 
 }
 
 
-// The one entry point func_lens uses. Which mass function runs is a property of the
-// population selected by --population, not of the build.
+// The entry point func_lens uses; the mass function is set by --population.
 double drawLensMass(bool* luminous)
 {
     if (luminous) *luminous = false;
     switch (gPop->mf) {
     case MassFunction::KROUPA_REMNANTS: {
-        // Draw what the star was BORN as, then ask what is left of it. The order matters:
-        // the mass function describes formation, the lens is whatever survived, and
-        // collapsing the two loses the black holes that make the long-tE regime exist.
+        // Draw the birth mass, then ask what is left of it: the mass function describes formation.
         const double Mi = drawKroupaInitialMass();
-        // Deviation 74: below the turnoff it is still a main-sequence star, and shines (white
-        // dwarfs, neutron stars, black holes and brown dwarfs are treated as dark).
+        // Below the turnoff it is still a main-sequence star and shines (white dwarfs, neutron
+        // stars, black holes and brown dwarfs are treated as dark).
         if (luminous) *luminous = (Mi < MS_TURNOFF and Mi >= KROUPA_BREAK1);
         return remnantMass(Mi);
     }
@@ -368,19 +310,16 @@ double drawLensMass(bool* luminous)
 
 // dN/dM ~ M^-alpha on [lo, hi], by inverse CDF.
 //
-// The legacy code sampled these by rejection against a bounding box, which is correct but
-// wasteful and, more to the point, consumes a variable number of RNG draws per event -- so
-// two runs differing only in mass function diverge in their random streams for reasons that
-// have nothing to do with the physics. Inverse CDF takes exactly one draw, always.
+// Inverse CDF takes exactly one RNG draw, so random streams stay aligned between runs that differ
+// only in mass function.
 double drawPowerLawMass(double lo, double hi, double alpha)
 {
     CHECK(lo > 0.0);
     CHECK(hi > lo);
     const double v = RandR(0.0, 1.0);
 
-    // alpha == 1 is not a corner case to guard against, it is one of the legacy populations
-    // (macho-m1, dN/dM ~ 1/M). There the (1-alpha) exponent form divides by zero, and the
-    // CDF is logarithmic instead: M = lo * (hi/lo)^v, which is exactly log-uniform.
+    // alpha == 1 (dN/dM ~ 1/M) makes the (1-alpha) form divide by zero; the CDF is then
+    // logarithmic, M = lo * (hi/lo)^v, i.e. log-uniform.
     if (std::fabs(1.0 - alpha) < 1e-9)
         return lo * std::pow(hi / lo, v);
 

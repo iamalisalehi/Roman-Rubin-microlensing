@@ -15,6 +15,6 @@ double drawLogUniformMass(double lo, double hi);
 double drawNeutronStarMass();
 double drawPowerLawMass(double lo, double hi, double alpha);
 double drawCatalogueLens(const CMD& cm, GalacticComponent comp, bool* luminous, std::array<double, 7>& mab);
-double drawLensMass(bool* luminous = nullptr);   // *luminous: a living star (Deviation 74)
+double drawLensMass(bool* luminous = nullptr);   // *luminous: a living star
 
 #endif // ROMAN_EVENTS_LENS_H

@@ -19,11 +19,10 @@ struct GbtdsLayout {
 // A field placement: one (centre, roll) that RomanBaseline.dat visits. 6 fields x 2 rolls = 12.
 struct FieldPlacement { double l, b; int layout; };
 
-// LSSTCam's footprint (Deviation 80): the active-silicon map OpSim/MAF use (rubin_scheduler
-// LsstCameraFootprint, fov_map.npz), exported to Baseline/lsstcam_fov/fov_map.txt. A sky point is on
-// a Rubin visit's silicon if its gnomonic projection about the boresight, rotated by rotSkyPos,
-// falls on an active pixel -- rubin_scheduler's own algorithm, mirrored. Replaces the 1.75-deg circle.
-// RUBIN_MAX_RADIUS (1.94 deg, rubin_scheduler's max_radius): see config/parameters.h, section 4.
+// LSSTCam's footprint: the active-silicon map OpSim/MAF use (rubin_scheduler LsstCameraFootprint,
+// fov_map.npz), exported to Baseline/lsstcam_fov/fov_map.txt. A sky point is on a Rubin visit's
+// silicon if its gnomonic projection about the boresight, rotated by rotSkyPos, falls on an active
+// pixel (rubin_scheduler's own algorithm). RUBIN_MAX_RADIUS: see config/parameters.h, section 4.
 struct LsstCamMap { int n = 0; double x0 = 0.0, step = 0.0; std::vector<unsigned char> on; };
 inline LsstCamMap gLsstCam;
 void   readLsstCamMap(const std::string& path);
@@ -36,32 +35,16 @@ void   galToIcrs(double l, double b, double& ra, double& dec);                  
 GbtdsLayout readGbtdsLayout();
 bool inDetector(const GbtdsLayout& g, int layout, double dl, double db);
 
-///==============================================================//
-///     Instrument-agnostic epoch matching (LSST or Roman)       //
-///                                                              //
-///==============================================================//
-// Extracted from the sky-position loop in main() so it can be called once per
-// instrument instead of being hardwired to `ls`. Behavior is unchanged for LSST;
-// calling it a second time with Roman's own visits and coverage test is what gives Roman its
-// own epoch list instead of inheriting LSST's cadence.
+// Instrument-agnostic epoch matching (LSST or Roman): called once per instrument.
 //
-// `covers(i)` says whether visit i images the current sky position. Rubin's is the circle
-// sqrt(dl^2 + db^2) <= FoV about the pointing centre (unchanged arithmetic); Roman's is "on one
-// of the 18 detectors of visit i's layout, placed at the field centre" (Deviation 69).
+// `covers(i)` says whether visit i images the current sky position (for Roman: on one of the 18
+// detectors of visit i's layout, placed at the field centre). `label` ("LSST" / "Roman") only
+// identifies which call printed a warning.
 //
-// `label` is purely diagnostic ("LSST" / "Roman") — it identifies which call
-// printed a given warning, since both calls share this one function.
-//
-// Two visits can legitimately share an identical recorded timestamp for a given
-// sky position — most commonly two different fields/pointings whose FoV circles
-// overlap and which happen to share the same observing schedule (this is exactly
-// what can happen between adjacent Roman fields, whose detector mosaics interlock and can
-// overlap at the edges). There is no meaningful
-// cadence between two simultaneous visits, so rather than treat this as fatally
-// corrupt data, we keep the first and skip the duplicate — but we log it, because
-// if this fires constantly (not just occasionally near field boundaries) that's a
-// sign of a genuine sorting/data problem in the baseline file that needs fixing at
-// the source, not papering over here.
+// Two visits can share a timestamp at one sky position (e.g. adjacent Roman fields whose detector
+// mosaics overlap at the edges and share a schedule). There is no cadence between simultaneous
+// visits, so the first is kept and the duplicate skipped and logged; frequent logging away from
+// field boundaries indicates a sorting problem in the baseline file.
 template <typename Covers>
 int matchVisibleEpochs(const char* label, Covers covers,
                        const std::vector<double>& tim_arr,
@@ -92,10 +75,8 @@ int matchVisibleEpochs(const char* label, Covers covers,
                 }
 
                 if (minCadence > cade) minCadence = cade;
-                // Unreachable when ct is sized to the instrument's full visit count, which
-                // is the point: ndd <= nEpochs by construction. Kept as a guard, and made
-                // loud -- a SILENT truncation here previously ended Roman's mission on day
-                // 8.4 of 1715 and Rubin's on day 1573 of 3459, with no diagnostic at all.
+                // Unreachable when ct is sized to the instrument's full visit count
+                // (ndd <= nEpochs by construction); kept as a loud guard against silent truncation.
                 if (ndd >= ctCap - 1) {
                     std::cerr << "[matchVisibleEpochs:" << label << "] FATAL: ct capacity "
                               << ctCap << " exhausted at epoch " << i << " of " << nEpochs

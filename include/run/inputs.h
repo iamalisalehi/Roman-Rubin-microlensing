@@ -14,7 +14,7 @@
 // Each reader prints its progress line and returns 0, or the process exit code of the error it
 // reported (the run is over when it is non-zero).
 
-// The GBTDS detector layout (Deviation 69), read first: the footprint grid is checked against the
+// The GBTDS detector layout, read first: the footprint grid is checked against the
 // real detector size, and the scan region is built from the field outline. Exits on bad input.
 GbtdsLayout loadGbtdsLayout();
 

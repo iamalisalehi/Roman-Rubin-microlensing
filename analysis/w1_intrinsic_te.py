@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
-"""Step W1 -- validate the event-rate weight against a published survey measurement.
+"""Validate the event-rate weight against a published survey measurement.
 
-The weighted median over DETECTED events answers nothing on its own: it carries this pipeline's
-detection test, and no survey publishes that. The INTRINSIC distribution does compare. Applying
-the weight to every draw, detected or not, estimates the same thing an efficiency-corrected
-survey measurement does, and Mroz et al. 2019 (ApJS 244, 29; arXiv:1906.02210) publishes it for
-8 yr of OGLE-IV over 121 bulge fields: each event reweighted by 1/eff(tE), giving a mean Einstein
-timescale of 22 d in the central bins (within ~3 deg of the Galactic centre), rising to 32 d at
-l ~ +8 deg and l ~ -6 deg.
+The weighted median over detected events carries this pipeline's detection test, which no
+survey publishes. The intrinsic distribution does compare: applying the weight to every draw,
+detected or not, estimates what an efficiency-corrected survey measurement does. Mroz et al.
+2019 (ApJS 244, 29; arXiv:1906.02210) publish it for 8 yr of OGLE-IV over 121 bulge fields, each
+event reweighted by 1/eff(tE): a mean Einstein timescale of 22 d in the central bins (within ~3
+deg of the Galactic centre), rising to 32 d at l ~ +8 deg and l ~ -6 deg.
 
     .roman/bin/python analysis/w1_intrinsic_te.py test5.dat
 
-THE COMPARISON IS OF A POPULATION MEAN, NOT OF A MEASUREMENT. OGLE reweights its own detections
-by its own efficiency and works at u0 < 1; this pipeline draws u0 < 3 and has its own mass
-function and kinematics. What the check can catch -- and did -- is a sampler whose tE
-distribution is wrong by a factor of 2.5 (Deviation 41).
+The comparison is of a population mean, not of a measurement: OGLE reweights its own detections
+by its own efficiency and works at u0 < 1, while this pipeline draws u0 < 3 and has its own mass
+function and kinematics. It does catch a sampler whose tE distribution is wrong by a large factor.
 
-Reads the whole table, so it uses `usecols` rather than the row filter every other script uses:
-a statistic over all draws cannot throw rows away.
+Reads the whole table with `usecols` rather than the row filter other scripts use, since a
+statistic over all draws cannot discard rows.
 """
 
 import argparse
@@ -63,9 +61,8 @@ def main():
     df = R.load_events(a.events, usecols=COLS, chunksize=a.chunksize)
     print(f"{len(df):,} draws, {int((df['detJ'] == 1).sum()):,} joint-detected")
 
-    # nsim is the number of draws a sightline took, and every draw writes one row -- so count
-    # them here. That also covers BARREN sightlines, which produce draws but never reach the
-    # aggregation block, so they appear in neither the map file nor the log.
+    # nsim is the number of draws a sightline took and every draw writes one row, so count rows.
+    # This also covers barren sightlines, which appear in neither the map file nor the log.
     key = pd.Series(list(zip(df["lon"].round(3), df["lat"].round(3))))
     nsim = key.value_counts().to_dict()
 
@@ -77,8 +74,8 @@ def main():
         pos = np.asarray(pos)
         prof = G.density_profile(*k)
         ds = Ds[pos]
-        # Z(Ds) is smooth in Ds; tabulating it on 200 points and interpolating avoids building
-        # an (events x 9500) matrix per sightline. The error is checked, not assumed.
+        # Z(Ds) is smooth in Ds; interpolating on 200 points avoids an (events x 9500) matrix per
+        # sightline. The interpolation error is checked below.
         grid = np.linspace(ds.min(), ds.max(), 200)
         Z = np.interp(ds, grid, G.lens_distance_norm(prof, grid))
         if worst_interp == 0.0:

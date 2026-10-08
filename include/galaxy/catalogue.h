@@ -48,7 +48,7 @@ struct CMD {
 
 void   read_cmd(CMD & cm);
 
-// Luminous lenses (Deviation 74): main-sequence mass -> absolute magnitude (AB, ugrizy + F146) per
+// Luminous lenses: main-sequence mass -> absolute magnitude (AB, ugrizy + F146) per
 // Galactic component, from CMD/components/lens_ml.dat (CMD/lens_ml_table.py). Bins of 0.02 Msun
 // over 0.08-1.00 Msun; lighter lenses are brown dwarfs and treated as dark.
 struct LensML {

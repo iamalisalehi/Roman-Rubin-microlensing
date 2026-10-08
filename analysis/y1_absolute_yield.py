@@ -1,45 +1,44 @@
 #!/usr/bin/env python3
-"""Step Y: absolute event yields, and what the raw Monte Carlo counts mean (Deviation 54).
+"""Absolute event yields, and what the raw Monte Carlo counts mean.
 
-WHY THIS EXISTS. Every number the analysis layer has produced so far is a fraction, median or
-ratio, in which the rate's overall constants cancel (Deviation 41). The raw counts printed in
-the report -- "110,144 detected events" for the black-hole run -- are Monte Carlo SAMPLE SIZES,
-set by the detections each sightline was told to collect (--events/--lenses) and capped at
---maxdraws; with every lens drawn from the chosen population, they say nothing about the sky.
+The other analysis scripts report fractions, medians and ratios, in which the rate's overall
+constants cancel. Raw counts (e.g. "110,144 detected events") are Monte Carlo sample sizes, set
+by the detections each sightline was told to collect (--events/--lenses) and capped at
+--maxdraws; with every lens drawn from the chosen population they say nothing about the sky.
 This script restores the constants and turns the same draws into an expected number of events.
 
-THE FORMULA (full derivation in DEVIATIONS.md 54 and the report's yield section). One draw i,
-with source at Ds, lens mass M and transverse velocity v_t, stands for a rate per source star
+One draw i, with source at Ds, lens mass M and transverse velocity v_t, stands for a rate per
+source star
 
     gamma_i = (F / <M>) * 2 u0m * kappa * Z(Ds) * sqrt(M) * v_t,     kappa = sqrt(4 G / c^2)
 
-(F: the population's fraction of the Galaxy's stellar mass; <M>: its mean mass as drawn;
-Z: the lens-distance sampler's normaliser). Summing over sightlines k,
+(F: the population's fraction of the Galaxy's stellar mass; <M>: its mean mass as drawn; Z: the
+lens-distance sampler's normaliser). Summing over sightlines k,
 
     N_det = T * sum_k Omega_k Nstar_k / nsim_k * sum_{i in k} gamma_i det_i      (1)
 
-with T the window t0 is drawn over. Replace det_i by any selection -- Roman detected it, the
-mass is measured to 10% -- to get that subset's yield. N is linear in F, so it is computed for
-F = 1 and scaled.
+with T the window t0 is drawn over. Replace det_i by any selection (Roman detected it, the mass
+is measured to 10%) to get that subset's yield. N is linear in F, so it is computed for F = 1
+and scaled.
 
-TWO CONVENTIONS, both reported. The simulator keeps a drawn star only with probability equal
-to its blend fraction (the legacy method: Sajadian & Makler, criterion ii), which counts events
-per RESOLVED OBJECT. Weighting each draw by 1/P(kept) instead counts events on every star,
-faint blended sources included. (1) as written is the first; the Sajadian papers' yields are
+Two conventions are reported. The simulator keeps a drawn star only with probability equal to
+its blend fraction (the legacy method: Sajadian & Makler, criterion ii), which counts events per
+resolved object. Weighting each draw by 1/P(kept) instead counts events on every star, faint
+blended sources included. Equation (1) as written is the first; the Sajadian papers' yields are
 in that convention, so comparisons with them use it.
 
-CHECKS, printed and written before any yield:
+Checks, printed and written before any yield:
   tau   (pi / 2u0m) * <gamma * tE> over draws must reproduce the optical depth the C++ computes
         independently (optical_depth(), column opt_1e6), sightline by sightline. This tests the
-        constants, the units and Z: a factor error anywhere shows here.
+        constants, the units and Z.
   OGLE  for the `bulge` population only (F = 1 by definition: every lens is a star or remnant),
         the rate per source star with I < 21, u0 < 1, against Mroz et al. (2019).
-  legacy  the map file's own Neven, summed over the scan, which has known defects (it averages
-        eps/tE over DETECTED events, has no sqrt(M) v weight and no F) -- reported, not trusted.
+  legacy  the map file's own Neven, summed over the scan. It has known defects (it averages
+        eps/tE over detected events, with no sqrt(M) v weight and no F), so it is reported only.
 
     .roman/bin/python analysis/y1_absolute_yield.py \\
-        --run bh=runs/prod_bh_20260917 --run ns=runs/prod_ns_20260917 \\
-        --run bulge=../roman_runs/2026-09-06_v3_h7 -o figures/yield_20260922
+        --run bh=RUN_DIR_BH --run ns=RUN_DIR_NS \\
+        --run bulge=RUN_DIR_BULGE -o OUTDIR
 """
 
 import argparse
@@ -56,7 +55,7 @@ COLS = ["tE", "Ml", "Vt", "Ds", "u0", "opt_1e6", "struc", "lon", "lat", "w_area"
         "detL", "detR", "detJ", "relMl_J", "relMl_R", "ndw_R"] + \
        [f"magb_{f}" for f in R.FILTERS] + [f"blend_{f}" for f in R.FILTERS]
 
-# Fractions of the Galaxy's stellar mass in the population. Literature, checked 2026-09-22:
+# Fractions of the Galaxy's stellar mass in the population, from the literature:
 #   BH 0.004-0.005  Sajadian & Makler (arXiv:2608.16448), their F
 #   BH ~0.01        Sweeney et al. 2022: NS+BH together ~1% (with natal kicks), so BH below it
 #   BH ~0.03        Gould 2000 (bulge census 69:22:6:3 MS:WD:NS:BH by mass); Olejak et al. 2020
@@ -88,9 +87,8 @@ class Run:
                      if os.path.exists(os.path.join(directory, f))]
         self.tobs_days = float(self.prov.get("Tobs_days", 3652.43))
         print(f"[{name}] reading {self.table} ({self.population})", flush=True)
-        # narrow: float32 storage -- the post-fix tables are 6.5-12.2M rows and a float64 read
-        # of them was killed for memory (2026-09-25). The per-draw quantities computed below
-        # are held in float64.
+        # narrow: float32 storage, since production tables have up to ~12M rows; the per-draw
+        # quantities computed below are held in float64.
         self.df = R.load_events(self.table, usecols=COLS, chunksize=chunksize,
                                 keep=R.keep_weightable(self.map, self.logs), narrow=True)
         self.sl = R.load_sightlines(self.map)
@@ -100,8 +98,8 @@ class Run:
                              dtype=np.float64)
         df["gamma"] = np.asarray(R.draw_rate(df), dtype=np.float64)
         df["P"] = np.asarray(R.acceptance_probability(df, self.sl, fixed_rubin_depths), dtype=np.float64)
-        # An int32 sightline code, not a (lon, lat) tuple per row: the tuples were ~1 KB a row
-        # and made the post-fix tables unreadable in 8 GB. self.keys[code] is the tuple.
+        # An int32 sightline code rather than a (lon, lat) tuple per row, to save memory;
+        # self.keys[code] is the tuple.
         codes, self.keys = R.sightline_index(df)
         df["key"] = codes
         df["foot"] = np.isin(codes, np.unique(codes[df["ndw_R"].to_numpy() > 0]))
@@ -226,7 +224,7 @@ def main():
     ap.add_argument("-o", "--out", required=True, help="output directory")
     ap.add_argument("--chunksize", type=int, default=500_000)
     ap.add_argument("--fixed-rubin-depths", action="store_true",
-                    help="for runs whose map file predates Deviation 94; Rubin acceptance then "
+                    help="for runs whose map file has no per-sightline Rubin depths; Rubin acceptance then "
                          "uses the fixed SRD depths, an approximation")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
@@ -235,7 +233,7 @@ def main():
         k, v = spec.split("=")
         Fgrid[k] = [float(x) for x in v.split(",")]
 
-    lines = ["# Absolute yields (Step Y, Deviation 54)", "",
+    lines = ["# Absolute yields", "",
              "Generated by `analysis/y1_absolute_yield.py`. N = expected events whose peak falls "
              "in the 10-yr window, over the scanned sky; ± is the Monte Carlo error only. "
              "'per object' = the legacy blend-fraction convention (events per resolved object, "

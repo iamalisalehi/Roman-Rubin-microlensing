@@ -15,7 +15,7 @@ import urllib.parse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# The columns CMD/BolometricCorrection.py (DEFAULT_COLUMNS) and CMD/lens_ml_table.py (COLS) read.
+# Columns read by CMD/BolometricCorrection.py (DEFAULT_COLUMNS) and CMD/lens_ml_table.py (COLS).
 BESANCON_NEEDED = ["Teff", "logg", "Pop", "Age", "Mass", "Mbol", "[M/H]", "[a/Fe]", "CL", "Typ"]
 SAMPLE_ROWS = 5000
 

@@ -1,43 +1,19 @@
-// tests/fisher_fixture.cpp
+// Fisher-matrix regression fixture.
 //
-// A deliberately simple, self-contained Fisher-matrix regression fixture.
+// Hand-builds a small set of microlensing events with known parameters, synthesises their light
+// curves on representative Roman and Rubin cadences, runs the real FisherM and ErrorCal, and
+// prints the sigmas in a stable, diffable format. Runs in seconds, bypassing the Monte Carlo,
+// whose detection efficiency makes a Fisher-scored event cost tens of minutes.
 //
-// WHY THIS EXISTS
-// ---------------
-// Every numerical acceptance test in Phase C of JOINT_FIT_REFACTOR_PLAN.md has been throttled
-// by the live Monte Carlo's detection efficiency: the production binary needs thousands of star
-// draws (measured: 1 detected event per 886, 2600, and 10735 draws on three separate runs) and
-// tens of minutes to yield a single Fisher-scored event. That is far too slow to check that a
-// change to FisherM moved sigma in the expected direction, and far too few events to see a
-// distribution.
+// Reads NO data files (those are absent after a fresh clone): source magnitudes, blend fractions,
+// cadences and photometric errors are hardcoded representative values.
 //
-// This fixture bypasses the Monte Carlo entirely. It hand-builds a small set of microlensing
-// events with known parameters, synthesises their light curves on representative Roman and Rubin
-// cadences, runs the real FisherM and ErrorCal on them, and prints the resulting sigmas in a
-// stable, diffable format. It runs in seconds.
+// IS:     a regression harness -- run before and after a change to FisherM and diff the output.
+// IS NOT: a validation of absolute precision. The events are hand-picked and the error model is a
+//         flat stand-in for errlsstM / errRomanM.
 //
-// DELIBERATELY SELF-CONTAINED: this fixture reads NO data files. The Baseline/, CMD/, and
-// extinction inputs the production binary needs are gitignored and absent after a fresh clone,
-// so depending on them would make the test unrunnable for anyone but the original author.
-// Source magnitudes, blend fractions, cadences and photometric errors are therefore hardcoded
-// representative values, not draws from the real population.
-//
-// WHAT IT IS AND IS NOT
-// ---------------------
-// IS:     a regression harness. Run it before and after a change to FisherM; diff the output.
-//         Sigmas should move in the direction the change predicts, and nowhere else.
-// IS NOT: a validation of absolute precision forecasts. The events are hand-picked, not
-//         population-weighted, and the error model is a flat stand-in rather than errlsstM /
-//         errRomanM. Absolute sigma values here are indicative, not publishable.
-//
-// USAGE
-//   make fishertest && ./fishertest
-//
-// Note for whoever reads the git history: an earlier throwaway version of this idea (during
-// Step C1) produced wildly degenerate sigmas and was misdiagnosed at the time as a badly
-// conditioned fixture. It was not -- it was correctly reporting the Fisher accumulation bug
-// later fixed in commit d5c8867 (FisherM overwrote instead of summing over epochs, leaving a
-// rank-1 matrix). The fixture idea was sound; the code under test was broken.
+// Usage: make fishertest && ./fishertest   (modes: --scale S, --sweep, --eigen [S],
+//        --astro-variants, --sweep-astro)
 
 #include "common.h"
 #include "types.h"
@@ -61,10 +37,8 @@ constexpr double kLat = -1.0;  // Galactic latitude  [deg]
 // continuous), without needing the real visit lists.
 // ---------------------------------------------------------------------------------------------
 
-// Roman GBTDS: 6 high-cadence seasons of ~72 days, front- and back-loaded around a multi-year
-// mid-mission gap. Real cadence in F146 is ~12-15 min; sampled here at 4 h to keep the fixture
-// fast. That reduces the absolute information content but preserves the seasonal structure,
-// which is what the gap-filling science actually turns on.
+// Roman GBTDS: 6 high-cadence seasons of ~72 days around a multi-year mid-mission gap. The real
+// F146 cadence is ~12-15 min; sampled here at 4 h for speed, preserving the seasonal structure.
 constexpr double kRomanSeasonStarts[] = {0.0, 180.0, 1600.0, 1780.0, 3300.0, 3480.0};
 constexpr double kRomanSeasonLength   = 72.0;      // days
 constexpr double kRomanCadence        = 4.0 / 24.0; // days (4 hours)
@@ -79,8 +53,8 @@ constexpr int    kRubinYears          = 10;
 constexpr double kErrMagRubin  = 0.020; // [mag]
 constexpr double kErrMagRoman  = 0.005; // [mag] -- space-based, no atmosphere
 constexpr double kErrAstRubin  = 0.500; // [mas]
-// NOTE: Roman has no real astrometric error model yet (see OPEN_ITEMS.md). This is a
-// placeholder standing in for one, consistent with what src/sim/characterize.cpp currently does.
+// NOTE: Roman has no real astrometric error model yet; this is a placeholder consistent with
+// src/sim/characterize.cpp.
 constexpr double kErrAstRoman  = 0.050; // [mas]
 
 // ---------------------------------------------------------------------------------------------
@@ -96,11 +70,8 @@ struct FixtureEvent {
     double piE;   // microlensing parallax []
 };
 
-// The t0 values carry a deliberate +0.37 d offset so that no epoch of either cadence grid
-// lands exactly on t0. That is not cosmetic: at timh == t0 the mus1/mus2 terms in the modelled
-// source position vanish identically, perturbing them changes nothing, and FisherM's
-// astrometric CHECK aborts the program. Real t0 is drawn from a continuous distribution so the
-// coincidence is measure-zero there, but a regular test grid hits it easily.
+// The t0 values carry a +0.37 d offset so no epoch of either cadence grid lands exactly on t0:
+// there the mus1/mus2 terms vanish identically and FisherM's astrometric CHECK aborts.
 const FixtureEvent kEvents[] = {
     {"short_inseason",  5.0,   36.37, 0.30, 0.30},
     {"short_ingap",     5.0,  900.37, 0.30, 0.30},
@@ -128,8 +99,7 @@ constexpr double kMus2      = -0.005;
 constexpr double kMul1      = +0.003; // lens proper motion [mas/day]
 constexpr double kMul2      = +0.002;
 
-// Fill in the geometry and stellar quantities that lightcurve() and ErrorCal() read but that
-// are not what this fixture varies.
+// Fill in the geometry and stellar quantities that lightcurve() and ErrorCal() read.
 void setupStatic(source& s, lens& l)
 {
     s.lon = kLon;
@@ -165,17 +135,12 @@ double modelMag(const source& s, int tt, double Astar)
     return s.mbs[tt] - 2.5 * std::log10(Astar * s.fb[tt] + 1.0 - s.fb[tt]);
 }
 
-// Append one epoch to the light-curve buffers. The stored magnitude and astrometric position
-// are the NOISELESS model values at the true parameters -- which is exactly what a Fisher
-// forecast wants. FisherM differences the perturbed model against these, and for the one-sided
-// stencil (sig2, used for tE and piE) the stored value does not cancel, so it must be the true
-// model rather than a noise realisation.
+// Append one epoch to the light-curve buffers. The stored magnitude and astrometric position are
+// the NOISELESS model values at the true parameters, which is what a Fisher forecast wants (and
+// what the one-sided stencils difference against).
 void appendEpoch(source& s, lens& l, astromet& as, double tim, int tele, int& ndw, int season = -1)
 {
-    // Step H1 gave lightcurve() a telescope argument: Roman observes from L2, so its
-    // observer displacement differs from Rubin's by the projected Earth-L2 separation.
-    // The fixture already knew which telescope each epoch belonged to; it just was not
-    // passing it on, and had not compiled since that signature changed.
+    // Roman observes from L2, so its observer displacement differs from Rubin's.
     lightcurve(s, l, as, tim, tele);
     s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
 
@@ -186,30 +151,17 @@ void appendEpoch(source& s, lens& l, astromet& as, double tim, int tele, int& nd
     l.souy[ndw] = s.pos2c;
     l.erra[ndw] = (tele == 0) ? kErrAstRubin : kErrAstRoman;
     l.tele[ndw] = tele;
-    // Season and roll of a Roman exposure (Deviation 71). The fixture's seasons alternate
-    // spring / autumn from the first, as the real schedule does.
+    // Season and roll of a Roman exposure; seasons alternate spring / autumn from the first.
     l.rseas[ndw] = (tele == 1) ? season : -1;
     l.rroll[ndw] = (tele == 1) ? season % 2 : -1;
     ++ndw;
 }
 
-// Half-width of the fit window around t0, in days. Epochs outside it are dropped.
-//
-// This is partly physical and partly defensive.
-//
-// Physical: a real light-curve fit uses a window scaled to the event duration. Epochs at
-// |t - t0| >> tE carry only baseline information, and no analyst fits a 5-day event using ten
-// years of data either side of it.
-//
-// Defensive: the astrometric branch of FisherM asserts
-//     CHECK(!(s.pos1c == l.soux[i] && s.pos2c == l.souy[i]));
-// which fires when a parameter perturbation changes the modelled source position by less than
-// a double can represent. That happens for epochs enormously far from peak, where the
-// astrometric deflection def1c/def2c has decayed as 1/u^2 into the floating-point noise floor,
-// so a piE perturbation returns bit-identical coordinates. Without this window, the short-tE
-// events below trip that assert and abort the fixture. This is a latent hazard in the
-// production code too (see OPEN_ITEMS.md); the window sidesteps it rather than papering over
-// it, and the fixture is deliberately left able to surface it again if the window is widened.
+// Half-width of the fit window around t0, in days; epochs outside it are dropped. A real fit uses
+// a window scaled to the event duration. The window also avoids FisherM's astrometric
+// CHECK(!(s.pos1c == l.soux[i] && s.pos2c == l.souy[i])), which fires for epochs so far from peak
+// that the deflection (decaying as 1/u^2) is below double precision and a piE perturbation returns
+// bit-identical coordinates.
 double fitHalfWindow(double tE)
 {
     double w = 20.0 * tE;
@@ -258,11 +210,8 @@ int buildLightCurve(source& s, lens& l, astromet& as, int& nL, int& nR)
 
 namespace {
 
-// Recompute F[SRUBIN] + F[SROMAN] and compare against F[SJOINT] element by element.
-//
-// This is the sharpest available check that the partitioning is correct. Fisher information is
-// a sum of independent per-epoch terms, and every epoch feeds the joint matrix and exactly one
-// single-survey matrix, so the identity is exact up to floating-point summation order.
+// Recompute F[SRUBIN] + F[SROMAN] and compare against F[SJOINT] element by element; exact up to
+// floating-point summation order, since each epoch feeds the joint and exactly one survey matrix.
 bool checkAdditivity(const covarian& co, const char* evName, int dim, bool photometric)
 {
     bool ok = true;
@@ -292,22 +241,13 @@ bool checkAdditivity(const covarian& co, const char* evName, int dim, bool photo
 }
 
 // The joint forecast can never be worse than a single-survey forecast, for EVERY parameter that
-// survey constrains -- including its own telescope-specific flux parameters.
-//
-// This is a theorem, not an expectation, and it is worth spelling out because an earlier version
-// of this comment got it wrong. Partition the joint parameters into A (the single survey's active
-// set) and B (the other survey's flux parameters). The other survey contributes nothing to B, so
-// by the Schur complement the joint fit's effective information on A is
-//
-//     S = F_thisSurvey[A,A] + ( F_other[A,A] - F_other[A,B] F_other[B,B]^-1 F_other[B,A] )
-//
-// and the bracketed term is the Schur complement of the other survey's own information matrix,
-// which is positive semi-definite. Hence S >= F_thisSurvey[A,A] in the Loewner order, so every
-// diagonal element of the inverse can only shrink: sigma_joint <= sigma_single, always.
-//
-// A violation therefore means a bug, never a physical effect. It caught exactly that once: fb0
-// was still perturbing s.fb[tt] rather than s.fb[0], so on Roman epochs parameters 2 and 7 both
-// moved Roman's blend fraction and the joint matrix carried a duplicated direction.
+// survey constrains. Partition the joint parameters into A (the single survey's active set) and B
+// (the other survey's flux parameters). The other survey contributes nothing to B, so the joint
+// information on A is
+//     S = F_this[A,A] + ( F_other[A,A] - F_other[A,B] F_other[B,B]^-1 F_other[B,A] ),
+// and the bracket is a Schur complement of a PSD matrix, hence PSD. So S >= F_this[A,A] in the
+// Loewner order and sigma_joint <= sigma_single. A violation is a bug, never physics (it once
+// caught fb0 perturbing s.fb[tt] instead of s.fb[0]).
 bool checkJointNoWorse(const covarian& co, const char* evName,
                        const char* const* pnames, int dim, bool photometric)
 {
@@ -319,8 +259,7 @@ bool checkJointNoWorse(const covarian& co, const char* evName,
         for (int k = 0; k < dim; ++k) {
             const double sJoint = photometric ? co.Era[SJOINT][k] : co.Erb[SJOINT][k];
             const double sPart  = photometric ? co.Era[q][k]      : co.Erb[q][k];
-            // A negative sigma means the parameter is not in this partition's active subset
-            // (Rubin's matrix says nothing about Roman's flux scale). Nothing to compare.
+            // A negative sigma means the parameter is outside this partition's active subset.
             if (sJoint < 0.0 || sPart < 0.0) continue;
             // 1e-9 relative slack absorbs floating-point noise in the inversion.
             if (sJoint > sPart * (1.0 + 1e-9)) {
@@ -334,19 +273,10 @@ bool checkJointNoWorse(const covarian& co, const char* evName,
     return ok;
 }
 
-// Step C1's acceptance criterion, checked on every event and every survey partition.
-//
-// The pre-C1 parameter set {u0, tE, fb, piE, xi} is exactly the leading 5x5 submatrix of the
-// current 6-parameter information matrix -- dropping t0's row and column is the same thing as
-// asserting perfect knowledge of when the peak occurred. So both numbers come from the SAME
-// accumulated information on the SAME event: a perfectly paired comparison, no second run and
-// no rebuild.
-//
-// Cramer-Rao: marginalizing over a genuinely free parameter can only loosen the bound on the
-// others. sigma(tE) with t0 free must therefore be >= sigma(tE) with t0 held fixed. A decrease
-// anywhere means the extra parameter is somehow adding information, which is impossible.
-//
-// This works only because invert_matrix operates on a scratch copy and leaves inputA intact.
+// Adding t0 as a free parameter can only loosen the bound on the others (Cramer-Rao). The
+// {u0, tE, fb, piE, xi} set is the leading submatrix of the information matrix, so both sigmas
+// come from the same accumulated information on the same event. sigma(tE) with t0 free must be
+// >= sigma(tE) with t0 fixed. Needs invert_matrix to operate on a scratch copy.
 bool checkT0Marginalization(const covarian& co, const char* evName, bool verbose)
 {
     if (Nx < 6) return true;  // nothing to compare against
@@ -355,8 +285,7 @@ bool checkT0Marginalization(const covarian& co, const char* evName, bool verbose
     for (int q = 0; q < NSURV; ++q) {
         if (!co.okA[q]) continue;
 
-        // Pre-C1 parameter set {u0, tE, fb, piE, xi} = indices 0-4, intersected with this
-        // partition's active subset (Roman's matrix has no fb0 at index 2).
+        // {u0, tE, fb, piE, xi} = indices 0-4, intersected with this partition's active subset.
         std::vector<int> sub;
         for (int k : activePhotParams(q, co.nepochA[SRUBIN], co.nepochA[SROMAN])) if (k <= 4) sub.push_back(k);
         const int nsub = static_cast<int>(sub.size());
@@ -399,16 +328,9 @@ bool checkT0Marginalization(const covarian& co, const char* evName, bool verbose
     return ok;
 }
 
-// The direct acceptance test for Step C4: F * F^-1 must be the identity.
-//
-// This validates the entire normalize / invert / rescale round trip in one shot -- if the
-// diagonal scaling were applied inconsistently, or undone in the wrong order, the product would
-// not come back as I even though every individual step looked reasonable. It only works because
-// invert_matrix operates on scratch copies and leaves the accumulated information matrix intact.
-//
-// Tolerance is scaled by the condition number: losing about log10(cond) digits is expected and
-// unavoidable, so a fixed tolerance would either be vacuous for well-conditioned matrices or
-// spuriously fail for legitimately degenerate ones.
+// F * F^-1 must be the identity, validating the normalize / invert / rescale round trip.
+// Needs invert_matrix to leave the accumulated information matrix intact. The tolerance scales with
+// the condition number, since about log10(cond) digits are lost.
 bool checkInverseRoundTrip(const covarian& co, const char* evName, int dim, bool photometric)
 {
     bool ok = true;
@@ -428,12 +350,8 @@ bool checkInverseRoundTrip(const covarian& co, const char* evName, int dim, bool
         (void)dim;
         const int n = static_cast<int>(act.size());
 
-        // Measure the residual in the NORMALIZED basis, which is the one the inversion actually
-        // worked in. Evaluating F * F^-1 in raw units means multiplying entries that span many
-        // orders of magnitude, and the cancellation in that product swamps the answer for reasons
-        // that have nothing to do with whether the inverse is correct. With
-        // s_i = 1/sqrt(F_ii), Ftilde = D F D and Ftilde^-1 = D^-1 F^-1 D^-1, every term of the
-        // product is O(1) and the residual measures what we actually care about.
+        // Measure the residual in the NORMALIZED basis the inversion worked in, where every term
+        // of the product is O(1): Ftilde = D F D, Ftilde^-1 = D^-1 F^-1 D^-1, s_i = 1/sqrt(F_ii).
         std::vector<double> s(n);
         for (int a = 0; a < n; ++a) {
             const double d = gsl_matrix_get(F, act[a], act[a]);
@@ -454,7 +372,7 @@ bool checkInverseRoundTrip(const covarian& co, const char* evName, int dim, bool
                 if (err > worst) worst = err;
             }
         }
-        // Losing roughly log10(cond) digits from a ~1e-16 base is expected and unavoidable.
+        // Losing roughly log10(cond) digits from a ~1e-16 base is expected.
         const double tol = std::max(1e-9, 1e-14 * (cond > 0.0 ? cond : 1.0));
         if (worst > tol) {
             const char* qn = (q == SJOINT) ? "joint" : (q == SRUBIN ? "rubin" : "roman");
@@ -486,19 +404,12 @@ void printRow(const char* label, int nep, int ok, double cond,
 } // namespace
 
 // ---------------------------------------------------------------------------------------------
-// Step C3: finite-difference step-size convergence sweep.
+// Finite-difference step-size convergence sweep.
 //
-// For each event, each photometric parameter and each survey partition, vary that parameter's
-// step over about two decades with everything else at default, and record the recovered sigma.
-//
-// What to expect. Finite-difference error is U-shaped in the step h: truncation error grows with
-// h (the model is not linear over the step), round-off error grows as 1/h (subtracting two nearly
-// equal model values and dividing by a small number). The flat bottom is the plateau, and a
-// trustworthy step sits in the middle of it.
-//
-// mbs (indices 6 and 8) is the control: the model magnitude is exactly linear in baseline
-// magnitude, so its finite difference is exact at any step and its curve must be perfectly flat.
-// Structure there means the sweep itself is broken, not the physics.
+// For each event, photometric parameter and survey partition, vary that parameter's step with
+// everything else at default and record sigma. Truncation error grows with the step and round-off
+// as 1/step, so a trustworthy step sits on the flat bottom of the U. mbs (indices 6 and 8) is the
+// control: the model is exactly linear in it, so its curve must be perfectly flat.
 int runSweep()
 {
     auto s  = std::make_unique<source>();
@@ -506,21 +417,10 @@ int runSweep()
     auto as = std::make_unique<astromet>();
     auto co = std::make_unique<covarian>();
 
-    // Twelve decades, geometric, centred so that BOTH failure modes are visible either side of
-    // the production step (scale 1, after Step C3's kFDStepScale retune).
-    //
-    // The grid must span both walls of the U or the plot proves nothing -- a curve that is flat
-    // everywhere you looked only means you did not look far enough. That was the original
-    // mistake: the first sweep ran 0.1-10 around the LEGACY steps, saw no plateau anywhere, and
-    // it took widening the window to discover the legacy steps were ~1e4 times too large and the
-    // whole window sat on the truncation branch.
-    //
-    //   scale << 1  -- round-off. The step drives the model-magnitude difference down toward
-    //                  double precision; subtracting two values agreeing to ~1e-9 leaves few
-    //                  significant digits, amplified by the 1/h division. sigma collapses.
-    //   scale >> 1  -- truncation. The secant stops matching the tangent; the derivative picks
-    //                  up curvature and the Fisher matrix gains information that is not there.
-    //                  scale 1e4 recovers the legacy steps this project used before Step C3.
+    // Thirteen scales, geometric, spanning both walls of the U around the production step
+    // (scale 1): round-off for scale << 1 (the difference of nearly equal model magnitudes is
+    // amplified by 1/h) and truncation for scale >> 1 (the derivative picks up curvature and the
+    // Fisher matrix gains spurious information). Scale 1e4 recovers the legacy steps.
     static const double kScales[] = {1.0e-8, 1.0e-7, 1.0e-6, 1.0e-5,
                                      1.0e-4, 1.0e-3, 1.0e-2, 1.0e-1,
                                      1.0,
@@ -566,12 +466,9 @@ int runSweep()
 }
 
 // ---------------------------------------------------------------------------------------------
-// Diagnostic: eigen-structure of the NORMALIZED photometric Fisher matrix.
-//
-// The condition number invert_matrix reports is lambda_max/lambda_min of exactly this matrix.
-// This mode prints the whole spectrum plus the eigenvector belonging to lambda_min, i.e. the
-// parameter combination the data constrains least. That vector is the physical content behind
-// a large condition number: it names WHICH degeneracy the event suffers from.
+// Diagnostic: eigen-structure of the NORMALIZED photometric Fisher matrix, whose
+// lambda_max/lambda_min is the condition number invert_matrix reports. Prints the spectrum and the
+// eigenvector of lambda_min, i.e. WHICH parameter combination is degenerate.
 int runEigen(double scale)
 {
     auto s  = std::make_unique<source>();
@@ -596,8 +493,7 @@ int runEigen(double scale)
         const int dim = int(act.size());
         gsl_matrix* F = co->inputA[SJOINT].get();
 
-        // D F D with D = diag(1/sqrt(F_ii)): unit diagonal, so every remaining off-diagonal
-        // entry is a correlation coefficient and the units cancel out entirely.
+        // D F D with D = diag(1/sqrt(F_ii)): unit diagonal, so off-diagonals are correlations.
         std::vector<double> sc(dim);
         bool bad = false;
         for (int i = 0; i < dim; ++i) {
@@ -639,21 +535,13 @@ int runEigen(double scale)
 }
 
 // ---------------------------------------------------------------------------------------------
-// Sentinel discipline in ErrorCal (Step D1).
+// Sentinel discipline in ErrorCal.
 //
-// Era[]/Erb[] use -1.0 to mean "this partition could not measure this parameter". That is a
-// SENTINEL, not a small error bar, and every consumer has to test for it before doing
-// arithmetic. ErrorCal did not: it took the better of the two independent parallax routes with
-// MIN(photometric, astrometric), which prefers -1 over any real sigma the moment the astrometric
-// matrix is singular. The result was a negative sigma(piE) propagating into the mass and distance
-// -- see DEVIATIONS entries 8 and 19.3.
-//
-// The live stub run that verified Step D1 did not contain a single event in that state, so this
-// exercises it directly instead of waiting for one to turn up. Each case sets the partition flags
-// and sigmas by hand and checks what ErrorCal makes of them.
-//
-// The discriminating assertion is case 2: with photometry good and astrometry singular, resu[3]
-// must come out POSITIVE. Under the old MIN it was negative, every time.
+// Era[]/Erb[] use -1.0 for "this partition could not measure this parameter"; every consumer must
+// test for it before arithmetic. ErrorCal once took MIN(photometric, astrometric) piE, which
+// prefers -1 over any real sigma when the astrometric matrix is singular. Each case sets the
+// partition flags and sigmas by hand and checks what ErrorCal makes of them. The discriminating
+// case: photometry good and astrometry singular must give a POSITIVE resu[3].
 // ---------------------------------------------------------------------------------------------
 bool checkSentinelDiscipline()
 {
@@ -674,7 +562,7 @@ bool checkSentinelDiscipline()
         {"neither available",          0, 0,   -1.0,  -1.0, -1.0, false, false},
     };
 
-    std::cout << "\n# --- ErrorCal sentinel discipline (Step D1) ---\n";
+    std::cout << "\n# --- ErrorCal sentinel discipline ---\n";
     std::cout << "# " << std::left << std::setw(24) << "case"
               << std::setw(12) << "resu[3]" << std::setw(12) << "resu[9]"
               << std::setw(12) << "relMl[J]" << "\n";
@@ -686,11 +574,8 @@ bool checkSentinelDiscipline()
         setupStatic(*s, *l);
         l->u0 = 0.30; l->tE = 40.0; l->piE = 0.12;
 
-        // ErrorCal does NOT read Era/Erb -- it RECOMPUTES them from the inverse covariance
-        // matrices, as sqrt of the diagonal. So the inverses are what has to be set up; writing
-        // Era/Erb directly here would be silently overwritten. Diagonal matrices also make the
-        // tE-xi correlation term ErrorCal forms from the (1,4) element exactly zero, which keeps
-        // everything asserted below independent of it.
+        // ErrorCal RECOMPUTES Era/Erb as sqrt of the inverse-matrix diagonals, so the inverses
+        // are what must be set up. Diagonal matrices make the tE-xi correlation term exactly zero.
         for (int q = 0; q < NSURV; ++q) {
             co->okA[q] = c.okA;
             co->okB[q] = c.okB;
@@ -716,8 +601,7 @@ bool checkSentinelDiscipline()
                   << std::setw(12) << co->resu[9]
                   << std::setw(12) << co->relMl[SJOINT] << "\n";
 
-        // A sigma is either a positive measurement or exactly the -1 sentinel. Never anything
-        // in between, and never a negative number that is not the sentinel.
+        // A sigma is either a positive measurement or exactly the -1 sentinel.
         if (co->resu[3] < 0.0 && co->resu[3] != -1.0) {
             std::cerr << "FAIL [sentinel/" << c.name << "] resu[3] = " << co->resu[3]
                       << " -- a negative sigma that is not the -1 sentinel. This is the"
@@ -740,8 +624,7 @@ bool checkSentinelDiscipline()
                       << " did not take the better of the two parallax routes\n";
             ++fails;
         }
-        // The mass needs BOTH ingredients. Missing either means -1, never a number built
-        // from a sentinel.
+        // The mass needs BOTH ingredients; missing either means -1.
         const bool massOK = (co->resu[9] > 0.0);
         if (massOK != c.wantMass) {
             std::cerr << "FAIL [sentinel/" << c.name << "] resu[9] = " << co->resu[9]
@@ -749,7 +632,7 @@ bool checkSentinelDiscipline()
                       << "\n";
             ++fails;
         }
-        // relMl is the same physical quantity as resu[9] computed independently; they must agree.
+        // relMl is the same quantity as resu[9] computed independently; they must agree.
         if (c.wantMass && std::fabs(co->relMl[SJOINT] - co->resu[9]) > 1e-12) {
             std::cerr << "FAIL [sentinel/" << c.name << "] relMl[SJOINT] = "
                       << co->relMl[SJOINT] << " disagrees with resu[9] = " << co->resu[9] << "\n";
@@ -765,23 +648,17 @@ bool checkSentinelDiscipline()
 }
 
 // ---------------------------------------------------------------------------------------------
-// Roman season clustering (Step D1).
+// Roman season clustering.
 //
-// buildRomanSchedule recovers the observing seasons from the epoch times themselves rather than
-// restating the generator's constants, so it depends on one assumption: that within-season epoch
-// spacing and between-season gaps are cleanly separated by SEASON_GAP_MIN_DAYS. main() guards
-// that assumption and refuses to run when it fails, because dt_edge and t0zone would still look
-// entirely reasonable while meaning nothing.
-//
-// Both halves are exercised here on SYNTHETIC schedules, so this needs no data files: a healthy
-// one that must cluster correctly, and a pathological one whose in-season cadence exceeds the
-// threshold and which the guard must catch.
+// buildRomanSchedule recovers the observing seasons from the epoch times, assuming within-season
+// spacing and between-season gaps are cleanly separated by SEASON_GAP_MIN_DAYS; main() guards that
+// assumption. Both halves are exercised on SYNTHETIC schedules (no data files): a healthy one that
+// must cluster correctly, and a pathological one the guard must catch.
 // ---------------------------------------------------------------------------------------------
 namespace {
 // Fill ro.tim with nSeasons seasons of length seasonLen sampled every cadence days, starting at
-// day 730 and separated by gap days. The vector is longer than the synthetic schedule needs, so
-// the epochs repeat cyclically -- buildRomanSchedule de-duplicates, exactly as it does for the
-// real file where every field repeats every epoch.
+// day 730 and separated by gap days. The epochs repeat cyclically; buildRomanSchedule
+// de-duplicates, as it does for the real file.
 void fillSynthetic(roman& ro, int nSeasons, double seasonLen, double cadence, double gap)
 {
     std::vector<double> t;
@@ -797,9 +674,9 @@ void fillSynthetic(roman& ro, int nSeasons, double seasonLen, double cadence, do
 bool checkSeasonClustering()
 {
     int fails = 0;
-    std::cout << "\n# --- Roman season clustering (Step D1) ---\n";
+    std::cout << "\n# --- Roman season clustering ---\n";
 
-    // Guard predicate, kept identical in form to the one in buildRomanSeasons (src/run/inputs.cpp).
+    // Guard predicate, same form as in buildRomanSeasons (src/run/inputs.cpp).
     auto guardTrips = [](const RomanSchedule& sc) {
         return sc.seasons.size() < 2
             or sc.maxInSeasonSpacing >= SEASON_GAP_MIN_DAYS
@@ -835,8 +712,8 @@ bool checkSeasonClustering()
                           << "], season 1 starts " << sc.seasons[1].first << "\n";
                 ++fails;
             }
-            // dt_edge sign convention: negative inside a season, positive outside, and
-            // off-mission must be distinguishable from a mid-mission gap.
+            // dt_edge sign convention: negative in-season, positive outside; off-mission is
+            // distinguishable from a mid-mission gap.
             struct P { double t0; int zone; bool negative; };
             const P probes[] = {
                 {700.0,  T0_OFF_MISSION, false},  //before the first epoch
@@ -867,13 +744,9 @@ bool checkSeasonClustering()
         }
     }
 
-    {   // Pathological: in-season cadence of 25 d exceeds SEASON_GAP_MIN_DAYS, so every epoch
-        // looks like a season boundary and each "season" ends up holding exactly one epoch.
-        //
-        // This case is why minSeasonLength exists. The first two margins both look HEALTHY here:
-        // maxInSeasonSpacing stays 0 (no spacing was ever classified as in-season, so it is never
-        // updated) and minSeasonGap is 25 d, comfortably above the threshold. Only the zero-length
-        // seasons give it away. Writing this test is what found that hole in the guard.
+    {   // Pathological: an in-season cadence of 25 d exceeds SEASON_GAP_MIN_DAYS, so every epoch
+        // looks like a season boundary and each "season" holds one epoch. maxInSeasonSpacing stays
+        // 0 and minSeasonGap is 25 d, so only the zero-length seasons (minSeasonLength) trip the guard.
         auto ro = std::make_unique<roman>();
         fillSynthetic(*ro, 3, 70.0, 25.0, 110.0);
         const RomanSchedule sc = buildRomanSchedule(*ro);
@@ -894,21 +767,17 @@ bool checkSeasonClustering()
 }
 
 // ---------------------------------------------------------------------------------------------
-// Step 3c (Deviation 71): the astrometric noise variants W / N / P (AST_SIGC in config/parameters.h).
+// Astrometric noise variants W / N / P (AST_SIGC in config/parameters.h).
 //
 // Prints, per event and partition, sigma(tetE), the astrometric sigma(piE) and relMl under each
-// variant, and ASSERTS the ordering sigma_W <= sigma_N <= sigma_P on tetE. It is a theorem, not a
-// preference: N adds nuisance offsets (one per roll) and noise correlated within a day to W, and P
-// adds more of both (one offset per season, a larger sigma_c), and neither extra parameters nor
-// positively correlated noise can add information. A violation is a bug in the bookkeeping.
+// variant, and ASSERTS sigma_W <= sigma_N <= sigma_P on tetE. N adds roll offsets and noise
+// correlated within a day to W, and P adds season offsets and a larger sigma_c; neither extra
+// parameters nor positively correlated noise can add information, so a violation is a bug.
 // ---------------------------------------------------------------------------------------------
-// Step M3 (Deviation 75): step-size sweep of the ASTROMETRIC derivatives, the counterpart of
-// --sweep for the photometric ones. One parameter's step is scaled at a time (others at 1); prints
-// CSV of sigma (variant W) per event, partition, parameter and scale.
-// Deviation 76: one stray epoch from a telescope must not make the joint photometric matrix
-// singular. Take an event with 433 Roman epochs, keep exactly ONE Rubin epoch, and require that
-// the joint matrix inverts and that sigma_joint <= sigma_Roman for tE (it was rejected at
-// condition 1.5e16 on the bulge event with ndw_L = 1, whose joint mass error came out 8.3x Roman's).
+
+// One stray epoch from a telescope must not make the joint photometric matrix singular. Take an
+// event with many Roman epochs, keep exactly ONE Rubin epoch, and require that the joint matrix
+// inverts and that sigma_joint <= sigma_Roman for tE.
 bool checkFewEpochTelescope()
 {
     auto s  = std::make_unique<source>();
@@ -936,12 +805,14 @@ bool checkFewEpochTelescope()
     ErrorCal(*co, *l, *s);
     const bool ok = co->okA[SJOINT] == 1 && co->okA[SROMAN] == 1
                  && co->Era[SJOINT][1] <= co->Era[SROMAN][1] * (1.0 + 1e-9);
-    std::cout << "# --- one stray Rubin epoch (Deviation 76) ---\n# okA_J " << co->okA[SJOINT]
+    std::cout << "# --- one stray Rubin epoch ---\n# okA_J " << co->okA[SJOINT]
               << "  okA_R " << co->okA[SROMAN] << "  sigma_tE J/R " << co->Era[SJOINT][1] << " / "
               << co->Era[SROMAN][1] << (ok ? "  -> ok\n" : "  -> FAIL\n");
     return ok;
 }
 
+// Step-size sweep of the ASTROMETRIC derivatives, the counterpart of --sweep. One parameter's step
+// is scaled at a time; prints CSV of sigma (variant W) per event, partition, parameter and scale.
 int runSweepAstro()
 {
     auto s  = std::make_unique<source>();
@@ -1036,14 +907,9 @@ int main(int argc, char** argv)
     auto as = std::make_unique<astromet>();
     auto co = std::make_unique<covarian>();
 
-    // --scale S: multiply EVERY finite-difference step by S before running the normal fixture.
-    //
-    // The sweep varies one parameter's step at a time, which is right for locating each
-    // parameter's plateau but cannot answer the question that actually matters: does the
-    // headline joint-vs-single-survey comparison survive moving all the steps at once? sigma_p
-    // comes from an inverse, so it depends on every row of the matrix, not just row p. This
-    // mode moves them together so the full table -- including the joint/best-single sigma(tE)
-    // ratio the thesis claim rests on -- can be diffed between step choices:
+    // --scale S: multiply EVERY finite-difference step by S before running the normal fixture, to
+    // check that the joint-vs-single-survey comparison survives moving all the steps at once
+    // (the sweep moves one at a time):
     //     ./fishertest > prod.txt && ./fishertest --scale 1e-3 > tuned.txt && diff prod.txt tuned.txt
     double allScale = 1.0;
     if (argc > 2 && std::string(argv[1]) == "--scale") {
@@ -1059,18 +925,17 @@ int main(int argc, char** argv)
 
     int failures = 0;
 
-    // Data-free unit checks of the Step D1 logic. Run first so a failure here is seen before
-    // the event table, which is long.
+    // Data-free unit checks, run first so a failure is seen before the long event table.
     if (!checkSentinelDiscipline()) ++failures;
     if (!checkSeasonClustering())   ++failures;
     if (!checkFewEpochTelescope())  ++failures;
 
     std::cout << "# Fisher-matrix fixture -- synthetic events, no data files required\n"
               << "# Nx=" << Nx << " (photometric)  Ny=" << Ny << " (astrometric)\n"
-              << "# One block per event, one row per survey partition (Step C5).\n"
+              << "# One block per event, one row per survey partition.\n"
               << "# ok=1 usable inverse, ok=0 not characterizable (sigmas print as -1).\n"
               << "# Asserted: F[joint] == F[rubin] + F[roman] exactly, sigma_joint <= both, and\n"
-              << "# sigma(tE) never decreases when t0 is marginalized over (Step C1 acceptance).\n";
+              << "# sigma(tE) never decreases when t0 is marginalized over.\n";
 
     for (const auto& ev : kEvents) {
         setupStatic(*s, *l);
@@ -1082,8 +947,8 @@ int main(int argc, char** argv)
         int nL = 0, nR = 0;
         const int ndw = buildLightCurve(*s, *l, *as, nL, nR);
 
-        // buildLightCurve left lightcurve() evaluated at the final epoch; FisherM perturbs from
-        // whatever the structs currently hold, so restore the true parameter point first.
+        // buildLightCurve left lightcurve() evaluated at the final epoch; restore the true
+        // parameter point, since FisherM perturbs from whatever the structs hold.
         l->tE  = ev.tE;
         l->t0  = ev.t0;
         l->u0  = ev.u0;
@@ -1092,8 +957,8 @@ int main(int argc, char** argv)
         s->fb[0] = kFbRubin;
         s->fb[1] = kFbRoman;
 
-        // See OPEN_ITEMS.md: an epoch exactly at t0 makes the mus1/mus2 perturbations no-ops and
-        // trips FisherM's astrometric CHECK. The t0 values are offset off-grid to avoid it.
+        // An epoch exactly at t0 makes the mus1/mus2 perturbations no-ops and trips FisherM's
+        // astrometric CHECK; the t0 values are offset off-grid to avoid it.
         for (int i = 0; i < ndw; ++i) {
             if (l->timn[i] == l->t0) {
                 std::cerr << "fixture error: event '" << ev.name << "' has an epoch exactly at "
@@ -1122,7 +987,7 @@ int main(int argc, char** argv)
                                          "roman-only-alone", "joint-only-RESCUE"};
             const int sc = synergyClass(*co);
             std::cout << "#   synergy: " << kSyn[sc];
-            // Quantify what the joint fit bought over the best either survey managed alone.
+            // What the joint fit bought over the best either survey managed alone.
             double best = -1.0;
             if (co->okA[SRUBIN]) best = co->Era[SRUBIN][1];
             if (co->okA[SROMAN] && (best < 0.0 || co->Era[SROMAN][1] < best))
@@ -1153,9 +1018,8 @@ int main(int argc, char** argv)
                           << " has bad condition number " << co->condA[q] << "\n";
                 ++failures;
             }
-            // A rejected partition must not carry a condition number at all. Without this, a
-            // stale value from the previous event survives and looks like a real measurement.
-            // Parameters outside a partition's active subset must never carry a number.
+            // A rejected partition must not carry a condition number (a stale value from the
+            // previous event would look real); inactive parameters must not carry a sigma.
             if (co->okA[q]) {
                 const auto act = activePhotParams(q, co->nepochA[SRUBIN], co->nepochA[SROMAN]);
                 for (int k = 0; k < Nx; ++k) {
@@ -1175,7 +1039,7 @@ int main(int argc, char** argv)
             }
         }
 
-        // A partition with no epochs must be flagged not-characterizable, never given numbers.
+        // A partition with no epochs must be not-characterizable.
         if (nR == 0 && co->okA[SROMAN] != 0) {
             std::cerr << "FAIL [" << ev.name << "] Roman has zero epochs but okA[SROMAN]="
                       << co->okA[SROMAN] << "; a partition with no data must not be usable\n";

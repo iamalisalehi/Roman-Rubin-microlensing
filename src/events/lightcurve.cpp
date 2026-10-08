@@ -1,22 +1,11 @@
 // Light curve and astrometric track of one event at one epoch, and the observed-peak finder.
 #include "events/lightcurve.h"
 
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
-//                                                                    //
-//                         Light curves and Astrometry                //
-//                                                                    //
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
 // tele: which observatory is asking -- 0 = Rubin (on Earth), 1 = Roman (at Sun-Earth L2).
-//
-// Step H1. Before this, the function had no telescope argument and every epoch, from either
-// observatory, was given Earth's position. Roman was simulated at the centre of the Earth and
-// the ~0.01 AU Earth-L2 baseline contributed nothing to any light curve or any Fisher matrix
-// (DEVIATIONS.md 27). `tele` is what makes the two observatories different places.
 void lightcurve(source & s, lens & l, astromet & as, double timh, int tele)
 {
     double dvex, dvey, Ve_x, tt;
-    double abs1 = 0.0, abs2 = 0.0; //undifferenced projection at t = timh -- see below
+    double abs1 = 0.0, abs2 = 0.0; //undifferenced projection at t = timh
     double pis = double(1.0/s.Ds); //[mas] source parallax
     double pil = double(1.0/l.Dl); //[mas] lens parallax
     double int1 = 0.0, int2 = 0.0;
@@ -33,44 +22,22 @@ void lightcurve(source & s, lens & l, astromet & as, double timh, int tele)
         as.Ve_n2 = -std::sin(s.FI) * Ve_x + std::cos(s.FI) * std::sin(tetp) * dvex;
 
         if(ig == 0) { int1  = as.Ve_n1; int2  = as.Ve_n2;
-                      abs1  = as.Ve_n1; abs2  = as.Ve_n2; } //kept UNdifferenced -- see below
+                      abs1  = as.Ve_n1; abs2  = as.Ve_n2; } //kept UNdifferenced
         if(ig == 1) { int1 -= as.Ve_n1; int2 -= as.Ve_n2; }
     }
 
-    // ------------------------------------------------------------------------------------
-    // Step H1: the satellite-parallax term, and the gauge trap it has to survive.
+    // Satellite-parallax term. The loop above computes ue(t) = P(X_E(t)) - P(X_E(0)): the observer's
+    // projected displacement measured from Earth's position at t = 0, which fixes the meaning of u0
+    // and t0. Roman sits on the Sun-Earth line, X_R(t) = (1 + f) X_E(t) with f = L2_OFFSET_AU ~ 0.01,
+    // and P is linear in (dvex, dvey), so with the same single origin for both observers
     //
-    // The loop above computes ue(t) = P(X_E(t)) - P(X_E(0)): the observer's projected
-    // displacement measured FROM EARTH'S POSITION AT t = 0. That subtraction is a gauge
-    // choice, and it is what fixes the meaning of u0 and t0 -- an epoch at t == 0 has zero
-    // parallax offset by construction.
+    //     ue_Roman(t) = ue_Rubin(t) + f * P(X_E(t)),
     //
-    // Roman sits on the Sun-Earth line beyond Earth, so to leading order
-    // X_R(t) = (1 + f) * X_E(t) with f = L2_OFFSET_AU ~ 0.01. The projection P is LINEAR in
-    // (dvex, dvey) -- every term of Ve_n1/Ve_x/Ve_n2 is a constant times one component --
-    // so, keeping the SAME single origin for both observers:
-    //
-    //     ue_Roman(t) = P((1+f) X_E(t)) - P(X_E(0))
-    //                 = [P(X_E(t)) - P(X_E(0))] + f * P(X_E(t))
-    //                 =  ue_Rubin(t)            + f * P(X_E(t))
-    //
-    // i.e. the existing differenced term, PLUS f times the UNdifferenced projection at t.
-    // That is why abs1/abs2 are captured above and never passed through the ig == 1
-    // subtraction.
-    //
-    // THE TRAP. The natural-looking alternative -- let each observer subtract its own t = 0
-    // position -- computes P(X_R(t)) - P(X_R(0)) = (1+f) * [P(X_E(t)) - P(X_E(0))], which is
-    // a 0.01 rescaling of Earth's annual parallax ellipse with the constant inter-observer
-    // offset gone. That constant offset IS the satellite parallax. The code would compile,
-    // run, and measure nothing.
-    //
-    // The distinguishing check: at t = 0 the two observers must NOT agree.
-    //     ue_Roman(0) - ue_Rubin(0) = f * P(X_E(0)) != 0
-    // and |delta u| ~ f * piE ~ 1e-3 for a typical bulge event. If it comes out zero, the
-    // gauge has eaten the signal.
-    //
-    // Rubin takes fSat = 0 and therefore reproduces the pre-H1 expression exactly.
-    // ------------------------------------------------------------------------------------
+    // i.e. the differenced term plus f times the UNdifferenced projection (abs1/abs2).
+    // Letting each observer subtract its own t = 0 position instead would only rescale Earth's
+    // parallax ellipse by (1+f) and drop the constant inter-observer offset, which is the satellite
+    // parallax. Check: at t = 0 the two observers must differ, |delta u| ~ f * piE ~ 1e-3.
+    // Rubin has fSat = 0.
     const double fSat = (tele == 1) ? L2_OFFSET_AU * as.satScale : 0.0;
 
     as.ue_n1 = int1 + fSat * abs1; //[radian] without dimention
@@ -95,11 +62,10 @@ void lightcurve(source & s, lens & l, astromet & as, double timh, int tele)
     s.pos1b = -l.u0 * l.tetE * std::sin(s.xi) + s.mus1 * (timh - l.t0) - as.ue_n1 * pis; //x-source trajectory+parallax[mas]
     s.pos2b = +l.u0 * l.tetE * std::cos(s.xi) + s.mus2 * (timh - l.t0) - as.ue_n2 * pis; //y-source trajectory+parallax[mas]
 
-    // The MEASURED centroid (Deviation 74): the light-weighted position of everything in the PSF.
-    // The lensed source (flux fb*A, at its unlensed position + the deflection), the lens's own
-    // light (fLens, at the lens: -u*thetaE from the source) and the other blended stars (the rest,
-    // taken at the source's unlensed position, so they only dilute). Fractions are of this
-    // telescope's baseline flux. Dark, unblended limit (fb = 1, fLens = 0): exactly the old model.
+    // The MEASURED centroid: the light-weighted position of everything in the PSF. The lensed source
+    // (flux fb*A, at its unlensed position + the deflection), the lens's own light (fLens, at the
+    // lens: -u*thetaE from the source) and the other blended stars (at the source's unlensed
+    // position, so they only dilute). Fractions are of this telescope's baseline flux.
     {
         const int    tt  = (tele == 1) ? 1 : 0;
         const double fs  = s.fb[tt], fL = s.fLens[tt];
@@ -112,23 +78,14 @@ void lightcurve(source & s, lens & l, astromet & as, double timh, int tele)
 
     l.pos1  = l.mul1 * (timh - l.t0) - as.ue_n1 * pil ;//x-lens trajectory && parallax[mas]
     l.pos2  = l.mul2 * (timh - l.t0) - as.ue_n2 * pil ;//y-lens trajectory && parallax[mas]
-
-   //if(s.ut<double(5.0*s.ros) or s.ut0<double(5.0*s.ros)){
-   //cout<<"Error finite ros: "<<s.ros<<"\t ut:  "<<s.ut<<"\t ut0:  "<<s.ut0<<endl;
-   //int uue; cin>>uue;
-  //}
-
-
 }
 
-// ---------------------------------------------------------------------------------------
-// The OBSERVED peak (Deviation 76). The table's t0 and u0 are the closest approach of the straight
-// line in lightcurve()'s gauge, where parallax is referenced to Earth's position at t = 0; the
-// event an observer sees is the parallax-bent trajectory, whose closest approach comes at another
-// time (median offset ~0.12 tE on the S1 sample events, OPEN_ITEMS). This finds it for the Earth
-// observer: a grid of 600 points over t0 +- 3 tE, then golden-section refinement. Uses no random
-// numbers; leaves s/as holding the state at the returned time (callers recompute what they need).
-// ---------------------------------------------------------------------------------------
+// The OBSERVED peak. The table's t0 and u0 are the closest approach of the straight line in
+// lightcurve()'s gauge (parallax referenced to Earth's position at t = 0); the event an observer
+// sees is the parallax-bent trajectory, whose closest approach comes at another time (median offset
+// ~0.12 tE on a sample of events). Found for the Earth observer on a grid of 600 points over
+// t0 +- 3 tE, then golden-section refinement. Uses no random numbers; leaves s/as holding the state
+// at the returned time (callers recompute what they need).
 std::pair<double, double> observedPeak(source& s, lens& l, astromet& as)
 {
     auto uAt = [&](double t) { lightcurve(s, l, as, t, 0); return s.ut; };

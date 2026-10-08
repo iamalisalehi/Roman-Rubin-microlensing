@@ -1,65 +1,32 @@
 #!/usr/bin/env python3
-"""Step H5 -- the astrometric shift itself, not just the precision on theta_E.
+"""The astrometric centroid shift itself, not just the precision on theta_E.
 
-WHY THIS EXISTS
----------------
-The astrometric microlensing signal is computed by the simulator (`s.def1c`/`s.def2c` in
-lightcurve(), stored per epoch in `l.soux`/`l.souy`) and it already feeds the astrometric
-Fisher matrix. But until now nothing READ it. F4 plots sigma_tetE -- the forecast *precision*
-on the angular Einstein radius -- which answers "can we fit theta_E?" and never answers "how
-big is the wobble, and can anyone see it?". Those are different questions and only the second
-one decides whether astrometric microlensing is a measurement or an extrapolation.
+The simulator computes the astrometric signal (`s.def1c`/`s.def2c` in lightcurve(), stored per
+epoch in `l.soux`/`l.souy`) and feeds it to the astrometric Fisher matrix. This script plots the
+size of the wobble and whether it is detectable, which the sigma_tetE forecast alone does not show.
 
-THE PHYSICS
------------
 A point lens shifts the centroid of the source's light by
 
     delta_theta(u) = theta_E * u / (u^2 + 2)          [mas]
 
-where u is the lens-source separation in Einstein radii. This is NOT monotonic: it rises from
-zero, peaks at u = sqrt(2), and falls again. So
+with u the lens-source separation in Einstein radii. This is not monotonic: it peaks at
+u = sqrt(2), so
 
     delta_theta_max = theta_E / sqrt(8) ~ 0.354 theta_E     if u0 <= sqrt(2)
                     = theta_E * u0 / (u0^2 + 2)             if u0 >  sqrt(2)
 
-Two consequences the photometric intuition gets wrong:
+1. The astrometric peak is not the photometric peak. Photometry peaks at u = u0 (t = t0);
+   astrometry peaks at u = sqrt(2), at |t - t_0| = tE * sqrt(2 - u0^2) on both sides of t0 (up to
+   ~1.41 tE). Panel (c) asks what that does against Roman's 72-day seasons.
+2. A high-magnification event is a poor astrometric event: the shift goes to zero as u0 -> 0.
 
-1. **The astrometric peak is not the photometric peak.** Photometry peaks at u = u0 (closest
-   approach, t = t0). Astrometry peaks at u = sqrt(2), which for u0 < sqrt(2) happens at
+Blending: the simulator's astrometric positions (`s.pos1c`/`pos2c`) add the deflection
+undiluted, so the modelled centroid is the source's. A real measurement sees all the light in the
+aperture and the unlensed blend drags the shift down by roughly fb. Panel (a) shows both the
+Fisher-matrix shift and the same shift multiplied by the F146 source-flux fraction.
 
-       |t - t_0| = tE * sqrt(2 - u0^2)
-
-   i.e. TWICE per event, symmetrically, up to ~1.41 tE either side of t0. For a 300-day event
-   that is well over a year from the photometric peak. Panel (c) asks what that does when the
-   observatory has 72-day seasons: an event whose photometric peak Roman catches may have both
-   its astrometric peaks in a gap, and vice versa.
-
-2. **A high-magnification event is a poor astrometric event.** Small u0 gives a huge
-   photometric peak, but the centroid shift at u0 -> 0 goes to ZERO. The astrometric signal
-   comes from the wings.
-
-BLENDING, AND WHY TWO CURVES IN PANEL (a)
------------------------------------------
-The simulator's astrometric positions (`s.pos1c`/`pos2c`) add the deflection undiluted:
-the modelled centroid is the SOURCE's centroid. A real measurement sees the centroid of all
-the light in the aperture, so an unlensed blend of fraction (1 - fb) drags the measured shift
-down by roughly fb. Panel (a) therefore shows both: the shift as the simulator's Fisher matrix
-sees it, and the same shift multiplied by the F146 source-flux fraction, which is closer to
-what a real centroid measurement would deliver. The gap between them is the size of a
-simplification that is currently in the code -- recorded in OPEN_ITEMS.md, not fixed here.
-
-SCOPE
------
-Default is events Roman actually observed (ndw_R > 0). Roman is the only astrometric
-instrument here worth the name, and outside its footprint the Roman-alone curves are vacuous.
-
-CAVEAT ON ANY TABLE WRITTEN BEFORE STEP H4
-------------------------------------------
-Before H4, Roman's per-epoch astrometric error in the simulator was Rubin's model -- in fact a
-STALE Rubin value from a different timestep (DEVIATIONS.md 29.2). Panels (d), (e) and (f) read
-sigma_tetE and therefore inherit that. The script prints a warning when the provenance says
-the run predates H4. Panels (a), (b) and (c) are unaffected: they are computed from theta_E,
-u0 and tE, which are drawn quantities, not forecasts.
+Scope: by default events Roman observed (ndw_R > 0); outside its footprint the Roman-alone curves
+are vacuous.
 """
 
 import argparse
@@ -84,12 +51,8 @@ COLOR = {"joint": "#0d366b", "roman": "#c2410c", "rubin": "#0e7490"}
 LABEL = {"joint": "joint fit", "roman": "Roman alone", "rubin": "Rubin alone"}
 ACCENT = "#7c3aed"
 
-# Roman WFI per-exposure astrometric precision, F146, in mas.
-# KEEP IN SYNC WITH config/parameters.h (ROMAN_AST_* constants, Step H4). Sources: Sanderson et al. 2019
-# (arXiv:1712.05420) and arXiv:2608.24998. Duplicated here rather than parsed out of the
-# header because parsing a C++ expression is more fragile than a cross-reference; if the C++
-# constants move, move these.
-# read from config/parameters.h / include/common.h
+# Roman WFI per-exposure astrometric precision, F146, in mas. Read from config/parameters.h
+# (ROMAN_AST_* constants); sources: Sanderson et al. 2019 (arXiv:1712.05420), arXiv:2608.24998.
 ROMAN_AST_FLOOR = P.ROMAN_AST_FLOOR        # mas, 1% of the 110 mas pixel
 ROMAN_AST_MFLR = P.ROMAN_AST_MFLR
 ROMAN_AST_MBKG = P.ROMAN_AST_MBKG
@@ -100,7 +63,7 @@ ROMAN_AST_SLOPE_BKG = P.ROMAN_AST_SLOPE_BKG
 U_AST_PEAK = np.sqrt(2.0)    # the separation at which the centroid shift is maximal
 
 
-AB_MINUS_VEGA = 0.0     # set in main() from the run's provenance (Deviation 72)
+AB_MINUS_VEGA = 0.0     # set in main() from the run's provenance
 
 
 def roman_ast_error(mag):
@@ -197,13 +160,10 @@ def panel_shift_cdf(ax, df, w, rows):
 
 
 def panel_u0(ax, df, w, rows):
-    """(b) How the wobble compares with what Roman can measure -- per exposure and stacked.
+    """(b) How the wobble compares with what Roman can measure, per exposure and stacked.
 
-    The previous version of this panel plotted delta_theta_max/theta_E against u0, which is a
-    deterministic function of u0 and therefore drew the analytic curve twice. It said nothing
-    the formula did not. This one is the panel that reconciles (a) with (d): the signal sits
-    far BELOW Roman's single-exposure precision and far ABOVE its stacked precision, which is
-    why theta_E is forecastable from data in which no individual exposure sees the wobble.
+    The signal sits far below Roman's single-exposure precision and far above its stacked
+    precision, which is why theta_E is forecastable although no single exposure sees the wobble.
     """
     dmax = max_shift(df)
     tE = df["tE"].to_numpy(dtype=float)
@@ -246,10 +206,9 @@ def panel_season(ax, df, w, rows):
     off = ast_peak_offset(df)
     dt_edge = df["dt_edge"].to_numpy(dtype=float)
 
-    # dt_edge is signed days from t0 to the NEAREST Roman season boundary, negative when t0
-    # fell inside a season. So |dt_edge| is the distance to that boundary, and the astrometric
-    # peak crosses it when the offset exceeds it. Approximate -- it only knows about the
-    # nearest edge, not the whole season structure -- and stated as such on the figure.
+    # dt_edge is signed days from t0 to the nearest Roman season boundary, negative when t0 is
+    # inside a season. The astrometric peak crosses that boundary when the offset exceeds
+    # |dt_edge|. Approximate: only the nearest edge is considered.
     crosses = off > np.abs(dt_edge)
     in_season = dt_edge < 0.0
 
@@ -375,15 +334,15 @@ def main():
     ap.add_argument("--chunksize", type=int, default=500_000)
     ap.add_argument("--scope", choices=("footprint", "all"), default="footprint")
     ap.add_argument("--map", default=None,
-                    help="MapLMC5.dat -- needed for the event-rate weight (Deviation 41)")
+                    help="MapLMC5.dat -- needed for the event-rate weight")
     ap.add_argument("--log", action="append", default=[],
                     help="run log(s), for sightlines whose map rows a killed run lost")
     ap.add_argument("--unweighted", action="store_true",
                     help="deliberately report the raw sample, with no event-rate weight")
     args = ap.parse_args()
 
-    # Filtered chunked read: joint detections are 1.3% of the table and reading the rest
-    # first gets the process OOM-killed, silently, on this machine (OPEN_ITEMS.md).
+    # Filtered chunked read: joint detections are a small fraction of the table, and reading it
+    # whole can exhaust memory.
     df = R.load_events(args.events, keep=lambda c: c["detJ"] == 1, chunksize=args.chunksize)
     stamp = R.describe(args.events, args.provenance)
     print(stamp)
@@ -395,8 +354,8 @@ def main():
     prov = R.load_provenance(prov_path) if prov_path else {}
     pre_h4 = "satellite_parallax" not in prov
     if pre_h4:
-        print("  WARNING: this table predates Step H4. Roman's per-epoch astrometric error\n"
-              "  was a stale Rubin value (DEVIATIONS.md 29.2), so panels (d), (e) and (f)\n"
+        print("  WARNING: this table predates Roman's own astrometric error model. Roman's per-epoch astrometric error\n"
+              "  was a stale Rubin value, so panels (d), (e) and (f)\n"
               "  inherit it. Panels (a), (b), (c) are computed from drawn quantities and\n"
               "  are unaffected.")
 
@@ -411,8 +370,7 @@ def main():
         print("  nothing in scope -- no figure written")
         return
 
-    # Weight AFTER every cut: the weight is per event, and each panel's fractions and medians
-    # are over whatever sample survived them (Deviation 41).
+    # Weight after every cut: each panel's fractions and medians are over the surviving sample.
     w, wlabel = R.attach_weight(df, args.map, args.log, args.unweighted)
     w = w.to_numpy()
     print(f"  weighting: {wlabel}")
@@ -446,7 +404,7 @@ def main():
         "on how often the astrometric peak lands in different observing conditions than the "
         "photometric one.\n"
         + ("PANELS (d)-(f) REST ON A PRE-H4 TABLE: Roman's astrometric error was a stale "
-           "Rubin value (DEVIATIONS.md 29.2). Re-run after the next production run.\n"
+           "Rubin value. Re-run after the next production run.\n"
            if pre_h4 else "")
         + stamp)
     fig.text(0.035, 0.062, footer, color=MUTED, fontsize=7.5, va="top", linespacing=1.7)

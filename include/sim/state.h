@@ -30,8 +30,8 @@ struct SimContext {
     lsst&     ls;               // Rubin visit list
     roman&    ro;               // Roman visit list
     covarian& co;               // Fisher results of the current event
-    covarian& coNS;             // Step H3: the same event with the satellite offset zeroed
-    RunOutputs& outs;           // output streams, file names, Step S1 dump state
+    covarian& coNS;             // the same event with the satellite offset zeroed
+    RunOutputs& outs;           // output streams, file names, sample-dump state
     RunTotals&  run;            // run-wide counters, printed by writeRunSummary
 };
 
@@ -46,7 +46,7 @@ struct SightlineState {
     // Epoch matching: how many visits of each survey cover this sightline, and the shortest gap.
     int    ndd = 0, nddR = 0;      // Rubin / Roman matched visits
     double minc = 0.0, mincR = 0.0;
-    std::array<double, 6> rubinDepthMed{};   // median 5-sigma depth per LSST band (Deviation 73)
+    std::array<double, 6> rubinDepthMed{};   // median 5-sigma depth per LSST band
     // Event budget bookkeeping for the do/while over draws.
     int    icon = 0, nlens = 0;
     double nsim = 0.0, nerr = 0.0;
@@ -58,7 +58,7 @@ struct SightlineState {
 // take by const&, so a signature says what a stage reads. A default-constructed struct is the "nothing
 // happened" value (no light curve, no detection, nothing measured).
 
-// drawEvent: the bin indices for the seven detection-efficiency axes (gg = tE; Deviation 46).
+// drawEvent: the bin indices for the seven detection-efficiency axes (gg = tE).
 struct EfficiencyBins { int gg = -1, ss = 0, qq = 0, ww = 0, vv = 0, zz = 0, pp = 0; };
 
 // simulateLightCurve: what the time loop accumulated. All-zero (flagf = 0) if no light curve was generated.
@@ -67,7 +67,7 @@ struct LightCurveStats {
     // Epoch counts (ndw = joint total = ndw_L + ndw_R) and the run-test results.
     int ndw = 0, ndw_L = 0, ndw_R = 0;
     int flag_det_L = 0, flag_det_R = 0;
-    // Step R1: epochs at which the two images were both detectable and far enough apart.
+    // Epochs at which the two images were both detectable and far enough apart.
     long   nres5_L = 0, nres20_L = 0, nresPSF_L = 0, nres5_R = 0, nres20_R = 0, nresPSF_R = 0;
     double dsepMax_L = -1.0, dsepMax_R = -1.0;   // largest separation while both detectable [mas]
     // Chi-squared accumulators: chi1 = lensing model, chi2 = no-parallax model, chi3 = baseline;
@@ -87,7 +87,7 @@ struct Detection {
     int dclsEvent = DET_NONE;        // DetClass of this draw; stays NONE if never tallied
 };
 
-// characterizeEvent, Step H3: the no-satellite forecast of the same event. -1 = not measured.
+// characterizeEvent: the no-satellite forecast of the same event. -1 = not measured.
 struct SatellitePair {
     double sigtE_ns = -1.0, sigpiE_ns = -1.0, sigpiER_ns = -1.0;
     double sigtetE_ns = -1.0, sigpiEb_ns = -1.0, relMl_ns = -1.0;
@@ -95,7 +95,7 @@ struct SatellitePair {
     int    okNS = 0, okNSb = 0;
 };
 
-// characterizeEvent: the detection verdicts, whether FisherM ran, the Step H3 pair.
+// characterizeEvent: the detection verdicts, whether FisherM ran, the no-satellite pair.
 struct Characterization {
     Detection     det;
     SatellitePair pair;
@@ -103,7 +103,7 @@ struct Characterization {
     double vMean = 0.0;              // mean source proper-motion speed (s.mus if the event is not visible)
 };
 
-// recordEvent (Step H2, Deviation 76): the observed peak, the satellite observable and the peak-window
+// recordEvent: the observed peak, the satellite observable and the peak-window
 // coverage; handed to commitSampleDump and writeSatellitePair.
 struct PeakCoverage {
     double t0obs = 0.0, uminObs = 0.0;   // observed peak time and impact parameter

@@ -7,20 +7,12 @@
 #define GIT_COMMIT "unknown"
 #endif
 
-// ---------------------------------------------------------------------------
-// Column names of the per-event table, in exactly the order the `filg_in <<` block in
-// main() writes them (Step D1).
+// Column names of the per-event table, in exactly the order the `filg_in <<` block writes
+// them. Anything added to the row must be appended both here and there; check with
+// `head -1 | wc -w` against a data line's `wc -w`.
 //
-// Written once at the top of the file so a table is self-describing: an unlabelled
-// 88-column matrix is unusable six months later, and mis-numbering a column by one is
-// the kind of error that produces a plausible plot of the wrong quantity. Anything
-// added to the row MUST be appended both here and there, in the same place -- the
-// verification step is `head -1 | wc -w` against a data line's `wc -w`.
-//
-// Note the two indexing systems, which look alike and are not (see CLAUDE.md):
-// magb_*/blend_* are per FILTER (ugrizy, F146); mbs0/fb0 and mbs1/fb1 are per TELESCOPE
-// (0 = Rubin, 1 = Roman).
-// ---------------------------------------------------------------------------
+// Two indexing systems that look alike: magb_*/blend_* are per FILTER (ugrizy, F146);
+// mbs0/fb0 and mbs1/fb1 are per TELESCOPE (0 = Rubin, 1 = Roman).
 const char* eventTableHeader()
 {
     return
@@ -36,118 +28,73 @@ const char* eventTableHeader()
         "blend_u blend_g blend_r blend_i blend_z blend_y blend_F146 "
         "relMl_J relMl_L relMl_R okB_J okB_L okB_R condB_J condB_L condB_R "
         "dt_edge t0zone w_area du_sat nepL_pk nepR_pk "
-        // Step R1. Epoch counts at which the two lensing-induced images were separately
-        // detectable AND separated by more than the bar named in the suffix; dsep_max is the
-        // largest separation reached at such an epoch, -1 if there was none.
+        // Epoch counts at which the two lensing-induced images were separately detectable and
+        // separated by more than the bar named in the suffix; dsep_max is the largest
+        // separation reached at such an epoch, -1 if there was none.
         "nres5_L nres20_L nresPSF_L dsep_max_L nres5_R nres20_R nresPSF_R dsep_max_R "
-        // Deviation 71. The astrometric forecast under the N (nominal) and P (pessimistic)
-        // noise variants, joint and Roman partitions; the main sigtetE_*/relMl_*/okB_* columns
+        // The astrometric forecast under the N (nominal) and P (pessimistic) noise variants, joint and Roman partitions; the main sigtetE_*/relMl_*/okB_* columns
         // are variant W (white). Rubin's partition is the same in all three. See AST_SIGC.
         "sigtetE_NJ sigtetE_NR sigtetE_PJ sigtetE_PR relMl_NJ relMl_NR relMl_PJ relMl_PR "
         "okB_NJ okB_NR okB_PJ okB_PR "
-        // Deviation 74: luminous lens (1 = a main-sequence star whose light is blended) and the
-        // lens's share of the baseline flux in Rubin's reference band and in F146.
+        // Luminous lens (1 = a main-sequence star whose light is blended) and the lens's
+        // share of the baseline flux in Rubin's reference band and in F146.
         "lensLum fLens_L fLens_R "
-        // Deviation 76: the observed (Earth-frame, parallax-bent) peak time and impact parameter.
-        // t0zone, dt_edge and nep_pk_* are now measured from t0obs, not from t0.
+        // The observed (Earth-frame, parallax-bent) peak time and impact parameter.
+        // t0zone, dt_edge and nep_pk_* are measured from t0obs, not from t0.
         "t0obs umin_obs";
 }
 
 int openOutputs(const RunConfig& cfg, RunOutputs& o) {
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
-// Create/clear files if IMnum == 1
-    // Cleared only when the scan STARTS. On a continuation this file, like every other
-    // output, holds the earlier chunks' rows and must not be cleared. (cfg.startIndex is
-    // read directly here because `resuming` is declared with the other opens below.)
-
-    // File names
-//    std::string filnam0 = "./files/MONTLMC/files/BHLSSTMONTS.dat"; // now visible outside the if
-    // Named from the population's tag, so a black-hole run cannot append to the bulge run's
-    // table. The default population's tag is "5", which is what these files were called
-    // before --population existed.
+    // A fresh clone has no output directories; create them (a no-op when they exist).
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(PATH_OUT_DIR, ec);
+        std::filesystem::create_directories(PATH_DENSITY_DIR, ec);
+    }
+    // File names, named from the population's tag so a black-hole run cannot append to the
+    // bulge run's table (the default population's tag is "5").
     const std::string tag(gPop->tag);
     std::string fnLDt   = std::string(PATH_OUT_DIR) + "LpLMC"  + tag +  ".dat";
     std::string fnEff   = std::string(PATH_OUT_DIR) + "EfLMC"  + tag +  ".dat";
     std::string fnEffB  = std::string(PATH_OUT_DIR) + "EfLMC"  + tag + "B.dat";
     std::string fnGam   = std::string(PATH_OUT_DIR) + "MapLMC" + tag +  ".dat";
     std::string testf   = "./test"                       + tag +  ".dat";
-    std::string fnPair  = "./h3_pair.dat";   //Step H3, written only under --pair-satellite
+    std::string fnPair  = "./h3_pair.dat";   //written only under --pair-satellite
 
-    // Open files.
-    //
-    // Every output below ACCUMULATES across the scan: fil2/fil2b write one block per
-    // aggregated sightline, fil4/fil5 write per event, fil3 writes one map row per
-    // sightline, and the per-event table is appended to per event. So a run that is a
-    // CONTINUATION (--start-index > 0) must append to them; truncating would throw away
-    // everything the interrupted run wrote.
-    //
-    // This was not always so, and it destroyed a production table. Before this, all of
-    // these except fil3 were opened in the default mode -- ios::out, which truncates --
-    // regardless of --start-index. The 2026-09-06 v3 run was paused at scan index 774 and
-    // resumed; the resume silently wiped the first 774 sightlines out of test5.dat
-    // (1,936,653 rows) and out of EfLMC5/EfLMC5B, and the loss was invisible until the run
-    // finished, because the file simply started filling again from the resume point.
-    // MapLMC5.dat survived only because fil3 was already ios::app. See DEVIATIONS.md 34.
+    // Every output accumulates across the scan, so a continuation (--start-index > 0) must
+    // append to them; truncating would discard everything the interrupted run wrote.
     const bool resuming = (cfg.startIndex > 0);
-    // Deviation 78: a --dry-run must not touch the previous run's outputs, so it opens them all in
-    // append mode (and writes nothing); a fresh run truncates EVERY output, MapLMC and LpLMC included
-    // (they used to always append, so a re-run in the same directory silently doubled them).
+    // A --dry-run must not touch the previous run's outputs, so it opens them in append mode
+    // (and writes nothing); a fresh run truncates every output.
     const bool keepOld = resuming or cfg.dryRun;
     const std::ios::openmode accumulate =
         std::ios::out | (keepOld ? std::ios::app : std::ios::trunc);
 
-    // LpLMC<tag>.dat is an APPEND-MODE OUTPUT -- the per-characterised-event dump inside the
-    // sightline loop opens it with ios::app for every row. It was ALSO opened here as an
-    // input, and its absence made the startup check below fatal, so a population whose tag
-    // had never been run before could not start at all: `--population bh` would abort with
-    // "Cannot open one or more files!" before drawing a single star. (The same trap cost a
-    // scratch stub run during the Step W3 flush test, where the file had to be copied in by
-    // hand.) Create it if it is missing and let the appends do the rest; on a resume it
-    // already exists and is left untouched, which is the append-only behaviour recorded in
-    // OPEN_ITEMS.md and not changed here.
-    { std::ofstream ensureLp(fnLDt, accumulate); }   // create; truncated on a fresh run (Dev. 78)
-//    std::ifstream fil1(filnam0);
+    // LpLMC<tag>.dat is appended to by the sightline loop. Create it if missing so a population
+    // whose tag has never been run can start; on a resume it is left untouched.
+    { std::ofstream ensureLp(fnLDt, accumulate); }   // create; truncated on a fresh run
     std::ofstream& fil2  = o.fil2;   std::ofstream& fil2b = o.fil2b;   std::ofstream& fil3 = o.fil3;
     fil2.open(fnEff,   accumulate);
     fil2b.open(fnEffB, accumulate);
-    fil3.open(fnGam, accumulate);   // was always ios::app (Deviation 78)
+    fil3.open(fnGam, accumulate);
 
-    // The per-event table (Step D1). Truncate and write the column header once, in a
-    // scope of its own, and leave `filg_in` itself CLOSED.
+    // The per-event table: write the column header once, in a scope of its own, and leave
+    // `filg_in` itself closed. The per-event write calls filg_in.open(), and open() on an
+    // already-open ofstream sets failbit and is silently discarded. The open/append/close per
+    // event is deliberate: each row reaches disk as it is produced, so an interrupted run
+    // keeps what it computed.
     //
-    // That is not stylistic. The per-event write below calls filg_in.open(); calling
-    // open() on an ALREADY-OPEN ofstream sets failbit and does nothing, so the write is
-    // silently discarded. Constructing filg_in open (as this used to) therefore threw
-    // away the first event of every run -- and only the first, because the matching
-    // close() cleared the way for the second open() to succeed. Verified against a
-    // three-iteration reproduction, not inferred. The in-memory `records` vector was
-    // never affected, so no aggregate statistic was wrong; the flat table just lost a row.
-    //
-    // The open/append/close per event is deliberate and stays: it flushes each row to
-    // disk as it is produced, so a 15-hour run that is interrupted keeps everything it
-    // had computed. At ~1.2 s of physics per event the syscalls are not measurable.
-    //
-    // The header is written when, and only when, the table has no content yet. That single
-    // rule covers both uses of --start-index, which the flag itself cannot distinguish:
-    //
-    //   * CONTINUING an interrupted run, in its directory. The table already holds the
-    //     header and every earlier chunk's rows, so it must be appended to and the header
-    //     must NOT be rewritten. Opening it here in the default mode -- which truncates --
-    //     is what destroyed 1,936,653 rows of the v3 run.
-    //   * STARTING a fresh run at an offset, in an empty directory, which is how every A/B
-    //     and profiling comparison in this project is set up (see h7_ab.sh, perf_h7.sh).
-    //     Here there is nothing to preserve and the header does need writing.
-    //
-    // An earlier version of this fix made --start-index > 0 mean "continuation" and refused
-    // to run against an empty table. That is wrong: it breaks the second case, which is the
-    // more common one. Emptiness, not the flag, is the thing worth testing.
+    // The header is written when, and only when, the table has no content yet. That covers
+    // both uses of --start-index: continuing an interrupted run (table already holds the
+    // header and earlier rows, which must be kept) and starting a fresh run at an offset in an
+    // empty directory (nothing to preserve, header needed).
     std::streamoff tableBytes = -1;
     {
         std::ifstream probe(testf, std::ios::ate | std::ios::binary);
         tableBytes = probe ? static_cast<std::streamoff>(probe.tellg()) : std::streamoff(-1);
     }
     if (cfg.dryRun) {
-        // Deviation 78: leave the previous run's table alone.
+        // dry run: leave the previous run's table alone.
     } else if (tableBytes <= 0) {
         std::ofstream head(testf);
         if (!head) {
@@ -162,8 +109,7 @@ int openOutputs(const RunConfig& cfg, RunOutputs& o) {
                       << "sightlines\n        from this index onward." << std::endl;
         }
     } else if (!resuming) {
-        // The one remaining way to lose data silently: re-running the scan from the start
-        // in a directory that already holds a table. Say so, loudly, before it is gone.
+        // Re-running the scan from the start in a directory that already holds a table.
         std::cout << "  NOTE: " << testf << " already held " << tableBytes << " bytes and "
                   << "is being TRUNCATED, because this run\n        starts the scan "
                   << "(--start-index 0). If it was meant to continue one, stop now."
@@ -178,8 +124,7 @@ int openOutputs(const RunConfig& cfg, RunOutputs& o) {
         std::cout << "  Continuing an existing " << testf << " (" << tableBytes
                   << " bytes); rows will be appended." << std::endl;
     }
-    // Step H3's side file. Same rule as the event table: the header is written only when
-    // there is no content yet, so a continuation appends instead of truncating.
+    // The --pair-satellite side file. Same rule as the event table: header only when empty.
     if (cfg.pairSat) {
         std::ifstream probe(fnPair, std::ios::ate | std::ios::binary);
         const std::streamoff have =
@@ -191,19 +136,16 @@ int openOutputs(const RunConfig& cfg, RunOutputs& o) {
               << "sigpiER_sat sigpiER_nosat sigtetE_sat sigtetE_nosat "
               << "sigpiEb_sat sigpiEb_nosat relMl_sat relMl_nosat "
               << "condA_sat condA_nosat condB_sat condB_nosat "
-            // Ml, Dl, Ds and Vt are appended (not inserted) so the 30-column files written
-            // before 2026-09-17 still parse by position. They are here because the pooled
-            // event-rate weight needs sqrt(Ml)*Vt*Z(Ds) per event (Deviation 41) and none of
-            // it is recoverable from the columns above: theta_E and pi_E give Ml, and
-            // theta_E/tE gives mu_rel, but pi_rel = 1/Dl - 1/Ds is one equation in two
-            // unknowns, so a paired file without these cannot be weighted at all.
+            // Ml, Dl, Ds and Vt are appended so older files still parse by position. The pooled
+            // event-rate weight needs sqrt(Ml)*Vt*Z(Ds) per event, and pi_rel = 1/Dl - 1/Ds
+            // cannot be solved for Dl and Ds from the other columns.
               << "nepL_pk nepR_pk w_area Ml Dl Ds Vt\n";
         }
     }
 
-    // o.filg_in: opened in append mode per event -- see above
+    // o.filg_in is opened in append mode per event (see above).
 
-    // Step S1 state. `dumpBuf` holds the CURRENT draw's recorded epochs and is cleared at
+    // Sample-dump state: `dumpBuf` holds the current draw's recorded epochs and is cleared at
     // the top of every draw; `dumpSeq` numbers the events actually written out.
     SampleSpec&            dumpSpec = o.dumpSpec;
     if (!cfg.dumpSpec.empty()) {
@@ -222,7 +164,6 @@ int openOutputs(const RunConfig& cfg, RunOutputs& o) {
         std::cout << ")" << std::endl;
     }
 
-    // Check all
     if (!fil2 || !fil2b || !fil3) {
         std::cerr << "Cannot open one or more files!" << std::endl;
         return 1;
@@ -249,27 +190,11 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
     const auto&  romanFields = grid.romanFields;
     const size_t nFieldsCovered = grid.nFieldsCovered;
 
-    // ----------------------------------------------------------------------
-    // Provenance. Written before any science output, so an interrupted run still
-    // records what it was. Reproducibility here is not optional: an earlier run
-    // (commit e47390a) produced detection statistics that turned out to describe a
-    // truncated visit stream rather than the survey, and nothing in its output
-    // said which model had produced it.
-    //
-    // The sky-area weight is the piece that is easy to lose. Neven is a surface
-    // density in deg^-2, and nothing in this program sums sightlines into a
-    // survey-wide yield -- that happens downstream, where each sightline must be
-    // weighted by the sky area it stands for. At stride N that area is
-    // (N*dd)^2, NOT dd^2, so a strided run aggregated as if it were unstrided is
-    // wrong by a factor of N^2 (100x at the default stride of 10).
-    //
-    // Under Step E1's stratification that weight is no longer one number for the
-    // whole run: footprint sightlines stand for a fine cell and outside ones for
-    // (up to) a coarse cell. area_per_sightline below is therefore only meaningful
-    // when stratified=0, and the authoritative weight is the per-row `w_area`
-    // column of the event table (and the w_area column of the map file). The header
-    // says so, so that a downstream script cannot quietly use the wrong one.
-    // ----------------------------------------------------------------------
+    // Provenance, written before any science output so an interrupted run still records what
+    // it was. Neven is a surface density in deg^-2 and survey-wide yields are summed downstream,
+    // each sightline weighted by the sky area it stands for: (N*dd)^2 at stride N, not dd^2.
+    // With the stratified grid that weight differs between sightlines, so area_per_sightline is
+    // meaningful only when stratified = 0; otherwise use the per-row `w_area` column.
     const double areaPerSightline = gridStep * gridStep; // deg^2; unstratified runs only
 
     {
@@ -277,9 +202,8 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
         prov << "# Roman+Rubin microlensing forecast -- run provenance\n"
              << "# git_commit          " << GIT_COMMIT << "\n"
              << "# built               " << __DATE__ << " " << __TIME__ << "\n"
-             // Which lens population produced this table. The analysis layer reads it: the
-             // pooled event-rate weight carries a sqrt(Ml) factor that is only correct for
-             // the mass function actually sampled, so a figure must know which one that was.
+             // The pooled event-rate weight carries a sqrt(Ml) factor that depends on the
+             // mass function sampled, so the analysis layer reads the population from here.
              << "# population          " << gPop->name << "   # " << gPop->note << "\n"
              << "# population_tag      " << gPop->tag << "\n"
              << "# lens_mass_range     " << gPop->mlMin << " " << gPop->mlMax << "   # Msun\n"
@@ -318,7 +242,7 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "# nerr_target         " << cfg.nerrTarget << "\n"
              << "# maxdraws            " << cfg.maxDraws << "   # per-sightline draw cap\n"
              << "# seed                " << cfg.seedBase
-             << "   # base; each sightline re-seeded from (seed, index) (Deviation 77)\n"
+             << "   # base; each sightline re-seeded from (seed, index)\n"
              << "# end_index           " << cfg.endIndex << "   # -1 = to the end\n"
              << "# start_index         " << cfg.startIndex
              << "   # sightlines skipped; >0 means this run RESUMES an earlier one\n"
@@ -336,24 +260,23 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "# roman_noise         ast: errRomanA(m_AB - " << F146_AB_MINUS_VEGA
              << ") [Vega anchors]; phot: Penny+2019 curve anchored to 5-sigma "
              << ROMAN_DEPTH5_AB << " AB (66 s); depth " << thre[6] << ", saturation "
-             << satu[6] << " AB   # Deviation 72\n"
+             << satu[6] << " AB\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex.nTables << " x "
              << ex.nDist << ", k " << ex.k << " --" << ex.built << "\n"
 
              << "# rng_seed            " << cfg.seedBase << "\n"
-             // Step H1. 1 = Roman at Sun-Earth L2 (physical); 0 = Roman at the centre of the
-             // Earth, which is what every run before H1 did. Any piE forecast from a run with
-             // 0 here contains only the annual Earth-orbit parallax.
+             // 1 = Roman at Sun-Earth L2; 0 = Roman at the centre of the Earth, so the piE
+             // forecast contains only the annual Earth-orbit parallax.
              << "# satellite_parallax  " << (cfg.noSatPar ? 0 : 1)
              << "   # 0 = Roman forced to Earth's position\n"
              << "# L2_offset_AU        " << (cfg.noSatPar ? 0.0 : L2_OFFSET_AU) << "\n"
              << "# dump_samples        " << (cfg.dumpSpec.empty() ? std::string("none")
                                                                     : cfg.dumpSpec) << "\n"
              << "# pair_satellite      " << (cfg.pairSat ? 1 : 0)
-             << "   # Step H3: every detection characterised at L2 AND at Earth\n"
+             << "   # every detection characterised at L2 AND at Earth\n"
              << "# dchi_det            " << cfg.dchiDet
-             << "   # Step H7 fixed detection bar; every yield is conditioned on it\n";
-        if (!cfg.dryRun) {   // Deviation 78: a dry run must not overwrite the last run's provenance
+             << "   # fixed detection bar; every yield is conditioned on it\n";
+        if (!cfg.dryRun) {   // a dry run must not overwrite the last run's provenance
             std::ofstream fprov(std::string(PATH_OUT_DIR) + "run_provenance.txt");
             if (!fprov) {
                 std::cerr << "Cannot write run_provenance.txt\n";

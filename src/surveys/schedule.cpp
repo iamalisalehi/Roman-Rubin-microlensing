@@ -1,20 +1,13 @@
 // Roman season clustering (buildRomanSchedule) and the RomanSchedule queries.
 #include "surveys/schedule.h"
 
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
-///                 Roman observing-season geometry (Step D1)
-///
-/// Roman's visit list is a comb: ~70-day observing windows when the bulge is far enough
-/// from the Sun, separated by ~110-day gaps when it is not. Everything downstream that
-/// asks "did Roman have data near this event's peak?" needs those windows, and the only
-/// authoritative statement of them is the epoch times themselves. So they are recovered
-/// from the data rather than restated -- see the note above SEASON_GAP_MIN_DAYS in config/parameters.h.
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
+// Roman's visit list is a comb of ~70-day observing windows separated by ~110-day gaps. The windows
+// are recovered from the epoch times rather than restated (see SEASON_GAP_MIN_DAYS in
+// config/parameters.h).
 RomanSchedule buildRomanSchedule(const roman& ro)
 {
-    // A sorted, de-duplicated copy: the file lists every FIELD at every epoch, so the
-    // same instant appears once per field and the raw column is neither unique nor
-    // guaranteed monotonic. ~2.4 MB and one sort, once per run.
+    // A sorted, de-duplicated copy: the file lists every field at every epoch, so the raw column is
+    // neither unique nor guaranteed monotonic.
     std::vector<double> t(ro.tim.begin(), ro.tim.end());
     std::sort(t.begin(), t.end());
     t.erase(std::unique(t.begin(), t.end()), t.end());
@@ -32,8 +25,7 @@ RomanSchedule buildRomanSchedule(const roman& ro)
         if (d > SEASON_GAP_MIN_DAYS) {
             sch.seasons.emplace_back(start, t[i - 1]);
             start = t[i];
-            // Track the two spacing populations the threshold is meant to separate, so
-            // main() can verify the separation is real instead of trusting it.
+            // Track the two spacing populations the threshold separates, so main() can verify it.
             sch.minSeasonGap = std::min(sch.minSeasonGap, d);
         } else {
             sch.maxInSeasonSpacing = std::max(sch.maxInSeasonSpacing, d);
@@ -42,10 +34,8 @@ RomanSchedule buildRomanSchedule(const roman& ro)
     sch.seasons.emplace_back(start, t.back());
     if (sch.seasons.size() == 1) sch.minSeasonGap = 0.0; //nothing was ever classed as a gap
 
-    // Shortest season. A season holding a single epoch has zero length, which is the signature
-    // of a schedule sampled more coarsely than the threshold: every epoch becomes its own
-    // "season", maxInSeasonSpacing never gets updated at all (so it stays a healthy-looking 0)
-    // and minSeasonGap stays above the threshold. Both other margins pass; only this catches it.
+    // Shortest season. A single-epoch season has zero length: the signature of a schedule sampled
+    // more coarsely than the threshold, which the other two margins do not catch.
     sch.minSeasonLength = std::numeric_limits<double>::infinity();
     for (const auto& sea : sch.seasons)
         sch.minSeasonLength = std::min(sch.minSeasonLength, sea.second - sea.first);
@@ -63,7 +53,7 @@ double RomanSchedule::dtToSeasonEdge(double t0) const
         if (t0 >= s.first and t0 <= s.second) inside = true;
         best = std::min(best, std::min(std::fabs(t0 - s.first), std::fabs(t0 - s.second)));
     }
-    // Negative inside a season, positive outside. See the header comment on the sign.
+    // Negative inside a season, positive outside.
     return inside ? -best : best;
 }
 
@@ -77,8 +67,7 @@ int RomanSchedule::seasonOf(double t) const
 int RomanSchedule::zone(double t0) const
 {
     if (seasons.empty())                      return T0_OFF_MISSION;
-    // Off-mission is tested FIRST and wins: a peak before launch or after the mission ends
-    // is not a gap in any useful sense, however close it happens to sit to an edge.
+    // Off-mission is tested first and wins, however close to an edge.
     if (t0 < missionStart or t0 > missionEnd) return T0_OFF_MISSION;
     for (const auto& s : seasons)
         if (t0 >= s.first and t0 <= s.second) return T0_IN_SEASON;

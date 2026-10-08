@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
-"""Step Y3: the absolute yield as a function of the abundance F, and the per-unit-F coefficients.
+"""The absolute yield as a function of the abundance F, and the per-unit-F coefficients.
 
-WHY THIS EXISTS. y1_absolute_yield.py tabulates the yield at a handful of literature values of F.
-But N is exactly linear in F (Deviation 54: F enters only through the prefactor F / <M>, and <M>
-is fixed by the mass function, not by F), so the whole content of those tables is one
-coefficient per selection -- the yield at F = 1, N_1 -- and the rule N(F) = F * N_1. This script
-reads y1's CSV, recovers N_1 for every selection, checks that the linearity really holds across
-the grid it was written at, writes the coefficients as a table, and draws N(F) with the
-literature abundances marked, so a reader can take any F they prefer.
+y1_absolute_yield.py tabulates the yield at a few literature values of F. N is exactly linear in
+F (F enters only through the prefactor F / <M>, and <M> is fixed by the mass function), so the
+content of those tables is one coefficient per selection, the yield at F = 1 (N_1), and the rule
+N(F) = F * N_1. This script reads y1's CSV, recovers N_1 for every selection, checks that
+linearity holds across the grid, writes the coefficients as a table, and draws N(F) with the
+literature abundances marked.
 
 It also relates each population to the ordinary-lens (`bulge`) run, where F = 1 by definition:
-eta = N_1(population) / N(bulge) is the fraction of ALL events a population would supply per
-unit mass fraction. That ratio is the <sqrt(M)>/<M> suppression of the report, after detection
-efficiency, in one number.
+eta = N_1(population) / N(bulge) is the fraction of all events a population supplies per unit
+mass fraction (the <sqrt(M)>/<M> suppression after detection efficiency).
 
-No new data: everything here is derived from y1_yields.csv.
+Everything here is derived from y1_yields.csv.
 
-    .roman/bin/python analysis/y3_yield_vs_F.py figures/yield_prefix_20260922/y1_yields.csv \\
-        -o figures/yield_prefix_20260922/y3
+    .roman/bin/python analysis/y3_yield_vs_F.py OUTDIR/y1_yields.csv \\
+        -o OUTDIR
 """
 
 import argparse
@@ -30,10 +28,9 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import plotstyle as ps        # noqa: E402
 
-# Literature abundances (fraction of the Galaxy's stellar mass), as checked in Deviation 54.
-# (label, F, populations it applies to)
+# Literature abundances (fraction of the Galaxy's stellar mass): (label, F, populations it
+# applies to). See DEFAULT_F in y1_absolute_yield.py for the sources.
 LITERATURE_F = [
-    # Labels are short because they sit inside the panel; the caption names the papers.
     ("SM26", 0.0045, ("bh",)),
     ("SS23", 0.019, ("bh",)),
     ("O20, L20, G00", 0.03, ("bh",)),
@@ -91,13 +88,10 @@ def figure(k, out, src):
         ps.panel_label(ax, f"({tag}) " + ("black holes" if pop == "bh" else "neutron stars"),
                        loc="upper left")
     axes[0].set_ylabel("events in 10 yr, Roman footprint")
-    # Above the panels, not inside: every corner of both panels is taken by a line or a label.
+    # Legend above the panels; every corner inside is taken.
     h, l = axes[0].get_legend_handles_labels()
     fig.legend(h, l, loc="lower center", bbox_to_anchor=(0.5, axes[0].get_position().y1), ncol=len(CURVES),
                frameon=False, fontsize=6.5)
-    # The source path names the run (yield_prefix_20260922 = pre-extinction-fix, Deviation 53;
-    # yield_20260925 = post-fix). It used to be a fixed "pre-extinction-fix" note, which then
-    # mislabelled every post-fix figure.
     ps.stamp(fig, f"y3_yield_vs_F.py from {src}; per-object convention; band = MC 1-sigma")
     return ps.save_figure(fig, os.path.join(out, "y3_yield_vs_F"))
 
@@ -110,7 +104,7 @@ def main():
     os.makedirs(a.out, exist_ok=True)
 
     k = coefficients(pd.read_csv(a.csv))
-    lines = ["# Yield per unit abundance, N_1 = N(F) / F (Step Y3)", "",
+    lines = ["# Yield per unit abundance, N_1 = N(F) / F", "",
              "Derived from `" + a.csv + "`. N(F) = F x N_1 exactly; N_1 is the yield at F = 1, "
              "over the 10-yr window. eta = N_1 / N(bulge) for the same scope and selection: the "
              "fraction of all events a population supplies per unit mass fraction.", ""]

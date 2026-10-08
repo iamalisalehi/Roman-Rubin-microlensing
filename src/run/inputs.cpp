@@ -1,9 +1,9 @@
-// Reading the input files. Moved out of main() verbatim; the order of the printed lines is kept.
+// Reading the input files.
 #include "run/inputs.h"
 
 GbtdsLayout loadGbtdsLayout() {
-    // The GBTDS detector layout (Deviation 69), read first: the footprint grid is checked
-    // against the real detector size, and the scan region is built from the field outline.
+    // Read first: the footprint grid is checked against the real detector size, and the scan
+    // region is built from the field outline.
     const GbtdsLayout gl = readGbtdsLayout();
     std::cout << "**** GBTDS layout read: " << GBTDS_NSCA << " detectors x " << GBTDS_NLAYOUT
               << " rolls, detector side " << gl.scaSide << " deg, field reach " << gl.rField
@@ -12,7 +12,6 @@ GbtdsLayout loadGbtdsLayout() {
 }
 
 int readRubinVisits(lsst& ls) {
-    // --------------------- Read BulgeBaseline.dat ------------------
     std::ifstream fil(PATH_BULGE_BASELINE);
     if (!fil) {
         std::cerr << "Cannot read BulgeBaseline.dat\n";
@@ -21,7 +20,6 @@ int readRubinVisits(lsst& ls) {
 
     int ID;
     double TV, airm, seeingVal, skyB, texp;
-//    int tmpFilter;
     std::string header;
 
     std::getline(fil, header);   // Skip the header line
@@ -29,11 +27,8 @@ int readRubinVisits(lsst& ls) {
         fil >> ID >> ls.RA[i] >> ls.DEC[i] >> ls.l[i] >> ls.b[i]
             >> ls.tim[i] >> ls.filter[i] >> airm >> seeingVal >> skyB
             >> TV >> ls.sig5[i] >> texp >> ls.dist[i] >> ls.rot[i];
-//if (i == 0) cout << ID << endl;
-        // A failed extraction is a silent no-op that leaves this row zero-initialised,
-        // and zeros pass every CHECK below: (l,b)=(0,0) is inside the bulge region,
-        // tim=0 is inside [0,Tobs], filter=0 is a valid u-band index. So the stream
-        // state is the only thing that can catch a short or malformed baseline.
+        // A failed extraction leaves the row zero-initialised, and zeros pass every CHECK
+        // below, so the stream state is the only guard against a short or malformed file.
         if (!fil) {
             std::cerr << "BulgeBaseline.dat: read failed at row " << i << " of " << Nl
                       << ". File has fewer rows than Nl, or contains a stray header "
@@ -54,8 +49,7 @@ int readRubinVisits(lsst& ls) {
 
 int readRubinAstromTable(lsst& ls) {
     std::ifstream fil;
-    // --------------------- Read sigmaA_LSST.txt -------------------
-    // Atrometric error?
+    // Rubin astrometric error table.
     fil.open(PATH_SIGMA_A_LSST);
     if (!fil) { std::cerr << "Cannot read sigmaA_LSST.txt\n"; return 1; }
 
@@ -74,8 +68,7 @@ int readRubinAstromTable(lsst& ls) {
 
 int readRomanErrorTable(roman& ro) {
     std::ifstream fil;
-    // --------------------- Read sigma_Roman.txt ---------------------
-    // Photometric error
+    // Roman photometric error table.
     fil.open(PATH_SIGMA_ROMAN);
     if (!fil) { std::cerr << "Cannot read sigma_roman.txt\n"; return 1; }
 
@@ -88,7 +81,7 @@ int readRomanErrorTable(roman& ro) {
     }
     fil.close();
     {
-        // Deviation 72: anchor the curve's 5-sigma point to ROMAN_DEPTH5_AB (see config/parameters.h).
+        // Anchor the curve's 5-sigma point to ROMAN_DEPTH5_AB (see config/parameters.h).
         const double e5 = 1.0857 / 5.0;
         double m5 = -1.0;
         for (int i = 1; i < NaRoman; ++i)
@@ -115,9 +108,7 @@ int readRomanVisits(roman& ro) {
     std::ifstream fil;
     int ID;
     std::string header;
-    // --------------------- Read RomanBaseline.dat -------------------
-    // Written by Baseline/generateRomanBaseline.py (adopted GBTDS layout, Deviation 69):
-    // ID RA DEC l b time sig5 field layout.
+    // Written by Baseline/generateRomanBaseline.py: ID RA DEC l b time sig5 field layout.
     fil.open(PATH_ROMAN_BASELINE);
     if (!fil) {
         std::cerr << "Cannot read RomanBaseline.dat\n";
@@ -127,7 +118,7 @@ int readRomanVisits(roman& ro) {
     for (int i = 0; i < NlRoman; ++i) {
         fil >> ID >> ro.RA[i] >> ro.DEC[i] >> ro.l[i] >> ro.b[i] >> ro.tim[i] >> ro.sig5[i]
             >> ro.field[i] >> ro.layout[i];
-        // Same silent zero-fill failure mode as the Rubin read above.
+        // Same zero-fill failure mode as the Rubin read above.
         if (!fil) {
             std::cerr << "RomanBaseline.dat: read failed at row " << i << " of " << NlRoman
                       << ". Regenerate with generateRomanBaseline.py and update NlRoman.\n";
@@ -138,7 +129,7 @@ int readRomanVisits(roman& ro) {
         CHECK(ro.tim[i] <= Tobs);
         CHECK(ro.layout[i] >= 0 and ro.layout[i] < GBTDS_NLAYOUT);
         CHECK(ro.field[i] >= 0 and ro.field[i] < 6);
-        // Deliberately no filter CHECK here — Roman is single-band (F146, index 6) for now.
+        // No filter CHECK: Roman is single-band (F146, index 6).
     }
     fil.close();
     std::cout << "**** File RomanBaseline.dat was read ****\n";
@@ -146,18 +137,13 @@ int readRomanVisits(roman& ro) {
 }
 
 int buildRomanSeasons(const roman& ro, RomanSchedule& sched) {
-    // --------------------- Roman season geometry (Step D1) ---------------
-    // Recovered from the epoch times just read, not restated from the generator.
-    // Needed per event to place t0 relative to Roman's observing windows -- the
-    // independent variable of the gap-filling result.
+    // Season geometry recovered from the epoch times just read, used to place each event's t0
+    // relative to Roman's observing windows.
     sched = buildRomanSchedule(ro);
 
-    // The clustering is only meaningful if the two spacing populations it separates
-    // are genuinely separated: every within-season spacing below the threshold, every
-    // between-season gap above it. If a future schedule ever samples a season more
-    // sparsely than SEASON_GAP_MIN_DAYS, or packs seasons closer together than it, the
-    // seasons come out wrong while dt_edge and t0zone still look perfectly reasonable.
-    // Refuse to run rather than emit gap geometry that is quietly fiction.
+    // The clustering needs every within-season spacing below SEASON_GAP_MIN_DAYS and every
+    // between-season gap above it; otherwise the seasons come out wrong while dt_edge and
+    // t0zone still look plausible. Refuse to run rather than emit wrong gap geometry.
     if (sched.seasons.size() < 2
         or sched.maxInSeasonSpacing >= SEASON_GAP_MIN_DAYS
         or sched.minSeasonGap       <= SEASON_GAP_MIN_DAYS
@@ -180,10 +166,9 @@ int buildRomanSeasons(const roman& ro, RomanSchedule& sched) {
 }
 
 int readSkyTables(extin& ex, const lsst& ls) {
-    // --------------------- Read extinction ------------------------
     readExtinction(ex, PATH_EXT_TABLES);
-    readLensML(PATH_LENS_ML);   // luminous lenses (Deviation 74)
-    readLsstCamMap(PATH_LSSTCAM_FOV);   // Rubin's footprint (Deviation 80)
+    readLensML(PATH_LENS_ML);   // luminous lenses
+    readLsstCamMap(PATH_LSSTCAM_FOV);   // Rubin's footprint
     {
         // The galactic->ICRS conversion the coverage test relies on, checked against OpSim's own
         // RA/Dec for every Rubin visit (whose l, b readbaselineBulge.py derived with astropy).
@@ -201,7 +186,6 @@ int readSkyTables(extin& ex, const lsst& ls) {
 }
 
 int readCmdTables(CMD& cm) {
-    // --------------------- Call read_cmd --------------------------
     read_cmd(cm);
     std::cout << "******* read_cmd was done ************" << std::endl;
     return 0;

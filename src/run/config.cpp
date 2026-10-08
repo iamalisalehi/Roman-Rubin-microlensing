@@ -30,7 +30,7 @@ void printUsage(const char* prog) {
         << "  --pair-satellite\n"
         << "                 characterise each detected event twice, with Roman at L2 and\n"
         << "                 with the offset zeroed, writing both forecasts to h3_pair.dat.\n"
-        << "                 Step H3's experiment, done on one event at a time because two\n"
+        << "                 the satellite-parallax experiment, done on one event at a time because two\n"
         << "                 runs cannot be compared event-for-event. Costs about one extra\n"
         << "                 Fisher call per detection. Incompatible with\n"
         << "                 --no-satellite-parallax, which leaves nothing to compare.\n"
@@ -66,12 +66,12 @@ void printUsage(const char* prog) {
         << "                 weights, then exit without drawing any stars\n"
         << "  --no-satellite-parallax   put Roman at the centre of the Earth, removing the\n"
         << "                 Earth-L2 spatial baseline while leaving the timing alone. The\n"
-        << "                 'off' run of the satellite-parallax experiment (PHASE_H_PLAN H3)\n"
+        << "                 'off' run of the satellite-parallax experiment\n"
         << "  --dump-samples F  write full light curves and astrometric tracks for a few\n"
         << "                 illustrative events, as described by spec file F. Off by\n"
         << "                 default. Consumes no RNG, so the set of simulated events is\n"
         << "                 identical with and without it. See the spec-file format in\n"
-        << "                 the Step S1 block of include/run/sample_dump.h.\n"
+        << "                 include/run/sample_dump.h.\n"
         << "  --help         this message\n";
 }
 
@@ -123,10 +123,8 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
             exitCode = 2; return false;
         }
     }
-    // The stub patch is 0.1x0.1 deg. The default stride of 10 (0.20 deg) would step
-    // clean over it and leave a single sightline, so --stub without an explicit
-    // --stride falls back to the native dd grid -- which is what the pre-Step-4 loop
-    // used, and the only way --stub reproduces those numbers.
+    // The stub patch is 0.1x0.1 deg; the default stride of 10 (0.20 deg) would step over it,
+    // so --stub without an explicit --stride uses the native dd grid.
     if (cfg.stubPatch and not strideGiven) cfg.stride = 1;
 
     if (cfg.pairSat and cfg.noSatPar) {
@@ -149,8 +147,6 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
         std::cerr << "ERROR: --events must be >= 1, --lenses and --nerr >= 0\n";
         exitCode = 2; return false;
     }
-    // A cap below the event budget would stop every sightline early, which is not a cap
-    // but a silent redefinition of the budget.
     if (cfg.endIndex >= 0 and cfg.endIndex <= cfg.startIndex) {
         std::cerr << "ERROR: --end-index (" << cfg.endIndex << ") must exceed --start-index ("
                   << cfg.startIndex << ").\n";
@@ -171,10 +167,9 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
 int resolveGridSteps(RunConfig& cfg, const GbtdsLayout& gl, GridSteps& steps) {
     const double gridStep = cfg.stride * dd;
 
-    // Step E1. strideRoman = 0 means "not given": the footprint grid is the coarse grid, kSub
-    // = 1 -- unless that grid is coarser than one Roman detector (Deviation 69), in which case
-    // it is refined to the largest divisor of --stride that is not, so that which sightlines
-    // fall on a detector and which in a chip gap is sampled at all.
+    // strideRoman = 0 means "not given": the footprint grid is the coarse grid (kSub = 1),
+    // unless that is coarser than one Roman detector, in which case it is refined to the
+    // largest divisor of --stride that is not, so detector vs chip-gap is sampled at all.
     if (cfg.strideRoman == 0) {
         cfg.strideRoman = cfg.stride;
         if (not cfg.stubPatch and cfg.stride * dd > gl.scaSide) {
@@ -192,8 +187,7 @@ int resolveGridSteps(RunConfig& cfg, const GbtdsLayout& gl, GridSteps& steps) {
         return 2;
     }
     // Must divide exactly, or the fine cells do not tile the coarse ones and the sky-area
-    // weights stop summing to the scanned area -- which is the one thing this whole
-    // stratification has to preserve.
+    // weights stop summing to the scanned area.
     if (cfg.stride % cfg.strideRoman != 0) {
         std::cerr << "ERROR: --stride-roman (" << cfg.strideRoman << ") must divide --stride ("
                   << cfg.stride << ") exactly, so that each coarse cell is a whole number of "
@@ -203,9 +197,8 @@ int resolveGridSteps(RunConfig& cfg, const GbtdsLayout& gl, GridSteps& steps) {
     const int    kSub     = cfg.stride / cfg.strideRoman; // fine cells per coarse cell, per axis
     const double fineStep = cfg.strideRoman * dd;
 
-    // The footprint grid must not step over whole detectors: with a step wider than one, the
-    // grid's point-sampled Roman area is noise and a field can be missed outright. The per-field
-    // guard below then re-checks every (field, roll) placement against the detectors.
+    // The footprint grid must not step over whole detectors: with a wider step the
+    // point-sampled Roman area is noise and a field can be missed outright.
     if (fineStep > gl.scaSide and not cfg.stubPatch) {
         std::cerr << "ERROR: --stride" << (kSub > 1 ? "-roman " : " ") << cfg.strideRoman
                   << " gives a footprint grid step of " << fineStep << " deg, wider than one "

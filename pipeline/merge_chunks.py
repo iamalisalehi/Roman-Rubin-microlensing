@@ -3,12 +3,11 @@
 
     python3 pipeline/merge_chunks.py RUN_ROOT/<pop>        # reads <pop>/plan.txt, <pop>/chunks/NNNN/
 
-WHY THIS IS EXACT (Deviation 77). Every sightline re-seeds the random-number generator from
+Why this is exact: every sightline re-seeds the random-number generator from
 (seed, its scan index), and every output file gets rows appended once per sightline (or per event).
 So running [0,a), [a,b), ... in separate directories and concatenating the files in index order gives
-the very bytes a single unchunked run writes. The only thing a later chunk adds is its own copy of the
-'#' header lines at the top of test<tag>.dat and h3_pair.dat; those are dropped here (and every other
-file's leading '#' lines too, if they equal the first chunk's).
+the bytes a single unchunked run writes. A later chunk adds only its own copy of the leading '#' header
+lines of each file; those are dropped here if they equal the first chunk's.
 
 What is written into <pop>/ (each file to a .tmp name first, renamed when complete):
   test<tag>.dat, h3_pair.dat, ...         every regular file in a chunk's top directory
@@ -34,10 +33,9 @@ import sys
 BLOCK = 8 << 20
 SKIP_TOP = {"DONE", "RUNNING", "run.log"}          # chunk bookkeeping, not outputs
 PROV = "files/MONTLMC/files/run_provenance.txt"
-# EfLMC<tag>.dat and EfLMC<tag>B.dat: one block per sightline holding the detection EFFICIENCY accumulated
-# over every sightline so far (src/sim/sightline.cpp: `NdtE += ndtE` then prints Nd*100/Ns). The running
-# counts restart at the start of each chunk and only percentages are written, so the chunks cannot be
-# added up: the concatenation is NOT the unchunked file. Everything else IS byte-identical.
+# EfLMC<tag>.dat and EfLMC<tag>B.dat hold, per sightline, the detection efficiency accumulated over all
+# sightlines so far. The running counts restart in each chunk and only percentages are written, so the
+# chunks cannot be added up and the concatenation differs from the unchunked file.
 CUMULATIVE = re.compile(r"(^|/)EfLMC.*\.dat$")
 
 
@@ -85,7 +83,7 @@ def merge_file(rel, chunk_dirs, dest_dir):
     dest = os.path.join(dest_dir, rel)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     tmp = dest + ".tmp"
-    header = None            # the first non-empty chunk's header, which later chunks must repeat
+    header = None            # first non-empty chunk's header; later chunks must repeat it
     rows = nbytes = present = 0
     src_bytes = dropped = 0
     with open(tmp, "wb") as out:
@@ -97,7 +95,7 @@ def merge_file(rel, chunk_dirs, dest_dir):
             src_bytes += os.path.getsize(p)
             hdr, off = leading_header(p)
             if header is None:
-                header, off = hdr, 0                     # keep the first header: copy from byte 0
+                header, off = hdr, 0                     # keep the first header
             elif hdr != header:
                 os.remove(tmp)
                 sys.exit(f"{p}: its leading '#' lines differ from the first chunk's; "
@@ -145,7 +143,7 @@ def merge_provenance(chunk_dirs, dest_dir, n_total, chunk_size):
     """Chunk 0's run_provenance.txt, made to describe the merged run."""
     lines = open(os.path.join(chunk_dirs[0], PROV)).read().splitlines()
     marker = "# ---- sightline outcome"
-    # sum the end-of-run block over all chunks (ints: counts; floats: areas, printed %g)
+    # sum the end-of-run block over all chunks (counts and areas)
     sums = {}
     for cd in chunk_dirs:
         txt = open(os.path.join(cd, PROV)).read().splitlines()

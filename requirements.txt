@@ -1,6 +1,6 @@
 # Python packages the pipeline's scripts import (minimum versions only; loose on purpose).
 # Developed and run with: numpy 2.5, scipy 1.18, pandas 3.0, astropy 8.0, matplotlib 3.11, dustmaps 1.0.14
-# on Python 3.14. `pipeline.sh CONFIG setup` installs this file into the venv named by PYTHON.
+# on Python 3.14. `pipeline/pipeline.sh CONFIG setup` installs this file into the venv named by PYTHON.
 numpy>=1.26
 scipy>=1.11
 pandas>=2.1

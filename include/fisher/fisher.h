@@ -10,46 +10,26 @@
 // ---------------------------------------------------------------------------------------------
 // Which subset of a single event's light curve a Fisher matrix was accumulated from.
 //
-// The model, and therefore every derivative, is identical across all three -- the same event,
-// the same physics. Only the set of epochs summed over differs. Because each epoch contributes
-// an independent, positive semi-definite term to the information sum, and the epochs partition
-// cleanly by observatory, the matrices satisfy exactly
-//
-//     F[SJOINT] == F[SRUBIN] + F[SROMAN]
-//
-// element by element. tests/fisher_fixture.cpp asserts this; if it ever fails, the partitioning
-// is wrong. It also follows that sigma from the joint matrix can never exceed sigma from either
-// single-survey matrix: adding information can only sharpen a forecast.
+// The model and its derivatives are identical across the three; only the set of epochs summed
+// over differs. Epochs contribute independent, positive semi-definite terms and partition by
+// observatory, so F[SJOINT] == F[SRUBIN] + F[SROMAN] element by element (asserted in
+// tests/fisher_fixture.cpp), and sigma_joint can never exceed either single-survey sigma.
 enum SurveyIdx { SJOINT = 0, SRUBIN = 1, SROMAN = 2, NSURV = 3 };
 
 // Maps a per-epoch telescope tag (lens::tele[i]: 0 = Rubin, 1 = Roman) to its survey index.
 inline int surveyOfTele(int tele) { return (tele == 0) ? SRUBIN : SROMAN; }
 
-// Which photometric parameters a given survey partition can actually constrain.
+// Which photometric parameters a survey partition can constrain.
 //
-// Rubin's epochs carry no information whatsoever about Roman's flux parameters (fb1, mbs1) and
-// vice versa: perturbing them leaves the model magnitude of the other telescope's epochs exactly
-// unchanged, so those rows and columns of the single-survey information matrices are identically
-// zero. Inverting the full Nx x Nx matrix for a single survey would therefore be singular by
-// construction, not by accident. Each partition instead inverts only the submatrix it can
-// constrain; parameters outside the subset report sigma = -1.
+// Rubin's epochs carry no information about Roman's flux parameters (fb1, mbs1) and vice versa,
+// so those rows and columns of a single-survey matrix are identically zero and the full Nx x Nx
+// matrix would be singular by construction. Each partition therefore inverts only its active
+// submatrix; parameters outside it report sigma = -1.
 //
-// The joint matrix keeps all Nx parameters, which is the point -- it is the only one that sees
-// both telescopes' flux scales at once, and the chromatic difference between them is part of what
-// breaks the u0-tE-fb degeneracy.
-// A parameter is only active for a partition if that partition's data can constrain it.
-//
-// Rubin's epochs carry no information about Roman's flux parameters (fb1, mbs1) and vice versa:
-// perturbing them leaves the other telescope's model magnitudes exactly unchanged, so those rows
-// and columns are identically zero. Inverting the full Nx x Nx matrix for such a partition would
-// be singular by construction, not by accident.
-//
-// The joint set additionally depends on which surveys actually contributed epochs for THIS event.
-// A short event peaking in a Roman gap has no Roman data at all, so the joint fit cannot solve for
-// Roman's flux scale either and must fall back to Rubin's parameter set. Without this the joint
-// matrix would go singular on exactly the gap-peaking events the project is about.
-// kMinTeleEpochs (the minimum epochs a telescope needs to enter the photometric matrices,
-// Deviation 76): see config/parameters.h, section 7.
+// The joint set depends on which surveys contributed epochs to THIS event: a short event peaking
+// in a Roman gap has no Roman data, so the joint fit falls back to Rubin's parameter set rather
+// than going singular. kMinTeleEpochs (minimum epochs for a telescope to enter the photometric
+// matrices) is in config/parameters.h.
 
 inline std::vector<int> activePhotParams(int surv, int nRubinEpochs, int nRomanEpochs)
 {
@@ -89,52 +69,39 @@ struct covarian {
     std::array<std::vector<double>, NSURV> Era; //size Nx each: 1-sigma photometric
     std::array<std::vector<double>, NSURV> Erb; //size Ny each: 1-sigma astrometric
 
-    // Step 3c (Deviation 71): the astrometric forecast under the three noise variants (AV_W, AV_N,
-    // AV_P; see AST_SIGC in this file). Index [variant][survey][param]. Variant W is identical to
-    // Erb/okB/condB/relMl; the Rubin partition is identical in all three (only Roman's noise and
-    // offsets differ). -1 sentinels as everywhere else.
+    // Astrometric forecast under the three noise variants (AV_W, AV_N, AV_P; see AST_SIGC).
+    // Index [variant][survey][param]. Variant W equals Erb/okB/condB/relMl; the Rubin partition
+    // is the same in all three (only Roman's noise and offsets differ). -1 sentinels as elsewhere.
     std::array<std::array<std::array<double, Ny>, NSURV>, NAVAR> ErbV{};
     std::array<std::array<int, NSURV>, NAVAR>    okBV{};
     std::array<std::array<double, NSURV>, NAVAR> condBV{};
     std::array<std::array<double, NSURV>, NAVAR> relMlV{};
     std::array<std::array<std::array<double, Ny * Ny>, NSURV>, NAVAR> FBV{};  // the matrices
 
-    // Per-survey epoch counts and characterizability flags. A partition with no epochs at all
-    // (a short event peaking in a Roman gap genuinely has no Roman data), or with fewer epochs
-    // than free parameters, is rank-deficient by construction: it must be reported as
-    // not-characterizable, NOT inverted into a meaningless ~1e10 sigma.
+    // Per-survey epoch counts and characterizability flags. A partition with no epochs, or fewer
+    // epochs than free parameters, is rank-deficient and is reported as not-characterizable
+    // rather than inverted into a meaningless ~1e10 sigma.
     std::array<int, NSURV> nepochA; //epochs contributing to each photometric matrix
     std::array<int, NSURV> okA;     //1 = inverted and usable, 0 = not characterizable
     std::array<int, NSURV> okB;     //same for the astrometric matrix
 
     // Condition number (lambda_max/lambda_min) of the NORMALIZED information matrix, per survey.
-    // Normalized, not raw: dividing row and column i by sqrt(F_ii) removes the spread that comes
-    // merely from the parameters being expressed in different units (tE in days ~30, u0
-    // dimensionless ~0.3, xi in radians), leaving only genuine parameter degeneracy. A large
-    // value after normalization is a physical statement -- some combination of parameters is
-    // unconstrained by this data, classically the u0-tE-fb degeneracy -- not a units artifact.
-    // Stored rather than only thresholded so the cut can be chosen during analysis.
-    // -1.0 means "not computed" (partition rejected before it got this far).
+    // Rows and columns are divided by sqrt(F_ii), so the value reflects genuine parameter
+    // degeneracy (classically u0-tE-fb) rather than the parameters' differing units. Stored so
+    // the cut can be chosen in analysis. -1.0 = not computed (partition rejected earlier).
     std::array<double, NSURV> condA;
     std::array<double, NSURV> condB;
 
-    // Fractional 1-sigma on the lens mass, per survey (Step D1). Ml is not a fitted
-    // parameter: it follows from Ml = tetE / (kappa * piE), a pure ratio, so the two
-    // fractional errors add in quadrature. Stored per survey because its two ingredients
-    // come from different instruments' different strengths -- tetE from the ASTROMETRIC
-    // matrix (sub-mas centroid motion: Roman) and piE from the PHOTOMETRIC one over a
-    // long time baseline (annual parallax distortion: Rubin). A mass the joint fit
-    // measures and neither survey measures alone is the black-hole result.
-    // -1.0 means "not measurable in this partition", never a measured value.
+    // Fractional 1-sigma on the lens mass, per survey. Ml = tetE / (kappa * piE) is not fitted, so
+    // the fractional errors of tetE (astrometric matrix: sub-mas centroid motion, Roman) and piE
+    // (photometric matrix: parallax over a long baseline, Rubin) add in quadrature.
+    // -1.0 = not measurable in this partition, never a measured value.
     std::array<double, NSURV> relMl;
 
-    // Multiplicative override on each photometric parameter's finite-difference step (Step C3).
-    // Default 1.0 is an exact no-op, so production behaviour is byte-identical; the step-size
-    // convergence sweep drives these at runtime. A runtime knob rather than a compile flag
-    // because a sweep needs many step values within a single process -- a compile flag would
-    // mean one rebuild, and for the live binary one multi-minute CMD reload, per sweep point.
+    // Multiplicative override on each photometric parameter's finite-difference step; 1.0 is the
+    // production value. A runtime knob so the step-size sweep can run many values in one process.
     std::array<double, Nx> deltaScale;
-    // Same knob for the astrometric steps Delta2[] (Deviation 75, step M3): 1.0 = production.
+    // Same for the astrometric steps Delta2[].
     std::array<double, Ny> deltaScaleB{1.0, 1.0, 1.0, 1.0};
 
     gsl_matrix_uptr summA; //size Nx (diagnostic only, joint)
@@ -171,39 +138,18 @@ struct covarian {
         }
     }
 
-//        deter = 0; sign = 0; flagi = 0;
-//        sigmul1 = sigmul2 = f1 = f2 = 0;
-//        magw = derm1f = derm2f = dera1f = derb1f = dera2f = derb2f = diff = 0;
-
-//        for(int i=0; i<2; ++i) {
-//            derm1[i]=derm2[i]=dera1[i]=derb1[i]=dera2[i]=derb2[i]=bb[i]=0;
-//        }
-//        for(int i=0; i<nq; ++i) resu[i] = 0;
-//    }
-
     // Disable copy, allow move
     covarian(const covarian&) = delete;
     covarian& operator=(const covarian&) = delete;
     covarian(covarian&&) = default;
     covarian& operator=(covarian&&) = default;
 };
-//==========================================//
-// How the three Fisher partitions came out for one event.
-//
-// This exists so that events where a survey contributes real information but cannot characterize
-// the event on its own are LABELLED rather than silently lost. They are the strongest evidence
-// for the joint fit: data that is insufficient alone still sharpens the combined result. A naive
-// analysis computing sigma_joint / sigma_roman would hit a not-characterizable sentinel on
-// exactly these events and, if it dropped the row, would discard the best synergy cases and bias
-// the reported gain downward -- the mirror image of the selection bias the plan warns about at
-// Step C5. Never drop a row on the basis of a missing single-survey sigma; classify it.
-// Detection taxonomy. A microlensing event is only meaningfully "detected" if the joint fit
-// detects it: the joint stream contains strictly more data than either survey alone, so a
-// single-telescope detection that the joint test misses is not a real category but a symptom
-// of an inconsistent threshold (see DET_ANOMALY below).
-//
-// That leaves four ways an event can be detected, distinguished by which surveys ALSO detect
-// it on their own -- which is the quantity the joint-fit science case is about:
+// Detection taxonomy. An event counts as detected only if the joint fit detects it: the joint
+// stream contains strictly more data than either survey alone. The classes below say which
+// surveys ALSO detect it on their own, which is what the joint-fit science case is about.
+// Events that one survey cannot characterize alone are labelled, not dropped: they are the
+// strongest evidence for the joint fit, and dropping rows with a missing single-survey sigma
+// would bias the reported gain downward.
 enum DetClass {
     DET_NONE         = 0, //nothing detected it
     DET_JOINT_ONLY   = 1, //only the combined stream -- neither telescope alone would have found it
@@ -214,13 +160,11 @@ enum DetClass {
     NDETCLASS        = 6,
 };
 
-// DET_ANOMALY must stay empty. Adding data cannot destroy signal, so if either survey alone
-// clears its detection bar the combined stream must clear its own. That this counter is NOT
-// currently zero is a real finding, not a bookkeeping artifact: the detection test compares
-// dchi against 2*ndw, i.e. it thresholds the MEAN per-epoch chi-squared improvement. Pooling a
-// survey with many low-signal epochs therefore raises the joint bar without adding signal, and
-// can veto a detection the other survey made alone. Counted explicitly rather than folded into
-// a neighbouring class, so the inconsistency stays visible instead of being silently absorbed.
+// DET_ANOMALY should stay empty: adding data cannot destroy signal. It is not currently zero
+// because the detection test thresholds the MEAN per-epoch chi-squared improvement (dchi vs
+// 2*ndw), so pooling a survey with many low-signal epochs raises the joint bar and can veto a
+// detection the other survey made alone. It is counted separately so the inconsistency stays
+// visible.
 inline int detClass(int detL, int detR, int detJ)
 {
     if (!detJ) return (detL or detR) ? DET_ANOMALY : DET_NONE;
@@ -251,8 +195,8 @@ enum SynergyClass {
     SYN_JOINT_ONLY = 4, //NEITHER survey alone, but the joint fit works -- pure joint-fit rescue
 };
 
-// Classify from the photometric characterizability flags. SYN_JOINT_ONLY and the two
-// *_ONLY classes are the scientifically interesting ones; see the note above.
+// Classify from the photometric characterizability flags. SYN_JOINT_ONLY and the two *_ONLY
+// classes are the scientifically interesting ones.
 inline int synergyClass(const covarian& co)
 {
     if (!co.okA[SJOINT])                    return SYN_NONE;

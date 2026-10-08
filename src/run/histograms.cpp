@@ -1,11 +1,6 @@
 // Histogram bin lookups (Func*) for tE, lens mass, piE, u0, proper motion, baseline magnitude, blend.
 #include "run/histograms.h"
 
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
-//                                                                    //
-//               tE & ML & DL & U0 Functions                          //
-//                                                                    //
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
 int FunctE(lens & l) {
    int gg = -1;
 
@@ -28,7 +23,6 @@ int FunctE(lens & l) {
    return(gg);
 }
 
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 int FuncMl(lens & l) {
    int gg = -1;
 
@@ -42,15 +36,12 @@ int FuncMl(lens & l) {
 
    CHECK(gg >= 0);
    CHECK(gg <= GG);
-   // Was CHECK(l.Ml >= 3.0) -- the low edge of the MACHO range this code was adapted from,
-   // left behind when the bulge population (0.01 Msun and up) replaced it. It would throw on
-   // any dwarf lens, and only went unnoticed because both call sites are commented out.
+   // The lower bound follows the active population (mlMin()), not a fixed value.
    CHECK(l.Ml >= mlMin() * 0.999);
 
    return(gg);
 }
 
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 int FuncPi(lens & l) {
    int gg = -1;
    double lpi = std::log10(l.pirel);
@@ -69,7 +60,6 @@ int FuncPi(lens & l) {
    return(gg);
 }
 
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 int Funcu0(lens & l){
    int gg = -1;
 
@@ -89,7 +79,6 @@ int Funcu0(lens & l){
    return(gg);
 }
 
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 int FuncMu(lens & l){
    int gg = -1;
    double mur = double(l.murel * year); //mas/years
@@ -109,7 +98,6 @@ int FuncMu(lens & l){
    return(gg);
 }
 
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 int FuncMb(lens & l, double gadr) {
    int gg = -1;
 
@@ -127,7 +115,6 @@ int FuncMb(lens & l, double gadr) {
    return(gg);
 }
 
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 int FuncFb(lens & l, double blen) {
    int gg = -1;
 

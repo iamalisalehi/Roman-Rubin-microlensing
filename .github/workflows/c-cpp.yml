@@ -1,4 +1,4 @@
-name: C/C++ CI
+name: CI
 
 on:
   push:
@@ -7,15 +7,21 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
-
+  build-and-test:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
-    - name: Install dependencies
+    - name: Install GSL
       run: |
-          sudo apt-get update
-          sudo apt-get install -y libgsl-dev
-    - name: make
+        sudo apt-get update
+        sudo apt-get install -y libgsl-dev
+    - name: Build
       run: make
+    - name: Fisher-matrix regression test
+      run: make fishertest && ./fishertest
+    - name: Extinction-law unit test
+      run: make extinctiontest && ./extinctiontest
+    - name: Python syntax check
+      run: python3 -m compileall -q analysis pipeline tools tests CMD Baseline maps.py
+    - name: Pipeline script syntax check
+      run: for f in pipeline/*.sh; do bash -n "$f"; done

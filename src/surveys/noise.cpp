@@ -1,11 +1,6 @@
 // Photometric and astrometric error models of the two surveys (surveys/noise.h).
 #include "surveys/noise.h"
 
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
-//                                                                    //
-//                         Error LSST calculations                    //
-//                                                                    //
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
 double errlsstM(double mag, int fi, double sig5){ //LSST Photometric Error 
 
     double x, Delta1 = 0.0;
@@ -21,8 +16,8 @@ double errlsstM(double mag, int fi, double sig5){ //LSST Photometric Error
    
     return std::sqrt(delta2 * delta2 + Delta1 * Delta1);
 }
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
-double errlsstA(lsst & ls, double ghadr){ //LSST Astrometric Error  //Change it!!
+
+double errlsstA(lsst & ls, double ghadr){ //LSST Astrometric Error
 
     double error = -1.0, shib = 0.0;
 
@@ -47,11 +42,9 @@ double errlsstA(lsst & ls, double ghadr){ //LSST Astrometric Error  //Change it!
     CHECK(error >= ls.err[0]);
     CHECK(ghadr >= 0.0);
 
-    // Renormalise the shipped mission-averaged curve to a PER-VISIT error, which is what
-    // l.erra[] means and what FisherM assumes. See the LSST_AST_* block in config/parameters.h for the
-    // two independent checks that fix the factor at 26.74. Applied here rather than by
-    // editing files/sigmaA_LSST.txt so the input data stay as delivered and the correction
-    // is visible in the code that depends on it.
+    // Renormalise the shipped mission-averaged curve to a PER-VISIT error, which is what l.erra[]
+    // means and what FisherM assumes (factor 26.74; see the LSST_AST_* block in config/parameters.h).
+    // Applied here so the input data stay as delivered.
     error *= LSST_AST_RENORM;
 
     CHECK(error >= LSST_AST_FLOOR * 0.999);
@@ -61,25 +54,18 @@ double errlsstA(lsst & ls, double ghadr){ //LSST Astrometric Error  //Change it!
 }
 
 
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
-// Roman WFI astrometric error for one F146 exposure, in milliarcseconds (Step H4).
-//
-// Replaces the errlsstA() placeholder that stood in for Roman -- Rubin's astrometric error
-// curve evaluated at Roman's magnitude, which had no reason to be right and was flagged in
-// OPEN_ITEMS.md. Constants, their sources and the per-exposure caveat are in config/parameters.h.
+
+// Roman WFI astrometric error for one F146 exposure, in milliarcseconds. Constants, their sources
+// and the per-exposure caveat are in config/parameters.h.
 //
 // Three regimes:
 //   m <= 20.62   1.1 mas       centroiding floor, 1% of the 110 mas pixel. A systematic,
 //                              not photon noise, so it does NOT improve for brighter stars.
 //   20.62 - 23.5 rises at 0.333/mag   interpolation between the two published anchors.
 //   m >  23.5    rises at 0.4/mag     background dominated, SNR ~ counts.
-//
-// Unlike errlsstA this reads no data file and needs no instrument struct, so it takes the
-// magnitude alone. Its photometric sibling errRomanM(), defined below, takes the roman struct,
-// because it needs the lookup table.
 double errRomanA(double magF146AB){
 
-    // The anchors below are VEGA magnitudes; the simulator's are AB (Deviation 72).
+    // The anchors below are VEGA magnitudes; the simulator's are AB.
     const double magF146 = magF146AB - F146_AB_MINUS_VEGA;
     double error = ROMAN_AST_FLOOR;
 
@@ -90,9 +76,8 @@ double errRomanA(double magF146AB){
         error = ROMAN_AST_FLOOR * std::pow(10.0, ROMAN_AST_SLOPE_SRC * (magF146 - ROMAN_AST_MFLR));
     }
 
-    // The floor is a floor: the source-dominated branch is continuous with it at
-    // ROMAN_AST_MFLR by construction, but clamp anyway so no future edit to the constants can
-    // silently return a precision better than Roman can centroid.
+    // The source-dominated branch is continuous with the floor at ROMAN_AST_MFLR; the clamp keeps
+    // an edit to the constants from returning a precision better than Roman can centroid.
     if (error < ROMAN_AST_FLOOR) error = ROMAN_AST_FLOOR;
 
     CHECK(error >= ROMAN_AST_FLOOR);
@@ -101,7 +86,7 @@ double errRomanA(double magF146AB){
     return(error);
 }
 
-// Roman's per-exposure F146 photometric error [mag] at AB magnitude `mag` (Deviation 72): the
+// Roman's per-exposure F146 photometric error [mag] at AB magnitude `mag` the
 // Penny et al. 2019 curve, anchored at load time to the 66-s 5-sigma depth (see config/parameters.h), with
 // log(err) interpolated linearly in magnitude. Brighter than the table: its first value (the 1 mmag
 // floor dominates there); fainter: extrapolated along the last segment (the recording gate stops at

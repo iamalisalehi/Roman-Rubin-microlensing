@@ -4,7 +4,7 @@
 
 #include "sim/state.h"
 
-// Step H7: signed delta-chi-squared per survey and jointly, the three detection verdicts
+// Signed delta-chi-squared per survey and jointly, the three detection verdicts
 // (detL, detR, detJ) and the monotone patch; detJ_raw is the joint verdict before the patch.
 Detection detectEvent(SimContext& ctx, const LightCurveStats& lc);
 

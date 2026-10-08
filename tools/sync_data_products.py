@@ -131,18 +131,14 @@ constexpr double LSST_AST_TABLE_FLOOR = {LSST_AST_TABLE_FLOOR}; //mas
 // ---- CMD/components/*.dat row counts (data rows, header line excluded) ----
 // CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo. The lists are the
 // COMPLETE Besancon population (no visibility filter; the bulge is a 3.5M random subsample of
-// 7,256,344). Since bos10 (Deviation 88) they come from the noise-free catalogue bos10 with Besancon's
-// own stellar types; Deviation 81 had built them from bos9, and those lists (889406 / 3500000 / 1058765 /
-// 5025 rows) are kept in CMD/components_v2_bos9dev82/. CMD/components/provenance.txt has the counts.
+// 7,256,344), built from a noise-free Besancon catalogue with Besancon's own stellar types.
+// CMD/components/provenance.txt has the counts.
 constexpr int N1 = {N1}, N2 = {N2}, N3 = {N3}, N4 = {N4};
 
 // ---- Mean stellar mass of each population: the mean_mass_population column of CMD/components/provenance.txt ----
 // Mean stellar mass of each POPULATION (before the bulge subsample;
 // dark entries included). Disk_model's star count Nstart = rho / <m>, so these make Nstart count exactly
-// the population a draw comes from. bos10 values (Deviation 88); they replace the bos9 values
-// 0.4212 / 0.4199 / 0.4594 / 0.3774 of Deviation 81 and, before that, the legacy 0.403445 (thin), 0.4542
-// (thick, halo) and 0.308571 (bulge) of an unrecorded "mass_averaged.cpp". The Python side reads these
-// through analysis/cparams.py.
+// the population a draw comes from. The Python side reads these through analysis/cparams.py.
 constexpr double MEANMASS_THIN  = {MEANMASS_THIN};
 constexpr double MEANMASS_BULGE = {MEANMASS_BULGE};
 constexpr double MEANMASS_THICK = {MEANMASS_THICK};
@@ -150,10 +146,8 @@ constexpr double MEANMASS_HALO  = {MEANMASS_HALO};
 
 // ---- Visit lists ----
 // Data rows in Baseline/BulgeBaseline.dat, EXCLUDING the header (lines starting with '#'). Rebuilt from
-// baseline_v5.1.0_10yrs.db by Baseline/readbaselineBulge.py (Deviation 69: every pointing that can image
-// the distance-rule scan region; was 3686 from a box). The earlier 7373 counted a doubled file
-// (append-mode bug) and read 3687 phantom rows. Deviation 80: pointings within scan reach + 1.94 deg
-// (was 12308 at + 1.75).
+// the OpSim database by Baseline/readbaselineBulge.py: every pointing within the scan region's reach
+// plus 1.94 deg (the LSSTCam field radius).
 constexpr int Nl = {Nl};
 
 // Data rows in Baseline/RomanBaseline.dat, EXCLUDING the header. Written by

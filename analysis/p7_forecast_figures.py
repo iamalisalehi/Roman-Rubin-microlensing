@@ -1,34 +1,24 @@
 #!/usr/bin/env python3
-"""Step P7: the Fisher-forecast figures a microlensing forecast paper is expected to carry.
+"""Fisher-forecast figures.
 
-Four figures, each answering a question the P5/P6 set does not:
+  p7_precision     -- weighted cumulative distribution of sigma(X)/X per survey, for tE, piE,
+                      theta_E and the lens mass ("N% of events are measured to better than 10%").
+  p7_precision_te  -- the same precision against tE, where the two surveys differ: Rubin's long
+                      baseline and Roman's dense cadence fail at opposite ends of the tE axis.
+  p7_mass_distance -- where the measurable lenses sit in the mass-distance plane.
+  p7_sky           -- event yield and characterised fraction against Galactic coordinates.
 
-  p7_precision     -- HOW WELL each parameter is measured: the weighted cumulative
-                      distribution of sigma(X)/X per survey, for tE, piE, theta_E and the lens
-                      mass. This is the figure that says "N% of events are measured to better
-                      than 10%", which is the currency of every forecast paper.
-  p7_precision_te  -- the same precision as a function of tE, which is where the two surveys
-                      differ: Rubin's decade baseline and Roman's dense cadence fail at
-                      opposite ends of the timescale axis.
-  p7_mass_distance -- WHERE the measurable lenses are, in the mass-distance plane. A forecast
-                      that quotes a mass precision without saying which lenses it applies to is
-                      quoting a number about a sample, not about the Galaxy.
-  p7_sky           -- the sky dependence: event yield and characterised fraction against
-                      Galactic coordinates, the map form used by comparable surveys.
+Every pooled quantity is event-rate weighted and quoted with the Kish N_eff. Per-event ratios
+carry no weight; only the aggregation does.
 
-WEIGHTING. Every pooled quantity is event-rate weighted (DEVIATIONS.md 41) and quoted with the
-Kish N_eff. Per-event ratios carry no weight; only the aggregation does.
-
-A NOTE ON WHAT IS **NOT** HERE. There is no detection-efficiency-versus-tE curve, though it is
-the most standard figure of all. The honest denominator for an efficiency is every star drawn,
-and this script drops the barren sightlines' rows (77% of a production table) to fit in memory.
-Those rows are all non-detections, so including them changes an efficiency and excluding them
-inflates it. The simulator computes the efficiency properly over every draw and writes it to
-EfLMC<tag>.dat -- that file, not this script, is where an efficiency curve must come from.
+There is deliberately no detection-efficiency-versus-tE curve: the denominator of an efficiency
+is every star drawn, and this script drops the barren sightlines' rows (77% of a production
+table) to fit in memory. Those rows are all non-detections, so excluding them inflates the
+efficiency. The simulator writes the efficiency over every draw to EfLMC<tag>.dat.
 
 USAGE
     .roman/bin/python analysis/p7_forecast_figures.py \
-        --run bh=runs/prod_bh_20260917 --run ns=runs/prod_ns_20260917 -o figures/prod/p7
+        --run bh=RUN_DIR_BH --run ns=RUN_DIR_NS -o OUTPREFIX
 """
 
 import argparse
@@ -100,12 +90,11 @@ def stamp_for(runs):
 
 
 def ok_mask(d, surv, key):
-    """Events where THIS survey measured THIS parameter.
+    """Events where this survey measured this parameter.
 
-    Two gates, not one. `okA`/`okB` says the matrix inverted; a positive sigma says this
-    particular parameter was actually free (an inactive one carries the -1 sentinel, and a
-    sentinel must never enter a distribution). theta_E and the mass come from the ASTROMETRIC
-    matrix, so they are gated on okB rather than okA -- a row can have okA = 1 and okB = 0.
+    `okA`/`okB` says the matrix inverted; a positive sigma says the parameter was free (an
+    inactive one carries the -1 sentinel, which must never enter a distribution). theta_E and the
+    mass come from the astrometric matrix and are gated on okB; a row can have okA = 1, okB = 0.
     """
     astrometric = key in ("tetE", "Ml")
     gate = d[f"okB_{surv}"] if astrometric else d[f"okA_{surv}"]
@@ -139,9 +128,7 @@ def fig_precision(runs, out):
                     continue
                 x = frac(d, surv).to_numpy(float)[m]
                 w = d["W"].to_numpy(float)[m]
-                # One line style per population, one colour per survey: the figure has two
-                # dimensions and giving each its own visual channel is the only way both stay
-                # readable when four populations' worth of curves overlap.
+                # One line style per population, one colour per survey.
                 style = "-" if r.name == runs[0].name else "--"
                 lab = f"{r.name} {ps.SURVEY_LABEL[skey].split()[0]}" if len(runs) > 1 \
                     else ps.SURVEY_LABEL[skey]
@@ -154,20 +141,16 @@ def fig_precision(runs, out):
         ax.set_ylabel("events below this [%]")
         ps.panel_label(ax, f"({'abcd'[list(PARAMS).index((key, disp, frac))]}) {disp}")
 
-    # Figure-level legend above the grid. Six entries will not fit inside a panel without
-    # sitting on either the curves or the panel label, and it belongs to all four panels
-    # anyway.
+    # Figure-level legend above the grid, shared by all four panels.
     h, l = axes[0].get_legend_handles_labels()
     if h:
         fig.legend(h, l, loc="upper center", bbox_to_anchor=(0.5, 1.07), ncol=3,
                    frameon=False, fontsize=7, labelcolor=ps.INK, handlelength=1.8)
 
-    # EACH CURVE HAS ITS OWN DENOMINATOR, and saying so is not pedantry: a reader comparing
-    # "Roman 81%" against "joint 44%" for theta_E would conclude that adding Rubin makes the
-    # forecast worse, which is impossible -- the joint information matrix is the sum of the
-    # parts. What differs is the sample. Roman characterises only inside its footprint, where
-    # every event is well covered; the joint curve also contains every Rubin-only event, whose
-    # theta_E is poor. For the controlled, same-event comparison see the p6 synergy figure.
+    # Each curve has its own denominator: Roman characterises only inside its footprint, while
+    # the joint curve also contains every Rubin-only event, so a lower joint fraction does not
+    # mean adding Rubin hurts (the joint information matrix is the sum of the parts). The
+    # same-event comparison is the p6 synergy figure.
     counts = []
     for r in runs:
         for surv, skey in SURVEYS:
@@ -224,8 +207,8 @@ def fig_precision_te(runs, out):
 def fig_mass_distance(runs, out):
     """Where the measurable lenses sit in the mass-distance plane.
 
-    A mass precision quoted without this is a statement about a sample, not about the Galaxy:
-    the lenses whose mass Roman can measure are not drawn uniformly from the population.
+    The lenses whose mass can be measured are not drawn uniformly from the population, so a mass
+    precision needs this context.
     """
     fig, axes = ps.figure(width="double", height=3.0, ncols=max(len(runs), 2))
     axes = np.ravel(axes)
@@ -237,11 +220,8 @@ def fig_mass_distance(runs, out):
         ml, dl = d["Ml"].to_numpy(float), d["Dl"].to_numpy(float)
         w = d["W"].to_numpy(float)
 
-        # A MAP OF THE FRACTION, not two scatter clouds on top of each other. With ~10^5
-        # detections the scatter version is a solid blob whose structure is entirely hidden by
-        # overplotting, and the eye reads point DENSITY, which here is the Monte Carlo's
-        # sampling rather than anything physical. The fraction measured per cell is the
-        # quantity the panel is actually about, and it is weighted.
+        # A map of the weighted measured fraction per cell; a scatter plot would show the Monte
+        # Carlo's sampling density instead.
         xb = np.linspace(0.0, np.nanpercentile(dl[det], 99.5), 22)
         yb = np.geomspace(max(ml[det].min(), 1e-3), ml[det].max(), 22)
         num, _, _ = np.histogram2d(dl[meas], ml[meas], bins=[xb, yb], weights=w[meas])
@@ -274,9 +254,8 @@ def fig_mass_distance(runs, out):
 def fig_sky(runs, out):
     """Event yield and characterised fraction across the sky.
 
-    The yield is the SUM OF WEIGHTS per cell, which is the rate-weighted event count and the
-    only version of "how many events here" that means anything; the raw count per cell is a
-    statement about where the Monte Carlo spent its draws.
+    The yield is the sum of weights per cell (the rate-weighted event count); the raw count per
+    cell only shows where the Monte Carlo spent its draws.
     """
     fig, axes = ps.figure(width="double", height=3.0, ncols=2)
     ax1, ax2 = np.ravel(axes)
@@ -285,9 +264,8 @@ def fig_sky(runs, out):
     det = ((d.detL == 1) | (d.detR == 1) | (d.detJ == 1)).to_numpy()
     lon, lat = d["lon"].to_numpy(float), d["lat"].to_numpy(float)
     w = d["W"].to_numpy(float)
-    # "Characterised" -- okA_J == 1 -- is true for very nearly every detection, so mapping it
-    # gives a uniformly saturated panel that says nothing. The fraction measured TO 10% has
-    # real dynamic range and is the quantity a forecast cares about.
+    # okA_J == 1 holds for nearly every detection and would give a saturated panel; the
+    # fraction measured to 10% has real dynamic range.
     good = det & (d["okA_J"] == 1).to_numpy() & (d["sigtE_J"] > 0).to_numpy()
     good &= (d["sigtE_J"].to_numpy(float) / d["tE"].to_numpy(float) < 0.1)
 
@@ -300,8 +278,7 @@ def fig_sky(runs, out):
 
     with np.errstate(invalid="ignore", divide="ignore"):
         frac = np.where((yield_ > 0) & (cnt >= 20), nchar / yield_, np.nan)
-    # Empty cells must be blank, not zero: a cell the scan never reached and a cell with no
-    # events are different statements, and a zero would colour the second like the first.
+    # Empty cells are blank, not zero: an unscanned cell and a cell with no events differ.
     shown = np.where(yield_ > 0, yield_ / np.nanmax(yield_), np.nan)
 
     for ax, z, lab, tag in ((ax1, shown.T, "relative weighted event yield", "(a)"),

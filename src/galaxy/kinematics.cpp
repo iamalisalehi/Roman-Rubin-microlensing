@@ -2,13 +2,9 @@
 #include "galaxy/kinematics.h"
 #include "util/random.h"
 
-
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
-//                                                                    //
-//                         Relative Velocity calculations             //
-//                                                                    //
-///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
-
+// Draws source and lens velocities from the component dispersions (plus disk rotation), projects
+// them and the Sun's motion onto the lens plane, and sets the relative speed l.Vt [km/s], the
+// proper motions [mas/day] and the source-trajectory angle s.xi [rad].
 void vrel(source & s, lens & l){
     if (l.Dl == 0.0) l.Dl = 0.00034735;
     double Rlc = std::sqrt(l.Dl * l.Dl * std::cos(s.FI) * std::cos(s.FI) + Dsun * Dsun - 2. * Dsun * l.Dl * std::cos(s.TET) * std::cos(s.FI));
@@ -18,7 +14,6 @@ void vrel(source & s, lens & l){
 
     double LVx, SVx, vt2;
     double SVT, SVR, SVZ, LVT, LVR, LVZ;
-//    double fv, testfv, age;
     double test, age = -1;
     double  VSunx, vls2, vls1;
     double  tetd ;
@@ -60,16 +55,8 @@ void vrel(source & s, lens & l){
     }
     CHECK(age >= 0);
 
-//    double v_R_lmc   = -57.0;
-//    double v_T_lmc   = -226.0;
-//    double v_Z_lmc   =  221.0;
-//    double sigma_LMC =  20.2;
-//    double err_rlmc  =  13.0; ///error of global velocity
-//    double err_tlmc  =  15.0;
-//    double err_zlmc  =  19.0;
 
-
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
+    // Source velocity.
     if (s.struc == GalacticComponent::THIN_DISK) {///Galactic disk
         SVR = RandN(sigma_R_DiskS, NN);
         SVT = RandN(sigma_T_DiskS, NN);
@@ -104,7 +91,8 @@ void vrel(source & s, lens & l){
     }
 
     s.vs = std::sqrt(SVR * SVR + SVT * SVT + SVZ * SVZ);
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
+
+    // Lens velocity.
     if (l.struc == GalacticComponent::THIN_DISK) {///Galactic disk
         LVR = RandN(sigma_R_DiskL, NN);
         LVT = RandN(sigma_T_DiskL, NN);
@@ -140,7 +128,7 @@ void vrel(source & s, lens & l){
 
     l.vl = std::sqrt(LVT * LVT + LVZ * LVZ + LVR * LVR);
 
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH  BETA  HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
+    // Angles beta of the lens and source about the Galactic centre.
 
     l.betal = 0.0; l.betas = 0.0;
     tetd = s.TET;
@@ -180,7 +168,7 @@ void vrel(source & s, lens & l){
                   << "FI: " << s.FI << "\t TET: " << tetd << "\t betas: " << l.betas << '\n';
         throw std::runtime_error("Invalid test value");
     }
-//HHHHHHHHHHHHHHHHHHHHHHHHHH  DELTA   HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
+    // Angles delta between each line of sight and the local velocity frame.
 
     if (s.TET > pi)  tetd = s.TET - 2.0 * pi;
 
@@ -193,7 +181,7 @@ void vrel(source & s, lens & l){
     l.deltao = pi - std::fabs(tetd);
     if (tetd < 0.0) l.deltao = -1.0 * l.deltao;
 
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
+    // Project onto the lens plane.
     s.SV_n1 =+ SVR * std::sin(l.deltas) - SVT * std::cos(l.deltas);
     s.LV_n1 =+ LVR * std::sin(l.deltal) - LVT * std::cos(l.deltal);
     s.VSun_n1 =+ VSunR * std::sin(l.deltao) - VSunT * std::cos(l.deltao);
@@ -234,6 +222,4 @@ void vrel(source & s, lens & l){
 
     CHECK(l.Vt >= 0.0);
     CHECK(l.Vt <= 1.0e6);
-
-   //cout<<"(vrel_func):   l.deltao:  "<<l.deltao<<"FI: "<<s.FI<<endl;
 }

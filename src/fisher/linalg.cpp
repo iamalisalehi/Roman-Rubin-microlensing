@@ -2,32 +2,18 @@
 #include "fisher/linalg.h"
 #include "fisher/fisher.h"
 
-///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
-
-////////////////////// Matrix
-// Largest condition number we will still trust an inverse from.
-//
-// A double carries ~16 significant decimal digits; inverting a matrix with condition number 10^k
-// costs roughly k of them. The precision gains this project sets out to measure are at the
-// few-percent level, so we need at least 3-4 trustworthy digits in the result, leaving room for
-// about 10^12. Past that the reported sigma is dominated by round-off rather than by data.
-//
-// This threshold is applied to the NORMALIZED matrix, where a large value can no longer be
-// blamed on parameters being measured in different units and instead means the data genuinely
-// cannot constrain some combination of them. The per-event condition number is stored regardless,
-// so a stricter (or looser) cut can be applied during analysis without rerunning the simulation.
+// Largest condition number of the NORMALIZED matrix from which an inverse is still trusted.
+// Inverting at condition 10^k costs about k of double's ~16 digits, and the few-percent precision
+// gains being measured need 3-4 good digits, so 1e12 is the limit. The per-event condition number
+// is stored regardless, so a different cut can be applied in analysis.
 constexpr double kMaxCondition = 1.0e12;
 
 int invert_matrix(covarian & co, int flag, int surv)
 {
-    // Returns 1 on a usable inverse, 0 if the information matrix cannot be trusted -- singular,
-    // or too ill-conditioned. A rejected partition means "this data cannot characterize this
-    // event", a physical result that must be reported as such rather than smoothed over.
-    //
-    // For the photometric matrix only a subset of parameters is inverted, since a single-survey
-    // partition carries no information about the other telescope's flux parameters (see
-    // activePhotParams). The reduced inverse is scattered back into the full-size matrix, leaving
-    // inactive rows and columns at zero; ErrorCal reports sigma = -1 for those.
+    // Returns 1 on a usable inverse, 0 if the matrix is singular or too ill-conditioned (the
+    // partition cannot characterize the event). The photometric matrix is inverted only over
+    // activePhotParams; the inverse is scattered back to full size with inactive rows and columns
+    // at zero, and ErrorCal reports sigma = -1 for those.
     const bool photometric = (flag == 0);
     gsl_matrix*  in   = photometric ? co.inputA[surv].get() : co.inputB[surv].get();
     gsl_matrix*  out  = photometric ? co.inverA[surv].get() : co.inverB[surv].get();
@@ -41,9 +27,8 @@ int invert_matrix(covarian & co, int flag, int surv)
     return invertNormalized(in, out, act, cond, &co.deter);
 }
 
-// The core of invert_matrix, on any information matrix (Deviation 71: the astrometric noise
-// variants are inverted through exactly the same normalisation and condition cut as the main
-// matrices). `in` is read, `out` receives the inverse scattered to full size (zero elsewhere).
+// The core of invert_matrix, usable on any information matrix (the astrometric noise variants use
+// it too). `in` is read; `out` receives the inverse scattered to full size (zero elsewhere).
 int invertNormalized(const gsl_matrix* in, gsl_matrix* out, const std::vector<int>& act,
                      double& cond, double* deter)
 {
@@ -53,11 +38,9 @@ int invertNormalized(const gsl_matrix* in, gsl_matrix* out, const std::vector<in
     gsl_matrix_set_zero(out);
 
     // ---- 1. Normalizing scale D = diag(1/sqrt(F_ii)) over the active parameters ----
-    //
-    // F_jk carries units of 1/(theta_j theta_k), and with tE in days (~30), u0 dimensionless
-    // (~0.3), xi in radians and mbs in magnitudes, the entries span many orders of magnitude
-    // before any physics enters. That ill-conditioning is an artifact of our choice of units and
-    // is removable. A non-positive diagonal means the parameter has no information at all.
+    // F_jk has units 1/(theta_j theta_k), so entries span many orders of magnitude from the choice
+    // of units alone (tE ~30 d, u0 ~0.3, xi in rad, mbs in mag). A non-positive diagonal means
+    // the parameter has no information.
     std::vector<double> scale(dim);
     for (int i = 0; i < dim; ++i) {
         const double d = gsl_matrix_get(in, act[i], act[i]);
@@ -73,9 +56,7 @@ int invertNormalized(const gsl_matrix* in, gsl_matrix* out, const std::vector<in
             gsl_matrix_set(Ft, i, j,
                            gsl_matrix_get(in, act[i], act[j]) * scale[i] * scale[j]);
 
-    // ---- 3. Condition number of the normalized matrix ----
-    //
-    // Symmetric positive semi-definite, so the 2-norm condition number is lambda_max/lambda_min.
+    // ---- 3. Condition number of the normalized matrix (lambda_max/lambda_min, symmetric PSD) ----
     // gsl_eigen_symm destroys its input, hence the copy.
     {
         gsl_matrix *ev = gsl_matrix_alloc(dim, dim);
@@ -123,11 +104,7 @@ int invertNormalized(const gsl_matrix* in, gsl_matrix* out, const std::vector<in
     }
     gsl_linalg_LU_invert(lu, p, Fi);
 
-    // ---- 5. Undo the scaling and scatter back to full size: F^-1 = D Ftilde^-1 D ----
-    //
-    // Exact, not approximate: (D F D)^-1 = D^-1 F^-1 D^-1. The whole manoeuvre is algebraically
-    // a no-op; its purpose is that the matrix handed to LU has unit diagonal and a far smaller
-    // condition number.
+    // ---- 5. Undo the scaling and scatter to full size: F^-1 = D Ftilde^-1 D (exact) ----
     for (int i = 0; i < dim; ++i)
         for (int j = 0; j < dim; ++j)
             gsl_matrix_set(out, act[i], act[j],

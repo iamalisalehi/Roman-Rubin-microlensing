@@ -1,17 +1,15 @@
-// Unit test for the CCM89 reddening law (src/galaxy/extinction.cpp AlAv), added with Deviation 53 after the
-// law had run inverted for two months without anything noticing. Needs no data files.
+// Unit test for the CCM89 reddening law (src/galaxy/extinction.cpp AlAv) and the extinction table
+// reader. Needs no data files. Exit 0 = all held.
 //
-// Pinned: (1) A_V/A_V = 1 at V (0.549 um) for every R_V the populations use -- the law's
-// definition, so it cannot pass with the wavelength handled wrongly; (2) extinction falls
-// monotonically from u to F146; (3) A_lambda/A_V at the seven survey bands for R_V = 2.5,
-// against an independent Python evaluation of the CCM89 polynomials (O'Donnell 1994 is NOT used;
-// the code implements the original 1989 optical coefficients). Exit 0 = all held.
+// Pinned: (1) A_V/A_V = 1 at V (0.549 um) for every R_V used -- the law's definition, so it cannot
+// pass with the wavelength mishandled; (2) extinction falls monotonically from u to F146;
+// (3) A_lambda/A_V at the seven survey bands for R_V = 2.5, against an independent Python
+// evaluation of the original CCM89 optical coefficients (not O'Donnell 1994).
 //
-// Deviation 70 added the extinction TABLE reader, readExtinction(): a small fixture file is read
-// and its interpolation and nearest-table choice checked; then five malformed files (a NaN, a
-// decreasing profile, a short row, an extra value, a wrong row count) must each make it exit
-// non-zero -- run in a forked child, since refusing means exiting. The old reader accepted all of
-// these silently.
+// Table reader, readExtinction(): a small fixture file is read and its interpolation and
+// nearest-table choice checked; then five malformed files (a NaN, a decreasing profile, a short
+// row, an extra value, a wrong row count) must each make it exit non-zero, run in a forked child
+// since refusing means exiting.
 #include "common.h"
 #include "galaxy/extinction.h"
 #include <cstdio>

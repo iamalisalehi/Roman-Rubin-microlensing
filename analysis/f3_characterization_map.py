@@ -1,47 +1,32 @@
 #!/usr/bin/env python3
-"""Step F3 -- the (tE, piE) characterization map.
+"""The (tE, piE) characterization map, in the format of Abrams et al. 2025, Figs. 11-14.
 
-Deliberately in the format of Abrams et al. 2025, Figures 11-14: the log(tE) - log(piE)
-plane, cells coloured by a RATIO of characterized fractions. The community already reads
-that plot; matching the format is worth the effort.
+The log(tE) - log(piE) plane, cells coloured by a ratio of characterized fractions.
 
-Why this plane
---------------
-tE (the Einstein-crossing time, days) and piE (the microlensing parallax, dimensionless)
-are the two parameters a photometric light curve can actually deliver, and together they
-pin the lens down: with the angular Einstein radius tetE from astrometry,
+Why this plane: tE (Einstein-crossing time, days) and piE (microlensing parallax) are the two
+parameters a photometric light curve delivers, and with the angular Einstein radius tetE from
+astrometry they fix the lens mass,
 
-    Ml = tetE / (kappa * piE),     kappa = 8.144 mas / Msun
+    Ml = tetE / (kappa * piE),     kappa = 8.144 mas / Msun.
 
-and even without astrometry the pair (tE, piE) separates the populations. Since
-tE ~ sqrt(Ml) and piE ~ 1/sqrt(Ml), heavy lenses -- black holes -- sit toward LONG tE and
-SMALL piE (lower right), and low-mass lenses toward SHORT tE and LARGE piE (upper left).
-So the plane is a mass axis running along the diagonal, which is why the dashed iso-mass
-lines are drawn: at the sample's median relative proper motion they are exactly lines of
-constant lens mass.
+Since tE ~ sqrt(Ml) and piE ~ 1/sqrt(Ml), heavy lenses (black holes) sit toward long tE and small
+piE (lower right), low-mass lenses toward short tE and large piE (upper left). The dashed iso-mass
+lines are lines of constant lens mass at the sample's median relative proper motion.
 
-What is coloured
-----------------
-Per cell, the fraction of events meeting the Abrams characterization criterion
-(tE > 2 sigma_tE AND piE > 2 sigma_piE) with the joint fit, divided by the same fraction
-with one survey alone. The ratio is >= 1 by construction: the joint Fisher matrix is the
-sum of the per-survey ones, so sigma_joint <= sigma_single, so any event a single survey
-characterizes the joint fit characterizes too. A cell below 1 is a bug, not a result.
+Colour: per cell, the fraction of events meeting the characterization criterion
+(tE > 2 sigma_tE AND piE > 2 sigma_piE) with the joint fit, divided by the same fraction with one
+survey alone. The ratio is >= 1 by construction (the joint Fisher matrix is the sum of the
+per-survey ones, so sigma_joint <= sigma_single); a cell below 1 is a bug.
 
-Two panels, two different questions
------------------------------------
-(a) joint / Roman-alone, restricted to events Roman actually observed (ndw_R > 0). This is
-    "what does adding Rubin buy Roman". Only ~39 of 1706 sightlines are inside Roman's
-    footprint, so this is the small, expensive sample -- but it is the only one where the
-    Roman-alone denominator means anything. Outside the footprint Roman characterizes
-    nothing because it never pointed there, which is true and vacuous.
+Panels:
+(a) joint / Roman-alone, restricted to events Roman observed (ndw_R > 0): what Rubin adds to Roman.
+    Outside the footprint Roman characterizes nothing because it never pointed there, so the
+    denominator is only meaningful inside it.
+(b) joint / Rubin-alone, over every joint-detected event: what Roman adds to Rubin, a whole-survey
+    statistic since Rubin sees the entire bulge region.
 
-(b) joint / Rubin-alone, over every joint-detected event. This is "what does adding Roman
-    buy Rubin", and it is the whole-survey statistic: Rubin sees the entire bulge region.
-
-Cells where the single survey characterizes NOTHING but the joint fit characterizes
-something are pure rescue -- the ratio is infinite, not large. They are hatched rather than
-coloured, because painting infinity at the top of a colour ramp would understate them.
+Cells where the single survey characterizes nothing but the joint fit does are pure rescue; the
+ratio is infinite, so they are hatched rather than coloured.
 """
 
 import argparse
@@ -57,9 +42,7 @@ from matplotlib.colors import LinearSegmentedColormap, Normalize
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import romanlib as R
 
-# Sequential single hue, light -> dark, for a magnitude (the ratio). Same blue family as
-# the F2 tE ramp so the two figures read as one set. A ratio is an ordered quantity: it
-# gets one hue, never a rainbow.
+# Sequential single-hue ramp (same family as the gap-filling figure's tE ramp).
 RAMP = LinearSegmentedColormap.from_list(
     "romanblue", ["#eef4fc", "#c3d9f5", "#86b6ef", "#3987e5", "#1c5cab", "#0d366b"])
 
@@ -74,11 +57,9 @@ KAPPA = 8.144             # mas / Msun
 def cell_stats(df, w, xedges, yedges, alone, min_n):
     """Per-cell N, joint fraction, single-survey fraction, and their ratio.
 
-    The fractions are weighted by the event rate (Deviation 41), because a characterized
-    fraction is a statement about the events in that cell of the sky, not about the draws
-    that happened to land there. The cell is quoted only if its EFFECTIVE sample -- Kish's
-    (sum w)^2 / sum w^2 -- clears `min_n`, which is stricter than the raw count and is the
-    honest bar once the weights inside a cell vary.
+    The fractions are weighted by the event rate, because a characterized fraction describes
+    the sky and not the draws that landed in the cell. A cell is quoted only if its effective
+    sample (Kish: (sum w)^2 / sum w^2) clears `min_n`.
     """
     x = np.log10(df["tE"].to_numpy())
     y = np.log10(df["piE"].to_numpy())
@@ -109,8 +90,8 @@ def draw_panel(ax, xedges, yedges, n, ratio, rescue, vmax, title, subtitle,
                murel, masses):
     ax.set_facecolor(SURFACE)
 
-    # Populated cells that get no colour (too few events, or no single-survey baseline)
-    # are painted grey first, so the reader can tell "no data" from "no gain".
+    # Populated cells with no colour (too few events, or no single-survey baseline) are grey,
+    # to separate "no data" from "no gain".
     sparse = (n > 0) & np.isnan(ratio) & ~rescue
     ax.pcolormesh(xedges, yedges, np.where(sparse, 1.0, np.nan).T,
                   cmap=LinearSegmentedColormap.from_list("g", [GREY_SPARSE, GREY_SPARSE]),
@@ -119,7 +100,7 @@ def draw_panel(ax, xedges, yedges, n, ratio, rescue, vmax, title, subtitle,
     mesh = ax.pcolormesh(xedges, yedges, np.ma.masked_invalid(ratio).T, cmap=RAMP,
                          norm=Normalize(vmin=1.0, vmax=vmax), shading="flat", zorder=2)
 
-    # Rescue cells: hatched, not coloured. Infinity is not a large number.
+    # Rescue cells: hatched, not coloured (the ratio is infinite).
     ry, rx = np.where(rescue.T)
     for iy, ix in zip(ry, rx):
         ax.add_patch(plt.Rectangle((xedges[ix], yedges[iy]),
@@ -135,8 +116,7 @@ def draw_panel(ax, xedges, yedges, n, ratio, rescue, vmax, title, subtitle,
     for Ml in masses:
         c = np.log10(murel / (365.25 * KAPPA * Ml))
         ax.plot([x0, x1], [x0 + c, x1 + c], ls="--", lw=0.9, color=MUTED, zorder=4)
-        # Anchor the label to the line's exit point, pulled inside both limits so it
-        # never lands in the margin.
+        # Anchor the label near the line's exit point, inside both limits.
         xl = min(x1, y1 - c) - 0.22
         yl = xl + c
         if x0 < xl < x1 and y0 < yl < y1:
@@ -148,8 +128,6 @@ def draw_panel(ax, xedges, yedges, n, ratio, rescue, vmax, title, subtitle,
     ax.set_ylim(y0, y1)
     ax.set_xlabel(r"$\log_{10}\,t_{\rm E}$  [days]", color=INK, fontsize=10)
     ax.set_ylabel(r"$\log_{10}\,\pi_{\rm E}$", color=INK, fontsize=10)
-    # Title and subtitle in one text object: a separate transAxes label collides with
-    # the neighbouring panel's title at this figure width.
     ax.set_title(f"{title}\n{subtitle}", color=INK, fontsize=10.5, loc="left", pad=8,
                  linespacing=1.6)
     ax.tick_params(colors=MUTED, labelsize=8)
@@ -171,7 +149,7 @@ def main():
                     help="cells whose EFFECTIVE sample is smaller are greyed, not coloured "
                          "(default 12)")
     ap.add_argument("--map", default=None,
-                    help="MapLMC5.dat -- needed for the event-rate weight (Deviation 41)")
+                    help="MapLMC5.dat -- needed for the event-rate weight")
     ap.add_argument("--log", action="append", default=[],
                     help="run log(s), for sightlines whose map rows a killed run lost")
     ap.add_argument("--chunksize", type=int, default=500_000,
@@ -183,9 +161,8 @@ def main():
     ap.add_argument("--pie-range", type=float, nargs=2, default=(-2.5, 1.0))
     args = ap.parse_args()
 
-    # Streamed, with the barren sightlines' rows dropped as they are read -- see f2 for why
-    # (silent OOM kill on the full table; those rows have weight 0 and no detection anyway).
-    # Undetected events are kept: the characterised FRACTION needs them as its denominator.
+    # Stream the table, dropping rows of barren sightlines (weight 0, no detection) as they are
+    # read. Undetected events are kept: the characterized fraction needs them as denominator.
     df = R.load_events(args.events, keep=R.keep_weightable(args.map, args.log),
                        chunksize=args.chunksize)
     w, wlabel = R.attach_weight(df, args.map, args.log, args.unweighted)
@@ -215,9 +192,7 @@ def main():
     murel = float(np.median(det["murel_yr"]))
     masses = [0.1, 1.0, 10.0]
 
-    # Compute BOTH panels before drawing either: the two share one colourbar, so they
-    # must share one colour scale. A per-panel vmax under a single bar would make the
-    # same shade mean two different numbers.
+    # Compute both panels before drawing either: they share one colourbar, hence one scale.
     stats = []
     for alone, sub, title, subtitle in panels:
         stats.append(cell_stats(sub, sub["W"].to_numpy(), xedges, yedges, alone, args.min_n))

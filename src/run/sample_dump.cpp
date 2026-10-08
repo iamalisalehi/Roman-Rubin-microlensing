@@ -11,48 +11,33 @@ static bool knownSampleClass(const std::string& n)
 
 // Does this finished event belong to class `c`?
 //
-// Note that `any`, `ns_typical`, `bh_short` and `bh_long` are THE SAME predicate --
-// "the joint fit detected it" -- separated only by the tE cuts the spec file gives
-// them. The lens population is chosen by --population, not by the class name, so
-// naming one of them `bh_long` does not make it a black hole; running it under
-// --population bh does. The names exist so the output files are self-labelling.
+// `any`, `ns_typical`, `bh_short` and `bh_long` are the same predicate (the joint fit detected
+// it), separated only by the tE cuts in the spec file; the lens population comes from
+// --population, and the names only label the output files.
 //
-// The two "only" classes carry the coverage condition that makes them MEAN something.
-// nepR_pk > 0 says Roman had epochs within +-2 tE of the peak, i.e. while the source
-// was actually magnified. Without that condition, "Rubin-only" is satisfied by every
-// event outside Roman's footprint or falling in a season gap, which says nothing about
-// the two telescopes' relative capability and everything about where they pointed.
+// The "only" classes require epochs from the other survey within +-2 tE of the peak
+// (nepR_pk or nepL_pk > 0); otherwise "Rubin-only" would just mean the event lay outside
+// Roman's footprint or in a season gap.
 bool sampleMatch(const SampleClass& c, const SampleFacts& f)
 {
     if (c.teMin    > 0.0 and f.tE       < c.teMin)    return false;
     if (c.teMax    > 0.0 and f.tE       > c.teMax)    return false;
     if (c.shiftMin > 0.0 and f.maxShift < c.shiftMin) return false;
 
-    // The physics classes are drawn to show what BOTH telescopes see of one kind of
-    // event, so both must have looked at the field. Without this, a sightline outside
-    // Roman's footprint -- 97% of the scan area -- supplies most of them, and the Roman
-    // panel of the figure is empty.
+    // These classes show what both telescopes see of one kind of event, so both must have
+    // observed the field.
     if (c.name == "any" or c.name == "ns_typical"
         or c.name == "bh_short" or c.name == "bh_long")
         return f.detJ == 1 and f.ndwL > 0 and f.ndwR > 0;
     if (c.name == "both")        return f.detL == 1 and f.detR == 1;
     if (c.name == "rubin_only")  return f.detL == 1 and f.detR == 0 and f.nepRpk > 0;
     if (c.name == "roman_only")  return f.detR == 1 and f.detL == 0 and f.nepLpk > 0;
-    // Gap filling, the thesis's second novelty claim, made drawable: the peak fell in a
-    // MID-MISSION Roman gap (zone 1, never zone 2 -- before launch or after the mission
-    // ends is not a gap Rubin is filling) and Rubin alone caught it.
-    //
-    // ndwR > 0 is what makes that a GAP. t0zone comes from the mission-wide season
-    // schedule, which knows nothing about pointing: it reads 1 for a sightline Roman
-    // never visits exactly as it does for one Roman observes in every season. Only the
-    // second is Rubin filling a hole in Roman's coverage. The first is Rubin observing
-    // somewhere Roman does not look, which is the out-of-footprint case this selector
-    // exists to exclude. (Found by the S1 acceptance run: all three gap_filler events
-    // it wrote had ndw_R = 0.)
+    // Gap filling: the peak fell in a mid-mission Roman gap (t0zone 1, not 2) and Rubin alone
+    // caught it. ndwR > 0 is required because t0zone comes from the mission-wide season
+    // schedule, which ignores pointing: it reads 1 for a sightline Roman never visits too.
     if (c.name == "gap_filler")
         return f.detL == 1 and f.detR == 0 and f.t0zone == 1 and f.ndwR > 0;
-    // An event whose astrometric matrix actually inverted for Roman, i.e. one where the
-    // centroid ellipse is a measurement and not just a curve we can draw.
+    // Roman's astrometric matrix inverted, so the centroid ellipse is a measurement.
     if (c.name == "astrometric") return f.detJ == 1 and f.okBRoman == 1;
     return false;
 }
@@ -65,8 +50,7 @@ bool sampleMatch(const SampleClass& c, const SampleFacts& f)
 //     dt_coarse  2.0            # step over the rest of the mission [days]
 //     class  <name>  <quota>  [te_min=X] [te_max=X] [shift_min=X]
 //
-// An unknown class name or key is a hard error, not a warning. A typo that silently
-// produced no samples would announce itself only after the run had finished.
+// An unknown class name or key is a hard error, so a typo does not silently produce no samples.
 bool parseSampleSpec(const std::string& path, SampleSpec& spec)
 {
     std::ifstream in(path);
@@ -142,11 +126,9 @@ bool parseSampleSpec(const std::string& path, SampleSpec& spec)
 //   <class>_<id>_model.dat   a dense noise-free model curve, in BOTH observer frames
 //   <class>_<id>_params.dat  the event's true parameters and its forecast sigmas
 //
-// The dense curve is regenerated here rather than sampled from the time loop, for one
-// reason: the loop's step `dt` is ADAPTIVE, tuned to spend compute where the detection
-// test needs it, and it goes coarse in the wings. A figure needs the opposite -- a
-// smooth peak AND a readable baseline. Regenerating costs one lightcurve() call per grid
-// point, consumes no RNG, and leaves the simulation's own sampling alone.
+// The dense curve is regenerated here rather than taken from the time loop, whose adaptive
+// step goes coarse in the wings. It costs one lightcurve() call per grid point and consumes
+// no RNG.
 void writeSampleEvent(const SampleSpec& spec, const std::string& cls,
                              const std::string& id, const std::vector<DumpEpoch>& buf,
                              const std::string& params,
@@ -179,12 +161,8 @@ void writeSampleEvent(const SampleSpec& spec, const std::string& cls,
                << e.lens1 << " " << e.lens2 << " " << e.errAst << "\n";
     }
 
-    // The dense grid. Two tiers on purpose. The magnification peak needs fine sampling to
-    // be drawn at all, while the PARALLAX signature is a year-scale wobble out in the
-    // wings that a peak-only window would crop off entirely -- and the wings are exactly
-    // where Rubin's decade of coverage does its work. A single grid fine enough for the
-    // peak, run over the whole decade, would be ~18,000 points per frame for no gain at
-    // either end.
+    // Two-tier grid: a fine window around the peak, and a coarse grid over the whole mission
+    // so the year-scale parallax wobble in the wings is kept.
     std::vector<double> grid;
     const double tStart = 0.0  * year - 100.0;
     const double tEnd   = 10.0 * year + 100.0;
@@ -211,10 +189,9 @@ void writeSampleEvent(const SampleSpec& spec, const std::string& cls,
             const double A0 = magnifOf(s.ut0);
             fm << t << " " << frame << " "
                << s.ut << " " << s.ut0 << " " << A << " " << A0;
-            // Safe to write all M filters here, unlike in the per-epoch dump: lightcurve()
-            // has just been called for THIS frame and these magnitudes are built from A
-            // directly, not read out of the time loop's magni[]/magni0[] scratch arrays --
-            // which, at a Roman epoch, still hold Rubin-frame values in slots 0-5.
+            // All M filters are safe here: they are built from A directly, not read from the
+            // time loop's magni[]/magni0[] scratch arrays, which at a Roman epoch still hold
+            // Rubin-frame values in slots 0-5.
             for (int i = 0; i < M; ++i)
                 fm << " " << s.magb[i] - 2.5 * std::log10(A  * s.blend[i] + 1.0 - s.blend[i]);
             for (int i = 0; i < M; ++i)

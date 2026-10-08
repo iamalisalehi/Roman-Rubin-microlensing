@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""The Besancon-style density model of `Disk_model()`, ported to NumPy (Step W1).
+"""The Besancon-style density model of `Disk_model()`, ported to NumPy.
 
-WHY THIS EXISTS. The pooled event weight (Deviation 41) needs two per-sightline quantities that
-the simulator computes but does not write per event: the number of source stars the sightline
-holds, and the normaliser of `func_lens`'s lens-distance sampler. The first is in the map file
-as `log10 Nstart` (one decimal, and the v3 file is missing rows); the second is nowhere. Both are
-deterministic functions of (l, b), so they are recomputed here rather than stored.
+The pooled event weight needs two per-sightline quantities that the simulator computes but does
+not write per event: the number of source stars the sightline holds, and the normaliser of
+`func_lens`'s lens-distance sampler. The first is in the map file as `log10 Nstart` (one decimal);
+the second is not stored. Both are deterministic functions of (l, b), so they are recomputed here.
 
-THIS IS A PORT, NOT A SECOND MODEL. Every constant mirrors `config/parameters.h` / `src/galaxy/density.cpp` / `src/galaxy/kinematics.cpp`. If the
-C++ changes, this must change with it -- `check_against_map()` is the guard: it compares the
-recomputed column densities against the map file's own and is the first thing to run after any
-change to `Disk_model`.
+This is a port, not a second model: every constant mirrors `config/parameters.h`,
+`src/galaxy/density.cpp` and `src/galaxy/kinematics.cpp`, and must change with them.
+`check_against_map()` compares the recomputed column densities with the map file's own and is the
+first thing to run after any change to `Disk_model`.
 
     from galaxy_model import density_profile, lens_distance_norm
     prof = density_profile(l, b)
@@ -31,12 +30,9 @@ BINARY_FRACTION = P.binary_fraction
 RHO0, D0, EPCI, CORR = P.rho0, P.d0, P.epci, P.corr
 BAR_MASS_RESCALE = P.BAR_MASS_RESCALE   # calibrated to the Han & Gould (2003) Baade's Window benchmark
 
-# Mean stellar mass per component, the divisors in Nstari: read from config/data_products.h's MEANMASS_*, the mean
-# mass of each complete CMD population (provenance.txt, mean_mass_population). The current values are the bos10
-# lists' (Deviation 88; thin 0.3664, bulge 0.4148, thick 0.4849, halo 0.4224). Runs before that used the
-# bos9 lists' 0.4212 / 0.4199 / 0.4594 / 0.3774 (thin, bulge, thick, halo; Deviation 81), and runs before
-# Deviation 81 the legacy 0.403445 / 0.4542 / 0.4542 / 0.308571 (thin, thick, halo, bulge); their Nstart
-# is in their own map files, which is what the weights read.
+# Mean stellar mass per component, the divisors in Nstari: config/data_products.h's MEANMASS_*, the
+# mean mass of each complete CMD population (provenance.txt, mean_mass_population). A run made with
+# different CMD lists carries its own Nstart in its map file, which is what the weights read.
 MBAR_THIN, MBAR_THICK, MBAR_HALO, MBAR_BULGE = P.MEANMASS_THIN, P.MEANMASS_THICK, P.MEANMASS_HALO, P.MEANMASS_BULGE
 
 
@@ -124,16 +120,14 @@ def lens_distance_norm(prof, Ds):
 
     `func_lens` accepts a lens at Dl with probability proportional to
     `rho(Dl) * sqrt((Ds - Dl) Dl / Ds)` over the grid points k = 1 .. nums-2. Z is the sum of
-    that, so dividing the physical rate by the sampling density leaves Z as a factor -- see
-    Deviation 41. Units are Msun/pc^3 * kpc^(3/2), which cancels in any weighted fraction.
+    that, so dividing the physical rate by the sampling density leaves Z as a factor. Units are Msun/pc^3 * kpc^(3/2), which cancels in any weighted fraction.
     """
     Ds = np.atleast_1d(np.asarray(Ds, dtype=float))
     k = np.arange(1, NUM)[None, :]
     Dl = k * STEP
     out = np.empty(len(Ds))
-    # In row blocks: the (rows x grid) matrix and its temporaries are ~0.4 MB per row, so one
-    # post-extinction-fix sightline (thousands of draws) in a single pass took GBs and got y1
-    # killed for memory (2026-09-25). Each row's sum is unchanged by the blocking.
+    # In row blocks: the (rows x grid) matrix and its temporaries are ~0.4 MB per row, so a
+    # sightline with thousands of draws in one pass needs GBs. Blocking leaves each row's sum unchanged.
     for i in range(0, len(Ds), BLOCK):
         d = Ds[i:i + BLOCK, None]
         nums = np.round(d / STEP).astype(int)

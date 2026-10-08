@@ -5,7 +5,7 @@
 #   pipeline/pipeline.sh CONFIG STAGE [args]
 #
 #   check      what is present / missing / stale; changes nothing
-#   setup      create the Python venv and install pipeline/requirements.txt
+#   setup      create the Python venv, install requirements.txt, build GSL in deps/gsl if needed (GSL=)
 #   fetch      MIST bolometric-correction tables, the LSSTCam focal-plane map, the OpSim database
 #              (if OPSIM_URL is set), the dust maps (only if EXT_TABLES=build)
 #   prep       star lists, Rubin and Roman visit lists, extinction tables, config/data_products.h, ./roman
@@ -77,6 +77,8 @@ source "$CONFIG"
 : "${KEEP_CHUNKS:=1}"
 : "${ANALYSES:=yields figures}"
 : "${PYTHON:=.roman/bin/python}"
+: "${GSL:=auto}"
+: "${GSL_URL:=https://ftp.gnu.org/gnu/gsl/gsl-2.8.tar.gz}"
 if [[ -z ${JOBS:-} ]]; then JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1); fi
 
 absp() { case $1 in /*) printf '%s\n' "$1" ;; *) printf '%s\n' "$ROOT/$1" ;; esac; }
@@ -293,6 +295,7 @@ do_opsim() {
 do_dustmaps() {
     need_py
     say "  downloading the DECaPS mean map (7 GB) and the Marshall map (5 MB) into dustmaps/ ..."
+    mkdir -p "$ROOT/dustmaps/decaps" "$ROOT/dustmaps/marshall"
     "$PY" - <<PY
 from dustmaps.config import config
 config["data_dir"] = "$ROOT/dustmaps"
@@ -362,10 +365,14 @@ check_tools() {
     for t in g++ make awk curl tar xz; do
         if have "$t"; then item req ok "$t" "$(command -v "$t")"; else item req MISSING "$t" "not on PATH"; fi
     done
-    if echo '#include <gsl/gsl_matrix.h>' | g++ -E -x c++ - >/dev/null 2>&1; then
-        item req ok GSL "headers found (libgsl-dev)"
+    if [[ $GSL != build ]] && gsl_system; then
+        item req ok GSL "system headers found"
+    elif gsl_local; then
+        item req ok GSL "local build in deps/gsl"
+    elif [[ $GSL == system ]]; then
+        item req MISSING GSL "gsl/gsl_matrix.h not found: install libgsl-dev (apt) / gsl (brew, module load gsl), or set GSL=auto"
     else
-        item req MISSING GSL "gsl/gsl_matrix.h not found: install libgsl-dev (apt) / gsl (brew, module load gsl)"
+        item prod missing GSL "not installed: setup builds a static copy in deps/gsl"
     fi
     if have python3 || [[ -x $PY ]]; then item req ok python3 "$(command -v python3 || echo "$PY")"; else item req MISSING python3 "needed to create the venv"; fi
     if [[ $SCHEDULER == slurm ]]; then
@@ -466,8 +473,34 @@ stage_setup() {
         say "  creating the venv $(dirname "$(dirname "$PY")")"
         python3 -m venv "$(dirname "$(dirname "$PY")")" || die "python3 -m venv failed (Debian/Ubuntu: apt install python3-venv)"
     fi
-    run_step setup "$STAMPS/setup.stamp" "$LOGS/setup.log" "python=$PY" "pipeline/requirements.txt" "$PY" \
-        "$PY" -m pip install -r pipeline/requirements.txt || return 1
+    run_step setup "$STAMPS/setup.stamp" "$LOGS/setup.log" "python=$PY" "requirements.txt" "$PY" \
+        "$PY" -m pip install -r requirements.txt || return 1
+    setup_gsl
+}
+
+# GSL: the system copy, or a static build in deps/gsl that the Makefile picks up by itself.
+gsl_system() { echo '#include <gsl/gsl_matrix.h>' | g++ -E -x c++ - >/dev/null 2>&1; }
+gsl_local()  { [[ -f $ROOT/deps/gsl/include/gsl/gsl_matrix.h && -f $ROOT/deps/gsl/lib/libgsl.a ]]; }
+build_gsl() {
+    local tmp
+    tmp=$(mktemp -d "${TMPDIR:-/tmp}/gsl.XXXXXX") || return 1
+    curl -fL --retry 3 -sS -o "$tmp/gsl.tar.gz" "$GSL_URL" \
+        && tar -xzf "$tmp/gsl.tar.gz" -C "$tmp" \
+        && (cd "$tmp"/gsl-*/ && ./configure --prefix="$ROOT/deps/gsl" --disable-shared --enable-static \
+            && make -j"$JOBS" && make install)
+    local rc=$?
+    rm -rf "$tmp"
+    return $rc
+}
+setup_gsl() {
+    case $GSL in
+        system) return 0 ;;
+        auto)   gsl_system && return 0 ;;
+        build)  ;;
+        *) die "GSL=$GSL: expected auto, system or build" ;;
+    esac
+    have make && have curl || die "building GSL needs make and curl"
+    run_step gsl "$STAMPS/gsl.stamp" "$LOGS/gsl.log" "url=$GSL_URL" "" "$ROOT/deps/gsl/lib/libgsl.a" build_gsl || return 1
 }
 
 stage_fetch() {

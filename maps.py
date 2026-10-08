@@ -1,26 +1,20 @@
-"""Build the simulator's extinction tables: files/ext/ext_tables.dat (Deviation 70).
-
-WHAT CHANGED AND WHY. This script used to write one Bayestar19/DECaPS table per Rubin pointing
-centre, choosing the map by declination (Bayestar north of -30, the dustmaps documentation's rule).
-That put 139 of Roman's 147 sightlines on Bayestar beyond its own reliable distance, left 78 tables
-all-NaN (read by the simulator as zero dust), and made the dust 3-6x too thin within 1 deg of the
-plane against the VVV reddening map (Deviations 61-63, OPEN_ITEMS CRITICAL dust entry). Now:
+"""Build the simulator's extinction tables: files/ext/ext_tables.dat.
 
   WHERE  a regular grid over the simulator's scan region (analysis/gbtds_geometry): 0.1 deg
          everywhere, 0.05 deg within |b| < 1.5 and over Roman's footprint, where the dust varies
-         fastest -- no longer tied to Rubin's pointing pattern.
+         fastest.
   WHAT   the reference profile of analysis/dustref.py: DECaPS where it can see, Marshall's
-         near-infrared map (calibrated onto DECaPS's scale by k = A_Ks/A_V, re-measured here on
+         near-infrared map (calibrated onto DECaPS's scale by k = A_Ks/A_V, measured here on
          Roman's five-field block) where it cannot; non-decreasing in distance. Both through the
-         dustmaps library. Bayestar is not used.
+         dustmaps library. Bayestar is not used: it is unreliable beyond a few kpc towards the
+         bulge and gives too little dust within 1 deg of the plane.
   FORMAT one text file, one line per sky position: `l b A_V(d_1) ... A_V(d_n)`, the distance grid
-         and the provenance in `#` header lines; src/galaxy/extinction.cpp readExtinction() reads it line by line
-         into ~25 MB (float). Provenance also in ext_provenance.json (not .txt: nothing in files/ext
-         is globbed any more, but the old reader read every .txt there).
+         and the provenance in `#` header lines; src/galaxy/extinction.cpp readExtinction() reads it
+         line by line into ~25 MB (float). Provenance is also in ext_provenance.json (not .txt, so
+         nothing in files/ext matches a .txt glob).
 
 The DECaPS queries cost ~0.13 s per sky position (~35 min for the grid) and are cached in
-files/ext_raw/raw_<grid hash>.npz, so a rebuild with another k, or after a rule change, is
-seconds:
+files/ext_raw/raw_<grid hash>.npz, so a rebuild with another k is seconds:
 
     .roman/bin/python maps.py                 # query (or reuse the cache) and write the tables
     .roman/bin/python maps.py --k 0.0805      # force k instead of measuring it
@@ -159,7 +153,7 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     tmp = OUT + ".tmp"
     with open(tmp, "w") as f:
-        f.write(f"# ext_tables v1 -- built by maps.py {stamp} (Deviation 70)\n")
+        f.write(f"# ext_tables v1 -- built by maps.py {stamp}\n")
         f.write(f"# A_V(d): DECaPS (DECaPSQueryLite mean, R_V {D.RV_DECAPS}) where reliable and not "
                 f"saturated, Marshall A_Ks/k beyond; non-decreasing; dustmaps {version('dustmaps')}\n")
         f.write(f"# k {k:.6f}\n")

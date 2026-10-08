@@ -1,62 +1,41 @@
 #!/usr/bin/env python3
-"""Step F4 -- what the Fisher matrices actually forecast, survey by survey.
+"""What the Fisher matrices forecast, survey by survey.
 
-F1/F2/F3 all ask "how much does the joint fit ADD". This figure asks the prior question:
-for each survey partition, how well is each parameter measured at all, over the whole
-detected sample. It is the direct read-out of the three Fisher matrices per event.
+For each survey partition (joint, Roman alone, Rubin alone), how well each parameter is measured
+over the whole detected sample: the direct read-out of the three Fisher matrices per event.
 
-The six panels
---------------
-Top row -- the parameters the light curve and the centroid actually fit:
+Top row, the parameters the light curve and centroid fit:
+  (a) sigma_tE / tE      Einstein-crossing time; tE ~ sqrt(Ml), half of the mass measurement.
+  (b) sigma_piE / piE    Microlensing parallax, from the Earth's orbital motion; piE ~ 1/sqrt(Ml).
+                         The parameter Roman's season gaps are expected to degrade.
+  (c) sigma_tetE / tetE  Angular Einstein radius, from the ASTROMETRIC matrix (source-centroid
+                         wobble), so gated on okB, not okA.
 
-  (a) sigma_tE / tE     Einstein-crossing time. Sets the event's timescale; tE ~ sqrt(Ml),
-                        so it is half of the mass measurement.
-  (b) sigma_piE / piE   Microlensing parallax, the fractional offset of the lens-source
-                        relative motion caused by the Earth's orbit. piE ~ 1/sqrt(Ml).
-                        This is the parameter Roman's season gaps were expected to spoil.
-  (c) sigma_tetE / tetE Angular Einstein radius, from the ASTROMETRIC matrix (the
-                        sub-milliarcsecond wobble of the source centroid), not the
-                        photometric one. Gated on okB, not okA.
+Bottom row, the payoff and whether to believe it:
+  (d) sigma_Ml / Ml      Lens mass, never fitted: Ml = tetE / (kappa * piE), kappa = 8.144 mas/Msun,
+                         so its fractional error is the quadrature sum of those on tetE and piE.
+  (e) joint vs single    Per-event sigma_Ml/Ml, joint against each survey alone. Every point must lie
+                         on or below 1:1, since the joint information matrix is the sum of the
+                         per-survey ones. Points above the line are round-off on ill-conditioned
+                         matrices.
+  (f) condition number   of the normalized photometric matrix. Above ~1e9 double precision has lost
+                         most of its digits and the inverse, hence every sigma from it, is not
+                         trustworthy.
 
-Bottom row -- the payoff and whether to believe it:
+The CDFs are normalized to the full sample, not the measured subset. An event whose matrix did not
+invert, or whose parameter was never free, carries the -1.0 sentinel; dropping those rows and
+renormalizing would flatter the survey that fails most often. The y axis is
 
-  (d) sigma_Ml / Ml     The lens MASS. It is never fitted: Ml = tetE / (kappa * piE) with
-                        kappa = 8.144 mas/Msun, so its fractional error is the quadrature
-                        sum of the fractional errors on tetE and piE. This is the quantity
-                        the whole survey design exists to deliver -- the only way to weigh
-                        an isolated dark lens.
-  (e) joint vs single   Per-event sigma_Ml/Ml, joint against each survey alone. Every point
-                        must lie on or below the 1:1 line: the joint information matrix is
-                        the SUM of the per-survey ones, so adding data cannot worsen a
-                        forecast. Points ABOVE the line are round-off on ill-conditioned
-                        matrices, not physics (OPEN_ITEMS.md).
-  (f) condition number  of the normalized photometric matrix. Above ~1e9 double precision
-                        has lost most of its digits and the inverse -- hence every sigma
-                        from it -- is not trustworthy. This panel says what fraction of the
-                        sample sits in that regime.
+    (events in the sample with sigma/theta < x) / (events in the sample)
 
-Why the CDFs are normalized to the FULL sample, not the measured subset
------------------------------------------------------------------------
-An event whose matrix did not invert, or whose parameter was never free, carries the -1.0
-sentinel. Dropping those rows and renormalizing would flatter exactly the survey that fails
-most often: Roman's curve would look excellent because the gap-peaking events it cannot see
-would silently leave the denominator. So the y axis is
+so a curve that saturates below 1.0 shows that survey never constrained the remaining events. The
+saturation level is printed in the legend.
 
-    (number of events in the sample with sigma/theta < x) / (number of events in the sample)
-
-and a curve that saturates below 1.0 is telling you the truth: that survey never constrained
-the remaining events at all. The saturation level is printed in the legend.
-
-Scope
------
---scope footprint (default) keeps only events Roman actually observed (ndw_R > 0). This is
-the only sample where the Roman-alone curve means anything: outside the GBTDS footprint
-Roman measures nothing because it never pointed there, which is true and vacuous. It is
-small (~1950 events) because few sightlines fall inside the footprint -- see OPEN_ITEMS.md.
-
---scope all keeps every joint-detected event. Here the Roman curve should be ignored and the
-comparison is joint against Rubin-alone: this is the whole-survey statistic, since Rubin
-sees the entire bulge region.
+Scope:
+--scope footprint (default) keeps events Roman observed (ndw_R > 0), the only sample where the
+Roman-alone curve is meaningful.
+--scope all keeps every joint-detected event; ignore the Roman curve and compare joint against
+Rubin-alone, the whole-survey statistic.
 """
 
 import argparse
@@ -77,9 +56,7 @@ MUTED = "#6b6b6b"
 SURFACE = "#ffffff"
 GRID = "#f0f0f0"
 
-# One hue per survey, used identically in every panel so the figure reads as one system.
-# The joint fit gets the darkest ink because it is the result; the two singles are the
-# comparison.
+# One hue per survey, identical in every panel.
 COLOR = {"joint": "#0d366b", "roman": "#c2410c", "rubin": "#0e7490"}
 LABEL = {"joint": "joint fit", "roman": "Roman alone", "rubin": "Rubin alone"}
 
@@ -102,8 +79,8 @@ TARGET = 0.1          # a 10% measurement: the conventional "this parameter is m
 def frac_precision(df, param, denom, survey):
     """Fractional 1-sigma forecast, NaN where the parameter was not measured.
 
-    relMl is already fractional; the other three are absolute and are divided by the true
-    value the simulator drew. Sentinels never reach the division -- R.sigma has masked them.
+    relMl is already fractional; the others are absolute and divided by the true value drawn.
+    R.sigma has already masked the -1.0 sentinels.
     """
     s = R.sigma(df, param, survey)
     return s if denom is None else s / df[denom]
@@ -112,10 +89,8 @@ def frac_precision(df, param, denom, survey):
 def draw_cdf(ax, df, w, param, denom, symbol, title, note, surveys):
     """CDF of a fractional forecast. Solid curve weighted, dashed curve the raw sample.
 
-    Both are drawn because they answer different questions. The weighted curve is the sky's:
-    the draws are not distributed like events, so a raw fraction describes the simulation's
-    sample and not the population (Deviation 41). The raw curve stays visible as the control,
-    since it is what every earlier version of this figure showed.
+    The weighted curve describes the sky (the draws are not distributed like events); the raw
+    curve describes the simulated sample and stays visible as a control.
     """
     n_total = len(df)
     w = np.asarray(w, dtype=float)
@@ -131,7 +106,7 @@ def draw_cdf(ax, df, w, param, denom, symbol, title, note, surveys):
         v, wv = vs.to_numpy()[ok], w[ok]
         o = np.argsort(v)
         v, wv = v[o], wv[o]
-        # Normalized to the FULL sample, so unmeasured events cost the curve height.
+        # Normalized to the full sample, so unmeasured events cost the curve height.
         y = np.cumsum(wv) / w_total
         sat = wv.sum() / w_total
         below = float(wv[v < TARGET].sum()) / w_total
@@ -159,7 +134,7 @@ def draw_cdf(ax, df, w, param, denom, symbol, title, note, surveys):
     ax.legend(loc="upper left", fontsize=7.2, frameon=False, labelcolor=INK,
               handlelength=1.5, borderpad=0.2)
     style(ax)
-    # The parameter name on the x axis of the CDF, small, under the axis label.
+    # Parameter symbol as a faint panel watermark.
     ax.text(0.985, 0.03, symbol, transform=ax.transAxes, color="#d8d8d8", fontsize=21,
             ha="right", va="bottom", zorder=0)
     return rows
@@ -281,20 +256,16 @@ def main():
                     help="footprint = events Roman observed (ndw_R>0); the only sample "
                          "where the Roman-alone curve means anything. Default footprint.")
     ap.add_argument("--map", default=None,
-                    help="MapLMC5.dat -- needed for the event-rate weight (Deviation 41)")
+                    help="MapLMC5.dat -- needed for the event-rate weight")
     ap.add_argument("--log", action="append", default=[],
                     help="run log(s), for sightlines whose map rows a killed run lost")
     ap.add_argument("--unweighted", action="store_true",
                     help="deliberately report the raw sample, with no event-rate weight")
     args = ap.parse_args()
 
-    # Read filtered, in chunks. Every panel here is over joint-detected events, which are
-    # 1.3% of the table; loading the other 98.7% first costs ~4 GB and gets the process
-    # OOM-killed on a machine with less than about 12 GB -- silently, exit 0 with no output
-    # (OPEN_ITEMS.md). The filter is applied inside the reader for that reason, not after.
-    # Nothing is lost: FisherM only runs on events that passed the detection test, and the
-    # taxonomy has zero joint-only and zero ANOMALY events, so detJ == 1 already contains
-    # every event that has a Fisher matrix at all.
+    # Filter inside the chunked reader: joint-detected events are ~1% of the table and loading
+    # the rest first can exhaust memory. Nothing is lost, since FisherM runs only on events that
+    # passed the detection test and detJ == 1 contains every event with a Fisher matrix.
     df = R.load_events(args.events, keep=lambda c: c["detJ"] == 1,
                        chunksize=args.chunksize)
     print(R.describe(args.events, args.provenance))
@@ -311,8 +282,7 @@ def main():
         scope_note = ("every joint-detected event; Roman never pointed at most of these, "
                       "so read the joint/Rubin pair and ignore the Roman curve")
     surveys = ("joint", "roman", "rubin")
-    # Weight AFTER the scope cut: the weight is per event, and every fraction here is over
-    # whichever sample the scope selected.
+    # Weight after the scope cut: every fraction is over the sample the scope selected.
     w, wlabel = R.attach_weight(df, args.map, args.log, args.unweighted)
     w = w.to_numpy()
     print(f"  scope={args.scope}: {len(df)} events; weighting: {wlabel}")

@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-"""Step W1 -- what the pooled event weight does to the published numbers.
+"""Show what the pooled event weight does to the headline statistics.
 
-Deviation 41 derives the weight; this script is its measurement, kept runnable so the table can
-be regenerated rather than trusted. It reports each headline pooled statistic twice, unweighted
-and weighted, with the Kish effective sample size beside the weighted one.
+Reports each headline pooled statistic twice, unweighted and weighted, with the Kish effective
+sample size beside the weighted one.
 
     .roman/bin/python analysis/w1_pooled_weight_check.py test5.dat \
         --map files/MONTLMC/files/MapLMC5.dat --log run.log --log run2.log
 
-UNWEIGHTED IS THE CONTROL. The unweighted column must reproduce the published numbers exactly
-(F4 20.4/14.3/6.3; F2 0.250/0.924/0.975/0.990) -- that is what shows the sample selection here
-matches the figure scripts, so that any difference in the weighted column is the weight and not a
-different event set.
+The unweighted column is the control: it must reproduce the figure scripts' unweighted numbers
+(F4 20.4/14.3/6.3; F2 0.250/0.924/0.975/0.990), which shows the event selection matches and any
+difference in the weighted column is due to the weight.
 
 --log is needed only for a damaged map file: the simulator never flushes it, so a killed run
-loses its buffered tail (OPEN_ITEMS.md). The log prints `nsim` for every sightline.
+loses its buffered tail. The log prints `nsim` for every sightline.
 """
 
 import argparse

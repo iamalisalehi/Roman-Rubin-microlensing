@@ -1,25 +1,22 @@
 """The reference dust: A_V(d) along a sightline from DECaPS where it can see, Marshall where it cannot.
 
-WHY THIS EXISTS. Deviations 61-63 showed the simulator's extinction tables were 3-6x too thin within
-1 deg of the plane: maps.py sent most of the scan to Bayestar (optical, beyond its own reliable
-distance there), and DECaPS, though right farther out, saturates on the Galactic-centre field. Step U5
-built a corrected "hybrid" profile and validated it against the independent VVV reddening map (Step
-U6). This module is that profile, in one place: maps.py builds the simulator's tables from it, and
-U5/U6 check against it, so the tables and their check cannot drift apart (Deviation 70).
+The simulator's extinction tables were too thin within 1 deg of the plane when built from Bayestar
+(optical, unreliable at large distance) and DECaPS (saturates toward the Galactic-centre field). The
+hybrid profile below was validated against the independent VVV reddening map. maps.py builds the
+simulator's tables from this module, so the tables and their checks share one definition.
 
-THE PROFILE ("hybrid", per sightline, on DGRID):
+Profile ("hybrid", per sightline, on DGRID):
   1. DECaPS (Zucker et al. 2025; dustmaps DECaPSQueryLite, mean), A_V = 3.32 E(B-V) (the dustmaps
-     convention), out to the largest distance its own `reliable_dist` flag accepts;
+     convention), out to the largest distance its `reliable_dist` flag accepts;
   2. beyond it, DECaPS's last reliable value plus Marshall's further increase, A_Ks / k;
   3. from the first distance at which Marshall's A_Ks / k reaches DECAPS_AV_MAX (DECaPS's stated
-     sensitivity limit) on, Marshall's A_Ks / k itself -- DECaPS no longer sees through;
-  4. NEW in Deviation 70: forced non-decreasing (a running maximum). Step 3 replaces the profile
-     outright and can step DOWN where steps 1-2 had already passed Marshall's value; a column of
-     dust cannot shrink with distance.
-  Variants "decaps" (DECaPS everywhere, flag ignored) and "marshall" (A_Ks / k everywhere) are kept
-  for the systematic error. k = A_Ks/A_V calibrates the near-infrared map onto DECaPS's scale: the
-  median A_Ks(Marshall)/A_V(DECaPS) at 8 kpc over Roman's five-field block where DECaPS is reliable
-  (`calibrate_k`); 0.0805 on the notional layout's block (b -1.2), re-measured on the adopted one.
+     sensitivity limit) on, Marshall's A_Ks / k itself;
+  4. forced non-decreasing (a running maximum), since step 3 can step down where steps 1-2 had
+     already passed Marshall's value and a column of dust cannot shrink with distance.
+  Variants "decaps" (DECaPS everywhere, flag ignored) and "marshall" (A_Ks / k everywhere) give the
+  systematic error. k = A_Ks/A_V calibrates the near-infrared map onto DECaPS's scale: the median
+  A_Ks(Marshall)/A_V(DECaPS) at 8 kpc over Roman's five-field block where DECaPS is reliable
+  (`calibrate_k`).
 
 Both maps are queried through the dustmaps library (data in ./dustmaps, the repo-local data_dir).
 """
@@ -32,7 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DGRID = np.arange(0.05, 20.0, 0.05)            # kpc; 399 distances (config/parameters.h MaxD = 12 kpc)
 RV_DECAPS = 3.32
 DECAPS_AV_MAX = 12.0
-K_NOMINAL_LEGACY = 0.0805                      # U5/U6 on the notional layout (Deviation 63)
+K_NOMINAL_LEGACY = 0.0805                      # calibrate_k on the notional layout (block at b -1.2)
 
 
 def _coords(l, b, d):
@@ -45,7 +42,7 @@ def _coords(l, b, d):
 class ReferenceDust:
     """Queries the two maps and assembles the reference profile.
 
-    Single-sightline methods cache by (l, b) rounded to 1e-3 deg, as U5 always did; `batch` queries
+    Single-sightline methods cache by (l, b) rounded to 1e-3 deg; `batch` queries
     many sightlines at once, which is how maps.py builds the tables (DECaPS's cost is per distinct
     sky position, ~0.13 s each, so the batch is ordered spatially by the caller).
     """
@@ -71,7 +68,7 @@ class ReferenceDust:
         aks = np.asarray(self.mq(c), float).reshape(n, m)
         return dav, rel, np.array([_hold_aks(a) for a in aks])
 
-    # ---- single sightline, cached (U5's interface) ----
+    # ---- single sightline, cached ----
     def aks_profile(self, l, b):
         k = (round(l, 3), round(b, 3))
         if k not in self._aks:

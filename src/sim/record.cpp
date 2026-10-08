@@ -1,4 +1,4 @@
-// The per-event output row, the Step H2 quantities and the Step S1 sample dump.
+// The per-event output row, the satellite-parallax quantities and the sample light-curve dump.
 #include "sim/record.h"
 #include "sim/characterize.h"
 #include "events/lightcurve.h"
@@ -16,7 +16,7 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
     const std::string& testf = ctx.outs.testf;
     PeakCoverage pk;
 
-    // Deviation 76: the observed peak, and the gap geometry measured from it.
+    // The observed peak, from which the gap geometry is measured.
     std::tie(pk.t0obs, pk.uminObs) = observedPeak(s, l, as);
 
     st.records.push_back(EventRecord{
@@ -39,7 +39,7 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
         ch.det.dclsEvent,
         synergyClass(co),
         co.condA[SJOINT], co.condA[SRUBIN], co.condA[SROMAN],
-        // ---- the rest of the row (Step D1) ----
+        // ---- columns appended after the original layout ----
         l.t0, s.xi, s.lon, s.lat,
         s.mbs[1], s.fb[1],
         {s.magb[0], s.magb[1], s.magb[2], s.magb[3], s.magb[4], s.magb[5], s.magb[6]},
@@ -52,30 +52,12 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
         lc.dsepMax_L, lc.dsepMax_R
     });
 
-    // ------------------------------------------------------------------------------
-    // Step H2. Two quantities that make the satellite-parallax effect visible in the
-    // table instead of only implicit in the Fisher matrix.
-    //
-    // du_sat  the observer separation in Einstein radii at t0, piE * D_perp / AU.
-    //         This is the amplitude of the satellite effect for this event and the
-    //         natural x-axis of every Step H3 figure. It is NOT L2_OFFSET_AU * piE:
-    //         D_perp is the separation projected perpendicular to the line of sight
-    //         and runs ~0.87-0.99 of the full L2 offset around the year, so the
-    //         simple product is a ceiling (DEVIATIONS.md 28.2). Computed by asking
-    //         lightcurve() for both observers rather than re-deriving the projection
-    //         here, so the two can never drift apart.
-    //
-    // nepL_pk, nepR_pk  epochs from each survey within +-2 tE of t0, i.e. while the
-    //         event is actually magnified. Satellite parallax needs CONTEMPORANEOUS
-    //         coverage: an event Roman saw in season 3 and Rubin saw in season 7 has
-    //         none of it, however large ndw_L and ndw_R are. The plan asked for a
-    //         single `nep_both` flag; two counts are the same cost and strictly more
-    //         informative, and the flag is just (nepL_pk > 0 and nepR_pk > 0).
-    //
-    // Safe to call lightcurve() here: FisherM has already run, and the only state it
-    // touches (s->ux/uy, s->def*, s->pos*, as->ue_n*) is not read by the row written
-    // below and is recomputed from scratch by the next draw.
-    // ------------------------------------------------------------------------------
+    // du_sat: observer separation in Einstein radii at t0, piE * D_perp / AU. D_perp is the separation
+    // projected perpendicular to the line of sight (~0.87-0.99 of the L2 offset over the year), so
+    // L2_OFFSET_AU * piE is only a ceiling; lightcurve() is asked for both observers so the projection
+    // is not re-derived here. nepL_pk / nepR_pk: epochs of each survey within +-2 tE of t0; satellite
+    // parallax needs contemporaneous coverage. Calling lightcurve() here is safe: FisherM has run, and
+    // the state it touches is not read by the row below and is recomputed by the next draw.
     pk.duSat = 0.0;
     {
         lightcurve(s, l, as, l.t0, 0);
@@ -88,7 +70,7 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
     {
         const double win = 2.0 * l.tE;
         for (int i = 0; i < lc.ndw; ++i) {
-            if (std::fabs(l.timn[i] - pk.t0obs) > win) continue;   // Deviation 76
+            if (std::fabs(l.timn[i] - pk.t0obs) > win) continue;
             if (int(l.tele[i]) == 1) pk.nepRpk += 1;
             else                      pk.nepLpk += 1;
         }
@@ -106,7 +88,7 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
             << co.resu[3]    << " " << co.resu[5]    << " "
             << co.resu[9]    << " " << co.resu[10]   << " " << co.resu[13]               << " " << co.resu[14]    << " "
             << s.Map[2]      << " " << s.nsbl[2]     << " " << co.flagi                  << " " << s.Ai[2]        << " "
-            // per-survey bookkeeping (Step C5), appended so existing column indices hold
+            // per-survey bookkeeping, appended so existing column indices hold
             << lc.ndw_L << " " << lc.ndw_R << " "
             << ch.det.detL  << " " << ch.det.detR  << " " << ch.det.detJ << " "
             << co.okA[SJOINT] << " " << co.okA[SRUBIN] << " " << co.okA[SROMAN] << " "
@@ -115,7 +97,7 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
             << co.Erb[SJOINT][0] << " " << co.Erb[SRUBIN][0] << " " << co.Erb[SROMAN][0] << " "
             << ch.det.dclsEvent << " " << synergyClass(co) << " "
             << co.condA[SJOINT] << " " << co.condA[SRUBIN] << " " << co.condA[SROMAN] << " "
-            // the rest of the row (Step D1) -- appended, so columns 1-57 keep their indices
+            // appended after column 57 so earlier column indices hold
             << l.t0 << " " << s.xi << " " << s.lon << " " << s.lat << " "
             << s.mbs[1] << " " << s.fb[1] << " ";
     for (int i = 0; i < M; ++i) filg_in << s.magb[i]  << " ";
@@ -123,22 +105,19 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
     filg_in << co.relMl[SJOINT] << " " << co.relMl[SRUBIN] << " " << co.relMl[SROMAN] << " "
             << co.okB[SJOINT]   << " " << co.okB[SRUBIN]   << " " << co.okB[SROMAN]   << " "
             << co.condB[SJOINT] << " " << co.condB[SRUBIN] << " " << co.condB[SROMAN] << " "
-            // Gap geometry. dt_edge is NEGATIVE when t0 fell inside a Roman season;
-            // t0zone distinguishes a mid-mission gap (1) from before-launch/after-end
-            // (2), which must never be pooled -- only the former is gap-filling.
+            // Gap geometry: dt_edge is negative when t0 fell inside a Roman season; t0zone separates a
+            // mid-mission gap (1) from before-launch/after-end (2), and only the former is gap-filling.
             << sched.dtToSeasonEdge(pk.t0obs) << " " << sched.zone(pk.t0obs) << " "
-            // Sky area this event's sightline stands for, deg^2 (Step E1). Constant
-            // across an unstratified run; NOT constant once --stride-roman is used,
-            // and then any statistic pooled over sightlines must weight by it.
+            // Sky area this sightline stands for [deg^2]; not constant once --stride-roman is used, so
+            // statistics pooled over sightlines must weight by it.
             << st.wArea << " "
-            // Step H2: the satellite-parallax observable and contemporaneous coverage.
+            // satellite-parallax observable and contemporaneous coverage
             << pk.duSat << " " << pk.nepLpk << " " << pk.nepRpk << " "
-            // Step R1: resolving the two images. Counts of qualifying epochs per
-            // survey, then the largest separation reached while both were detectable
-            // (-1 = never). The three bars differ only in what counts as "resolved".
+            // Image resolution: counts of qualifying epochs per survey, then the largest separation
+            // while both images were detectable (-1 = never). The three bars differ in what counts as resolved.
             << lc.nres5_L << " " << lc.nres20_L << " " << lc.nresPSF_L << " " << lc.dsepMax_L << " "
             << lc.nres5_R << " " << lc.nres20_R << " " << lc.nresPSF_R << " " << lc.dsepMax_R << " "
-            // Deviation 71: astrometric noise variants N and P (joint, Roman).
+            // astrometric noise variants N and P (joint, Roman)
             << co.ErbV[AV_N][SJOINT][0] << " " << co.ErbV[AV_N][SROMAN][0] << " "
             << co.ErbV[AV_P][SJOINT][0] << " " << co.ErbV[AV_P][SROMAN][0] << " "
             << co.relMlV[AV_N][SJOINT] << " " << co.relMlV[AV_N][SROMAN] << " "
@@ -164,16 +143,10 @@ void commitSampleDump(SimContext& ctx, const LightCurveStats& lc, const Characte
     std::vector<DumpEpoch>& dumpBuf = ctx.outs.dumpBuf;
     long& dumpSeq = ctx.outs.dumpSeq;
 
-    // ------------------------------------------------------------------------------
-    // Step S1. Commit this draw's buffered light curve if it fills a requested
-    // sample class. Here, and not in the time loop, because detL/detR/detJ and the
-    // Fisher sigmas -- which is what the classes are defined in terms of -- do not
-    // exist until now.
-    //
-    // First match wins: an event is written once, under the first class in the spec
-    // file whose quota is still open. Otherwise a `both` event would also land in
-    // `any` and the same light curve would be drawn twice in one figure.
-    // ------------------------------------------------------------------------------
+    // Commit this draw's buffered light curve if it fills a requested sample class. Done here, not
+    // in the time loop, because the classes are defined by detL/detR/detJ and the Fisher sigmas.
+    // First match wins: an event is written once, under the first class in the spec file whose quota
+    // is still open.
     if (dumpSpec.on and not dumpBuf.empty()) {
         double maxShift = 0.0;
         for (const DumpEpoch& e : dumpBuf)

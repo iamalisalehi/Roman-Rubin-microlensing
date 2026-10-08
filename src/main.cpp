@@ -22,11 +22,8 @@
 ///==============================================================//
 
 int main(int argc, char** argv) {
-    // NOTE: srand(time(0)) used to be called here. Nothing in this project ever
-    // calls rand() -- the RNG is the seeded mt19937_64 in include/util/random.h -- so it did
-    // nothing except make the run look clock-seeded, which is the opposite of
-    // the reproducibility the provenance block below is for.
-
+    // The RNG is the seeded mt19937_64 in include/util/random.h; nothing here calls rand()
+    // or seeds from the clock.
     RunConfig cfg;
     int exitCode = 0;
 
@@ -48,14 +45,11 @@ int main(int argc, char** argv) {
     auto ls = std::make_unique<lsst>();
     auto ro = std::make_unique<roman>();
     auto co = std::make_unique<covarian>();
-    // Step H3's second forecast: the same event with the satellite offset zeroed. Allocated
-    // once beside `co` rather than per event -- covarian owns several vectors, and building
-    // one per detection would cost more than the Fisher call it serves.
+    // Second Fisher forecast for --pair-satellite: the same event with the satellite offset
+    // zeroed. Allocated once, since covarian owns several vectors.
     auto coNS = std::make_unique<covarian>();
 
-    // Step H1: Roman's observer position. satScale multiplies L2_OFFSET_AU inside
-    // lightcurve(), so 0 puts Roman back at the centre of the Earth -- the pre-H1 behaviour,
-    // and the "off" run of Step H3's experiment.
+    // satScale multiplies L2_OFFSET_AU inside lightcurve(); 0 puts Roman at the centre of the Earth.
     as->satScale = cfg.noSatPar ? 0.0 : 1.0;
 
     // ---- Stage 3: read the input files ----
@@ -88,8 +82,8 @@ int main(int argc, char** argv) {
     SightlineState st;
     st.records.reserve(1000);   // rough upper bound on icon per field
 
-    // Light-curve slots (l.timn, l.magn, ...) the previous draw filled; drawEvent clears exactly those, so
-    // the count must survive from one draw to the next and across sightlines (see drawEvent).
+    // Number of light-curve slots (l.timn, l.magn, ...) the previous draw filled; drawEvent
+    // clears exactly those, so the count persists across draws and sightlines.
     int prevNdw = 0;
 
     for (const auto& sightline : grid.scan) {

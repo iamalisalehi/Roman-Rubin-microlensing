@@ -1,8 +1,8 @@
 // Extinction tables (read, nearest sightline, interpolation along the line of sight) and CCM89.
 #include "galaxy/extinction.h"
 
-// Finds the sightline (one of `nfiles` unique l,b pointings) closest to
-// (lon, lat). Call this ONCE per field pointing, not once per star.
+// Finds the extinction table (one of `nTables` unique l,b pointings) closest to
+// (lon, lat). Call once per field pointing, not once per star.
 int nearestSightline(const extin& ex, double lon, double lat) {
     int best = -1;
 
@@ -53,20 +53,16 @@ double interpExtinctionAlongSightline(const extin& ex, int k, double dist) {
     return double(ext[lo]) + t*(double(ext[hi])-double(ext[lo]));
 }
 
-// ---------------------------------------------------------------------------------------
-// readExtinction (Deviation 70; replaces readBayestar). Reads files/ext/ext_tables.dat line by
-// line -- never the whole file -- straight into `ex`. Format, written by maps.py:
+// Reads files/ext/ext_tables.dat line by line straight into `ex`. Format, written by maps.py:
 //     # ext_tables v1 -- built by maps.py <date> ...      (provenance)
 //     # k <A_Ks/A_V>
 //     # n_tables <N>
 //     # n_dist <M>
 //     # dist d_1 ... d_M                                   (kpc, strictly increasing)
 //     l b A_V(d_1) ... A_V(d_M)                            (N lines)
-// It refuses -- exits naming the file and line -- anything readBayestar silently accepted: a
-// missing header field, a row with too few or too many numbers, a non-finite or negative A_V, a
-// profile that decreases with distance, or a row count that differs from the header. The old
-// reader stopped at the first `nan` without noticing and gave 78 sightlines zero dust.
-// ---------------------------------------------------------------------------------------
+// It exits naming the file and line on a missing header field, a row with too few or too many
+// numbers, a non-finite or negative A_V, a profile that decreases with distance, or a row count
+// that differs from the header.
 void readExtinction(extin& ex, const std::string& path) {
     auto fail = [&](long line, const std::string& why) {
         std::cerr << "ERROR: " << path << (line > 0 ? ":" + std::to_string(line) : std::string())
@@ -182,11 +178,8 @@ double CCM89_b(double lambda_um)
 }
 
 // A_lambda / A_V from Cardelli, Clayton & Mathis (1989). CCM89_a/b take a WAVELENGTH in
-// micron and form x = 1/lambda themselves, so lambda is passed straight through. Until
-// Deviation 53 this function inverted it first, evaluating the law at 1/lambda: A_lambda/A_V
-// then ROSE toward the red (u 0.07, F146 0.75 at R_V = 2.5 against the true 1.69 and 0.20),
-// and every run from 9919917 on had optical sources too bright and F146 sources too faint.
-// tests/extinction_test.cpp pins the corrected values.
+// micron and form x = 1/lambda themselves, so lambda is passed straight through.
+// tests/extinction_test.cpp pins the values.
 double AlAv(double lambda_um, double Rv)
 {
     return CCM89_a(lambda_um) + CCM89_b(lambda_um) / Rv;

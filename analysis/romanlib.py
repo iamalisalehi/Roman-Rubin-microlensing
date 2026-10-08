@@ -1,26 +1,19 @@
 """Shared reader for the Roman+Rubin forecast outputs.
 
-Every analysis script goes through this module. That is deliberate: the C++ side reports
-"not measured" as an explicit -1.0 sentinel rather than NaN, and three separate bugs during
-development came from a -1 being summed as though it were a measurement. Encoding the
-sentinel rules once, here, is what stops that class of error reappearing in Python.
+Every analysis script goes through this module. The C++ side reports "not measured" as an explicit
+-1.0 sentinel rather than NaN, and the sentinel rules are encoded once here.
 
-The two rules that matter
--------------------------
-1. **A sentinel is never a measurement.** -1.0 in any sigma, condition number or relative
-   error means "this could not be determined". It is not a small error, not a large one, and
-   must never enter a sum, a mean, a ratio or a histogram.
+Two rules:
+1. A sentinel is never a measurement. -1.0 in any sigma, condition number or relative error means
+   "could not be determined" and must never enter a sum, a mean, a ratio or a histogram.
+2. Gate on okA/okB, never on flagi. `flagi` is set inside FisherM and is not reset per event, so it
+   carries the previous characterised event's value on rows where nothing was characterised.
+   `okA_J` and `okB_J` are reset every event.
 
-2. **Gate on okA/okB, never on flagi.** `flagi` is set inside FisherM and is NOT reset per
-   event, so it reads as the previous characterised event's value on rows where nothing was
-   characterised (OPEN_ITEMS.md). `okA_J` and `okB_J` are reset every event and are the
-   flags to trust.
-
-Two indexing systems that look alike
-------------------------------------
+Two indexing systems that look alike:
 - `magb_*` / `blend_*` are per FILTER: u g r i z y are Rubin's, F146 is Roman's.
-- `mbs0` / `fb0` are Rubin (r-band); `mbs1` / `fb1` are Roman (F146). These are per
-  TELESCOPE and are what the Fisher matrix actually fits.
+- `mbs0` / `fb0` are Rubin (r-band); `mbs1` / `fb1` are Roman (F146). These are per TELESCOPE and
+  are what the Fisher matrix fits.
 """
 
 from __future__ import annotations
@@ -65,9 +58,9 @@ T0_ZONE = {
 
 SURVEYS = {"joint": "J", "rubin": "L", "roman": "R"}
 
-# Column layout of MapLMC2.dat, one row per AGGREGATED sightline, in the order the
-# `fil3 <<` block in src/sim/sightline.cpp writes them. Each of the first 22 quantities is
-# written as a pair: [0] over all recorded events, [1] over detected events only.
+# Column layout of MapLMC2.dat, one row per aggregated sightline, in the order the `fil3 <<` block in
+# src/sim/sightline.cpp writes them. Each of the first 22 quantities is a pair: [0] over all recorded
+# events, [1] over detected events only.
 _MAP_PAIRS = ["tE", "RE", "piE", "tetE", "Vt", "u0", "Ml", "opd", "Dl", "Ds", "vl",
               "vs", "mbs", "fb", "fwhm", "vsn", "DelT", "Struc", "murel", "Map",
               "nbl", "Ext"]
@@ -76,19 +69,13 @@ MAP_COLS = ([f"{n}_{i}" for n in _MAP_PAIRS for i in (0, 1)]
                "Eru0", "ErtE", "Erfb", "ErpiE", "ErtetE", "Erml", "Erdl", "Ermul", "Ermus",
                "nsim", "numd0", "numd1", "nerr", "nri", "nde",
                "log10_Rostart", "log10_Nstart", "log10_nstart",
-               # Step E1, appended in this order. w_area is the deg^2 of sky this
-               # sightline stands for -- constant across an unstratified run, NOT constant
-               # once --stride-roman is used. lon/lat are the sightline's position, which
-               # this file did not previously record at all: without them a map row could
-               # not be tied to the events it produced, and `nsim` -- the draw count any
-               # pooled yield needs as its denominator -- was unreachable from the event
-               # table. Files written before Step E1 have none of the three;
-               # load_sightlines() detects that by width.
+               # w_area is the deg^2 of sky this sightline stands for (constant unless
+               # --stride-roman is used); lon/lat tie a map row to the events it produced.
+               # Older files lack these three; load_sightlines() detects that by width.
                "w_area", "lon", "lat",
-               # Deviation 94: the sightline's median 5-sigma depth per LSST band
-               # (st.rubinDepthMed; -inf where the band has no visit), which Rubin's
-               # acceptance in preselectEvent compares each draw's peak with. Files written
-               # before it have none of the six (NaN here).
+               # Median 5-sigma depth per LSST band (st.rubinDepthMed; -inf where the band has no
+               # visit), which Rubin's acceptance in preselectEvent compares each draw's peak with.
+               # Older files lack these six (NaN here).
                "depth5_u", "depth5_g", "depth5_r", "depth5_i", "depth5_z", "depth5_y"])
 _N_DEPTH, _N_E1 = 6, 3
 
@@ -111,10 +98,8 @@ def _narrow(df, keep64):
 def sightline_index(df):
     """(codes, keys): an int32 sightline code per row, and keys[code] = (lon, lat) to 3 dp.
 
-    Replaces the per-row Python tuple `list(zip(lon.round(3), lat.round(3)))`, which cost
-    ~1 KB a row and put a 12M-row table out of reach of an 8 GB machine (2026-09-25). The keys
-    are the rounded values of each sightline's first row, i.e. exactly the tuples the old code
-    built, so every dict lookup keyed on them (nsim, density_profile) is unchanged.
+    The keys are the rounded values of each sightline's first row, so dict lookups keyed on them
+    (nsim, density_profile) match the (lon, lat) tuples used elsewhere, without a per-row tuple list.
     """
     lon = df["lon"].to_numpy(np.float64).round(3)
     lat = df["lat"].to_numpy(np.float64).round(3)
@@ -139,45 +124,30 @@ def load_events(path, keep=None, chunksize=None, usecols=None, narrow=False,
                 keep64=("lon", "lat")):
     """Read the per-event table (test5.dat) written by the `filg_in <<` block.
 
-    Column names come from the file's own `#` header, not from a list hardcoded here, so a
-    schema change surfaces as a loud mismatch rather than a silent misalignment.
+    Column names come from the file's own `#` header, so a schema change surfaces as a loud mismatch.
 
-    keep, chunksize -- read in chunks and keep only the rows `keep(chunk)` selects.
-        The production table is 5.57M rows x 90 float64 columns, which is ~4 GB resident
-        before pandas' parse buffers are counted. On a machine with less than about 12 GB
-        that is an OOM kill, not a slow read -- and the kill is silent, exit status 0 with
-        an empty stdout, which looks exactly like a script that did nothing (OPEN_ITEMS.md).
-        Filtering per chunk holds the peak at one chunk plus the surviving rows.
-
-        `keep` is called with each chunk and must return a boolean mask over it. Every
-        analysis here begins by discarding undetected events -- 98.7% of the table -- so:
+    keep, chunksize -- read in chunks and keep only the rows `keep(chunk)` selects. The production
+        table is millions of rows x ~90 float64 columns (~4 GB resident), enough to exhaust memory
+        on a small machine; filtering per chunk holds the peak at one chunk plus the survivors.
+        `keep` takes a chunk and returns a boolean mask over it, e.g.
 
             df = R.load_events(path, keep=lambda c: c["detJ"] == 1, chunksize=500_000)
 
-        The default (keep=None) reads the whole file in one pass, unchanged, so existing
-        callers behave exactly as before.
+        The default (keep=None) reads the whole file in one pass.
 
-    usecols -- keep only these columns. The other lever on the same problem: a statistic over
-        ALL draws (the intrinsic tE distribution, Deviation 41) cannot discard 98.7% of the
-        rows, so it has to discard columns instead -- eight of ninety is ~380 MB rather than
-        ~4 GB. The `detCls`/`synClass`/`t0zone` label columns are only added if their source
-        column survives the selection.
+    usecols -- keep only these columns. For statistics over all draws, which cannot discard rows.
+        The `detCls`/`synClass`/`t0zone` label columns are added only if their source column survives.
 
-    narrow -- store each chunk's floats as float32 and integers as int32, halving memory. For
-        statistics that need EVERY draw, where neither `keep` nor `usecols` can shrink the
-        table enough: the post-extinction-fix tables are 6.5-12.2M rows, and y1's 30 columns of
-        them in float64 got a run killed for memory (2026-09-25). float32 keeps 7 significant
-        digits, ample for every physical input; callers must do their arithmetic in float64.
-        Columns in `keep64` stay float64 because they are MATCHED, not computed with: lon/lat
-        key the sightline lookup, and float64(float32(-0.319)) rounds to a different key than
-        the map file's -0.319, so a narrowed coordinate would silently drop that row's weight.
-        Off by default, so every existing caller is unchanged.
+    narrow -- store floats as float32 and integers as int32, halving memory, for statistics that
+        need every draw. float32 keeps 7 significant digits; callers must do arithmetic in float64.
+        Columns in `keep64` stay float64 because they are matched, not computed with: lon/lat key
+        the sightline lookup, and float64(float32(-0.319)) differs from the map file's -0.319.
     """
     with open(path) as fh:
         header = fh.readline()
     if not header.startswith("#"):
         raise ValueError(
-            f"{path}: no '#' header line. Files written before Step D1 have no header and a "
+            f"{path}: no '#' header line. Files from older versions of the simulator have no header and a "
             f"different column set; they cannot be read with this loader."
         )
     cols = header.lstrip("#").split()
@@ -217,15 +187,12 @@ def load_events(path, keep=None, chunksize=None, usecols=None, narrow=False,
 def load_sightlines(path):
     """Read MapLMC2.dat, one row per aggregated sightline.
 
-    Note this file is opened in APPEND mode by the simulator, so a re-run without clearing
-    it first silently concatenates two runs (OPEN_ITEMS.md). `nri`/`nde` restarting from
-    zero part-way down the file is the signature.
+    The simulator opens this file in append mode, so a re-run without clearing it concatenates two
+    runs (`nri`/`nde` restarting from zero part-way down is the signature).
 
-    Malformed lines are dropped with a warning rather than killing the read. The simulator
-    never flushes this stream, so a killed run loses its buffered tail and the next run's
-    first row lands on the fragment, leaving one line of the wrong width (OPEN_ITEMS.md, and
-    the v3 file has exactly that at line 687). Silently mis-parsing it would shift every
-    column; failing outright would make the whole file unreadable for one bad line.
+    Malformed lines are dropped with a warning rather than killing the read. The stream is never
+    flushed, so a killed run loses its buffered tail and the next run's first row lands on the
+    fragment, leaving one line of the wrong width.
     """
     with open(path) as fh:
         lines = fh.readlines()
@@ -239,16 +206,14 @@ def load_sightlines(path):
         warnings.warn(
             f"{path}: dropping {len(bad)} malformed line(s) (line numbers {bad[:5]}"
             f"{'...' if len(bad) > 5 else ''}); their sightlines are absent from the result. "
-            f"A killed run loses this file's buffered tail -- see OPEN_ITEMS.md.")
+            f"A killed run loses this file's buffered tail.")
         kept = [ln for ln in lines if ln.strip() and len(ln.split()) == expected]
         path = io.StringIO("".join(kept))
         ncol = expected
     else:
         ncol = len(pd.read_csv(path, sep=r"\s+", header=None, nrows=1).columns)
-    # Positional file with no header, so the only way to tell the vintage is the width -- and
-    # guessing wrong shifts every column, which produces a plausible plot of the wrong
-    # quantity. Three widths exist: before Step E1 (no w_area/lon/lat), before Deviation 94
-    # (no depths), and current. Columns a file lacks come back NaN.
+    # Positional file with no header: the width identifies the vintage (no w_area/lon/lat; no
+    # depths; current). Columns a file lacks come back NaN.
     full = len(MAP_COLS)
     if ncol not in (full - _N_DEPTH - _N_E1, full - _N_DEPTH, full):
         raise ValueError(f"{path}: {ncol} columns; expected {full - _N_DEPTH - _N_E1}, "
@@ -262,8 +227,8 @@ def load_sightlines(path):
 def load_provenance(path):
     """Parse run_provenance.txt into a dict of strings.
 
-    The sightline-outcome block is appended at the END of a run, so its absence means the
-    run did not finish -- which is exactly when you must not quote a density.
+    The sightline-outcome block is appended at the end of a run, so its absence means the run
+    did not finish.
     """
     prov = {}
     with open(path) as fh:
@@ -274,9 +239,7 @@ def load_provenance(path):
     return prov
 
 
-# ---------------------------------------------------------------------------------------
-# Sentinel-aware accessors. Use these instead of touching the columns directly.
-# ---------------------------------------------------------------------------------------
+# ---- Sentinel-aware accessors. Use these instead of touching the columns directly. ----
 
 def sigma(df, param, survey, noise="W"):
     """1-sigma forecast for `param` from `survey`, NaN where it was not measured.
@@ -285,16 +248,15 @@ def sigma(df, param, survey, noise="W"):
              "tetE"          (astrometric, gated on okB)
              "Ml"            (derived from tetE and piE, gated on its own positivity)
     survey : "joint" | "rubin" | "roman"
-    noise  : astrometric noise variant (Deviation 71) for "tetE" and "Ml": "W" white (the main
+    noise  : astrometric noise variant for "tetE" and "Ml": "W" white (the main
              columns), "N" nominal, "P" pessimistic (columns sigtetE_N<q>, relMl_P<q>, gated on
              okB_N<q> ...). They exist for the joint and Roman partitions; Rubin's is the same
              in all three, so noise is ignored for "rubin". Photometric params ignore it.
 
-    Gating is on the ok flag AND on positivity. Both are needed: the flag can be set while
-    an individual parameter is still a sentinel, because each survey partition fits its own
-    active parameter subset (activePhotParams in include/fisher/fisher.h). An event Roman detects with no
-    Rubin epochs has a valid joint fit in which the Rubin blend fraction was never a free
-    parameter -- exactly the case that aborted the 2026-08-29 run.
+    Gating is on the ok flag and on positivity: the flag can be set while an individual parameter
+    is still a sentinel, because each partition fits its own active parameter subset
+    (activePhotParams in include/fisher/fisher.h). E.g. an event Roman detects with no Rubin epochs
+    has a valid joint fit in which the Rubin blend fraction was never free.
     """
     q = SURVEYS[survey]
     if noise not in ("W", "N", "P"):
@@ -319,9 +281,8 @@ def sigma(df, param, survey, noise="W"):
 def characterized(df, survey):
     """Abrams et al. 2025 characterization criterion: tE > 2*sigma_tE AND piE > 2*sigma_piE.
 
-    Deliberately their criterion, not a stricter single-parameter one, so our Rubin-alone
-    numbers are directly comparable to their published values. They note it is appropriately
-    looser than sigma_tE/tE < 0.1 because two parameters are constrained at once.
+    Their criterion is used so Rubin-alone numbers are directly comparable to their published
+    values; it is looser than sigma_tE/tE < 0.1 because two parameters are constrained at once.
 
     Returns a boolean Series; events where either sigma is unmeasured are False, never NaN.
     """
@@ -333,13 +294,10 @@ def characterized(df, survey):
 def ratio_joint_over(df, param, survey):
     """Per-event sigma_joint / sigma_<survey>, NaN unless BOTH were measured.
 
-    Always per event, then aggregate -- never a ratio of two separately-averaged sigmas.
-    Adding data cannot worsen a Fisher forecast, so this is bounded above by 1 in exact
-    arithmetic. In practice a handful of events exceed 1 by ~1e-3; every one of them has a
-    photometric condition number above 1e9, where double precision has already lost most of
-    its digits (see OPEN_ITEMS.md). A violation on a WELL-conditioned event would be a
-    partitioning bug; on an ill-conditioned one it is round-off on a forecast that was
-    meaningless anyway.
+    Per event, then aggregate -- never a ratio of separately averaged sigmas. Adding data cannot
+    worsen a Fisher forecast, so this is bounded above by 1 in exact arithmetic. A handful of events
+    exceed 1 by ~1e-3, all with photometric condition number above 1e9, where double precision has
+    lost most of its digits. A violation on a well-conditioned event would be a partitioning bug.
     """
     return sigma(df, param, "joint") / sigma(df, param, survey)
 
@@ -350,26 +308,16 @@ def detected(df, survey):
 
 
 def area_weight(df, prov=None):
-    """Per-event sky-area weight in deg^2 -- the area of sky each row stands for (Step E1).
+    """Per-event sky-area weight in deg^2: the area of sky each row stands for.
 
-    WHEN YOU NEED THIS. Roman's GBTDS footprint is ~2.6% of the scanned region, so a uniform
-    scan spends 97% of its draws where the joint Fisher matrix is simply Rubin's. Step E1
-    stratifies the scan: sightlines inside the footprint are visited on a finer grid than
-    those outside, and the sample is then deliberately NOT proportional to sky area.
+    Sightlines inside Roman's footprint (~2.6% of the scanned region) are visited on a finer grid
+    than those outside, so the sample is not proportional to sky area. Per-sightline quantities,
+    statistics conditional on a selection (in-footprint events, per-field tables) and per-event
+    ratios are unaffected. Anything pooled across the whole scan (survey-wide yield, histogram over
+    all detections) must be weighted by this.
 
-    That changes nothing computed at a single sightline, and nothing conditional on a
-    selection you make yourself. A statistic over in-footprint events only (F3 panel (a), the
-    F4 footprint panels), or a per-field table (F1), or a per-event ratio -- none of them
-    move, because the sightline you drew from is not an input to any of them.
-
-    What DOES move is anything pooled across the whole scan: a survey-wide yield, a
-    histogram over all joint detections, the "all detections" check panel of F4. Weight those
-    by this, or they will describe a sky in which Roman covers whatever fraction of the
-    SAMPLE the stratification bought rather than the 2.6% of the SKY it actually covers.
-
-    Returns a float Series aligned to df. Falls back to the run's constant
-    `area_per_sightline` for tables written before Step E1, and to 1.0 (with everything
-    equally weighted, i.e. plain counts) if there is no provenance to fall back to.
+    Returns a float Series aligned to df. Falls back to the run's constant `area_per_sightline`
+    for tables without a w_area column, and to 1.0 (plain counts) with no provenance.
     """
     if "w_area" in df.columns:
         return df["w_area"].astype(float)
@@ -379,40 +327,37 @@ def area_weight(df, prov=None):
 
 
 def event_weight(df, sightlines, nsim_override=None):
-    """Per-event importance weight for a POOLED statistic (Step W1, Deviation 41).
+    """Per-event importance weight for a pooled statistic.
 
-    WHY A WEIGHT IS NEEDED AT ALL. A pooled fraction or median is only a statement about the sky
-    if the events it averages are distributed like real events. They are not. The simulator draws
+    A pooled fraction or median is a statement about the sky only if the events are distributed
+    like real events. The simulator draws
 
         Dl  with density proportional to rho(Dl) sqrt(Ds x(1-x)),  x = Dl/Ds
-        Ml  from the Kroupa IMF and remnant map -- NUMBER-weighted
-        v   from the component Gaussians -- unweighted
+        Ml  from the Kroupa IMF and remnant map (number-weighted)
+        v   from the component Gaussians (unweighted)
         u0, t0 uniform
 
-    while the event rate carries a factor `R_E * v_t` on top of the population:
+    while the event rate carries an extra factor `R_E * v_t`:
 
         Gamma = int dDl dM d^2v  n(Dl) phi(M) f(v) * 2 u0m * R_E(M, Dl) * v_t
 
-    Dividing the rate by the sampling density cancels rho, phi, f and the distance factor and
-    leaves, per drawn event,
+    Dividing the rate by the sampling density leaves, per drawn event,
 
         W = [w_area * Nstart / nsim] * sqrt(Ml) * Vt * Z(Ds)
 
     The bracket converts one draw into sky events at that sightline (area, stars per deg^2, draws
     taken); `sqrt(Ml) * Vt` is the rate weighting the sampler omits; `Z(Ds)` is the normaliser of
-    the lens-distance sampler (galaxy_model.lens_distance_norm). Constants -- 2 u0m, Tobs, the
-    Einstein-radius coefficient, the mean lens mass -- are identical for every event and cancel in
-    any weighted fraction, median or ratio, so they are not included: THIS IS NOT AN ABSOLUTE YIELD.
+    the lens-distance sampler (galaxy_model.lens_distance_norm). Constants common to all events
+    (2 u0m, Tobs, the Einstein-radius coefficient, the mean lens mass) cancel in any weighted
+    fraction, median or ratio and are omitted: this is not an absolute yield.
 
-    WHAT IT DOES NOT FIX. The exact source-star weight carries 1/<m> for the SOURCE's Galactic
-    component; the event table stores the lens's component only, so `Nstart` (the draw-average of
-    the same thing) is used instead. That is unbiased between sightlines and drops a within-
-    sightline factor of at most ~1.5.
+    Limitation: the exact source-star weight carries 1/<m> for the source's Galactic component, but
+    the event table stores the lens's component only, so the draw-average `Nstart` is used. That is
+    unbiased between sightlines and drops a within-sightline factor of at most ~1.5.
 
-    WHEN NOT TO USE IT. Anything computed per event -- sigma_joint/sigma_single for one event,
-    H3's paired comparison -- is already weight-free. Weight only when pooling ACROSS events.
-    Quote the Kish effective sample size (sum w)^2 / sum(w^2) beside any weighted number: on the
-    v3 table the weight takes 8,894 footprint events to an effective 2,564.
+    Per-event quantities (sigma_joint/sigma_single, paired comparisons) are already weight-free;
+    weight only when pooling across events. Quote the Kish effective sample size
+    (sum w)^2 / sum(w^2) beside any weighted number.
 
     df          : event table from load_events()
     sightlines  : map table from load_sightlines(), for `nsim` and the (lon, lat) join
@@ -424,7 +369,7 @@ def event_weight(df, sightlines, nsim_override=None):
     import galaxy_model as G
 
     if "w_area" not in df.columns:
-        raise ValueError("event table predates Step E1: no w_area column, so no pooled weight")
+        raise ValueError("event table has no w_area column (older simulator version), so no pooled weight")
 
     codes, keys = sightline_index(df)
     nsim = {}
@@ -436,25 +381,14 @@ def event_weight(df, sightlines, nsim_override=None):
         nsim.update({(round(k[0], 3), round(k[1], 3)): float(v)
                      for k, v in nsim_override.items()})
 
-    # ---------------------------------------------------------------------------------------
-    # Sightlines with no draw count.
-    #
-    # TWO CAUSES, and they must not be treated alike.
-    #
-    #   BARREN. A sightline that drew stars but ended with no characterised event takes the
-    #   barren branch in src/sim/sightline.cpp, which `continue`s past BOTH the map-row write and the
-    #   `nsim:` print. Its rows are in the table with nothing to normalise them by. At the
-    #   scan's western edge such a sightline runs to the full --maxdraws cap, so these are not
-    #   rare: the 2026-09-17 neutron-star run has 77 of them carrying 3,850,000 rows, 77% of
-    #   the table. They contain no detection and no characterisation, so they are weightless in
-    #   the exact sense -- weight 0 changes no weighted statistic and no count.
-    #
-    #   A KILLED RUN. The map stream was unflushed before Deviation 42, so an interrupted run
-    #   lost its buffered tail and REAL sightlines went missing from the map. Those rows do
-    #   carry detections, and weighting them at 0 would silently delete part of the sky.
-    #
-    # So: verify, then decide. Weight 0 only for rows that demonstrably contribute nothing;
-    # raise, as before, the moment one of them carries something countable.
+    # Sightlines with no draw count have two causes:
+    #   barren: a sightline that drew stars but ended with no characterised event skips both the
+    #     map-row write and the `nsim:` print (src/sim/sightline.cpp). Its rows carry no detection
+    #     and no characterisation, so weight 0 changes no weighted statistic or count.
+    #   killed run: the map stream is unflushed, so an interrupted run loses its buffered tail and
+    #     real sightlines go missing. Those rows carry detections; weighting them 0 would delete
+    #     part of the sky.
+    # So weight 0 only rows that demonstrably contribute nothing; raise otherwise.
     missing = sorted(k for k in keys if k not in nsim)
     zero_weight = np.zeros(len(df), dtype=bool)
     if missing:
@@ -464,15 +398,15 @@ def event_weight(df, sightlines, nsim_override=None):
         if countable:
             carried = int((df.loc[zero_weight, countable] == 1).any(axis=1).sum())
         else:
-            # No detection columns to check -- a paired-satellite file, whose every row IS a
-            # detection. Nothing can be shown to be empty, so nothing may be dropped.
+            # No detection columns (a paired-satellite file, every row a detection): nothing
+            # can be shown to be empty, so nothing may be dropped.
             carried = int(zero_weight.sum())
         if carried:
             raise ValueError(
                 f"{len(missing)} sightline(s) in the event table have no nsim, e.g. "
                 f"{missing[:3]}, and {carried:,} of their rows carry a detection or a "
                 f"characterisation. That is the signature of a killed run whose map file lost "
-                f"its buffered tail (OPEN_ITEMS.md), NOT of barren sightlines; weighting them "
+                f"its buffered tail, NOT of barren sightlines; weighting them "
                 f"at zero would delete part of the sky. Recover nsim from the run log and pass "
                 f"nsim_override.")
         print(f"  note: {zero_weight.sum():,} rows from {len(missing)} barren sightline(s) "
@@ -480,7 +414,7 @@ def event_weight(df, sightlines, nsim_override=None):
         for k in missing:
             nsim[k] = 1.0      # placeholder; these rows are zeroed at the end regardless
 
-    # One density profile per sightline, not per event: ~9,500 grid points each.
+    # One density profile per sightline, not per event.
     n_draws = np.empty(len(df))
     nstart = np.empty(len(df))
     Z = np.empty(len(df))
@@ -494,8 +428,7 @@ def event_weight(df, sightlines, nsim_override=None):
 
     w = (df["w_area"].to_numpy() * nstart / n_draws
          * np.sqrt(df["Ml"].to_numpy()) * df["Vt"].to_numpy() * Z)
-    # The barren rows, zeroed here rather than where the placeholder was set, so there is
-    # exactly one place in this function where a weight becomes 0 and it is after the formula.
+    # Barren rows are zeroed after the formula, the only place a weight becomes 0.
     w[zero_weight] = 0.0
     return pd.Series(w, index=df.index)
 
@@ -503,13 +436,10 @@ def event_weight(df, sightlines, nsim_override=None):
 def keep_weightable(map_path=None, log_paths=()):
     """A `keep` predicate for load_events that drops rows no statistic can use.
 
-    WHY THIS IS A MEMORY FIX AND NOT A CUT. A barren sightline -- one that drew stars but
-    characterised nothing -- writes its rows and then `continue`s past both the map row and the
-    `nsim:` print, so those rows have no draw count, get weight 0 (see event_weight), and carry
-    no detection. They are already contributing nothing; the only thing they consume is RAM.
-    And they are not a trickle: at the scan's western edge a barren sightline runs to the full
-    --maxdraws cap, which in the 2026-09-17 neutron-star run is 3,850,000 rows, 77% of the
-    table. Reading them is what turns a 1.2M-row analysis into a 5M-row OOM kill.
+    A barren sightline (drew stars, characterised nothing) writes its rows but no map row and no
+    `nsim:` line, so those rows have no draw count, get weight 0 (see event_weight) and carry no
+    detection. At the scan's western edge such a sightline runs to the full --maxdraws cap, so
+    they can be most of the table; dropping them is a memory saving, not a cut.
 
     Returns None when there is nothing to filter against, so a caller can pass the result
     straight through to load_events(keep=...) unconditionally.
@@ -535,7 +465,7 @@ def nsim_from_logs(paths):
     """{(lon, lat): nsim} from the run log's per-sightline report.
 
     The map file is written unflushed, so a killed run loses its buffered tail and the
-    sightlines it finished last have no map row (Deviation 42). The log still has them.
+    sightlines it finished last have no map row. The log still has them.
     """
     out, lon, lat = {}, None, None
     for p in paths or ():
@@ -555,16 +485,14 @@ def attach_weight(df, map_path=None, log_paths=(), unweighted=False):
     The plumbing every figure script needs: read the sightline table, patch in `nsim` for
     sightlines a killed run's map file lost, and build the per-event weight.
 
-    `unweighted=True` returns ones and says so in the label -- an explicit choice, which is
-    the point. A script must never fall back to unweighted silently: the unweighted sample
-    over-represents long-tE events roughly tenfold (Deviation 41), so a figure that quietly
-    dropped the weight would look finished and be wrong.
+    `unweighted=True` returns ones and says so in the label. A script must never fall back to
+    unweighted silently: the unweighted sample over-represents long-tE events roughly tenfold.
     """
     if unweighted:
         return pd.Series(1.0, index=df.index), "unweighted"
     if not map_path:
         raise ValueError(
-            "pooled statistics need the event-rate weight (Deviation 41). Pass the map file "
+            "pooled statistics need the event-rate weight. Pass the map file "
             "(--map), adding --log for a run whose map file lost rows, or pass --unweighted "
             "to say deliberately that this figure is of the raw sample.")
     sl = load_sightlines(map_path)
@@ -572,24 +500,22 @@ def attach_weight(df, map_path=None, log_paths=(), unweighted=False):
     return w, f"event-rate weighted, N_eff = {kish_neff(w):,.0f}"
 
 
-# ---------------------------------------------------------------------------------------------
-# Absolute yields (Step Y, Deviation 54)
-# ---------------------------------------------------------------------------------------------
+# ---- Absolute yields ----
 #
-# event_weight() above is the event rate with every factor that is common to all events
-# stripped out, because a fraction does not need them. An absolute yield does. Restoring them:
+# event_weight() is the event rate with every factor common to all events stripped out, because a
+# fraction does not need them. An absolute yield does:
 #
 #   one draw's rate per source star  gamma_i = (F / <M>) * 2 u0m * kappa * Z(Ds) * sqrt(M) * v_t
 #   expected detected events         N = T * sum_k Omega_k Nstar_k / nsim_k * sum_i gamma_i det_i
 #                                      = T * 2 u0m * kappa * F * sum_i W_i det_i / <M>
 #
-# with kappa = sqrt(4 G Msun / c^2) and the unit conversions that make Z (Msun/pc^3 kpc^1.5)
-# times sqrt(M) times v_t (km/s) a rate. <M> is the MEAN LENS MASS of the population as drawn
-# -- the rate is per lens, and F rho / <M> is the lens number density -- taken per Galactic
-# component because the `bulge` population's mass function differs between them.
+# with kappa = sqrt(4 G Msun / c^2) and the unit conversions that make Z (Msun/pc^3 kpc^1.5) times
+# sqrt(M) times v_t (km/s) a rate. <M> is the mean lens mass of the population as drawn (the rate
+# is per lens, and F rho / <M> is the lens number density), taken per Galactic component because
+# the `bulge` population's mass function differs between them.
 #
-# Read from config/parameters.h, like galaxy_model's constants: u0m = 3.0 (u0 is drawn uniform on
-# [0.001, u0m]) and t0 uniform on [2 d, Tobs - 2 d].
+# u0m = 3.0 (u0 is drawn uniform on [0.001, u0m]) and t0 is uniform on [2 d, Tobs - 2 d], read from
+# config/parameters.h.
 U0M = P.u0m
 T0_MARGIN_DAYS = P.T0_MARGIN_DAYS
 _G, _C, _MSUN = 6.67430e-11, 2.99792458e8, 1.98847e30
@@ -600,11 +526,11 @@ RATE_UNIT = (2.0 * U0M * np.sqrt(4.0 * _G * _MSUN / _C**2)   # m^0.5
              * 1.0e3)                                        # v_t km/s -> m/s
 # RATE_UNIT * Z * sqrt(M) * Vt / <M> is gamma_i in s^-1 per source star (F = 1).
 
-# Per-filter single-visit depth and saturation, read from config/parameters.h `thre` / `satu` (ugrizy, F146).
-# Roman's F146 entries are what the C++ uses. For Rubin it uses per-sightline medians of the matched visits'
-# 5-sigma depths (st.rubinDepthMed) with saturation = depth - RUBIN_SATU_BELOW_M5; the map file carries them
-# since Deviation 94 (depth5_*), and acceptance_probability reads them from there. The ugrizy entries below
-# are the fixed SRD-style values, used only with fixed_rubin_depths=True (an approximation for older runs).
+# Per-filter single-visit depth and saturation (ugrizy, F146) from config/parameters.h `thre` / `satu`.
+# Roman's F146 entries are what the C++ uses. For Rubin the C++ uses per-sightline medians of the
+# matched visits' 5-sigma depths (st.rubinDepthMed) with saturation = depth - RUBIN_SATU_BELOW_M5;
+# the map file carries them (depth5_*) and acceptance_probability reads them. The fixed ugrizy
+# entries here are SRD-style values, used only with fixed_rubin_depths=True (an approximation).
 THRE = P.thre
 SATU = P.satu
 FILTERS = ["u", "g", "r", "i", "z", "y", "F146"]
@@ -613,9 +539,8 @@ FILTERS = ["u", "g", "r", "i", "z", "y", "F146"]
 def draw_rate(df):
     """gamma_i: the rate (s^-1 per source star, F = 1) that draw i stands for.
 
-    Independent of event_weight() -- Z is recomputed here per sightline -- so that the
-    optical-depth check in y1_absolute_yield.py tests the constants rather than re-deriving
-    them from the thing being tested.
+    Independent of event_weight() (Z is recomputed here per sightline), so the optical-depth
+    check in y1_absolute_yield.py tests the constants rather than re-deriving them.
     """
     import galaxy_model as G
     Z = np.empty(len(df))
@@ -630,9 +555,8 @@ def draw_rate(df):
 def mean_lens_mass(df):
     """Per-row <M>: the mean of `Ml` over ALL draws of the same lens component (`struc`).
 
-    Every draw is written to the table, detected or not, and the mass is drawn before any
-    detection test, so a plain mean over rows is the sampler's own mean -- no weight. Must be
-    called on a table that still holds the undetected draws.
+    Every draw is written to the table and the mass is drawn before any detection test, so a plain
+    mean over rows is the sampler's own mean. Needs a table that still holds the undetected draws.
     """
     if not (df["detJ"] == 0).any():
         raise ValueError("mean_lens_mass needs the undetected draws too; this table has "
@@ -642,23 +566,23 @@ def mean_lens_mass(df):
 
 
 def acceptance_probability(df, sightlines, fixed_rubin_depths=False):
-    """P that the simulator KEPT this draw, rebuilt from the table (preselectEvent in src/sim/draw.cpp).
+    """P that the simulator kept this draw, rebuilt from the table (preselectEvent in src/sim/draw.cpp).
 
-    A drawn star is kept for light-curve generation if Rubin could see its peak (Mpeak below
-    the depth and baseline above saturation in >= 2 of ugrizy) AND a uniform draw falls below its
-    r-band blend fraction -- or likewise for Roman in F146. That thinning is the legacy
-    convention (Sajadian & Makler, criterion ii): the blend fraction is the probability of
-    "realising" one star of an unresolved blend, which counts events per RESOLVED OBJECT.
-    Both light curves are generated whenever either survey accepts, so detection is
-    independent of which acceptance fired and 1/P undoes the thinning exactly.
+    A drawn star is kept for light-curve generation if Rubin could see its peak (Mpeak below the
+    depth and baseline above saturation in >= 2 of ugrizy) AND a uniform draw falls below its r-band
+    blend fraction, or likewise for Roman in F146. That thinning follows Sajadian & Makler
+    (criterion ii): the blend fraction is the probability of "realising" one star of an unresolved
+    blend, which counts events per resolved object. Both light curves are generated whenever either
+    survey accepts, so detection is independent of which acceptance fired and 1/P undoes the
+    thinning exactly.
 
-    Rubin's depth is the sightline's median 5-sigma depth per band, taken from the map file's
-    depth5_* columns (`sightlines` = load_sightlines()), matched to each row on (lon, lat) to
-    3 dp; saturation is that depth - RUBIN_SATU_BELOW_M5. A band with no visit has depth -inf
-    and cannot be seen. A row whose sightline has no map row, or whose map predates Deviation 94
-    (depths NaN), raises ValueError. fixed_rubin_depths=True instead uses the fixed THRE/SATU for
-    Rubin -- an explicit APPROXIMATION for runs whose map file has no depths; it can disagree
-    with the C++ for any draw whose peak lies between the fixed and the per-sightline depth.
+    Rubin's depth is the sightline's median 5-sigma depth per band, from the map file's depth5_*
+    columns (`sightlines` = load_sightlines()), matched to each row on (lon, lat) to 3 dp; saturation
+    is that depth - RUBIN_SATU_BELOW_M5. A band with no visit has depth -inf and cannot be seen. A row
+    whose sightline has no map row, or whose map has no depths (NaN), raises ValueError.
+    fixed_rubin_depths=True instead uses the fixed THRE/SATU for Rubin, an approximation for runs
+    whose map file has no depths; it can disagree with the C++ for any draw whose peak lies between
+    the fixed and the per-sightline depth.
     """
     u0 = df["u0"].to_numpy()
     A0 = (u0**2 + 2.0) / np.sqrt(u0**2 * (u0**2 + 4.0))
@@ -676,8 +600,8 @@ def acceptance_probability(df, sightlines, fixed_rubin_depths=False):
                              f"file (first: {missing[0]}); their Rubin depths are unknown")
         per_sl = np.array([table[k] for k in keys])
         if np.isnan(per_sl).any():
-            raise ValueError("the map file has no per-sightline Rubin depths (it predates "
-                             "Deviation 94); rerun, or pass fixed_rubin_depths=True for the "
+            raise ValueError("the map file has no per-sightline Rubin depths (an older "
+                             "simulator version); rerun, or pass fixed_rubin_depths=True for the "
                              "approximate fixed-depth acceptance")
         depth = per_sl[codes]
         satu = depth - P.RUBIN_SATU_BELOW_M5
@@ -746,8 +670,7 @@ def kish_neff(w):
 def is_stratified(prov):
     """True if the run used --stride-roman, i.e. the sightlines stand for unequal sky areas.
 
-    A run where this is True and a downstream script ignores area_weight() is a run whose
-    absolute yields are wrong -- so scripts that quote one should check it and say so.
+    Scripts that quote an absolute yield from such a run must apply area_weight().
     """
     return bool(prov) and str(prov.get("stratified", "0")).strip() == "1"
 
@@ -755,9 +678,8 @@ def is_stratified(prov):
 def check_monotonicity(df, params=("tE", "piE", "tetE", "Ml"), tol=1e-9):
     """Assert sigma_joint <= sigma_single wherever both exist. Returns a list of violations.
 
-    This is a physics invariant, not a preference: the joint Fisher matrix is the sum of the
-    per-survey ones, so adding data cannot increase a forecast error. A violation means a
-    bug in the partitioning, not a marginal case.
+    The joint Fisher matrix is the sum of the per-survey ones, so adding data cannot increase a
+    forecast error; a violation indicates a partitioning bug.
     """
     bad = []
     for p in params:
@@ -768,24 +690,22 @@ def check_monotonicity(df, params=("tE", "piE", "tetE", "Ml"), tol=1e-9):
     return bad
 
 
-# Where the simulator writes run_provenance.txt, and where a copy is sometimes kept
-# beside an archived run. Searched in order. Hardcoding only the repo-root name meant every
-# figure silently carried NO provenance stamp, because the file the simulator actually
-# writes lives under files/MONTLMC/files/.
+# Where the simulator writes run_provenance.txt, and where a copy is sometimes kept beside an
+# archived run. Searched in order.
 PROVENANCE_SEARCH = ("run_provenance.txt",
                      "files/MONTLMC/files/run_provenance.txt")
 
 
-# Roman's per-exposure astrometric error, mirrored from src/surveys/noise.cpp errRomanA (Step H4, Deviation 72).
-# The anchors are F146 VEGA magnitudes (Lam et al. 2026); the simulator's magnitudes are AB. Runs from
-# Deviation 72 on convert (m_Vega = m_AB - 1.0324) and say so in their provenance ("# roman_noise");
-# earlier runs used the AB magnitude as if Vega, and their analyses must keep doing so to reproduce.
+# Roman's per-exposure astrometric error, mirrored from src/surveys/noise.cpp errRomanA. The anchors
+# are F146 Vega magnitudes (Lam et al. 2026); the simulator's magnitudes are AB, converted by
+# m_Vega = m_AB - 1.0324. Runs that convert say so in their provenance ("# roman_noise"); runs
+# without that line used the AB magnitude as if Vega, and analyses of them must do the same.
 F146_AB_MINUS_VEGA = 1.0324
 ROMAN_AST = dict(floor=1.1, mflr=20.62, mbkg=23.5, sbkg=10.0, slope_src=0.33285, slope_bkg=0.4)
 
 
 def roman_ast_vega_offset(prov_path):
-    """AB - Vega offset the run that wrote `prov_path` applied before errRomanA (0 for old runs)."""
+    """AB - Vega offset the run that wrote `prov_path` applied before errRomanA (0 if it did not convert)."""
     if prov_path and os.path.exists(prov_path):
         if "# roman_noise" in open(prov_path).read():
             return F146_AB_MINUS_VEGA
@@ -822,10 +742,8 @@ def find_provenance(explicit=None, near=None):
 def population(prov):
     """Which lens population produced a run, from its provenance.
 
-    Runs made before 2026-09-17 have no `population` line because there was only one: the
-    Kroupa-plus-remnants bulge population, then selected at compile time. Reporting them as
-    "bulge (implied)" is accurate -- that is what they are -- while still distinguishing them
-    from a run that says so itself.
+    Provenance without a `population` line is the Kroupa-plus-remnants bulge population (the only
+    one before the line was added), reported as "bulge (implied)".
     """
     if not prov:
         return "unknown"
@@ -836,12 +754,8 @@ def assert_same_population(provs, what="this figure"):
     """Refuse to pool runs from different lens populations.
 
     The event-rate weight carries a sqrt(Ml) factor that is only correct for the mass function
-    actually sampled (Deviation 45). Two populations in one pooled statistic is therefore not a
-    presentation choice but a wrong number, and it is an easy mistake to make once the files
-    are named testbh.dat and testns.dat and differ by two characters.
-
-    Comparing them side by side -- one curve per population -- is fine and is the point of the
-    population figures; that is not pooling, and does not come through here.
+    actually sampled, so two populations in one pooled statistic give a wrong number.
+    Comparing them side by side (one curve per population) is not pooling and does not come here.
     """
     names = {population(p) for p in provs if p}
     if len(names) > 1:
@@ -858,15 +772,13 @@ def describe(path_events, path_prov=None):
     path_prov = find_provenance(path_prov, near=path_events)
     if path_prov and os.path.exists(path_prov):
         prov = load_provenance(path_prov)
-        # First, because it is the thing that makes two otherwise identical tables mean
-        # different things.
         parts.append(f"population={population(prov)}")
         for k in ("git_commit", "stride", "events_target", "sightlines_aggregated"):
             if k in prov:
                 parts.append(f"{k}={prov[k]}")
         if is_stratified(prov):
-            # Loud, because a stratified run whose absolute yields are quoted unweighted is
-            # wrong by the oversampling factor and looks entirely normal.
+            # Loud: absolute yields from a stratified run are wrong by the oversampling factor
+            # unless weighted.
             parts.append(f"STRATIFIED(stride_roman={prov.get('stride_roman', '?')};"
                          f" weight by w_area)")
         if "sightlines_aggregated" not in prov:

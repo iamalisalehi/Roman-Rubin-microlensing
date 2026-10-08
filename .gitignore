@@ -1,162 +1,65 @@
-# Ignore everything by default
-*
+# Generated data products (star lists, visit lists, extinction tables, dust maps, run outputs) are
+# built by pipeline/pipeline.sh and never committed.
 
-# -------------------------
-# Keep all directories
-# -------------------------
-!*/
-
-# Keep .gitkeep files anywhere
-!**/.gitkeep
-
-# -------------------------
-# Allow source files anywhere
-# -------------------------
-!**/*.py
-!**/*.cpp
-!**/*.h
-!**/Makefile
-!**/*.tex
-!**/*.bib
-!**/*.md
-!**/*.sh
-# Sample-event dump specs (Step S1): which illustrative events ./roman should write
-# full light curves for. Source, not data -- the .dat files they produce stay ignored.
-!**/*.spec
-!LICENSE
-
-# -------------------------
-# Ignore Python environments
-# -------------------------
-.roman/
-.venv/
-venv/
-env/
-
-# -------------------------
-# Ignore Python cache
-# -------------------------
-__pycache__/
-*.py[cod]
-
-# -------------------------
-# Ignore local claude files
-# -------------------------
-.claude/
-CLAUDE.md
-
-# -------------------------
-# Ignore compiled files
-# -------------------------
-*.o
-*.out
-*.exe
-*.so
-*.a
-
-# -------------------------
-# Ignore build directories
-# -------------------------
-build/
-bin/
-
-# -------------------------
-# Ignore plots/images
-# -------------------------
-**/*.png
-**/*.jpg
-**/*.jpeg
-**/*.pdf
-pics/**
-!pics/**/.gitkeep
-
-# -------------------------
-# Ignore data files everywhere
-# -------------------------
+# Data and build products
 **/*.dat
-**/*.fits
-**/*.fit
 **/*.txt
 **/*.csv
+**/*.fits
+**/*.fit
 **/*.h5
 **/*.hdf5
 **/*.npy
 **/*.npz
+**/*.db
+**/*.json
 **/*.LSST
 **/*.Roman
-
-# -------------------------
-# Temporary files
-# -------------------------
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.pdf
+*.o
+*.a
+*.so
+*.out
+build/
+bin/
+/roman
+/fishertest
+/extinctiontest
+.git_stamp
 *.log
 *.tmp
 *.bak
+*~
+__pycache__/
+*.py[cod]
+.roman/
+.venv/
+venv/
+env/
+deps/
+Whitepaper/*.aux
 Whitepaper/*.bbl
 Whitepaper/*.blg
-Whitepaper/*.log
 Whitepaper/*.out
-Whitepaper/*.aux
+Whitepaper/*.fls
+Whitepaper/*.fdb_latexmk
 Whitepaper/*.gz
-*~
+pipeline/.stamps/
+pipeline/logs/
+.claude/
+.vscode/
+/output
+/pics/
+*.xcf
+CMD/Besancon/bos*
+CLAUDE.md
 
-# -------------------------
-# Local scratch report (not part of the record)
-# -------------------------
-STATUS_REPORT.md
-
-# The adopted GBTDS field centres and detector layout (Deviation 69, vendored from Penny's
-# gbtds_optimizer): small, source-of-truth inputs, not generated data. Must come AFTER the
-# data rules above (**/*.txt), since the last matching rule wins.
+# Small static inputs with no generator (re-included after the data rules)
+!requirements.txt
 !Baseline/gbtds_layout/*
-
-# Small static inputs ./roman and the star-list builder read, with no generator: the LSST astrometric error
-# curve, Penny+2019's Roman photometric error curve, and the Pecaut & Mamajek dwarf table. Source, not
-# produced data, so a fresh clone must have them (the pipeline needs them). After the **/*.txt rule.
 !files/sigmaA_LSST.txt
 !files/sigma_roman.txt
 !CMD/empirical/EEM_dwarf_UBVIJHK_colors_Teff.txt
-# The pipeline's Python requirements (after the *.txt rule, like the entries above).
-!pipeline/requirements.txt
-
-# =====================================================================================================
-# KEPT LOCAL, NOT ON GITHUB (2026-10-07). GitHub carries the code, the pipeline, the small static inputs
-# and the whitepaper; everything below is working material. Must stay at the END (last match wins).
-# =====================================================================================================
-# Working notes and plans (the session record), and the old orientation (to be rewritten for GitHub)
-/PROGRESS.md
-/DEVIATIONS.md
-/OPEN_ITEMS.md
-/ORIENTATION.md
-/JOINT_FIT_REFACTOR_PLAN.md
-/PHASE_H_PLAN.md
-# Reports (only the whitepaper is public), run products, figures and their numbers
-/Report/
-/runs/
-/figures/
-# Archive notes and research tools for the star-list investigations
-/CMD/components_v2_bos9dev82/
-/CMD/empirical/btsettl/
-/CMD/empirical/filters/
-/CMD/empirical/derive_hst_transform.py
-/CMD/empirical/terry2020/
-/CMD/validate_staging.py
-/Baseline/legacy_layout40395/
-# One-off analyses behind the reports (the public set: the pipeline's scripts, their libraries, the
-# whitepaper figures, the event-rate weight validation w1_*, and the sample light curves s2)
-/analysis/b[1-8]_*.py
-/analysis/besancon_sample.py
-/analysis/hst_transform.py
-/analysis/h3_before_after.py
-/analysis/h5_crosscheck.py
-/analysis/m9_time_estimate.py
-/analysis/p5_population_figures.py
-/analysis/u[1-7]_*.py
-/analysis/v1_ext_vvv.py
-/analysis/y2_ss23_compare.py
-/analysis/y4_compare_yields.py
-/analysis/y5_roman_peak_coverage.py
-# The private backup repo of the files above (a second git dir over this same tree) and its sync script
-/.git-private/
-/private_sync.sh
-# Private session notes (backed up by private_sync.sh)
-/notes/

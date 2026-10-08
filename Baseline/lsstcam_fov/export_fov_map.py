@@ -1,13 +1,13 @@
-"""Export LSSTCam's active-silicon map for src/surveys/footprints.cpp (readLsstCamMap) (Deviation 80, step M8).
+"""Export LSSTCam's active-silicon map for src/surveys/footprints.cpp (readLsstCamMap).
 
 Source: the map OpSim/MAF itself use, rubin_scheduler.utils.LsstCameraFootprint's default
 `fov_map.npz`, from the rubin_sim_data bundle utils_2023_11_02.tgz
 (https://s3df.slac.stanford.edu/data/rubin/sim-data/rubin_sim_data/). A 1000 x 1000 boolean image
 of active science silicon on the focal plane, x = y = -1.75..1.75 deg in the gnomonic tangent plane,
-indexed image[ix][iy]; rubin_scheduler masks pixels beyond max_radius = 1.94 deg, and so do we.
+indexed image[ix][iy]; rubin_scheduler masks pixels beyond max_radius = 1.94 deg, and so does this script.
 
 Output fov_map.txt: header lines '# n x0 step max_radius' then n rows of n characters '0'/'1', row
-ix, column iy. 9.12 deg^2 active (88% of the 1.75-deg circle the simulator used before).
+ix, column iy. 9.12 deg^2 active.
 
     .roman/bin/python Baseline/lsstcam_fov/export_fov_map.py
 """

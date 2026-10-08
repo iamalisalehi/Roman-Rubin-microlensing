@@ -1,13 +1,10 @@
 // Readers and coverage tests for the GBTDS detector layout and the LSSTCam footprint map.
 #include "surveys/footprints.h"
 
-// ---------------------------------------------------------------------------------------
-// GBTDS detector layout (Deviation 69). Each file lists 18 detector outlines as 5 vertices
-// `sca dl db` (the fifth closes the rectangle), offsets in deg from the field centre, in the
-// convention of the upstream tool: the sky outline is the offset ADDED to the field's (l, b).
-// Every detector must be an axis-aligned rectangle in (l, b); anything else is refused rather
-// than approximated, because the coverage test below assumes it.
-// ---------------------------------------------------------------------------------------
+// GBTDS detector layout. Each file lists 18 detector outlines as 5 vertices `sca dl db` (the fifth
+// closes the rectangle), offsets in deg from the field centre; the sky outline is the offset ADDED
+// to the field's (l, b). Every detector must be an axis-aligned rectangle in (l, b), as the
+// coverage test assumes; anything else is refused.
 GbtdsLayout readGbtdsLayout() {
     GbtdsLayout g;
     g.scaSide = std::numeric_limits<double>::max();
@@ -66,9 +63,7 @@ GbtdsLayout readGbtdsLayout() {
     return g;
 }
 
-// ---------------------------------------------------------------------------------------
-// LSSTCam footprint (Deviation 80). See include/surveys/footprints.h.
-// ---------------------------------------------------------------------------------------
+// LSSTCam footprint map: see include/surveys/footprints.h.
 void readLsstCamMap(const std::string& path)
 {
     std::ifstream fin(path);

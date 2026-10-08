@@ -1,10 +1,8 @@
 """The GBTDS footprint and the simulator's scan region, in one place, for every Python script.
 
-WHY THIS EXISTS. Until Deviation 69 five scripts each carried their own copy of the six field
-circles (FIELDS, FoVRoman = 0.3003) and of Bulge.h's scan box. The simulator now takes the
-footprint from the vendored adopted layout (Baseline/gbtds_layout/: field centres per roll, 18
-detector rectangles per field) and builds its scan region by a distance rule, so the Python side
-reads the same files and reproduces the same arithmetic here, once.
+The simulator takes the footprint from the vendored layout (Baseline/gbtds_layout/: field centres per
+roll, 18 detector rectangles per field) and builds its scan region by a distance rule; this module
+reads the same files and reproduces the same arithmetic.
 
 What it mirrors (config/parameters.h / src/surveys/footprints.cpp / src/run/sightlines.cpp):
   readGbtdsLayout, inDetector      -> sca_rects(), in_detector()
@@ -12,10 +10,9 @@ What it mirrors (config/parameters.h / src/surveys/footprints.cpp / src/run/sigh
   the stratified sightline grid    -> scan_sightlines()   (checked against a run's own log by
                                                             the scripts that draw it)
 
-Runs made before Deviation 69 used the notional layout: LEGACY_FIELDS / LEGACY_FOV_ROMAN, a
-circle per field and no rolls. `run_geometry(run_dir)` tells the two apart from the run's
-provenance (new runs record `# roman_layout`), so old tables are still read with the geometry
-that produced them.
+Earlier runs used a notional layout (LEGACY_FIELDS / LEGACY_FOV_ROMAN: a circle per field, no
+rolls). `run_geometry(run_dir)` tells the two apart from the run's provenance (current runs record
+`# roman_layout`), so old tables are read with the geometry that produced them.
 """
 
 import os
@@ -34,7 +31,7 @@ FOV_RUBIN = P.FoV                        # config/parameters.h FoV: Rubin's matc
 SCAN_RUBIN_REACH = P.SCAN_RUBIN_REACH    # config/parameters.h
 DD = P.dd                                # config/parameters.h dd: the native grid unit [deg]
 
-# The superseded notional layout (mtpenny/gbtds_optimizer layout_40395), for pre-Deviation-69 runs.
+# The earlier notional layout (mtpenny/gbtds_optimizer layout_40395), for runs made with it.
 LEGACY_FIELDS = [(-0.417948, -1.2), (-0.008974, -1.2), (0.4, -1.2), (0.808974, -1.2),
                  (1.217948, -1.2), (0.0, -0.125)]
 LEGACY_FOV_ROMAN = 0.3003
@@ -218,7 +215,7 @@ def read_roman_visits(path=os.path.join(ROOT, "Baseline", "RomanBaseline.dat")):
     """A Roman visit list as a DataFrame (l, b, time, field, layout).
 
     Recognises both formats: the 9-column list of the adopted layout, and the 7-column list of
-    runs before Deviation 69 (Baseline/legacy_layout40395/), for which layout = -1 marks
+    earlier runs (Baseline/legacy_layout40395/), for which layout = -1 marks
     "circle of LEGACY_FOV_ROMAN about (l, b)".
     """
     import pandas as pd
@@ -255,7 +252,7 @@ def visit_covers(visits, l0, b0):
 def field_label(lon, lat, visits):
     """Per sky point, the GBTDS field(s) that image it: 'F<i>' (same field in every roll that
     sees it), 'F<i>/F<j>' (spring / autumn differ), or 'outside'. Legacy lists: the nearest
-    centre within LEGACY_FOV_ROMAN, as the pre-Deviation-69 F1 did."""
+    centre within LEGACY_FOV_ROMAN."""
     lon, lat = np.atleast_1d(np.asarray(lon, float)), np.atleast_1d(np.asarray(lat, float))
     pl = visits[["l", "b", "field", "layout"]].drop_duplicates().to_numpy()
     if (pl[:, 3] < 0).all():

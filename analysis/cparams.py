@@ -1,8 +1,8 @@
 """Constants of the C++ simulator, read from its own config headers.
 
 The simulator is compiled from include/physical_constants.h, include/common.h, config/data_products.h
-and config/parameters.h; the analysis scripts used to carry hand-typed copies of some of these
-numbers, which drift. This module parses the same text, so there is one source of truth.
+and config/parameters.h. This module parses the same text, so the analysis scripts never carry
+hand-typed copies of the numbers.
 
     from cparams import P            # P = load() of this checkout, done at import
     P.Tobs, P.thre[6], P['Rv']       # attribute or item access; arrays come back as numpy arrays

@@ -1,114 +1,95 @@
-"""Builds the source/neighbour catalogue CMD/components/{thin_disk,bulge,thick_disk,halo}.dat.
+"""Builds the source/neighbour catalogues CMD/components/{thin_disk,bulge,thick_disk,halo}.dat.
 
-WHAT IT IS (Deviation 81, 2026-10-02). Each file is a sample of EVERY star of one Galactic component
-in a Besancon catalogue (one 0.05-0.1 deg^2 field at (l, b) = (0.5, -1.4), Av = 0), with absolute AB
-magnitudes from MIST bolometric corrections. The simulator draws a source AND each of its blend
-neighbours uniformly from these lists, with a distance from its own density model, and counts them
-with Nstart = rho / <m>. A draw therefore stands for a random member of the population Nstart counts,
-and the lists must be that population -- complete, not "the stars someone could see".
+Each file is a sample of every star of one Galactic component in a Besancon catalogue (one
+0.05-0.1 deg^2 field at (l, b) = (0.5, -1.4), Av = 0), with absolute AB magnitudes from MIST
+bolometric corrections. The simulator draws a source and each of its blend neighbours uniformly from
+these lists, with a distance from its own density model, and counts them with Nstart = rho / <m>, so
+the lists must be the complete population Nstart counts. There is no visibility filter: visibility
+is decided per event in the simulator, with magnification, dust and each survey's own limits.
 
-There is NO visibility filter. Until Deviation 81 one kept a star only if it was visible in F146 AND
->= 1 LSST band at its Besancon distance, against thre/satu parsed from config/parameters.h. That excluded
-Roman-only stars, stars visible only when magnified, stars saturated at their catalogue distance --
-40% of the bulge -- and, because the neighbours come from the same lists, made every blend too
-bright. Visibility is decided where it belongs: per event in the simulator, with magnification,
-dust and each survey's own limits.
+Dark entries: a star MIST cannot place on its grid (white dwarfs, Besancon Typ 9.0-9.2, plus a few
+NaNs) is kept with every magnitude = DARK_MAG. It is part of what Nstart counts but contributes no
+light.
 
-DARK ENTRIES. A star MIST cannot place on its grid (white dwarfs, Besancon Typ 9.0-9.2; after the
-grid clamp below, only a handful of NaNs besides) is kept with every magnitude = DARK_MAG: it is part
-of what Nstart counts, so dropping it would bias the list bright, but it contributes no light.
+Mean masses: <m> per component over the whole list (dark entries included) is written to
+<out-dir>/provenance.txt, over the written list and over the full pre-subsample population.
+config/data_products.h's MEANMASS_* (generated from provenance.txt by tools/sync_data_products.py)
+must equal the population value, so that Nstart counts the population the draws come from.
 
-MEAN MASSES. <m> per component over the whole list (dark entries included) is printed and written
-to <out-dir>/provenance.txt, twice: over the WRITTEN list and over the full pre-subsample population
-(real catalogue stars plus any synthetic ones). config/data_products.h's MEANMASS_* (generated from provenance.txt by tools/sync_data_products.py) must equal the population value,
-so that Nstart counts the very population the draws come from.
-
-COMMAND LINE (paths are relative to CMD/; the script changes into it):
+Usage (paths are relative to CMD/; the script changes into it):
 
     cd CMD && ../.roman/bin/python BolometricCorrection.py [options]
 
-  --input PATH         the Besancon catalogue (default Besancon/bos10). Rows whose field count differs
-                       from the header's are skipped and counted (bos10 has 4 corrupted rows, bos9.dat
-                       none): the file is streamed through `awk 'NF == <header fields>'`, so a damaged
-                       line can neither shift a column nor turn into NaN. The count and the file line
-                       numbers go to provenance.txt.
-  --out-dir DIR        where the four lists, their *_aux.npz files and provenance.txt go. Default
-                       components_staging/<variant>, <variant> = <input>_<dwarfs>_fill<floor>, e.g.
-                       bos10_empirical_fillnone. Writing the production lists needs the explicit
-                       `--out-dir components`; nothing else ever touches components/.
-  --dwarfs MODE        what is done to the low-mass dwarfs (CL = 5, Typ < 9):
-        besancon       nothing: every star keeps Besancon's Teff, Mbol and logg.
-        empirical      (default; "option E") the thin-disc and bulge dwarfs below 0.7 Msun are moved
-                       onto the Pecaut & Mamajek (2013) dwarf sequence (CMD/empirical/; Mamajek's
-                       table version 2022.04.16; the 41 rows with 0.075 <= Msun <= 1.0). See below.
-        dev82          the old Deviation 82 path (fix_low_mass_dwarfs), unchanged: the bulge, thick-disc
-                       and halo dwarfs are moved, in every band, onto the lens_ml.dat relation. With
-                       --input Besancon/bos9.dat --no-grid-clamp it rebuilds the current production
-                       lists. Needs a lens_ml.dat (read from components/, or --lens-ml); never written.
-  --fill-floor MODE    none (default), kroupa (alpha = 1.3) or koshimoto (alpha = 1.16): add synthetic
-                       dwarfs below each component's mass floor. See below.
-  --no-grid-clamp      switch the BC-grid clamp off (stars outside the MIST grid become dark, as in the
-                       Deviation 81/82 lists). Only for reproducing those lists.
-  --lens-ml PATH       the lens_ml.dat that --dwarfs dev82 reads (default components/lens_ml.dat).
+  --input PATH       the Besancon catalogue (default Besancon/bos10). Rows whose field count differs
+                     from the header's are skipped and counted (the file is streamed through
+                     `awk 'NF == <header fields>'`); the count and line numbers go to provenance.txt.
+  --out-dir DIR      where the four lists, their *_aux.npz files and provenance.txt go. Default
+                     components_staging/<variant>, <variant> = <input>_<dwarfs>_fill<floor>.
+                     Writing the production lists needs the explicit `--out-dir components`.
+  --dwarfs MODE      what is done to the low-mass dwarfs (CL = 5, Typ < 9):
+        besancon     nothing: every star keeps Besancon's Teff, Mbol and logg.
+        empirical    (default) the thin-disc and bulge dwarfs below 0.7 Msun are moved onto the
+                     Pecaut & Mamajek (2013) dwarf sequence (CMD/empirical/, Mamajek's table version
+                     2022.04.16; the 41 rows with 0.075 <= Msun <= 1.0). See below.
+        dev82        the bulge, thick-disc and halo dwarfs are moved, in every band, onto the
+                     lens_ml.dat relation. Needs a lens_ml.dat (components/, or --lens-ml).
+  --fill-floor MODE  none (default), kroupa (alpha = 1.3) or koshimoto (alpha = 1.16): add synthetic
+                     dwarfs below each component's mass floor. See below.
+  --no-grid-clamp    switch the BC-grid clamp off (stars outside the MIST grid become dark).
+  --lens-ml PATH     the lens_ml.dat that --dwarfs dev82 reads (default components/lens_ml.dat).
 
-OPTION E: THE EMPIRICAL DWARF SEQUENCE. Besancon's thin-disc M dwarfs are 0.1-0.3 mag too faint at a
-given mass, and its bulge/thick-disc/halo dwarfs 2-3 mag too bright, against real M dwarfs (Mann et al.
-2019 M_K-mass, Benedict et al. 2016 M_V-mass; thick disc and halo pass the test, thin disc and bulge do
-not). bos10's masses, Teff, Mbol, logg, [M/H], [a/Fe] and ages carry no injected noise, so the
-correction can be made in physical space, at the star's TRUE mass m. For the thin disc (Pop 1-7) and the
-bulge (Pop 10), each dwarf with m < 0.7 Msun is shifted in Mbol and in log10 Teff by
+Empirical dwarf sequence. Besancon's thin-disc M dwarfs are 0.1-0.3 mag too faint at a given mass,
+and its bulge/thick-disc/halo dwarfs 2-3 mag too bright, against real M dwarfs (Mann et al. 2019
+M_K-mass, Benedict et al. 2016 M_V-mass; thick disc and halo pass, thin disc and bulge do not).
+bos10's masses, Teff, Mbol, logg, [M/H], [a/Fe] and ages carry no injected noise, so the correction is
+made in physical space at the star's true mass m. For the thin disc (Pop 1-7) and the bulge (Pop 10),
+each dwarf with m < 0.7 Msun is shifted in Mbol and in log10 Teff by
 
     taper(m) * [ X_E(m) - median_c X(m) ],      X = Mbol, log10 Teff,
     taper(m) = clip((0.7 - m) / 0.1, 0, 1),
 
-where median_c X(m) is the component's OWN median of X in 0.01-Msun true-mass bins from 0.07 to 0.80
-Msun (over ALL of the component's dwarfs in the input, before any subsampling; bins with >= 20 stars;
-empty bins interpolated over, flat beyond the populated range) and X_E(m) is the empirical sequence at
-that mass: Mbol_E = 4.74 - 2.5 logL_E, log10 Teff_E, both interpolated linearly in log10 m. The star keeps
-its scatter about its component's median -- that scatter is Besancon's age/metallicity spread. logg of
-the shifted stars is recomputed consistently: logg = 4.438 + log10 m + 4 log10(Teff / 5772) + 0.4 (Mbol -
-4.74). Only then are the bolometric corrections taken. The thick disc (Pop 8, 11) and the halo (Pop 9)
-are not changed.
+where median_c X(m) is the component's own median of X in 0.01-Msun true-mass bins from 0.07 to 0.80
+Msun (all of the component's dwarfs in the input, before subsampling; bins with >= 20 stars; empty
+bins interpolated over, flat beyond the populated range) and X_E(m) is the empirical sequence at that
+mass (Mbol_E = 4.74 - 2.5 logL_E, log10 Teff_E, interpolated linearly in log10 m). The star keeps its
+scatter about the median, which is Besancon's age/metallicity spread. logg of the shifted stars is
+recomputed: logg = 4.438 + log10 m + 4 log10(Teff / 5772) + 0.4 (Mbol - 4.74). The bolometric
+corrections are taken afterwards. The thick disc (Pop 8, 11) and halo (Pop 9) are unchanged.
 
-FILLING THE MASS FLOOR. Besancon's bulge, thick disc and halo have no stars below a floor m_f (the
-minimum dwarf mass of the component, ~0.154-0.159 Msun), though the thin disc has them down to 0.073.
-With --fill-floor, N_add synthetic dwarfs per component are drawn between 0.08 Msun and m_f from a power
-law dN/dm = n0 (m / m_mid)^-alpha, continuous with the catalogue at the floor: n0 is the number of the
-component's dwarfs with m in [m_f, m_f + 0.03) divided by 0.03, at m_mid = m_f + 0.015 (the windows are
-half-open with a 1e-6 tolerance: catalogue masses are quantised to 0.001 Msun); N_add = round(integral).
-Each synthetic star copies Pop, Age, [M/H], [a/Fe] from a random real dwarf of the same component with
-m in [m_f, m_f + 0.05) (the component's own metallicity and age mix), CL = 5 and Typ from a random
-thin-disc dwarf within +-0.005 Msun of its mass; its Mbol, Teff, logg are the empirical ones above.
-They go through the same BC and dark-entry path (they are luminous). Draws use seed FILL_SEED, in the
+Filling the mass floor. Besancon's bulge, thick disc and halo have no stars below a floor m_f (the
+component's minimum dwarf mass, ~0.154-0.159 Msun), though the thin disc reaches 0.073. With
+--fill-floor, N_add synthetic dwarfs per component are drawn between 0.08 Msun and m_f from a power law
+dN/dm = n0 (m / m_mid)^-alpha, continuous with the catalogue at the floor: n0 is the number of the
+component's dwarfs with m in [m_f, m_f + 0.03) divided by 0.03, at m_mid = m_f + 0.015; N_add =
+round(integral). Windows are half-open with a 1e-6 tolerance because catalogue masses are quantised to
+0.001 Msun. Each synthetic star copies Pop, Age, [M/H], [a/Fe] from a random real dwarf of the same
+component with m in [m_f, m_f + 0.05), has CL = 5, takes Typ from a random thin-disc dwarf within
++-0.005 Msun of its mass, and gets the empirical Mbol, Teff, logg. Draws use seed FILL_SEED, in the
 order bulge, thick disc, halo; per component: masses, donors, Typ.
 
-THE BC-GRID CLAMP (always, for the BC lookup only; Besancon's [M/H], [a/Fe] are what is stored). The
-MIST grid spans [Fe/H] = -3.0..+0.5 and [a/Fe] = -0.2..+0.6; outside it RegularGridInterpolator
-returns NaN and the star used to go dark (85,000 bulge stars of bos10 have [Fe/H] > 0.5). [a/Fe] is
-clipped to the grid; [M/H] is then shifted so that [Fe/H] = [M/H] - log10(0.638 10^[a/Fe] + 0.362) lies
-inside the grid (1e-6 from the edges). The counts of what moved are in provenance.txt.
+BC-grid clamp (always on unless --no-grid-clamp; BC lookup only, Besancon's [M/H], [a/Fe] are what is
+stored). The MIST grid spans [Fe/H] = -3.0..+0.5 and [a/Fe] = -0.2..+0.6; outside it
+RegularGridInterpolator returns NaN. [a/Fe] is clipped to the grid; [M/H] is then shifted so that
+[Fe/H] = [M/H] - log10(0.638 10^[a/Fe] + 0.362) lies inside the grid (1e-6 from the edges). The counts
+of what moved are in provenance.txt.
 
-SUBSAMPLE. A component with more than MAX_ROWS stars (synthetic ones included) is reduced to a uniform
-random subsample (seed SUBSAMPLE_SEED): a luminosity function needs no more, and the simulator holds
-the lists in RAM. The subsample is drawn BEFORE the BCs are computed (the BC of a star does not depend
-on the others), so the synthetic stars keep their share; the exception is --dwarfs dev82, whose running
-medians need every star and which subsamples last, as it always did.
+Subsample. A component with more than MAX_ROWS stars (synthetic ones included) is reduced to a uniform
+random subsample (seed SUBSAMPLE_SEED), since the simulator holds the lists in RAM. It is drawn before
+the BCs are computed (a star's BC does not depend on the others), except with --dwarfs dev82, whose
+running medians need every star.
 
-OUTPUT in <out-dir>: thin_disk.dat bulge.dat thick_disk.dat halo.dat (header
+Output in <out-dir>: thin_disk.dat bulge.dat thick_disk.dat halo.dat (header
 `mass logT Mbol Age Pop Roman_F146 LSST_u LSST_g LSST_r LSST_i LSST_z LSST_y CL Typ`, %.4f), one
 <name>_aux.npz per component, row-aligned to the written list (mass, Teff_used, Mbol_used, logg_used,
-M_H and a_Fe as Besancon has them, Pop, Age, CL, Typ, synthetic, shifted, dark: what the validation
-needs), and provenance.txt.
+M_H and a_Fe as Besancon has them, Pop, Age, CL, Typ, synthetic, shifted, dark), and provenance.txt.
 
-LOW-MASS DWARFS, Deviation 82 (--dwarfs dev82). Below MS_FIX_HI each bulge, thick-disc and halo dwarf
-(CL = 5) is moved, in every band, by the difference between components/lens_ml.dat and its
-component's own running median at that mass; the star's scatter about the median is kept. The shift
-tapers linearly to zero between MS_FIX_LO and MS_FIX_HI. The thin disc is the reference and is not
-touched. Run lens_ml_table.py first.
+dev82 shift. Below MS_FIX_HI each bulge, thick-disc and halo dwarf (CL = 5) is moved, in every band,
+by the difference between components/lens_ml.dat and its component's own running median at that mass;
+the star's scatter about the median is kept. The shift tapers linearly to zero between MS_FIX_LO and
+MS_FIX_HI. The thin disc is the reference and is not touched. Run lens_ml_table.py first.
 
-Other code reads the part of this file above the "# Main" marker (analysis/b4, b6, lens_ml_table.py
-import the class and the helpers without building anything): keep that part free of module-level work
-and of __file__.
+Other code (analysis/b4, b6, lens_ml_table.py) imports the part of this file above the "# Main" marker
+without building anything: keep that part free of module-level work and of __file__.
 """
 import argparse
 import contextlib
@@ -137,11 +118,11 @@ DARK_TYP = (9.0, 9.2)                 # Besancon white dwarfs: no MIST track, fa
 MAX_ROWS = 3_500_000                  # per component; only the bulge exceeds it
 SUBSAMPLE_SEED = 20261002
 FILL_SEED = 20261005
-# Besancon Pop codes -> component, as in include/common.h's GalacticComponent order of the files.
+# Besancon Pop codes -> component, in the order of include/common.h's GalacticComponent.
 COMPONENTS = {"thin_disk": list(range(1, 8)), "bulge": [10], "thick_disk": [8, 11], "halo": [9]}
-MS_FIX_LO, MS_FIX_HI = 0.6, 0.7       # Msun: full shift below LO, none above HI (Deviation 82, option E)
+MS_FIX_LO, MS_FIX_HI = 0.6, 0.7       # Msun: full shift below LO, none above HI
 MS_FIX_COMP = {"bulge": 1, "thick_disk": 2, "halo": 3}   # lens_ml.dat comp codes
-MS_FIX_BIN = 0.02                     # Msun, running-median bin (Deviation 82)
+MS_FIX_BIN = 0.02                     # Msun, running-median bin
 # Upper age bounds read_cmd() CHECKs (src/galaxy/catalogue.cpp); a violation stops the build, it does not drop.
 AGE_MAX = {"thin_disk": 10, "bulge": 10, "thick_disk": 13, "halo": 14}
 
@@ -248,12 +229,8 @@ class MISTBolometricCorrection:
         self.input_columns = np.column_stack([
             np.log10(self.input_data["Teff"].values),
             self.input_data["logg"].values,
-            np.zeros(len(self.input_data)),  # AV = 0, always -- extinction is applied
-                                               # exactly once, downstream, by
-                                               # interpExtinctionAlongSightline in
-                                               # src/galaxy/extinction.cpp, at each star's *simulated*
-                                               # distance -- not here, at its Besancon
-                                               # distance.
+            np.zeros(len(self.input_data)),  # AV = 0: the simulator applies extinction once, at the
+                                               # star's simulated distance (src/galaxy/extinction.cpp)
             feh,
             self.input_data["[a/Fe]"].values,
         ])
@@ -318,9 +295,9 @@ def iter_catalogue_chunks(path, usecols=None, chunksize=1_000_000, report=None):
     """Yields DataFrame chunks of the catalogue's GOOD rows; skipped ones are counted in `report`.
 
     A good row has as many fields as the header. The file goes through awk, which drops the others
-    (bos10 has four, of a different length: pandas would shift their columns or pad them with NaN, not
-    refuse them) and notes their file line numbers (the header is line 1). report["n_skipped"] and
-    report["bad_lines"] are filled once the generator is exhausted; an awk failure raises."""
+    (pandas would shift their columns or pad them with NaN) and notes their file line numbers (the
+    header is line 1). report["n_skipped"] and report["bad_lines"] are filled once the generator is
+    exhausted; an awk failure raises."""
     with open(path, "r") as f:
         header = f.readline().lstrip("#").split()
     nf = len(header)
@@ -397,7 +374,7 @@ def component_codes(pop):
 
 
 # ---------------------------------------------------------------------------
-# The empirical dwarf sequence and the component's own median curve (option E)
+# The empirical dwarf sequence and the component's own median curve
 # ---------------------------------------------------------------------------
 
 def qmass(m):
@@ -560,7 +537,7 @@ class BCSet:
 
 
 def fix_low_mass_dwarfs(sub, name, lens_ml, return_mask=False):
-    """Deviation 82: put the component's unevolved dwarfs on the lens-light M-L relation."""
+    """dev82 mode: put the component's unevolved dwarfs on the lens-light M-L relation."""
     if name not in MS_FIX_COMP:
         return (sub, 0, np.zeros(len(sub), bool)) if return_mask else (sub, 0)
     t = lens_ml[lens_ml["comp"] == MS_FIX_COMP[name]]
@@ -652,7 +629,7 @@ def materialise(cat, idx, syn, rows, n_cat):
 
 
 def apply_empirical_shift(W, curve, emp):
-    """Option E on the working arrays: shift the real dwarfs below MS_FIX_HI onto the empirical sequence."""
+    """Empirical-dwarf shift on the working arrays: shift the real dwarfs below MS_FIX_HI onto the empirical sequence."""
     sel = (W["CL"] == 5) & (W["Typ"] < DARK_TYP[0]) & (W["mass"] < MS_FIX_HI) & ~W["synthetic"]
     m = W["mass"][sel]
     t = taper(m)
@@ -838,7 +815,7 @@ def provenance_text(a, out_dir, clamp, rep, info, offsets, fill_info, emp, elaps
          f"options: dwarfs={a.dwarfs} fill_floor={a.fill_floor} grid_clamp={'on' if clamp else 'off'} "
          f"max_rows={MAX_ROWS} subsample_seed={SUBSAMPLE_SEED} fill_seed={FILL_SEED}",
          f"output: {shown(out_dir)}",
-         ("# the subsample is drawn after the BCs and the Deviation 82 shift (their running medians need every star)"
+         ("# the subsample is drawn after the BCs and the dev82 shift (their running medians need every star)"
           if a.dwarfs == "dev82" else "# the subsample is drawn before the BCs (a star's BC does not depend on the others)")
          + "; counts below are over the WRITTEN list unless they say 'population'",
          "# component n_catalogue n_synthetic n_population n_written n_dark n_dark_wd n_dark_nobc "
@@ -876,7 +853,7 @@ def provenance_text(a, out_dir, clamp, rep, info, offsets, fill_info, emp, elaps
             L.append("    dMbol " + " / ".join(f"{x:+.3f}" for x in o["dMbol"]))
             L.append("    dlogT " + " / ".join(f"{x:+.4f}" for x in o["dlogT"]))
     elif a.dwarfs == "dev82":
-        L.append(f"# Deviation 82 shift: lens_ml = {shown(a.lens_ml)}; dwarfs moved (written list): "
+        L.append(f"# dev82 shift: lens_ml = {shown(a.lens_ml)}; dwarfs moved (written list): "
                  + ", ".join(f"{nm} {i['n_shifted_written']}" for nm, i in info.items()))
     if a.fill_floor != "none":
         L.append(f"# floor fill ({a.fill_floor}, alpha = {FILL_ALPHA[a.fill_floor]}): dN/dm = n0 (m/m_mid)^-alpha from "
@@ -902,12 +879,12 @@ def parse_args(argv=None):
                          "Writing components/ needs it explicitly.")
     ap.add_argument("--dwarfs", choices=["besancon", "empirical", "dev82"], default="empirical",
                     help="besancon: no change; empirical: thin disc and bulge dwarfs below 0.7 Msun onto the "
-                         "Pecaut & Mamajek sequence; dev82: the old Deviation 82 shift onto lens_ml.dat")
+                         "Pecaut & Mamajek sequence; dev82: the legacy shift onto lens_ml.dat")
     ap.add_argument("--fill-floor", choices=["none", "kroupa", "koshimoto"], default="none",
                     help="add synthetic dwarfs between 0.08 Msun and the bulge/thick-disc/halo mass floor, "
                          "with alpha = 1.3 (kroupa) or 1.16 (koshimoto)")
     ap.add_argument("--no-grid-clamp", action="store_true",
-                    help="no BC-grid clamp: stars off the MIST grid go dark (reproduces the Deviation 81/82 lists)")
+                    help="no BC-grid clamp: stars off the MIST grid go dark (reproduces the legacy lists)")
     ap.add_argument("--lens-ml", default="components/lens_ml.dat", help="lens_ml.dat for --dwarfs dev82 (read only)")
     return ap.parse_args(argv)
 

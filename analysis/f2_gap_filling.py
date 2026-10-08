@@ -1,61 +1,34 @@
 #!/usr/bin/env python3
-"""Step F2 -- the gap-filling figure.
+"""The gap-filling figure: what Rubin's year-round coverage recovers in Roman's season gaps.
 
-THE result this project exists to produce. Roman observes the bulge in ~70-day seasons
-separated by ~110-day gaps forced by the Sun angle. An event peaking in a gap is one Roman
-sees poorly or not at all, while Rubin -- which observes the bulge all year at low cadence --
-keeps taking data straight through. The claim advocated in white papers for years, and never
-simulated, is that Rubin's coverage rescues those events. This figure tests it.
+Roman observes the bulge in ~70-day seasons separated by ~110-day gaps forced by the Sun angle. An
+event peaking in a gap is seen poorly or not at all by Roman, while Rubin keeps taking data at low
+cadence through the gap.
 
-What is plotted
----------------
-x: dt_edge, days from t0 to the nearest Roman season boundary. NEGATIVE inside a season,
-   positive in a gap, so the plot reads left-to-right as "deeper in season" -> "deeper in gap".
+x: dt_edge, days from t0 to the nearest Roman season boundary. Negative inside a season, positive in
+   a gap.
 
-Left panel  -- PRECISION. Median sigma_joint / sigma_Roman per event, split by tE bin, for
-               ONE fitted parameter chosen with --param. Only events Roman characterises
-               ALONE can appear here, because the ratio needs a denominator.
+Left panel  -- PRECISION. Median sigma_joint / sigma_Roman per event, split by tE bin, for one fitted
+               parameter chosen with --param. Only events Roman characterises alone appear, because
+               the ratio needs a denominator.
+               --param tE (default): the drop deepens with short tE, because a 20-day event peaking
+               in a 110-day gap is missed by Roman entirely while a 500-day one is still magnified
+               when the next season opens.
+               --param piE: parallax is measured from the distortion Earth's orbital motion
+               imprints on the light curve, so it needs sampling across a substantial fraction of a
+               year, which only long events provide and which Roman's gaps interrupt.
 
-               --param tE  (the default) asks how much Rubin sharpens the Einstein crossing
-               time. The measured ordering is the reverse of the plan's: the drop deepens
-               with SHORT tE, because a 20-day event peaking in a 110-day gap is missed by
-               Roman entirely while a 500-day one is still magnified when the next season
-               opens (DEVIATIONS.md 23.2).
+Right panel -- YIELD. Fraction of joint-detected events that the joint fit characterises but Roman
+               alone does not. Independent of --param (characterisation is the two-parameter
+               criterion tE > 2 sigma_tE AND piE > 2 sigma_piE). Where Roman fails outright the
+               ratio is undefined and the precision panel drops those events; this panel keeps them.
 
-               --param piE asks the question the plan's long-tE argument actually belongs to.
-               The microlensing parallax piE is measured from the distortion Earth's orbital
-               motion imprints on the light curve, so it needs the event sampled across a
-               substantial fraction of a year -- which only long events provide, and which
-               Roman's ~110-day gaps are exactly what interrupt. This is the panel that tests
-               "the drop deepening with tE" on the parameter that claim was about.
-
-Right panel -- YIELD. Fraction of joint-detected events that the joint fit characterises but
-               Roman alone does not. This panel does NOT depend on --param: characterisation
-               is Abrams et al.'s two-parameter criterion (tE > 2 sigma_tE AND piE > 2
-               sigma_piE), so the same curve is context for either precision panel.
-
-               This is where the gap-filling shows up once Roman fails outright: sigma_Roman
-               is undefined, the ratio vanishes, and a precision-only plot would silently
-               drop exactly the events that make the case.
-
-Both panels are needed. The plan (Phase F) is explicit that short-tE gain is a yield statistic
-and long-tE gain is a precision statistic, and that forcing one metric across both regimes
-produces a misleadingly flat answer.
-
-Scope -- two restrictions, both load-bearing
---------------------------------------------
-1. Events peaking WITHIN Roman's mission (t0zone in-season or in-gap). Off-mission events --
-   t0 before Roman's first epoch or after its last -- are Rubin-only by construction and are
-   not a gap-filling result. That three-way distinction is why T0Zone exists rather than a
-   simple in/out flag.
-
-2. Events Roman ACTUALLY OBSERVED (ndw_R > 0). This one is easy to get wrong and it inverts
-   the answer. Only ~39 of 1706 sightlines fall inside Roman's footprint, so the large
-   majority of joint-detected events have no Roman epochs at all. Counting those as "Roman
-   alone could not characterise it" is true but vacuous -- Roman missed them because it never
-   pointed there, not because of a season gap. Including them buried the real signal under a
-   flat ~20% floor that was really just footprint coverage. The gap-filling question is only
-   meaningful where Roman has data and the timing is what limits it.
+Scope (both restrictions are load-bearing):
+1. Events peaking within Roman's mission (t0zone in-season or in-gap). Off-mission events are
+   Rubin-only by construction.
+2. Events Roman actually observed (ndw_R > 0). Most sightlines lie outside Roman's footprint, and
+   counting those as "Roman could not characterise it" turns the figure into a plot of footprint
+   coverage rather than of season gaps.
 """
 
 import argparse
@@ -71,17 +44,12 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import romanlib as R
 
-# Ordinal ramp, one hue light->dark, for the ORDERED tE bins. Validated with
-# validate_palette.js --ordinal: monotone lightness, all gaps >= 0.06, light end 2.06:1
-# on the surface. An ordered quantity must not get a categorical rainbow.
+# Ordinal ramp (one hue, light to dark) for the ordered tE bins.
 TE_COLORS = ["#86b6ef", "#3987e5", "#1c5cab", "#0d366b"]
 TE_EDGES = [10.0, 30.0, 100.0, 300.0, np.inf]
 TE_LABELS = ["10-30 d", "30-100 d", "100-300 d", "> 300 d"]
 
-# How each fittable parameter is named on the figure. piE (microlensing parallax) is
-# dimensionless; tE (Einstein crossing time) is in days. The panel title uses the SYMBOL and
-# not the words: spelling out "the microlensing parallax" made the left title long enough to
-# overrun the right panel's.
+# Symbol used for each fittable parameter in the panel title (piE dimensionless, tE in days).
 PARAM_TEX = {"tE": "t_E", "piE": r"\pi_E"}
 
 INK = "#0b0b0b"
@@ -109,7 +77,7 @@ def main():
                          "edge, so a ~110 d gap tops out near 55 d")
     ap.add_argument("--width", type=float, default=15.0, help="dt_edge bin width [d]")
     ap.add_argument("--map", default=None,
-                    help="MapLMC5.dat -- needed for the event-rate weight (Deviation 41)")
+                    help="MapLMC5.dat -- needed for the event-rate weight")
     ap.add_argument("--log", action="append", default=[],
                     help="run log(s), for sightlines whose map rows a killed run lost")
     ap.add_argument("--chunksize", type=int, default=500_000,
@@ -118,19 +86,14 @@ def main():
                     help="deliberately report the raw sample, with no event-rate weight")
     a = ap.parse_args()
 
-    # Stream, dropping barren sightlines' rows as they are read. Reading a production table
-    # whole is ~4 GB resident and an OOM kill on this machine -- and the kill is SILENT, exit
-    # status 0 with empty stdout, indistinguishable from a script that did nothing. The dropped
-    # rows have no nsim, hence weight 0, and carry no detection, so no statistic here changes:
-    # for the 2026-09-17 runs it is 5.01M rows down to 1.16M. Undetected events are KEPT,
-    # because this figure's denominator is every event in the tE bin, not just the found ones.
+    # Stream the table, dropping rows of barren sightlines (no nsim, weight 0) as they are read.
+    # Undetected events are kept: the denominator is every event in the tE bin.
     df = R.load_events(a.events, keep=R.keep_weightable(a.map, a.log), chunksize=a.chunksize)
     w, wlabel = R.attach_weight(df, a.map, a.log, a.unweighted)
     df["W"] = w
     print(f"weighting: {wlabel}")
 
-    # See the module docstring: both restrictions matter, and dropping the second one
-    # (ndw_R > 0) silently turns this figure into a plot of Roman's footprint.
+    # Scope restrictions: see the module docstring.
     d = df[R.detected(df, "joint")
            & df["t0zone"].isin([0, 1])
            & (df["ndw_R"] > 0)].copy()
@@ -162,9 +125,7 @@ def main():
             ok = g["ratio"].notna()
             r = g.loc[ok, "ratio"].to_numpy()
             rw = g.loc[ok, "W"].to_numpy()
-            # Gate on the EFFECTIVE sample, not the raw count: under the weight a bin of
-            # forty events can carry the precision of eight, and a median drawn from that
-            # is noise wearing a data point's clothes.
+            # Gate on the effective sample, not the raw count.
             neff = R.kish_neff(rw)
             if len(r) < MIN_PER_BIN or neff < MIN_PER_BIN:
                 continue
@@ -180,8 +141,7 @@ def main():
                              q75=R.weighted_quantile(r, rw, 0.75)))
         if xs:
             axP.plot(xs, med_raw, color=colour, lw=0.9, ls=(0, (3, 2)), alpha=0.55, zorder=2)
-            # Quartiles as thin error bars, not a filled band: with three series the bands
-            # overlapped so heavily they hid the medians they were supposed to qualify.
+            # Quartiles as error bars rather than a band, so overlapping series stay readable.
             lo = np.array(med) - np.array(q25)
             hi = np.array(q75) - np.array(med)
             axP.errorbar(xs, med, yerr=[lo, hi], color=colour, linewidth=2.0,

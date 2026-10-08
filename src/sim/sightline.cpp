@@ -21,48 +21,31 @@ SightlineStart setupSightline(SimContext& ctx, SightlineState& st, const Sightli
     st.iScan += 1;
     s.lon = sightline.lon;
     s.lat = sightline.lat;
-    // The sky area THIS sightline stands for. Written into every event row it produces;
-    // any statistic pooled across sightlines has to weight by it (see the list build).
+    // Sky area this sightline stands for; written into every event row, and statistics pooled across
+    // sightlines must weight by it.
     st.wArea = sightline.area;
-    // nri/nde keep their old meaning -- longitude column index, and index within that
-    // column -- which is what the map file and the event table record. Assigned rather
-    // than incremented: the old loop bumped nri once per iLon whether or not any
-    // sightline in that column survived the corner cut, so an incrementing counter here
-    // would silently renumber the columns the moment a fully-cut column existed. Under
-    // stratification the column index is a fine-grid one, so it steps by kSub between
-    // coarse columns.
+    // nri/nde: longitude column index, and index within that column (recorded in the map file and
+    // event table). nri is assigned, not incremented, so a fully cut column cannot renumber the rest;
+    // under stratification it is a fine-grid index stepping by kSub between coarse columns.
     st.nri = sightline.col;
     if (sightline.col != st.lastCol) { st.nde = -1; st.lastCol = sightline.col; }
     st.nde += 1;
 
-    // --start-index. Resuming an interrupted run. The nri/nde bookkeeping above runs for
-    // skipped sightlines too, deliberately: nde counts position within a longitude column
-    // and is written into the map file, so skipping it would renumber the first partial
-    // column and a resumed run would not concatenate onto the interrupted one. Only the
-    // simulation is skipped, not the numbering.
-    //
-    // The index to resume AT is the number of sightlines entered, which is the number of
-    // "NEW STEP" lines in the interrupted run's log -- this print sits above the
-    // no-coverage and barren skips, so it counts every sightline the scan reached. The map
-    // file counts only sightlines that produced something to aggregate and is therefore a
-    // smaller number; resuming at it would redo the difference and duplicate rows.
-    //
-    // This is safe precisely because `scan` is built deterministically from --stride,
-    // --stride-roman and --stub and does not depend on the RNG. Note that the random
-    // sequence IS advanced by the sightlines a full run would have simulated, so a
-    // resumed run is not bit-identical to an uninterrupted one -- it is a valid
-    // continuation with a different draw sequence, not a replay.
+    // --start-index resumes an interrupted run. The nri/nde bookkeeping above also runs for skipped
+    // sightlines, so a resumed run concatenates onto the interrupted one. The index to resume at is
+    // the number of "NEW STEP" lines in the interrupted log (it counts every sightline the scan
+    // reached, including no-coverage and barren ones); the map file counts fewer and would duplicate rows.
     if (st.iScan < cfg.startIndex) return SightlineStart::Skip;
-    if (cfg.endIndex >= 0 and st.iScan >= cfg.endIndex) return SightlineStart::Stop;   // Deviation 77
-    // Deviation 77: this sightline's own random stream (see sightlineSeed in include/util/random.h). The note
-    // above, that a resumed run is "not a replay", no longer applies: it IS one.
+    if (cfg.endIndex >= 0 and st.iScan >= cfg.endIndex) return SightlineStart::Stop;
+    // Each sightline has its own random stream (sightlineSeed in include/util/random.h), so a
+    // resumed run reproduces an uninterrupted one.
     rng.seed(sightlineSeed(cfg.seedBase, st.iScan));
     cout << ">>>>>>>>>>> NEW STEP " << st.nde << " <<<<<<<<\t nri:  " << st.nri << endl;
     cout << "longtitude: " << s.lon << "\t latitude: " << s.lat << endl;
 
 
-    // Deviation 80: on LSSTCam's active silicon for this visit's pointing and rotation
-    // (was: within a 1.75-deg circle). A cheap (l, b) distance cut first.
+    // Coverage is on LSSTCam's active silicon for this visit's pointing and rotation, after a cheap
+    // (l, b) distance cut.
     double slRA, slDec;
     galToIcrs(s.lon, s.lat, slRA, slDec);
     auto rubinCovers = [&](int i) {
@@ -76,9 +59,9 @@ SightlineStart setupSightline(SimContext& ctx, SightlineState& st, const Sightli
     st.ndd  = matchVisibleEpochs("LSST",  rubinCovers, ls.tim, Nl,      ls.ct, st.minc);
     st.nddR = matchVisibleEpochs("Roman", romanCovers, ro.tim, NlRoman, ro.ct, st.mincR);
 
-    // Rubin's depth per band at this sightline (Deviation 73): the median of its matched
-    // visits' own 5-sigma depths, for the pre-selection below. A band with no visit here
-    // gets -inf, so it cannot count toward "detectable in >= 2 bands".
+    // Rubin's depth per band at this sightline: the median of its matched visits' own 5-sigma depths,
+    // used by the pre-selection. A band with no visit gets -inf, so it cannot count toward
+    // "detectable in >= 2 bands".
     {
         std::array<std::vector<double>, 6> d5;
         for (int k = 0; k < st.ndd; ++k) {
@@ -94,18 +77,10 @@ SightlineStart setupSightline(SimContext& ctx, SightlineState& st, const Sightli
     cout << "ndd (LSST): "  << st.ndd  << "\t minc (LSST): "  << st.minc  << endl;
     cout << "ndd (Roman): " << st.nddR << "\t minc (Roman): " << st.mincR << endl;
 
-    // Empty sky. Neither survey visits this sightline, so no light curve can ever
-    // have a datum, no event can be detected, and nerr can never advance -- the
-    // do/while below would spin forever. Skipping is not an approximation: a
-    // sightline with no epochs contributes exactly zero events to the yield.
-    //
-    // It has to be a `continue` rather than a run that finds nothing, because the
-    // aggregation block at the end of this loop asserts CHECK(numd[1] != 0.0) and
-    // CHECK(nerr != 0.0) -- reaching it with an empty field aborts the whole run.
-    //
-    // The skipped area is NOT written to the map file, so anything converting the
-    // per-sightline Neven density into a total count must use the aggregated
-    // sightline count reported at the end of the run, not the grid size.
+    // Empty sky: with no epochs no event can be detected and nerr never advances, so the draw loop
+    // would not terminate. Skipping is exact (zero events), and the aggregation CHECKs would abort on
+    // an empty field. The skipped area is not written to the map file, so converting Neven to a total
+    // count must use the aggregated sightline count, not the grid size.
     if (st.ndd == 0 and st.nddR == 0) {
         run.nSkipNoCoverage += 1;
         run.areaNoCoverage  += st.wArea;
@@ -121,7 +96,7 @@ SightlineStart setupSightline(SimContext& ctx, SightlineState& st, const Sightli
     for (int i = 0; i < Num; ++i) { s.nssim[i] = 0.0;  s.nsdet[i] = 0.0; }
     for (int i = 0; i <= GG; ++i) { l.nstE[i]  = 0.0;  l.ndtE[i]  = 0.0; }
 
-    s.TET = (360.0 - s.lon) / RAa;///radian s.lon/RA;//
+    s.TET = (360.0 - s.lon) / RAa;///radian
     s.FI  = s.lat / RAa;
 
     Disk_model(s, 1);
@@ -148,10 +123,8 @@ void finishSightline(SimContext& ctx, SightlineState& st) {
     double ErtE, ErpiE, ErtetE, Erml, Erdl, Ermul, Ermus, Eru0, Erfb, nErAvg;
     int    flagL, gg = -1;
 
-    // Did the sightline actually meet its budget, or did the cap stop it? The
-    // distinction matters: a capped sightline's Poisson precision is whatever it
-    // reached, not what was asked for, and averaging it in as though it were a
-    // full sample would understate the error bars.
+    // Whether the sightline met its budget or the cap stopped it: a capped sightline's Poisson
+    // precision is what it reached, not what was asked for.
     const bool budgetMet = (st.icon  >= cfg.iconTarget and
                             st.nlens >= cfg.nlensTarget and
                             st.nerr  >= cfg.nerrTarget);
@@ -162,9 +135,8 @@ void finishSightline(SimContext& ctx, SightlineState& st) {
              << ", nerr = " << st.nerr << "/" << cfg.nerrTarget << endl;
     }
 
-    // Some epochs existed but nothing survived to be aggregated. Same reasoning as
-    // the no-coverage skip above: the CHECK block below requires at least one
-    // detected AND one characterised event, so this must not fall through.
+    // Epochs existed but nothing survived to be aggregated: skip, since the CHECKs below need at
+    // least one detected and one characterised event.
     if (st.nlens < 1 or st.nerr <= 0.0) {
         run.nSkipBarren += 1;
         run.areaBarren  += st.wArea;
@@ -195,8 +167,6 @@ void finishSightline(SimContext& ctx, SightlineState& st) {
              << double(l.Ndfb[i]  * 100.0 / (l.Nsfb[i] + eps)) << " "
              << l.mus[i]  << " "
              << double(l.Ndmu[i]  * 100.0 / (l.Nsmu[i] + eps)) << " "
-             // The + eps every other column has, and these two lacked: before the
-             // counters above existed this was 0/0 and printed "-nan" on every row.
              << double(l.Nhalo[1] * 100.0 / (l.Nhalo[0] + eps)) << " "
              << double(l.Nself[1] * 100.0 / (l.Nself[0] + eps)) << "\n";
 
@@ -232,7 +202,6 @@ void finishSightline(SimContext& ctx, SightlineState& st) {
 
     int tempStruc;
     for (const auto& r : st.records) {
-//        counter = r.counter;
         flagL = r.flagL;
         l.tE = r.tE;   l.RE = r.RE;   l.piE = r.piE;  l.tetE = r.tetE;
         l.Vt = r.Vt;   l.u0 = r.u0;   l.Ml  = r.Ml;
@@ -243,8 +212,8 @@ void finishSightline(SimContext& ctx, SightlineState& st) {
         co.resu[3]=r.resu3;  co.resu[5]=r.resu5;   co.resu[9]=r.resu9;
         co.resu[10]=r.resu10; co.resu[13]=r.resu13; co.resu[14]=r.resu14;
         s.Map[2]=r.Map2; s.nsbl[2]=r.nsbl2; co.flagi=r.flagi; s.Ai[2]=r.Ai2;
-        // Must be replayed too: this loop runs after the whole field, so co->okA
-        // otherwise holds whatever the LAST FisherM call left, not this event's.
+        // Replayed too: this loop runs after the whole field, so co.okA would otherwise hold the
+        // last FisherM call's value.
         co.okA[SJOINT] = r.okJoint;
 
         l.struc = static_cast<GalacticComponent>(tempStruc);
@@ -274,34 +243,14 @@ void finishSightline(SimContext& ctx, SightlineState& st) {
 
             EFF += static_cast<double>(l.ndtE[gg] / (l.tE / year)); // 1/years
 
-            // Average only over events the joint fit could actually characterize. Step C4
-            // reports sigma = -1 as an explicit "not characterizable" sentinel, and ErrorCal
-            // divides it by the parameter value, so an unguarded sum pulls in large negative
-            // numbers: one event in this field contributed resu[3] = -697, dragging the mean
-            // fractional piE error negative and tripping CHECK(ErpiE > 0.0).
-            //
-            // Skipping those events is not the selection bias DEVIATIONS entry 8 warns about.
-            // That rule is about never dropping an event from the joint-vs-single RATIO
-            // statistics, where a missing single-survey sigma is itself the result. Here we are
-            // forming a mean precision, and an event with no measurement has no precision to
-            // average -- including it would be averaging a sentinel. The count of events the
-            // mean is actually over is tracked separately so the denominator is honest.
-            //
-            // okA[SJOINT] is NOT sufficient on its own. It says the joint photometric
-            // matrix inverted -- not that every parameter was in the fit. Since the joint
-            // refactor gave each survey partition its own active parameter subset
-            // (activePhotParams in include/fisher/fisher.h), fb0 and mbs0 enter the joint fit only when the
-            // event has Rubin epochs, and fb1/mbs1 only when it has Roman ones. An event
-            // detected by Roman with no Rubin data therefore has a perfectly valid joint
-            // fit in which Era[2] is still the -1.0 sentinel, and ErrorCal divides that by
-            // fb0 regardless: one such event contributed resu[2] = -8499 at l=0.881,
-            // b=-0.94 and dragged a 102-event mean to -83, tripping CHECK(Erfb > 0.0).
-            //
-            // So test the values themselves. An event is averaged only if all nine are real
-            // measurements, which keeps every mean over the same event set and keeps
-            // nErAvg meaningful as a single denominator. The cost is small and measured:
-            // across 48,959 characterised events in the 2026-08-29 run exactly ONE was
-            // excluded by this, and no column other than resu[2] was ever negative.
+            // Average only over events whose Fisher results are all real measurements; the -1.0
+            // sentinel (and ErrorCal dividing it by the parameter value) would otherwise pull large
+            // negative numbers into the means. This is a mean precision over measured events, not a
+            // joint-vs-single ratio, so skipping unmeasured events does not bias it; nErAvg counts
+            // the events actually averaged. okA[SJOINT] alone is not sufficient: it says the joint
+            // matrix inverted, not that every parameter was fitted (activePhotParams in
+            // include/fisher/fisher.h), so e.g. a Roman-only detection has Era[2] = -1.0 in a valid
+            // joint fit. Testing the values keeps every mean over the same event set.
             const bool allMeasured = (co.flagi > 0 and co.okA[SJOINT]
                                       and co.resu[0]  >= 0.0 and co.resu[1]  >= 0.0
                                       and co.resu[2]  >= 0.0 and co.resu[3]  >= 0.0
@@ -317,7 +266,7 @@ void finishSightline(SimContext& ctx, SightlineState& st) {
         }
     }
 
-    for (int i = 0; i < 2; ++i) { // What is the purpose of this block?
+    for (int i = 0; i < 2; ++i) { // turn the sums into means ([0] all records, [1] flagged)
         tE[i]    = double(tE[i]            / (numd[i] + eps)) / year; //[years]  
         RE[i]    = double(RE[i]            / (numd[i] + eps));//[AU]  
         piE[i]   = double(piE[i]           / (numd[i] + eps));//[]     
@@ -345,7 +294,7 @@ void finishSightline(SimContext& ctx, SightlineState& st) {
     EFF = double(EFF / (numd[1] + eps));//1/[years]
     Gamma = double(2.0 / M_PI * opd[0] * 1.0e-6 * EFF) / u0m; // 1/[star*year]  
     EffiL = double(numd[1] * 100.0 / (numd[0] + eps)); // probability of detecting lensing  
-    EffiD = double(st.icon * 100.0 / (st.nsim    + eps)); // % of drawn stars that are visible (Deviation 78; was numd[0], i.e. 100% by construction)
+    EffiD = double(st.icon * 100.0 / (st.nsim    + eps)); // % of drawn stars that are visible
     Neven = double(s.nstart * Gamma * 10.0);//deg^{-2}
    
     Eru0   = double(Eru0   / (nErAvg + eps));  
@@ -393,33 +342,19 @@ void finishSightline(SimContext& ctx, SightlineState& st) {
          << st.nsim              << " " << numd[0]          << " " << numd[1] << " "
          << st.nerr              << " " << st.nri              << " " << st.nde     << " "
          << std::log10(s.Rostart) << " " << std::log10(s.Nstart) << " " << std::log10(s.nstart)
-         // Step E1. Three columns appended, in this order:
-         //   w_area  deg^2 of sky this sightline stands for -- no longer a run-wide constant
-         //   lon,lat where it is. The map file had NO position column at all, so a row in it
-         //           could not be tied to the events it produced, and the draw count `nsim`
-         //           it records -- the denominator any pooled yield needs -- was unreachable
-         //           from the event table. With these, an event joins its sightline on
-         //           (lon, lat) and the correct pooled weight, w_area/nsim, is computable.
+         // Appended columns: w_area (deg^2 this sightline stands for), lon, lat, so an event joins its
+         // sightline on (lon, lat) and the pooled weight w_area/nsim is computable.
          << " " << std::setprecision(8) << st.wArea
          << " " << std::setprecision(6) << s.lon << " " << s.lat
-         // Deviation 94. Six columns appended after lat: this sightline's median 5-sigma depth
-         //   in each of ugrizy (st.rubinDepthMed, -inf for a band with no visit). preselectEvent
-         //   keeps a draw for Rubin by comparing its peak with THESE, not with a fixed depth,
-         //   so romanlib.acceptance_probability cannot rebuild which draws were kept without
-         //   them. The visit list gives sigma5 to 6 decimals, so they round-trip exactly.
+         // Then six columns: this sightline's median 5-sigma depth in each of ugrizy (rubinDepthMed,
+         // -inf for a band with no visit). preselectEvent compares peaks with these depths, so
+         // romanlib.acceptance_probability needs them to rebuild which draws were kept.
          << std::fixed << std::setprecision(6);
     for (int b = 0; b < 6; ++b) fil3 << " " << st.rubinDepthMed[b];
     fil3 << "\n";
 
-    // Flush the per-sightline outputs now rather than when the stream is destroyed. Every
-    // production pause so far has been a kill, and a kill discards whatever is still
-    // buffered: the 2026-09-06 chunk-1 stop lost the map rows of six completed sightlines
-    // and left a half-written seventh, onto which the resuming run's first row was then
-    // appended -- one 122-field line that made the whole file unreadable until the Python
-    // reader learned to skip it (Deviation 41). The same stop cost EfLMC5/EfLMC5B the same
-    // six blocks, which is why fil2/fil2b are flushed here too. A sightline costs minutes
-    // of CPU, so three flushes per sightline are free, and what reaches disk is then what
-    // the log says was finished.
+    // Flush per sightline: a killed run otherwise loses buffered rows and leaves a half-written one
+    // that the resumed run would append to. A sightline costs minutes, so the flushes are free.
     fil3.flush();
     fil2.flush();
     fil2b.flush();
@@ -490,17 +425,10 @@ void finishSightline(SimContext& ctx, SightlineState& st) {
     CHECK(numd[1] != 0.0);
     CHECK(st.nsim != 0.0);
     
-    // NOT an equality. `icon` counts stars that were OBSERVABLE (flagf > 0 and ndw > 2);
-    // `numd[0]` counts every record pushed, and the push site sits OUTSIDE that gate, so a
-    // star that was drawn but never observable still gets a record. The two are equal only
-    // where every draw is observable, which is true in the dense stub patch that every run
-    // before commit 81a6b04 used and false as soon as the scan reaches sparse sky -- at
-    // l=-3.499, b=-1.98 it is 5 observable out of 15 drawn.
-    //
-    // Loosening this assertion changes no computed value. It does expose a real question
-    // about what the per-sightline denominators mean -- EffiD = numd[0]/nsim is 100% by
-    // construction, and the [0] means average over drawn rather than observed stars. That
-    // is a science decision, recorded in OPEN_ITEMS.md, not something to change here.
+    // Not an equality: icon counts observable stars (flagf > 0 and ndw > 2), while numd[0] counts
+    // every record pushed, including draws that were never observable. Consequently EffiD =
+    // numd[0]/nsim is 100% by construction and the [0] means average over drawn, not observed,
+    // stars; which of the two the per-sightline denominators should be is an open question.
     CHECK(st.icon <= numd[0]);
     CHECK(numd[1] == st.nlens);
      

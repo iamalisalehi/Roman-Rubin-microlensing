@@ -1,32 +1,23 @@
 #!/usr/bin/env python3
-"""Step F1 -- the results table generator.
+"""Results table: per (Roman field, tE bin) yield and precision statistics.
 
-Produces, per (Roman field, tE bin), the quantities Phase F of the refactor plan asks for.
-This is the numeric backbone the figures illustrate; F2 and F3 are pictures of rows in here.
+Yield and precision are reported side by side and never averaged into one another:
 
-The three currencies
---------------------
-The plan is emphatic that one metric must not be forced across both regimes:
+  short tE  -> YIELD. Roman cannot see an event that peaks and ends inside a season gap, so
+               sigma_Roman does not exist and any ratio is undefined; what matters is how many
+               events Rubin recovers at all.
+  long tE   -> PRECISION. Roman sees the event; the question is how much Rubin's year-round
+               baseline sharpens the fit, especially the annual-parallax signal that turns tE
+               into a lens mass.
 
-  short tE  -> a YIELD statistic. Roman literally cannot see an event that peaks and ends
-               inside a season gap, so sigma_Roman does not exist and any ratio is undefined.
-               What matters is how many events Rubin recovers at all.
-  long tE   -> a PRECISION statistic. Roman sees the event; the question is how much Rubin's
-               year-round baseline sharpens the fit, especially the annual-parallax signal
-               that turns tE into a lens mass.
+Characterization criterion: tE > 2*sigma_tE AND piE > 2*sigma_piE (Abrams et al. 2025), so the
+Rubin-alone column is directly comparable to their published numbers.
 
-So the table reports both, side by side, and never averages one into the other.
-
-Characterization criterion: tE > 2*sigma_tE AND piE > 2*sigma_piE, deliberately Abrams et al.
-2025's, so the Rubin-alone column is directly comparable to their published numbers.
-
-Fields
-------
-Events are assigned to the GBTDS field whose detectors image their sightline, from the visit
-list given by --baseline, with the simulator's own coverage test (gbtds_geometry): 'F<i>', or
-'F<i>/F<j>' where the spring and autumn rolls put a different field there. Everything else is
-"outside" -- Rubin-only sky (including chip gaps), which must not be pooled with the Roman
-fields. For a run made before Deviation 69, pass that run's visit list
+Fields: events are assigned to the GBTDS field whose detectors image their sightline, from the
+visit list given by --baseline, using the simulator's own coverage test (gbtds_geometry): 'F<i>',
+or 'F<i>/F<j>' where the spring and autumn rolls put a different field there. Everything else is
+"outside" (Rubin-only sky, including chip gaps) and is not pooled with the Roman fields. A run made
+with the old six-centre layout needs that run's visit list
 (Baseline/legacy_layout40395/RomanBaseline.dat): it is recognised and the old rule applied
 (nearest of six centres within 0.3003 deg).
 """
@@ -56,12 +47,9 @@ def assign_field(df, visits):
 def summarise(g):
     """One output row from one (field, tE bin) group.
 
-    COUNTS ARE COUNTS; FRACTIONS AND MEDIANS ARE WEIGHTED. A count describes the sample that
-    was simulated, and weighting it would produce a number in no units anybody can quote (the
-    weight's constants cancel only in a ratio -- Deviation 41). Everything that pools events
-    into a fraction or a median is weighted, because those are statements about the sky, and
-    each carries `N_eff`: the weighted sample's Poisson precision, which on the v3 footprint
-    is about a third of its event count.
+    Counts are raw counts (they describe the simulated sample). Fractions and medians are
+    event-rate weighted, because they are statements about the sky, and each carries `N_eff`
+    (the Kish effective sample size).
     """
     detL, detR = R.detected(g, "rubin"), R.detected(g, "roman")
     w = g["W"].to_numpy()
@@ -76,8 +64,7 @@ def summarise(g):
     }
 
     # ---- yield: gap-peaking events recovered by Rubin ----
-    # Only meaningful where Roman actually observes; elsewhere Roman missed the event
-    # because it never pointed there, which is a footprint fact, not a cadence one.
+    # Only where Roman observes; elsewhere it missed the event because it never pointed there.
     gap = g[(g["t0zone"] == 1) & (g["ndw_R"] > 0)]
     out["N_gap_peaking"] = len(gap)
     out["frac_gap_seen_by_rubin"] = (R.weighted_fraction(R.detected(gap, "rubin"),
@@ -87,8 +74,7 @@ def summarise(g):
                                          if len(gap) else np.nan)
 
     # ---- precision: per-event ratio first, then the median. Never a ratio of means. ----
-    # The ratio itself is per event and carries no weight; its MEDIAN over a set of events
-    # does, because which events the set holds is a sampling statement.
+    # The ratio is per event and unweighted; its median over a set of events is weighted.
     for p in ("tE", "piE"):
         r = R.ratio_joint_over(g, p, "roman")
         ok = r.notna()
@@ -126,7 +112,7 @@ def main():
     ap.add_argument("--fields-only", action="store_true",
                     help="drop the 'outside' row (Rubin-only sky)")
     ap.add_argument("--map", default=None,
-                    help="MapLMC5.dat -- needed for the event-rate weight (Deviation 41)")
+                    help="MapLMC5.dat -- needed for the event-rate weight")
     ap.add_argument("--log", action="append", default=[],
                     help="run log(s), for sightlines whose map rows a killed run lost")
     ap.add_argument("--chunksize", type=int, default=500_000,
@@ -135,11 +121,8 @@ def main():
                     help="deliberately report the raw sample, with no event-rate weight")
     a = ap.parse_args()
 
-    # Stream, and drop the barren sightlines' rows as they go. Reading the whole table at once
-    # is a silent OOM kill on a machine with less than ~12 GB -- exit 137 and an empty stdout,
-    # indistinguishable from a script that did nothing. The dropped rows have no nsim, hence
-    # weight 0, and carry no detection, so nothing in this table changes except the peak RSS:
-    # the 2026-09-17 neutron-star run goes from 5.01M rows to 1.16M.
+    # Stream the table and drop rows of barren sightlines (no nsim, weight 0, no detection) as
+    # they are read; reading it whole can exhaust memory on a small machine.
     df = R.load_events(a.events, keep=R.keep_weightable(a.map, a.log), chunksize=a.chunksize)
     w, wlabel = R.attach_weight(df, a.map, a.log, a.unweighted)
     df["W"] = w
@@ -149,9 +132,8 @@ def main():
     df["teBin"] = pd.cut(df["tE"], edges, labels=labels, right=False)
     df["field"] = assign_field(df, G.read_roman_visits(a.baseline))
 
-    # A binning that dumps nearly everything in one bin describes the population badly and
-    # makes every per-bin number a restatement of the whole sample. Say so rather than let
-    # a reader assume the bins were chosen to fit the data.
+    # A binning that puts most events in one bin makes every per-bin number a restatement of
+    # the whole sample.
     share = df["teBin"].value_counts(normalize=True, dropna=True)
     if len(share) and share.max() > 0.5:
         print(f"WARNING: {share.idxmax()} holds {100*share.max():.0f}% of events -- "

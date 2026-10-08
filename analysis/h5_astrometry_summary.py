@@ -1,26 +1,19 @@
 #!/usr/bin/env python3
-"""Four panels for the astrometric-deflection result (PROGRESS.md 5f).
+"""Four panels for the astrometric-deflection result.
 
-Companion to h5_astrometric_shift.py, which plots the shift itself in detail. This one plots
-the four claims the result actually rests on, each with the check that makes it believable:
+Companion to h5_astrometric_shift.py, which plots the shift itself in detail.
 
-  (a) WHERE THE SIGNAL SITS relative to the noise. The centroid shift is far below a single
-      exposure and only clears the noise after averaging ~50,000 of them. The two vertical
-      lines are the whole story of the measurement, and the gap between them is the assumption
-      recorded in OPEN_ITEMS.md.
-
-  (b) WHO MEASURES theta_E. Rubin's ground-based astrometry is not a capability here; the
+  (a) Where the signal sits relative to the noise: the centroid shift is far below a single
+      exposure and clears the noise only after averaging tens of thousands of exposures.
+  (b) Who measures theta_E: Rubin's ground-based astrometry is not a capability here; the
       Einstein radius is Roman's.
+  (c) What it buys: the lens mass needs theta_E from astrometry and piE from photometry, so it
+      requires both telescopes.
+  (d) That the matrix responds to the deflection: precision must improve as the deflection
+      grows; a flat panel would mean the other three measure something else.
 
-  (c) WHAT IT BUYS -- the lens mass, which needs theta_E from astrometry AND piE from
-      photometry, so it is the one quantity that genuinely requires both telescopes.
-
-  (d) THAT THE MATRIX IS RESPONDING TO THE DEFLECTION AT ALL: precision must improve as the
-      deflection grows. If this panel were flat, every number in the other three would be
-      measuring something else.
-
-Input: the column extract described in h5_crosscheck.py (needs magb_F146).
-Needs the project venv (.roman/bin/python) -- /usr/bin/python3 has no pandas.
+Input: a whitespace-separated column extract of the per-event table with at least lon, lat, Ml,
+Vt, Ds, w_area, u0, tetE, ndwR, magb_F146 and the okB_*/sigtetE_*/relMl_* columns.
 """
 import argparse
 import os
@@ -66,7 +59,7 @@ def style(ax, title, xlabel, ylabel):
 
 
 def cdf(ax, v, w=None, **kw):
-    """Cumulative distribution, by weight when given (Deviation 41)."""
+    """Cumulative distribution, by weight when given."""
     v = np.asarray(v, dtype=float)
     if v.size == 0:
         return
@@ -103,8 +96,7 @@ def panel_tetE(ax, cov, w):
         m = (cov[oc] == 1) & (cov[sc] > 0)
         r = (cov.loc[m, sc] / cov.loc[m, "tetE"]).to_numpy()
         wm = np.asarray(w)[m.to_numpy()]
-        # Normalised to the WHOLE sample, so events this survey cannot measure cost the
-        # curve height instead of leaving the denominator.
+        # Normalised to the whole sample, so events this survey cannot measure lower the curve.
         f10 = float(wm[r < 0.10].sum()) / w_total
         cdf(ax, r, wm * (wm.sum() / w_total) if wm.sum() else wm,
             color=c, lw=1.8, label=f"{lab}  ({f10:.1%} < 10%)")
@@ -170,7 +162,7 @@ def main():
     ap.add_argument("extract", help="column extract of test5.dat, with magb_F146")
     ap.add_argument("-o", "--out", default="figures/h5_astrometry_summary.png")
     ap.add_argument("--map", default=None,
-                    help="MapLMC5.dat -- needed for the event-rate weight (Deviation 41)")
+                    help="MapLMC5.dat -- needed for the event-rate weight")
     ap.add_argument("--log", action="append", default=[],
                     help="run log(s), for sightlines whose map rows a killed run lost")
     ap.add_argument("--unweighted", action="store_true",
@@ -179,12 +171,12 @@ def main():
 
     d = pd.read_csv(a.extract, sep=r"\s+")
     if "magb_F146" not in d.columns:
-        sys.exit("extract lacks magb_F146; re-extract with $70 (see h5_crosscheck.py)")
+        sys.exit("extract lacks magb_F146; re-extract it with column 70 of the event table")
     need = ("lon", "lat", "Ml", "Vt", "Ds", "w_area")
     missing = [c for c in need if c not in d.columns]
     if missing and not a.unweighted:
-        sys.exit(f"extract lacks {missing}, which the event-rate weight needs "
-                 "(Deviation 41). Re-extract with the recipe in h5_crosscheck.py, or pass "
+        sys.exit(f"extract lacks {missing}, which the event-rate weight needs. "
+                 "Re-extract with these columns, or pass "
                  "--unweighted to report raw-sample numbers deliberately.")
     r2 = np.sqrt(2.0)
     u0, tetE = d.u0.to_numpy(), d.tetE.to_numpy()

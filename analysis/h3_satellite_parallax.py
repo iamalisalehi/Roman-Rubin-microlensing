@@ -1,33 +1,21 @@
 #!/usr/bin/env python3
-"""Step H3 -- what Roman's displacement to L2 buys for the parallax forecast.
+"""What Roman's displacement to L2 buys for the parallax forecast.
 
-THE EXPERIMENT
---------------
-Every detected event is characterised TWICE inside one run: once with Roman at L2 and once
-with `L2_OFFSET_AU` zeroed, the same draw, the same epochs, the same photometry, only the
-observer moved (`--pair-satellite`). Each row of `h3_pair.dat` is therefore a genuine pair, and
-the ratio below is a per-event ratio.
+Every detected event is characterised twice inside one run (`--pair-satellite`): once with
+Roman at L2 and once with `L2_OFFSET_AU` zeroed, with the same draw, epochs and photometry; only
+the observer moves. Each row of `h3_pair.dat` is a genuine pair and the ratios are per-event.
 
-WHY NOT TWO RUNS, WHICH IS WHAT THE PLAN ASKS FOR
--------------------------------------------------
-Because the physics forbids it (DEVIATIONS.md 35). The RNG is one mt19937_64 stream and the
-per-event path draws conditionally on `acceptRubin or acceptRoman`; moving the observer changes
-what is detectable, so the streams fork. Measured on the v3 pair: byte-identical for 1,740,091
-events across 459 sightlines, then divergent from the first footprint sightline onward -- the
-two runs stay matched only where the effect is identically zero.
+Two separate runs cannot be compared instead: the RNG is a single mt19937_64 stream and the
+per-event path draws conditionally on `acceptRubin or acceptRoman`, so moving the observer
+changes what is detectable and the streams fork. An unpaired comparison gave a spurious
+sigma_tE ratio of 1.15, which measured the difference between the two detected populations.
 
-The unpaired fallback was tried and its own control rejected it: the median `sigma_tE` ratio
-came out 1.1503 [1.0805, 1.2170], i.e. the satellite apparently making the TIMESCALE forecast
-15% worse. That is impossible for matched events -- a Fisher forecast at fixed parameters and
-epochs does not degrade because the geometry changed -- so the 15% measured how much the two
-DETECTED populations differ, which is larger than the ~6% effect being sought. Hence pairing.
+Gating: a ratio needs both forecasts, `okA_sat == 1 and okA_nosat == 1`, with -1.0 (not
+measured) excluded.
 
-GATING. A ratio needs both forecasts to exist: `okA_sat == 1 and okA_nosat == 1`, with -1.0
-excluded as the not-measured sentinel. A sigma that never inverted is not a large sigma.
-
-THE BUILT-IN CONTROL. Events with `nepR_pk == 0` have no Roman epochs near the peak, so the
-satellite cannot act on them and their ratio must be 1. They are kept deliberately and reported
-as a control; if they ever drift from 1, the measurement is wrong.
+Control: events with `nepR_pk == 0` have no Roman epochs near the peak, so the satellite cannot
+act on them and their ratio must be 1. They are kept and reported; if they drift from 1 the
+measurement is wrong.
 """
 import argparse
 import os
@@ -41,22 +29,18 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import romanlib as R
 
-# Temporal-baseline gain for H3c: median sigma_joint/sigma_Roman for piE on in-gap events
-# (t0zone == 1, Roman-covered), EVENT-RATE WEIGHTED, from the post-extinction-fix bulge run
-# (runs/prod_bulge_20260924; figures/wp_20260926/w1.log, Deviation 55). The pre-fix v3 values were
-# 0.433 / 0.936 / 0.978 / 0.991 (unweighted); the fix all but removed the pooled in-gap gain, which
-# now survives only for peaks deep inside a gap (dt_edge > 45 d: tE ratio 0.077). A DIFFERENT
-# physical effect -- Rubin filling Roman's season gaps in time, not two observers separated in
-# space. H3c exists to put the two on one axis at the right scale, not to declare a winner.
-# The in-season control for the same quantity is 0.999-1.000 in every bin.
+# Temporal-baseline gain for panel c: median sigma_joint/sigma_Roman for piE on in-gap events
+# (t0zone == 1, Roman-covered), event-rate weighted, from the bulge production run. This is a
+# different effect (Rubin filling Roman's season gaps in time, not two observers separated in
+# space); the panel puts the two on one axis at the right scale. The in-season control for the
+# same quantity is 0.999-1.000 in every bin.
 TEMPORAL_GAIN = {"10-30 d": 0.984, "30-100 d": 0.999, "100-300 d": 1.000, "> 300 d": 1.000}
 TE_EDGES = [10.0, 30.0, 100.0, 300.0, np.inf]
 TE_LABELS = list(TEMPORAL_GAIN.keys())
 BG = "#fcfcfb"
-# The current h3_pair.dat layout. Order matters absolutely: the file's header line begins with
-# a lone '#', so pandas is told comment="#" and the names are supplied here instead. Get this
-# list out of step with src/sim/record.cpp and every column silently shifts by one -- which has
-# already happened once in this project and cost a debugging session (PROGRESS.md traps).
+# h3_pair.dat column layout. The header line begins with a lone '#', so pandas is told
+# comment="#" and the names are supplied here. The order must match src/sim/record.cpp, or every
+# column silently shifts.
 COLS_LEGACY = ("lon lat tE u0 piE tetE du_sat "
                "okA_sat okA_nosat okB_sat okB_nosat "
                "sigtE_sat sigtE_nosat sigpiE_sat sigpiE_nosat "
@@ -65,14 +49,12 @@ COLS_LEGACY = ("lon lat tE u0 piE tetE du_sat "
                "condA_sat condA_nosat condB_sat condB_nosat "
                "nepL_pk nepR_pk w_area").split()
 
-# Ml, Dl, Ds and Vt were appended on 2026-09-17 so a paired file can carry the event-rate
-# weight (Deviation 41): W needs sqrt(Ml)*Vt*Z(Ds), and none of it can be reconstructed from
-# the legacy columns -- theta_E and pi_E give Ml and theta_E/tE gives mu_rel, but
-# pi_rel = 1/Dl - 1/Ds is one equation in two unknowns. A legacy file is therefore readable
-# but NOT weightable, and this script says so rather than quietly reporting raw medians.
+# Ml, Dl, Ds and Vt carry the event-rate weight, W ~ sqrt(Ml)*Vt*Z(Ds). They cannot be
+# reconstructed from the other columns (pi_rel = 1/Dl - 1/Ds is one equation in two unknowns),
+# so a file without them is readable but not weightable.
 COLS = COLS_LEGACY + ["Ml", "Dl", "Ds", "Vt"]
 
-# The superseded layout, recognised only so it can be refused by name.
+# Superseded 15-column layout, recognised only so it can be refused.
 COLS_OLD_15 = 15
 
 
@@ -83,7 +65,7 @@ def load(path):
     if n == COLS_OLD_15:
         sys.exit(
             f"{path} has the superseded 15-column layout.\n"
-            "That file was written before the derivative-reference fix (DEVIATIONS.md 36) and\n"
+            "That file was written before the derivative-reference fix and\n"
             "every forecast in it is corrupted on the no-satellite side. Refusing to read it\n"
             "rather than reporting numbers from it. Re-run with --pair-satellite on a binary\n"
             "built from 3a88180 or later.")
@@ -121,14 +103,13 @@ def main():
         sys.exit(
             f"{a.pairs} is a pre-2026-09-17 paired file: it has no Ml/Dl/Ds/Vt columns, so the\n"
             "event-rate weight cannot be computed from it and every median below would be a\n"
-            "statistic of the raw sample (Deviation 41: that sample over-represents long, slow,\n"
+            "statistic of the raw sample (that sample over-represents long, slow,\n"
             "massive lenses roughly tenfold).\n"
             "Either re-run --pair-satellite with a binary built from 2026-09-17 or later, which\n"
             "writes the four columns, or pass --unweighted to say deliberately that you want the\n"
             "raw-sample numbers.")
 
-    # Weights are attached to the FULL frame before any subsetting, so `covered`, `blind` and
-    # every later selection carry their own weights with them.
+    # Weights are attached to the full frame before subsetting so every selection carries its own.
     w, wlabel = R.attach_weight(df, a.map, a.log, a.unweighted or not weightable)
     df = df.assign(W=w)
     print(f"   weighting: {wlabel}")
@@ -149,7 +130,7 @@ def main():
     covered = d[d.nepR_pk > 0]
     blind = d[d.nepR_pk == 0]
 
-    # ---- the control comes first. If it is not ~1 the rest is meaningless.
+    # The control comes first; if it is not ~1 the rest is meaningless.
     print("\n== CONTROL: events with no Roman epochs near the peak (nepR_pk == 0)")
     print("   the satellite cannot act on these, so the ratio must be 1")
     if len(blind):
@@ -190,17 +171,13 @@ def main():
 
 
 def astrometry(df, covered, blind):
-    """What moving the observer does to the ASTROMETRIC forecast, and to the lens mass.
+    """What moving the observer does to the astrometric forecast and to the lens mass.
 
-    Different physics from the photometric side, and worth separating. The magnification
-    depends only on |u|, so the satellite baseline reaches piE through a change in separation.
-    The centroid deflection theta_E u/(u^2+2) is a VECTOR, so moving the observer changes its
-    direction as well as its magnitude, and the astrometric matrix carries both sigma(theta_E)
-    and a route to piE independent of the photometric one.
-
-    The lens mass is the quantity that matters: Ml = theta_E/(kappa piE) needs one observable
-    from each matrix, so it is the only place where a change in either becomes a change in the
-    science rather than a change in a nuisance parameter.
+    The magnification depends only on |u|, so the satellite baseline reaches piE through a change
+    in separation. The centroid deflection theta_E u/(u^2+2) is a vector, so moving the observer
+    changes its direction as well, giving the astrometric matrix a route to piE independent of
+    the photometric one. The lens mass Ml = theta_E/(kappa piE) needs one observable from each
+    matrix.
     """
     print("\n== ASTROMETRY: what the observer move does to theta_E and to the mass")
     okb = (df.okB_sat == 1) & (df.okB_nosat == 1) & \
@@ -236,14 +213,12 @@ def astrometry(df, covered, blind):
 
 
 def conditioning(covered):
-    """Answer the near-degeneracy question from the data instead of hypothesising it.
+    """Compare the condition numbers of the with- and without-satellite matrices.
 
-    OPEN_ITEMS recorded a guess that the satScale = 0 configuration might leave a
-    near-degeneracy that clears the okA condition-number gate while leaving marginalised errors
-    unstable. That guess was NOT the cause of the original H3 failure -- a stale derivative
-    reference was, DEVIATIONS 36 -- but the question is real and the columns are now here.
+    Checks that the satScale = 0 configuration does not leave a near-degeneracy that passes the
+    okA condition-number gate while leaving marginalised errors unstable.
     """
-    print("\n== CONDITIONING of the two matrices (the OPEN_ITEMS question, answered)")
+    print("\n== CONDITIONING of the two matrices")
     for lab, a, b in (("photometric (condA)", "condA_sat", "condA_nosat"),
                       ("astrometric (condB)", "condB_sat", "condB_nosat")):
         m = (covered[a] > 0) & (covered[b] > 0)
@@ -263,28 +238,13 @@ def conditioning(covered):
 def validate(df, c, b):
     """Checks the measurement must pass before any number from it can be quoted.
 
-    These are statements about what the physics has to do, not statistical tests of a
-    hypothesis, and they exist because the first full run failed them (DEVIATIONS 36).
+    These are statements about what the physics has to do, not statistical tests.
 
-    WHAT WAS REMOVED, AND WHY IT IS NOT A WEAKENING. The original gate required
-    corr(log du_sat, log ratio) < 0, on the argument that a wider observer separation cannot
-    buy less. That argument treats du_sat as a per-event measure of the separation. It is not:
-    du_sat = piE * D_perp/AU, and D_perp is one observatory's orbit, identical for every event.
-    Measured, du_sat/piE spans 0.00878 to 0.01002 -- a factor of 1.14 -- while piE spans a
-    factor of 35.6 and corr(log piE, log du_sat) = +0.9985. du_sat is piE rescaled by a
-    constant, so the check tested whether the gain correlates with piE, which is a different
-    claim with competing effects on both sides. It could never have passed or failed for the
-    right reason, and no sample size fixes it: at the measured correlation the n needed to put
-    it two sigma from zero is ~2.5 million events. DEVIATIONS 37.
-
-    nepR_pk was tried as a replacement monotone axis -- it IS independent of piE -- and shows no
-    trend either, for a physical reason: the lowest tercile, median 43 Roman epochs near the
-    peak, already shows the full gain. A simultaneous baseline is a geometric constraint, so it
-    saturates as soon as a few epochs see the source from both positions at once. There is no
-    slope to test because the effect has none.
-
-    Check 2 below is the one that caught the bug, and is unchanged, so this gate would still
-    refuse the corrupted run.
+    There is deliberately no check that the gain correlates with du_sat. du_sat = piE * D_perp/AU
+    and D_perp is one observatory's orbit, identical for every event, so du_sat is just piE
+    rescaled by a constant (corr(log piE, log du_sat) = +0.9985). The gain does not trend with
+    nepR_pk either: a simultaneous baseline is geometric and saturates once a few epochs see the
+    source from both positions.
     """
     import numpy as np
     ok = True
@@ -292,9 +252,8 @@ def validate(df, c, b):
     print("VALIDATION -- must pass before any ratio here is quotable")
     print("=" * 74)
 
-    # 1. The control must be EXACT, not merely close. These events have no Roman epochs near
-    #    the peak, so moving Roman cannot change their light curves at all and the two Fisher
-    #    matrices must be the same matrix.
+    # 1. The control must be exact: with no Roman epochs near the peak, moving Roman cannot
+    #    change the light curve and the two Fisher matrices must be identical.
     exact = float((b.ratio == 1.0).mean()) if len(b) else 0.0
     medb = float(b.ratio.median()) if len(b) else float("nan")
     print(f"  1. control (no Roman epochs at peak): n={len(b):,}  median {medb:.6f}  "
@@ -306,7 +265,7 @@ def validate(df, c, b):
     else:
         print("     passed")
 
-    # 2. THE CHECK THAT CAUGHT THE BUG. Unchanged.
+    # 2. Moving an observer cannot degrade the timescale forecast.
     worse = float((c.ratio_tE > 1.01).mean())
     med = float(c.ratio_tE.median())
     print(f"  2. sigma_tE worse for {worse:.1%} of events, median ratio {med:.3f}")
@@ -317,8 +276,8 @@ def validate(df, c, b):
     else:
         print("     passed")
 
-    # 3. theta_E comes from the deflection amplitude, not from a parallax baseline, so the
-    #    astrometric Einstein radius must not move when the observer does.
+    # 3. theta_E comes from the deflection amplitude, not a parallax baseline, so it must not
+    #    move with the observer.
     m = (c.okB_sat == 1) & (c.okB_nosat == 1) & (c.sigtetE_sat > 0) & (c.sigtetE_nosat > 0)
     if int(m.sum()):
         rt = float((c.loc[m, "sigtetE_sat"] / c.loc[m, "sigtetE_nosat"]).median())
@@ -330,8 +289,7 @@ def validate(df, c, b):
         else:
             print("     passed")
 
-    # 4. If the two geometries were not equally conditioned, a difference in sigma could be an
-    #    inversion artefact rather than an information statement.
+    # 4. Unequal conditioning would make a sigma difference an inversion artefact.
     mc = (c.condA_sat > 0) & (c.condA_nosat > 0)
     if int(mc.sum()):
         rc = float((c.loc[mc, "condA_nosat"] / c.loc[mc, "condA_sat"]).median())
@@ -343,8 +301,7 @@ def validate(df, c, b):
         else:
             print("     passed")
 
-    # 5. The gain must be a DECREASE, tested against the control rather than against a trend.
-    #    The control pins the null at exactly 1, so a sign test is the right instrument.
+    # 5. The gain must be a decrease; the control pins the null at exactly 1, so a sign test applies.
     v = c.ratio.to_numpy()
     nz = v[v != 1.0]
     if nz.size:
@@ -365,7 +322,7 @@ def validate(df, c, b):
 
 
 def figures(d, covered, blind, prefix):
-    # ================================================================= H3a
+    # ---- panel a
     fig, ax = plt.subplots(figsize=(8.6, 5.4), facecolor=BG)
     ax.set_facecolor(BG)
     colors = plt.cm.viridis(np.linspace(0.12, 0.88, len(TE_LABELS)))
@@ -390,12 +347,12 @@ def figures(d, covered, blind, prefix):
              "Below 1 means Roman's displacement to L2 tightens the parallax forecast. Red "
              "crosses are the control: events with no Roman\nepochs near the peak, where the "
              "satellite cannot act and the ratio must sit at 1. Pairing is exact -- one run, "
-             "two Fisher\nevaluations per event (DEVIATIONS.md 35).", fontsize=7.5, color="#444")
+             "two Fisher\nevaluations per event.", fontsize=7.5, color="#444")
     fig.savefig(f"{prefix}a_where.png", dpi=160, bbox_inches="tight", facecolor=BG)
     plt.close(fig)
     print(f"\nwrote {prefix}a_where.png")
 
-    # ================================================================= H3b
+    # ---- panel b
     both = covered[(covered.nepL_pk > 0) & (covered.nepR_pk > 0)]
     print(f"H3b contemporaneous coverage (both surveys at peak): {len(both):,}")
     te_e = np.geomspace(5, 400, 9)
@@ -433,23 +390,21 @@ def figures(d, covered, blind, prefix):
     plt.close(fig)
     print(f"wrote {prefix}b_corner.png")
 
-    # ================================================================= H3c
+    # ---- panel c
     fig, ax = plt.subplots(figsize=(8.8, 5.0), facecolor=BG)
     ax.set_facecolor(BG)
     x = np.arange(len(TE_LABELS))
     w = 0.36
-    # Weighted, like TEMPORAL_GAIN beside it: a raw bar next to a weighted one is not a comparison.
+    # Weighted, like TEMPORAL_GAIN beside it.
     sat = [R.weighted_median(covered.loc[covered.tb == l, "ratio"], covered.loc[covered.tb == l, "W"])
            if (covered.tb == l).sum() >= 5 else np.nan for l in TE_LABELS]
-    # Plotted as the IMPROVEMENT, 100 (1 - ratio) %, on a linear axis from zero. A log axis of
-    # the ratio with labels at 1.06x the bar only worked while the gains were large; once both
-    # effects are percent-level (post-extinction-fix) the labels land far outside the axes.
+    # Plotted as the improvement, 100 (1 - ratio) %, on a linear axis from zero.
     gs = [100.0 * (1.0 - v) if np.isfinite(v) else np.nan for v in sat]
     gt = [100.0 * (1.0 - TEMPORAL_GAIN[l]) for l in TE_LABELS]
     ax.bar(x - w / 2, gs, w, color="#3b6ea5",
            label="satellite baseline  (Roman at L2 vs at Earth), this work")
     ax.bar(x + w / 2, gt, w, color="#c0703a",
-           label="temporal baseline  (Rubin filling Roman's gaps), Step F2")
+           label="temporal baseline  (Rubin filling Roman's gaps)")
     ax.axhline(0.0, color="#444", lw=1.0)
     ax.set_xticks(x, TE_LABELS)
     top = np.nanmax(gs + gt)
@@ -467,8 +422,8 @@ def figures(d, covered, blind, prefix):
     fig.text(0.01, -0.06,
              "DIFFERENT PHYSICAL EFFECTS. Pairing the bars compares their size, not their "
              "merit: one is two observers separated in\nspace, the other is one observer's "
-             "gaps filled in time. The temporal numbers are in-gap medians from Step F2 "
-             "(Deviations 24.2).", fontsize=7.5, color="#444")
+             "gaps filled in time. The temporal numbers are in-gap medians of the gap-filling analysis."
+             "", fontsize=7.5, color="#444")
     fig.savefig(f"{prefix}c_honest.png", dpi=160, bbox_inches="tight", facecolor=BG)
     plt.close(fig)
     print(f"wrote {prefix}c_honest.png")
@@ -500,7 +455,7 @@ def verdict(covered, blind, passed=True):
               f"max {covered.du_sat.max():.5f}  [theta_E]")
         print("  The two observers are separated by a few thousandths of an Einstein radius,")
         print("  so the light-curve perturbation is tiny and a large precision gain would be")
-        print("  surprising on physical grounds. See DEVIATIONS.md 35.")
+        print("  surprising on physical grounds.")
         return
     if better < 0.01:
         print("  THIS IS A NULL. Fewer than 1% of Roman-covered events gain anything")

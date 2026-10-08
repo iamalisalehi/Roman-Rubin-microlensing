@@ -1,4 +1,4 @@
-// The list of sightlines to simulate, each with the sky area it stands for (Step E1).
+// The list of sightlines to simulate, each with the sky area it stands for.
 #ifndef ROMAN_RUN_SIGHTLINES_H
 #define ROMAN_RUN_SIGHTLINES_H
 

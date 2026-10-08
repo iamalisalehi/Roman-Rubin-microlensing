@@ -19,30 +19,17 @@ EfficiencyBins drawEvent(SimContext& ctx, SightlineState& st, int prevNdw) {
     st.nsim += 1.0;
     func_source(s, cm, ex, st.sightlineIdx);
     func_lens(l, s, cm, ex, st.sightlineIdx);
-//                std::cerr << "nsim=" << nsim << "  Ds=" << s->Ds << "  mass=" << s->mass
-//                          << "  nums=" << s->nums << "  Ml=" << l->Ml << "  u0=" << l->u0 << "\n";
     optical_depth(s);
 
-    // tE-histogram bin for THIS event, computed for every draw rather than only
-    // for detected ones: nstE is the denominator of the detection efficiency, so
-    // it has to count everything simulated. Previously gg was only evaluated
-    // inside the detection branch and neither counter was ever incremented, so
-    // ndtE stayed identically zero and EFF, Gamma and Neven with it (the run then
-    // aborted on CHECK(EFF > 0.0) as soon as a field managed to complete).
+    // Efficiency bins are computed for every draw, before the detection test: the denominators
+    // (nstE, Ns*) count everything simulated and the detection branch increments the numerators
+    // with the same indices.
     bins.gg = FunctE(l);
     l.nstE[bins.gg] += 1.0;
     run.nSimTot += 1;
 
-    // The other six efficiency axes, on the same principle as tE: the DENOMINATOR
-    // has to count everything simulated, so the bin is computed here, before the
-    // detection test, and the numerator is incremented in the detection branch
-    // using these same indices. Every input is already set for this draw --
-    // func_source filled s->Map and s->blend, func_lens filled u0, pirel and
-    // murel -- so this is six array lookups and no new physics.
-    //
-    // Unlike the tE pair there is no per-sightline lowercase pair for these; the
-    // N* arrays accumulate over the whole run, which is what the EfLMC writer
-    // reports and why nothing resets them per sightline.
+    // The other six axes. Their N* arrays accumulate over the whole run (the EfLMC writer reports
+    // them), so nothing resets them per sightline.
     bins.ss = FuncMl(l);                    // lens mass
     bins.qq = FuncPi(l);                    // log10 relative parallax
     bins.ww = Funcu0(l);                    // impact parameter
@@ -57,30 +44,13 @@ EfficiencyBins drawEvent(SimContext& ctx, SightlineState& st, int prevNdw) {
     l.Nsfb[bins.pp] += 1.0;
 
     s.nssim[s.nums] += 1.0;
-    dumpBuf.clear(); //Step S1: this draw's epoch buffer. See the note on `ndw`.
-    // (Step B2: the old single `test = RandR(0.0,1.0)` draw consumed here by
-    // `test <= s->blend[2]` is gone — testL/testR are now drawn fresh right
-    // before the per-survey pre-selection check, below.)
-
-    // Clear only the prefix the PREVIOUS event dirtied -- `prevNdw`, the
-    // ndw of its LightCurveStats, which the caller carries from draw to draw. Clearing all
-    // `coun` slots (Nl + NlRoman = 306,092, times seven arrays = 2.1M writes)
-    // to reset the ~2,000 an event actually uses was ~150x of pure waste per
-    // draw, and got 16x more expensive when NlRoman became the real visit count.
-    //
-    // Safe because every slot in [0, ndw) is fully written before it is read --
-    // both fill branches write all seven arrays at index ndw before incrementing
-    // it -- and FisherM reads only [0, ndw). Slots past the previous ndw are
-    // therefore untouched since construction, i.e. already zero.
-    //
-    // Kept as a prefix clear rather than deleted outright so the clean-slate
-    // invariant survives: if a future edit ever advances ndw without filling
-    // every array, that shows up as a zero instead of as the previous event's
-    // photometry silently entering this event's Fisher matrix.
-    //
-    // NOTE: the untouched tail of tele[] is 0 (its constructed value), not the
-    // -1 the old full clear wrote. Unobservable today -- tele is only read at
-    // [0, ndw) -- but relevant if anything ever scans the whole array.
+    dumpBuf.clear(); // this draw's sample-dump epoch buffer
+    // Clear only the prefix the previous event dirtied (prevNdw): clearing all `coun` slots
+    // (Nl + NlRoman, times seven arrays) every draw is far more expensive than the ~2,000 slots an
+    // event uses. Safe because every slot in [0, ndw) is fully written before it is read and FisherM
+    // reads only [0, ndw); slots past it are still zero from construction. The prefix clear is kept
+    // so that an edit advancing ndw without filling every array shows up as a zero rather than as
+    // the previous event's photometry. The untouched tail of tele[] is 0, not -1.
     for (int i = 0; i < prevNdw; ++i) {
         l.timn[i] = 0.0;  l.magn[i] = 0.0; l.soux[i] = 0.0;  l.souy[i] = 0.0;
         l.errm[i] = 0.0;  l.erra[i] = 0.0; l.tele[i] = -1;
@@ -106,12 +76,10 @@ bool preselectEvent(SimContext& ctx, const SightlineState& st) {
 
     for (int i = 0; i < M; ++i) {
         Mpeak = s.magb[i] - 2.5 * std::log10(l.A0 * s.blend[i] + 1.0 - s.blend[i]);
-//                        cout << "i=" << i << "  Mab=" << s->Mab[i] << "  Map=" << s->Map[i]
-//                             << "  blend=" << s->blend[i] << "  Mpeak=" << Mpeak << endl;
         if (i < 6) { // LSST ugrizy
             if (Mpeak <= st.rubinDepthMed[i] and s.magb[i] > st.rubinDepthMed[i] - RUBIN_SATU_BELOW_M5)
                 fdetRubin += 1.0;
-        } else {     // i == 6, Roman F146 — single band, no ">=2 filters" bar applies
+        } else {     // i == 6, Roman F146, single band, no ">=2 filters" bar applies
             if (Mpeak <= thre[i] and s.magb[i] > satu[i])    romanDetectable = true;
         }
     }
@@ -119,13 +87,10 @@ bool preselectEvent(SimContext& ctx, const SightlineState& st) {
 
     testL = RandR(0.0, 1.0);
     testR = RandR(0.0, 1.0);
-    // Independent draws per survey — reusing one draw for both would correlate
-    // the Rubin-accept and Roman-accept decisions for no physical reason. Each
-    // draw is weighted by that survey's OWN blend fraction (Step B2), replacing
-    // the old single test <= s->blend[2] (LSST r-band only, for both surveys).
+    // Independent accept draws per survey (reusing one would correlate the two decisions), each
+    // weighted by that survey's own blend fraction.
     acceptRubin = rubinDetectable and (testL <= s.blend[2]);
     acceptRoman = romanDetectable and (testR <= s.blend[6]);
-
 
     return acceptRubin or acceptRoman;
 }

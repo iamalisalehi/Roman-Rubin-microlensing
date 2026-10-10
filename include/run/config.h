@@ -16,6 +16,11 @@ struct RunConfig {
     // DCHI_DET_DEFAULT in config/parameters.h. Recorded in run_provenance.txt.
     double dchiDet     = DCHI_DET_DEFAULT;
 
+    // Day-shared astrometric error of the N and P noise variants [mas]; --ast-sigc N,P overrides the
+    // AST_SIGC defaults, e.g. for a scan of theta_E precision against it. Recorded in run_provenance.txt.
+    double astSigcN    = AST_SIGC_N;
+    double astSigcP    = AST_SIGC_P;
+
     // Sightline grid inside Roman's footprint, in the same units. Roman covers ~2.6% of the
     // scan region, so a uniform grid spends most of its time where the joint fit is just
     // Rubin's. Sightlines within a GBTDS field's detector outline are visited on a

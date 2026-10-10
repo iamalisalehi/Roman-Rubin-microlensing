@@ -230,7 +230,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     }
 
     // ---- Per-coordinate weights, free reference positions, and the three noise variants
-    // (AST_SIGC in config/parameters.h), from ONE pass over the epochs. ----
+    // (AST_SIGC in config/parameters.h, co.astSigc), from ONE pass over the epochs. ----
     // Per epoch the derivatives of each sky coordinate c (0 = x, 1 = y) are computed once.
     // Sums kept per coordinate: S_w = sum w, S_wd[c][j] = sum w d_cj, S_wdd[c][jk]. Rubin's epochs
     // go into one white group; Roman's go into day blocks (the sigma_c correlation unit), tagged
@@ -371,9 +371,9 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     for (const auto& [day, k] : romanDays)
         for (int cc = 0; cc < 2; ++cc) rawR[cc] += k.Swdd[cc][Ny * D + Ny];
     for (int v = 0; v < NAVAR; ++v) {
-        std::vector<Group> groups(v == AV_W ? 1 : (v == AV_N ? 2 : AST_MAX_SEASONS));
+        std::vector<Group> groups(v == AV_W ? 1 : 2);          // W: one frame; N, P: one per roll
         for (const auto& [day, k] : romanDays)
-            groups[v == AV_W ? 0 : (v == AV_N ? k.roll : k.season)].fold(k, AST_SIGC[v]);
+            groups[v == AV_W ? 0 : k.roll].fold(k, co.astSigc[v]);
         PerCoord G{};
         for (const auto& g : groups) g.marginaliseInto(G);
         std::array<double, Ny * Ny> FR{};

@@ -103,6 +103,9 @@ struct covarian {
     std::array<double, Nx> deltaScale;
     // Same for the astrometric steps Delta2[].
     std::array<double, Ny> deltaScaleB{1.0, 1.0, 1.0, 1.0};
+    // Day-shared astrometric error of each noise variant [mas per coordinate]: AST_SIGC unless
+    // --ast-sigc overrides N and P (main.cpp).
+    std::array<double, NAVAR> astSigc = AST_SIGC;
 
     gsl_matrix_uptr summA; //size Nx (diagnostic only, joint)
     gsl_matrix_uptr summB; //size Ny (diagnostic only, joint)

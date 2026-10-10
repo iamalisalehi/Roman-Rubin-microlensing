@@ -43,6 +43,10 @@ void printUsage(const char* prog) {
         << "                 dchi_R and either survey clearing the bar alone forces the sum\n"
         << "                 over it. Every yield is conditioned on this number; it is\n"
         << "                 recorded in run_provenance.txt.\n"
+        << "  --ast-sigc N,P day-shared astrometric error of the N and P noise variants, in mas\n"
+        << "                 per coordinate (default " << AST_SIGC_N << "," << AST_SIGC_P << "); needs 0 <= N <= P.\n"
+        << "                 For a scan of the theta_E forecast against it. Recorded in\n"
+        << "                 run_provenance.txt.\n"
         << "  --stride-roman N  sightline grid step inside Roman's footprint, same units\n"
         << "                 (default: same as --stride, i.e. an unstratified scan). Must\n"
         << "                 divide --stride. Sightlines outside the footprint keep the\n"
@@ -89,6 +93,16 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
         if      (arg == "--stride") { cfg.stride = std::atoi(need("--stride")); strideGiven = true; }
         else if (arg == "--stride-roman") cfg.strideRoman = std::atoi(need("--stride-roman"));
         else if (arg == "--dchi-det") cfg.dchiDet = std::atof(need("--dchi-det"));
+        else if (arg == "--ast-sigc") {
+            const std::string v = need("--ast-sigc");
+            const auto comma = v.find(',');
+            if (comma == std::string::npos) {
+                std::cerr << "ERROR: --ast-sigc takes two values, N,P (mas per day), e.g. 0.3,1.1\n";
+                exitCode = 1; return false;
+            }
+            cfg.astSigcN = std::atof(v.substr(0, comma).c_str());
+            cfg.astSigcP = std::atof(v.substr(comma + 1).c_str());
+        }
         else if (arg == "--events")  cfg.iconTarget  = std::atoi(need("--events"));
         else if (arg == "--lenses")  cfg.nlensTarget = std::atoi(need("--lenses"));
         else if (arg == "--nerr")    cfg.nerrTarget  = std::atof(need("--nerr"));
@@ -137,6 +151,11 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
         std::cerr << "ERROR: --dchi-det (" << cfg.dchiDet << ") must be finite and positive. "
                   << "It is a delta-chi2 detection bar; a non-positive bar would declare every "
                   << "event detected.\n";
+        exitCode = 1; return false;
+    }
+    if (not (cfg.astSigcN >= 0.0 and cfg.astSigcN <= cfg.astSigcP) or not std::isfinite(cfg.astSigcP)) {
+        std::cerr << "ERROR: --ast-sigc (" << cfg.astSigcN << "," << cfg.astSigcP << ") needs "
+                  << "0 <= N <= P, finite: P is the pessimistic member of the bracket.\n";
         exitCode = 1; return false;
     }
     if (cfg.stride < 1) {

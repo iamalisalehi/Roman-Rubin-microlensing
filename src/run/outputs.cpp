@@ -267,6 +267,8 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << ROMAN_AST_K << " mas, floor " << ROMAN_AST_FLOOR << " mas; Rubin kappa "
              << LSST_AST_KAPPA << " x visit FWHM_geom, floor " << LSST_AST_FLOOR << " mas; blend offset "
              << (AST_BLEND_OFFSET_FREE ? "fitted (marginalised)" : "known") << "\n"
+             << "# astrometric_variants W: one frame, white; N: frame per roll + " << cfg.astSigcN
+             << " mas/day; P: frame per roll + " << cfg.astSigcP << " mas/day\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex.nTables << " x "
              << ex.nDist << ", k " << ex.k << " --" << ex.built << "\n"
 

@@ -323,23 +323,33 @@ constexpr double ROMAN_AST_K     = 0.792 * ROMAN_PIX_MAS; //87.12 mas: sigma = k
 // floor itself is white; no source quantifies an ADDITIONAL error shared by many exposures. An
 // error constant within a frame group costs nothing (its offset is free): what matters is correlation
 // on timescales shorter than an event. Each event carries three forecasts; the per-exposure error
-// (erra, floor included) is the same in all three, and N and P ADD a day-shared term to it:
-//   W  white (the literature's assumption): one free offset per telescope; nothing added.
-//   N  nominal: one free offset per Roman ROLL (static crowding and distortion biases change with the
-//      PSF orientation) plus AST_SIGC_N per coordinate shared by all Roman exposures of the same day
-//      (time-varying distortion residuals at "a few x 0.1% of a pixel", Bellini 2024 via Lam et al. 2026).
-//   P  pessimistic: one free offset per Roman SEASON plus AST_SIGC_P = 1.1 mas shared within each day,
-//      a day-shared error as large as the floor (a day of ~120 exposures then measures no better than
-//      ~1.1 mas). No identified source is this large; it is an extreme bound.
+// (erra, floor included) is the same in all three, and N and P ADD a day-shared term sigma_c to it.
+// The day is the unit: ~120 exposures through one dither sequence under one thermal state.
+//   W  white (the literature's assumption, for comparison with published forecasts): one free
+//      offset per telescope; nothing added.
+//   N  nominal: one free offset per Roman ROLL (the 180-degree roll between spring and autumn flips
+//      the PSF and moves the field to other detectors, so static crowding and PSF biases change) plus
+//      AST_SIGC_N = 0.3 mas per coordinate shared within each day. That is the level at which Roman
+//      meets the OPTIMAL relative-astrometry requirement of the isolated-black-hole community, 0.1 mas
+//      per 10-day average [8]: over 10 days the white floor averages to ~0.03 mas and a day-shared
+//      error to sigma_c / sqrt(10). (A drafted 10 microarcsec over the whole survey [1] corresponds to
+//      ~0.2 mas per day.)
+//   P  pessimistic: the same frames plus AST_SIGC_P = 1.1 mas per day, the level at which Roman meets
+//      only the MINIMAL requirement, 0.3 mas per 10-day average ("what is achievable with HST now") [8].
+// The frames are per roll in both: one per season would throw away the information between seasons
+// (a factor ~4 in sigma(tetE) at 1.1 mas, on a stub) for a drift that is smooth over years and so
+// largely absorbed by the proper motion. --ast-sigc N,P overrides the two sigma_c for a scan.
+//   [8] Lam et al. 2023, Roman CCS white paper "Characterizing the Galactic population of isolated
+//       black holes", arXiv:2306.12514, Table 1 ("Astrometric precision (10 day average)").
 // Rubin's errors are white with one offset in all three. The day blocks enter by Sherman-Morrison:
 // for a block with weights w_i = 1/erra_i^2 and derivatives d_i, F_k = S_wdd - s^2 S_wd S_wd^T /
 // (1 + s^2 S_w), b_k = S_wd / (1 + s^2 S_w), c_k = S_w / (1 + s^2 S_w), s = sigma_c.
 // The main table columns (sigtetE_*, relMl_*, okB_*, condB_*) are W.
 // ---------------------------------------------------------------------------------------
-constexpr double AST_SIGC_N = 0.3;               //mas per coordinate per Roman day
-constexpr double AST_SIGC_P = ROMAN_AST_FLOOR;   //1.1 mas
+constexpr double AST_SIGC_N = 0.3;               //mas per coordinate per Roman day [8]
+constexpr double AST_SIGC_P = ROMAN_AST_FLOOR;   //1.1 mas [8]
 constexpr std::array<double, NAVAR> AST_SIGC = {0.0, AST_SIGC_N, AST_SIGC_P};
-constexpr int    AST_MAX_SEASONS = 16;           //Roman seasons a P-variant offset can be keyed on
+constexpr int    AST_MAX_SEASONS = 16;           //upper bound on a Roman season index (sanity check)
 // THE BLEND OFFSET IS FREE. The unresolved neighbours sit at a light centroid offset from the source
 // (s.blendOff, drawn in func_source), and as the source brightens the measured centroid slides from
 // them toward it: a magnification-locked shift that real fits must model with two extra parameters per

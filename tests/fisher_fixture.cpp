@@ -858,7 +858,7 @@ int runAstroVariants()
     const char* vn[NAVAR] = {"W", "N", "P"};
     int bad = 0;
     std::cout << "# Step 3c astrometric noise variants: W white | N roll offsets + "
-              << AST_SIGC_N << " mas/day | P season offsets + " << AST_SIGC_P << " mas/day\n"
+              << AST_SIGC_N << " mas/day | P roll offsets + " << AST_SIGC_P << " mas/day\n"
               << "# event,tE,partition,variant,ok,sig_tetE,sig_piE_ast,relMl,ratio_tetE_to_W\n";
     for (const auto& ev : kEvents) {
         setupStatic(*s, *l);

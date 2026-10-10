@@ -48,6 +48,10 @@ int main(int argc, char** argv) {
     // Second Fisher forecast for --pair-satellite: the same event with the satellite offset
     // zeroed. Allocated once, since covarian owns several vectors.
     auto coNS = std::make_unique<covarian>();
+    for (covarian* c : {co.get(), coNS.get()}) {      // the N and P variants' day-shared error
+        c->astSigc[AV_N] = cfg.astSigcN;
+        c->astSigc[AV_P] = cfg.astSigcP;
+    }
 
     // satScale multiplies L2_OFFSET_AU inside lightcurve(); 0 puts Roman at the centre of the Earth.
     as->satScale = cfg.noSatPar ? 0.0 : 1.0;

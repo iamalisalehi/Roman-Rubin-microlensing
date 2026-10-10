@@ -46,6 +46,7 @@ To build and test only the C++ core:
 make                                  # builds ./roman (run it from the repository root)
 make fishertest && ./fishertest       # Fisher-matrix regression test, no data files needed
 make extinctiontest && ./extinctiontest
+make vbmtest && ./vbmtest             # VBMicrolensing against independent references
 ```
 
 ## Repository layout
@@ -63,6 +64,7 @@ make extinctiontest && ./extinctiontest
 | `samples/` | Specifications of illustrative events whose full light curves `./roman` writes out |
 | `tests/` | C++ regression and unit tests; data-quality checks for the generated inputs |
 | `files/` | Small static inputs (noise curves); run outputs are written under `files/MONTLMC/files/` |
+| `external/` | Third-party code compiled into the simulator, unmodified: [VBMicrolensing](external/VBMicrolensing/README.md) |
 | `Whitepaper/` | LaTeX source of the write-up |
 
 Data products are generated, not committed.
@@ -81,4 +83,5 @@ for her guidance and for the foundation it provided.
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE).
+MIT. See [`LICENSE`](LICENSE). The exception is `external/VBMicrolensing/`, which is VBMicrolensing
+(Bozza et al.) under the GNU LGPL v3; see [its directory](external/VBMicrolensing/README.md).

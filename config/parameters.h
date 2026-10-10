@@ -534,6 +534,11 @@ inline constexpr const char* PATH_CMD_THIN       = "./CMD/components/thin_disk.d
 inline constexpr const char* PATH_CMD_BULGE      = "./CMD/components/bulge.dat";
 inline constexpr const char* PATH_CMD_THICK      = "./CMD/components/thick_disk.dat";
 inline constexpr const char* PATH_CMD_HALO       = "./CMD/components/halo.dat";
+// Vendored VBMicrolensing tables (committed, external/VBMicrolensing/): the tabulated uniform-disc
+// finite-source magnification, and JPL Horizons' geocentric Sun ephemeris (1990-2050, daily) that its
+// annual parallax interpolates.
+inline constexpr const char* PATH_VBM_ESPL_TABLE = "./external/VBMicrolensing/data/ESPL.tbl";
+inline constexpr const char* PATH_VBM_SUN_TABLE  = "./external/VBMicrolensing/data/SunEphemeris.txt";
 // Output directory (LpLMC / EfLMC / MapLMC / run_provenance) and the Disk_model debug dumps; both end in a slash.
 inline constexpr const char* PATH_OUT_DIR        = "./files/MONTLMC/files/";
 inline constexpr const char* PATH_DENSITY_DIR    = "./files/density/";

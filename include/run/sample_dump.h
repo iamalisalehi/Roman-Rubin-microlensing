@@ -17,7 +17,7 @@
 //     and written only for events that fill a requested sample class.
 
 // One recorded observation, in the observer frame of the telescope that took it: Rubin's values
-// come from lightcurve(..., 0) (geocentric), Roman's from lightcurve(..., 1) (L2). The two
+// come from evaluateTrack(..., 0, ...) (geocentric), Roman's from evaluateTrack(..., 1, ...) (L2). The two
 // observers see different impact parameters at the same instant; that difference is the
 // satellite parallax.
 struct DumpEpoch {

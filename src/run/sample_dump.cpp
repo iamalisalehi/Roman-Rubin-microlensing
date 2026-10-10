@@ -127,8 +127,8 @@ bool parseSampleSpec(const std::string& path, SampleSpec& spec)
 //   <class>_<id>_params.dat  the event's true parameters and its forecast sigmas
 //
 // The dense curve is regenerated here rather than taken from the time loop, whose adaptive
-// step goes coarse in the wings. It costs one lightcurve() call per grid point and consumes
-// no RNG.
+// step goes coarse in the wings. It asks the model for the whole grid, once per observer frame,
+// and consumes no RNG.
 void writeSampleEvent(const SampleSpec& spec, const std::string& cls,
                              const std::string& id, const std::vector<DumpEpoch>& buf,
                              const std::string& params,
@@ -182,23 +182,23 @@ void writeSampleEvent(const SampleSpec& spec, const std::string& cls,
        << "# t frame u u_noplx A A_noplx mag_u..mag_F146 mag0_u..mag0_F146 "
           "def1c def2c def1a def2a pos1b pos2b pos1c pos2c lens1 lens2\n";
     fm << std::setprecision(8);
+    std::vector<TrackPoint> track(grid.size());
     for (int frame = 0; frame < 2; ++frame) {
-        for (double t : grid) {
-            lightcurve(s, l, as, t, frame);
-            const double A  = magnifOf(s.ut);
-            const double A0 = magnifOf(s.ut0);
-            fm << t << " " << frame << " "
-               << s.ut << " " << s.ut0 << " " << A << " " << A0;
+        evaluateTrack(s, l, as, frame, grid.data(), static_cast<int>(grid.size()), track.data());
+        for (std::size_t k = 0; k < grid.size(); ++k) {
+            const TrackPoint& p = track[k];
+            fm << grid[k] << " " << frame << " "
+               << p.u << " " << p.uNoPlx << " " << p.A << " " << p.ANoPlx;
             // All M filters are safe here: they are built from A directly, not read from the
             // time loop's magni[]/magni0[] scratch arrays, which at a Roman epoch still hold
             // Rubin-frame values in slots 0-5.
             for (int i = 0; i < M; ++i)
-                fm << " " << s.magb[i] - 2.5 * std::log10(A  * s.blend[i] + 1.0 - s.blend[i]);
+                fm << " " << s.magb[i] - 2.5 * std::log10(p.A * s.blend[i] + 1.0 - s.blend[i]);
             for (int i = 0; i < M; ++i)
-                fm << " " << s.magb[i] - 2.5 * std::log10(A0 * s.blend[i] + 1.0 - s.blend[i]);
-            fm << " " << s.def1c << " " << s.def2c << " " << s.def1a << " " << s.def2a
-               << " " << s.pos1b << " " << s.pos2b << " " << s.pos1c << " " << s.pos2c
-               << " " << l.pos1  << " " << l.pos2  << "\n";
+                fm << " " << s.magb[i] - 2.5 * std::log10(p.ANoPlx * s.blend[i] + 1.0 - s.blend[i]);
+            fm << " " << p.def1c << " " << p.def2c << " " << p.def1a << " " << p.def2a
+               << " " << p.pos1b << " " << p.pos2b << " " << p.pos1c << " " << p.pos2c
+               << " " << p.lens1 << " " << p.lens2 << "\n";
         }
     }
 }

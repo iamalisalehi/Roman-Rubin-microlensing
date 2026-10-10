@@ -54,16 +54,16 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
 
     // du_sat: observer separation in Einstein radii at t0, piE * D_perp / AU. D_perp is the separation
     // projected perpendicular to the line of sight (~0.87-0.99 of the L2 offset over the year), so
-    // L2_OFFSET_AU * piE is only a ceiling; lightcurve() is asked for both observers so the projection
+    // L2_OFFSET_AU * piE is only a ceiling; the model is asked for both observers so the projection
     // is not re-derived here. nepL_pk / nepR_pk: epochs of each survey within +-2 tE of t0; satellite
-    // parallax needs contemporaneous coverage. Calling lightcurve() here is safe: FisherM has run, and
+    // parallax needs contemporaneous coverage. Asking for the model here is safe: FisherM has run, and
     // the state it touches is not read by the row below and is recomputed by the next draw.
     pk.duSat = 0.0;
     {
-        lightcurve(s, l, as, l.t0, 0);
-        const double r1 = as.ue_n1, r2 = as.ue_n2;
-        lightcurve(s, l, as, l.t0, 1);
-        const double dn1 = as.ue_n1 - r1, dn2 = as.ue_n2 - r2;
+        TrackPoint atRubin, atRoman;
+        evaluateTrack(s, l, as, 0, &l.t0, 1, &atRubin);
+        evaluateTrack(s, l, as, 1, &l.t0, 1, &atRoman);
+        const double dn1 = atRoman.ue1 - atRubin.ue1, dn2 = atRoman.ue2 - atRubin.ue2;
         pk.duSat = l.piE * std::sqrt(dn1 * dn1 + dn2 * dn2);
     }
     pk.nepLpk = 0, pk.nepRpk = 0;

@@ -1,5 +1,5 @@
-// The microlensing light curve and astrometric track at one epoch and over many (evaluateModel), the observed peak,
-// and the two-image resolution test.
+// The microlensing light curve and astrometric track over many epochs of one observer (evaluateModel,
+// evaluateTrack), the observed peak, and the two-image resolution test.
 #ifndef ROMAN_EVENTS_LIGHTCURVE_H
 #define ROMAN_EVENTS_LIGHTCURVE_H
 
@@ -48,7 +48,17 @@ inline double magnifOf(double u)
     return double(u * u + 2.0) / std::sqrt(u * u * (u * u + 4.0));
 }
 
+// The single-epoch kernel behind the two ways of asking for the model below. Only lightcurve.cpp calls it.
 void   lightcurve(source & s, lens & l, astromet & as, double, int tele);
+
+// The code asks for the model in exactly two ways, and both take a whole light curve: one observer, many
+// epochs, one call. A library that computes light curves (rather than single points) can replace the
+// kernel behind them without any caller changing.
+//
+//   evaluateModel  the slim path for the Fisher matrices, which differentiate it hundreds of times per
+//                  event and need only the four numbers of ModelPoint.
+//   evaluateTrack  everything else (the time loop, the sample dump, the observed peak, the satellite
+//                  offset), which need the whole geometry and are called once per light curve.
 
 // What the Fisher matrices need from the model at one epoch.
 struct ModelPoint {
@@ -61,6 +71,26 @@ struct ModelPoint {
 // out[i] is the model at t[i]. The one place FisherM asks for the model. See lightcurve.cpp.
 void   evaluateModel(source & s, lens & l, astromet & as, int tele, const double* t, int n,
                      ModelPoint* out);
+
+// What every other caller reads from the model at one epoch: the lens-source geometry with and without
+// the microlensing parallax, the magnification, the centroid deflection, the source, centroid and lens
+// positions, and the observer's offset.
+struct TrackPoint {
+    double u, uNoPlx;       //impact parameter WITH / WITHOUT the microlensing parallax [Einstein radii]
+    double A, ANoPlx;       //magnifOf(u), magnifOf(uNoPlx)
+    double def1c, def2c;    //centroid deflection WITH parallax [mas]
+    double def1a, def2a;    //centroid deflection WITHOUT parallax [mas]
+    double pos1b, pos2b;    //unlensed source position: proper motion + its own parallax [mas]
+    double pos1c, pos2c;    //measured light centroid [mas]
+    double lens1, lens2;    //lens position: its proper motion + its own parallax [mas]
+    double ue1, ue2;        //the observer's sky-projected offset from Earth's position at t = 0 [AU] (the
+                            //legacy as.ue_n1 / as.ue_n2); only the satellite separation du_sat reads it
+};
+
+// The current event seen by observer `tele` (0 = Rubin on Earth, 1 = Roman at L2) at the n epochs
+// t[0..n-1]: out[i] is the model at t[i]. Uses no random numbers. See lightcurve.cpp.
+void   evaluateTrack(source & s, lens & l, astromet & as, int tele, const double* t, int n,
+                     TrackPoint* out);
 
 // Finds the OBSERVED peak: the Earth-frame, parallax-bent closest approach.
 // Returns {time of the peak, impact parameter there}. See the comment in lightcurve.cpp.

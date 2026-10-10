@@ -1,5 +1,5 @@
-// Light curve and astrometric track of one event at one epoch and over many (evaluateModel), and
-// the observed-peak finder.
+// Light curve and astrometric track of one event at one epoch and over many (evaluateModel,
+// evaluateTrack), and the observed-peak finder.
 #include "events/lightcurve.h"
 
 // tele: which observatory is asking -- 0 = Rubin (on Earth), 1 = Roman (at Sun-Earth L2).
@@ -88,13 +88,29 @@ void lightcurve(source & s, lens & l, astromet & as, double timh, int tele)
 // through here and nowhere else, one call per parameter set and telescope. A whole light curve per
 // call is the shape of a library that computes light curves (one observer, many epochs) rather than
 // single points, which can replace the loop below without FisherM changing. For now it is
-// lightcurve() epoch by epoch, and leaves s/as holding the state at t[n-1].
+// lightcurve() epoch by epoch, and leaves s/l/as holding the state at t[n-1].
 void evaluateModel(source & s, lens & l, astromet & as, int tele, const double* t, int n,
                    ModelPoint* out)
 {
     for (int i = 0; i < n; ++i) {
         lightcurve(s, l, as, t[i], tele);
         out[i] = ModelPoint{magnifOf(s.ut), s.ut, s.pos1c, s.pos2c};
+    }
+}
+
+// The same light curve for everything that is not the Fisher matrix, with the whole geometry per
+// epoch instead of four numbers: the time loop, the sample dump, the observed peak and the satellite
+// offset ask for it through here and nowhere else. Same shape and same replacement as evaluateModel
+// above; leaves s/l/as holding the state at t[n-1].
+void evaluateTrack(source & s, lens & l, astromet & as, int tele, const double* t, int n,
+                   TrackPoint* out)
+{
+    for (int i = 0; i < n; ++i) {
+        lightcurve(s, l, as, t[i], tele);
+        out[i] = TrackPoint{s.ut,    s.ut0,   magnifOf(s.ut), magnifOf(s.ut0),
+                            s.def1c, s.def2c, s.def1a,        s.def2a,
+                            s.pos1b, s.pos2b, s.pos1c,        s.pos2c,
+                            l.pos1,  l.pos2,  as.ue_n1,       as.ue_n2};
     }
 }
 
@@ -106,12 +122,19 @@ void evaluateModel(source & s, lens & l, astromet & as, int tele, const double* 
 // at the returned time (callers recompute what they need).
 std::pair<double, double> observedPeak(source& s, lens& l, astromet& as)
 {
-    auto uAt = [&](double t) { lightcurve(s, l, as, t, 0); return s.ut; };
+    // u(t) at one time; the golden-section search below asks for one point at a time.
+    auto uAt = [&](double t) { TrackPoint p; evaluateTrack(s, l, as, 0, &t, 1, &p); return p.u; };
     const double lo = l.t0 - 3.0 * l.tE, hi = l.t0 + 3.0 * l.tE;
     const int    N  = 600;
     const double h  = (hi - lo) / N;
-    int best = 0; double ubest = uAt(lo);
-    for (int k = 1; k <= N; ++k) { const double u = uAt(lo + k * h); if (u < ubest) { ubest = u; best = k; } }
+    // The grid, as one light curve.
+    std::vector<double>     tg(N + 1);
+    std::vector<TrackPoint> pg(N + 1);
+    tg[0] = lo;
+    for (int k = 1; k <= N; ++k) tg[k] = lo + k * h;
+    evaluateTrack(s, l, as, 0, tg.data(), N + 1, pg.data());
+    int best = 0; double ubest = pg[0].u;
+    for (int k = 1; k <= N; ++k) { const double u = pg[k].u; if (u < ubest) { ubest = u; best = k; } }
     double a = lo + std::max(best - 1, 0) * h, b = lo + std::min(best + 1, N) * h;
     const double g = 0.5 * (std::sqrt(5.0) - 1.0);
     double c = b - g * (b - a), d = a + g * (b - a), fc = uAt(c), fd = uAt(d);

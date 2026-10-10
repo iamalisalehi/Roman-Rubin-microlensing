@@ -233,7 +233,7 @@ step_def() {
             if [[ $EXT_TABLES == build ]]; then S_INS="maps.py analysis/dustref.py analysis/gbtds_geometry.py"; else S_INS=$P_EXT; fi
             S_OUTS=files/ext/ext_tables.dat ;;
         sync)
-            S_FN=do_sync; S_INS="$COMPONENT_FILES CMD/components/lens_ml.dat Baseline/BulgeBaseline.dat Baseline/RomanBaseline.dat files/sigmaA_LSST.txt files/sigma_roman.txt tools/sync_data_products.py"
+            S_FN=do_sync; S_INS="$COMPONENT_FILES CMD/components/lens_ml.dat Baseline/BulgeBaseline.dat Baseline/RomanBaseline.dat files/sigma_roman.txt tools/sync_data_products.py"
             S_OUTS=config/data_products.h ;;
         build)      S_FN=do_build; S_OUTS=roman; S_STAMP="" ;;
         *) die "internal: unknown step $1" ;;
@@ -421,7 +421,7 @@ check_inputs() {
     elif [[ -f $P_EXT ]]; then item req ok EXT_TABLES "$EXT_TABLES"
     else item req MISSING EXT_TABLES "$EXT_TABLES not found"; fi
     local f
-    for f in files/sigmaA_LSST.txt files/sigma_roman.txt $EEM Baseline/gbtds_layout/sca_layout_spring.txt; do
+    for f in files/sigma_roman.txt $EEM Baseline/gbtds_layout/sca_layout_spring.txt; do
         [[ -f $f ]] && item req ok "$(basename "$f")" "in the clone" || item req MISSING "$(basename "$f")" "$f should come with the git clone"
     done
 }
@@ -564,7 +564,6 @@ make_rundir() {   # make_rundir DIR
     ln -sfn "$ROOT/Baseline" "$d/Baseline"
     ln -sfn "$ROOT/CMD" "$d/CMD"
     ln -sfn "$ROOT/files/ext/ext_tables.dat" "$d/files/ext/ext_tables.dat"
-    ln -sfn "$ROOT/files/sigmaA_LSST.txt" "$d/files/sigmaA_LSST.txt"
     ln -sfn "$ROOT/files/sigma_roman.txt" "$d/files/sigma_roman.txt"
 }
 
@@ -587,7 +586,7 @@ write_provenance() {
         echo "# md5 of the data products this run reads:"
         for f in CMD/components/thin_disk.dat CMD/components/bulge.dat CMD/components/thick_disk.dat CMD/components/halo.dat \
                  CMD/components/lens_ml.dat CMD/components/provenance.txt Baseline/BulgeBaseline.dat Baseline/RomanBaseline.dat \
-                 Baseline/lsstcam_fov/fov_map.txt files/ext/ext_tables.dat files/sigmaA_LSST.txt files/sigma_roman.txt config/data_products.h; do
+                 Baseline/lsstcam_fov/fov_map.txt files/ext/ext_tables.dat files/sigma_roman.txt config/data_products.h; do
             echo "md5 $(md5f "$f")  $f"
         done
         echo "# ---- config file ----"
@@ -604,7 +603,7 @@ stage_sim() {
     need_py
     local missing=""
     for f in roman Baseline/BulgeBaseline.dat Baseline/RomanBaseline.dat Baseline/lsstcam_fov/fov_map.txt files/ext/ext_tables.dat \
-             CMD/components/lens_ml.dat CMD/components/bulge.dat files/sigmaA_LSST.txt files/sigma_roman.txt; do
+             CMD/components/lens_ml.dat CMD/components/bulge.dat files/sigma_roman.txt; do
         [[ -e $f ]] || missing="$missing $f"
     done
     [[ -z $missing ]] || die "not ready to simulate, missing:$missing -- run the prep stage"

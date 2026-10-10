@@ -83,6 +83,18 @@ EXT_TARGET = extinctiontest
 $(EXT_TARGET): build/tests/extinction_test.o build/galaxy/extinction.o
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
+# ---------------------------------------------------------------------------
+# Astrometric error-model unit test (tests/noise_test.cpp)
+#
+# Pins errRomanA to McKinnon & van der Marel 2026's tabulated F146 curve and errlsstA to the
+# kappa * FWHM / SNR form. Needs only the vendored files/sigma_roman.txt; run from the repo root:
+#     make noisetest && ./noisetest
+# ---------------------------------------------------------------------------
+NOISE_TARGET = noisetest
+
+$(NOISE_TARGET): build/tests/noise_test.o $(LIB_OBJS)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
 # Verify config/data_products.h against the data files on disk. Not part of `all` (CI has no
 # data files). To refresh the header, run `python3 tools/sync_data_products.py`.
 check-data:
@@ -91,8 +103,8 @@ check-data:
 .PHONY: check-data
 
 # Header dependencies written by -MMD
--include $(OBJS:.o=.d) build/tests/fisher_fixture.d build/tests/extinction_test.d
+-include $(OBJS:.o=.d) build/tests/fisher_fixture.d build/tests/extinction_test.d build/tests/noise_test.d
 
 # Clean
 clean:
-	rm -rf build $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET)
+	rm -rf build $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET) $(NOISE_TARGET)

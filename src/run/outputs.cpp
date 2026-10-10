@@ -257,10 +257,12 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "# Nl                  " << Nl << "\n"
              << "# NlRoman             " << NlRoman << "\n"
              << "# FoV_rubin_deg       " << FoV << "\n"
-             << "# roman_noise         ast: errRomanA(m_AB - " << F146_AB_MINUS_VEGA
-             << ") [Vega anchors]; phot: Penny+2019 curve anchored to 5-sigma "
+             << "# roman_noise         phot: Penny+2019 curve anchored to 5-sigma "
              << ROMAN_DEPTH5_AB << " AB (66 s); depth " << thre[6] << ", saturation "
              << satu[6] << " AB\n"
+             << "# astrometric_noise   k/SNR (+) floor, SNR from the epoch's photometric error; Roman k "
+             << ROMAN_AST_K << " mas, floor " << ROMAN_AST_FLOOR << " mas; Rubin kappa "
+             << LSST_AST_KAPPA << " x visit FWHM_geom, floor " << LSST_AST_FLOOR << " mas\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex.nTables << " x "
              << ex.nDist << ", k " << ex.k << " --" << ex.built << "\n"
 

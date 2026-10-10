@@ -21,6 +21,8 @@ jobs:
       run: make fishertest && ./fishertest
     - name: Extinction-law unit test
       run: make extinctiontest && ./extinctiontest
+    - name: Astrometric error-model unit test
+      run: make noisetest && ./noisetest
     - name: Python syntax check
       run: python3 -m compileall -q analysis pipeline tools tests CMD Baseline maps.py
     - name: Pipeline script syntax check

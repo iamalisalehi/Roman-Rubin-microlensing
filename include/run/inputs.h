@@ -19,7 +19,6 @@
 GbtdsLayout loadGbtdsLayout();
 
 int readRubinVisits(lsst& ls);            // BulgeBaseline.dat
-int readRubinAstromTable(lsst& ls);       // sigmaA_LSST.txt
 int readRomanErrorTable(roman& ro);       // sigma_Roman.txt, rescaled to ROMAN_DEPTH5_AB
 int readRomanVisits(roman& ro);           // RomanBaseline.dat
 int buildRomanSeasons(const roman& ro, RomanSchedule& sched);   // season geometry + refuse-to-run guard

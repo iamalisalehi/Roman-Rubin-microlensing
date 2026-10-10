@@ -6,8 +6,8 @@
 #include "surveys/visits.h"
 
 double errlsstM(double,int,double);
-double errlsstA(lsst & ls,  double);
-double errRomanA(double magF146);   //Roman WFI per-exposure astrometric error [mas]
+double errlsstA(double errPhotMag, double fwhmArcsec);   //Rubin per-visit astrometric error [mas]
+double errRomanA(double errPhotMag);   //Roman WFI per-exposure astrometric error [mas]
 
 // TODO: confirm what sigma_roman.txt represents (a fixed mag-vs-error lookup, or a per-visit-depth
 // formula like errlsstM). The signature assumes the simpler case (no per-visit depth).

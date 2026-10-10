@@ -36,6 +36,10 @@ int readRubinVisits(lsst& ls) {
             return 1;
         }
         CHECK(airm >= 0.0);
+        // The seeing column is OpSim's seeingFwhmEff; the astrometric error wants the PSF's
+        // geometric FWHM (config/parameters.h, LSST_FWHM_GEOM_*).
+        CHECK(seeingVal > 0.2 and seeingVal < 5.0);
+        ls.fwhm[i] = LSST_FWHM_GEOM_SLOPE * seeingVal + LSST_FWHM_GEOM_OFFSET;
         CHECK(ls.filter[i] >= 0);
         CHECK(ls.filter[i] < 6);
         CHECK(ls.tim[i] >= 0.0);
@@ -44,25 +48,6 @@ int readRubinVisits(lsst& ls) {
    }
     fil.close();
     std::cout << "**** File BulgeBaseline.dat was read ****\n";
-    return 0;
-}
-
-int readRubinAstromTable(lsst& ls) {
-    std::ifstream fil;
-    // Rubin astrometric error table.
-    fil.open(PATH_SIGMA_A_LSST);
-    if (!fil) { std::cerr << "Cannot read sigmaA_LSST.txt\n"; return 1; }
-
-    for (int i = 0; i < Na; ++i) {
-        fil >> ls.mag[i] >> ls.err[i];
-
-        CHECK(ls.mag[i] >= 16.0);
-        CHECK(ls.mag[i] <= 25.0);
-        CHECK(ls.err[i] >= 0.2);
-        CHECK(ls.err[i] <= 5.0);
-    }
-    fil.close();
-    std::cout << "**** File sigmaA_LSST.txt was read ****\n";
     return 0;
 }
 
@@ -193,7 +178,6 @@ int readCmdTables(CMD& cm) {
 
 int loadInputs(lsst& ls, roman& ro, extin& ex, CMD& cm, RomanSchedule& sched) {
     if (int rc = readRubinVisits(ls))        return rc;
-    if (int rc = readRubinAstromTable(ls))   return rc;
     if (int rc = readRomanErrorTable(ro))    return rc;
     if (int rc = readRomanVisits(ro))        return rc;
     if (int rc = buildRomanSeasons(ro, sched)) return rc;

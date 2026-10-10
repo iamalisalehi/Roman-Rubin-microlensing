@@ -51,24 +51,18 @@ COLOR = {"joint": "#0d366b", "roman": "#c2410c", "rubin": "#0e7490"}
 LABEL = {"joint": "joint fit", "roman": "Roman alone", "rubin": "Rubin alone"}
 ACCENT = "#7c3aed"
 
-# Roman WFI per-exposure astrometric precision, F146, in mas. Read from config/parameters.h
-# (ROMAN_AST_* constants); sources: Sanderson et al. 2019 (arXiv:1712.05420), arXiv:2608.24998.
-ROMAN_AST_FLOOR = P.ROMAN_AST_FLOOR        # mas, 1% of the 110 mas pixel
-ROMAN_AST_MFLR = P.ROMAN_AST_MFLR
-ROMAN_AST_MBKG = P.ROMAN_AST_MBKG
-ROMAN_AST_SBKG = P.ROMAN_AST_SBKG
-ROMAN_AST_SLOPE_SRC = P.ROMAN_AST_SLOPE_SRC
-ROMAN_AST_SLOPE_BKG = P.ROMAN_AST_SLOPE_BKG
+# Roman WFI per-exposure astrometric floor, F146 [mas] (config/parameters.h).
+ROMAN_AST_FLOOR = P.ROMAN_AST_FLOOR
 
 U_AST_PEAK = np.sqrt(2.0)    # the separation at which the centroid shift is maximal
 
 
-AB_MINUS_VEGA = 0.0     # set in main() from the run's provenance
+PROV_PATH = None        # set in main(): the run's provenance says which error model it used
 
 
 def roman_ast_error(mag):
-    """errRomanA() via romanlib (AB -> Vega offset as the run applied it). Per EXPOSURE, in mas."""
-    return R.roman_ast_error(mag, AB_MINUS_VEGA)
+    """errRomanA() via romanlib, by the model the run used. Per EXPOSURE, in mas."""
+    return R.roman_ast_error_for_run(mag, PROV_PATH)
 
 
 def centroid_shift(theta_e, u):
@@ -348,9 +342,9 @@ def main():
     print(stamp)
 
     prov_path = R.find_provenance(args.provenance, near=args.events)
-    global AB_MINUS_VEGA
-    AB_MINUS_VEGA = R.roman_ast_vega_offset(prov_path)
-    print(f"errRomanA magnitude offset (AB - Vega) as the run applied it: {AB_MINUS_VEGA}")
+    global PROV_PATH
+    PROV_PATH = prov_path
+    print(f"Roman astrometric error model of this run: {R.roman_ast_model(prov_path)}")
     prov = R.load_provenance(prov_path) if prov_path else {}
     pre_h4 = "satellite_parallax" not in prov
     if pre_h4:

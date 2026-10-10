@@ -16,7 +16,7 @@
 
 #include "physical_constants.h"
 #include "parameter_types.h"
-#include "data_products.h"   // LSST_AST_TABLE_FLOOR (generated from files/sigmaA_LSST.txt)
+#include "data_products.h"   // row counts and catalogue means (generated from the data files)
 
 // ==========================================================================================
 // (1) RUN DEFAULTS
@@ -206,24 +206,33 @@ inline const std::vector<int> RUBIN_REF_BANDS = {2};
 
 constexpr double Tobs = 10.0 * year;//LSST observational time: 10 years
 // ---------------------------------------------------------------------------------------
-// Rubin/LSST per-visit astrometric error. files/sigmaA_LSST.txt is a mission-averaged curve; FisherM
-// divides l.erra[] by the per-epoch error and sums over ~2,300 epochs, so feeding the table in directly
-// would apply the sqrt(N) averaging twice. The table is therefore renormalised by
-// LSST_AST_FLOOR / LSST_AST_TABLE_FLOOR, which puts its bright end on the published per-visit figure
-// and keeps its magnitude dependence. Cross-check: the table's bright floor is 0.3739576 mas and
-// 10 mas / 0.3739576 = 26.74 ~ sqrt(715), a plausible 10-year all-band visit count; scaled by it, the
-// faint end reads 132 mas at r = 24.44, against a seeing-limited FWHM/SNR ~ 140 mas.
+// Rubin/LSST per-visit astrometric error, per coordinate (errlsstA), in milliarcseconds:
+//     sigma = sqrt( (LSST_AST_KAPPA * FWHM_visit / SNR_visit)^2 + LSST_AST_FLOOR^2 )
+// The first term is the statistical limit of a PSF fit, sigma = kappa FWHM / SNR [5]. FWHM_visit is the
+// visit's geometric PSF FWHM (OpSim seeingFwhmGeom = LSST_FWHM_GEOM_SLOPE * seeingFwhmEff +
+// LSST_FWHM_GEOM_OFFSET [6], from the visit list's seeing column); SNR_visit = 1.0857 / sigma_rand, where
+// sigma_rand is the photon-noise part of the same visit's photometric error (errlsstM, with the visit's
+// own band and depth; the 5 mmag calibration term delta2 excluded). kappa depends on the PSF shape and on
+// whether the source or the sky dominates the noise: 0.425 / 0.60 for a Gaussian, 0.51 / 0.63 for a
+// long-exposure Kolmogorov seeing profile (source / background limited; [5]'s eqs. 11 and 14 evaluated
+// on his eq. 43 profile). Bulge sources are background limited wherever this term is not buried under
+// the floor, so 0.63.
+// The floor is the per-visit systematic: atmospheric image motion that no analysis of the image can
+// remove [5 sec. 6.4], white between visits. 10 mas is the conservative choice [3]; [4] suggests 3-7.
 //
 // Sources:
 //   [3] Ivezic et al. 2019, ApJ 873, 111 (arXiv:0805.2366): requirements derived from "an assumed
 //       astrometric accuracy of 10 mas per observation per coordinate".
 //   [4] SITCOMTN-159 (Rubin commissioning, Operations Rehearsal 3): single-visit positions carry a
 //       3-7 mas systematic, added in quadrature to the pipeline uncertainty.
-// 10 mas is the conservative choice; [4] suggests the delivered floor may be nearer 3-7 mas.
+//   [5] Lindegren 1978, IAU Coll. 48, p. 197 (Zenodo 10493823): eqs. 6-14, Table 1; Fritz et al. 2010,
+//       MNRAS 401, 1177, eq. 2.
+//   [6] the OpSim relation, also used for FWHM[] in section 3.
 // ---------------------------------------------------------------------------------------
-constexpr double LSST_AST_FLOOR       = 10.0;      //mas per visit per coordinate [3]
-// LSST_AST_TABLE_FLOOR (the table's bright-star floor) lives in the generated config/data_products.h.
-constexpr double LSST_AST_RENORM      = LSST_AST_FLOOR / LSST_AST_TABLE_FLOOR; //26.74
+constexpr double LSST_AST_FLOOR        = 10.0;   //mas per visit per coordinate [3]
+constexpr double LSST_AST_KAPPA        = 0.63;   //sigma * SNR / FWHM, Kolmogorov PSF, background limited [5]
+constexpr double LSST_FWHM_GEOM_SLOPE  = 0.822;  //seeingFwhmGeom = SLOPE * seeingFwhmEff + OFFSET [arcsec] [6]
+constexpr double LSST_FWHM_GEOM_OFFSET = 0.052;
 constexpr double FoV = double(3.5 / 2.0);  //radius of the Rubin field of view [deg]
 // The scan region. A sky point is scanned if a Rubin pointing that ALSO images a Roman field could
 // image it: such a pointing is centred within FoV + rField of a Roman field centre and images points
@@ -269,37 +278,34 @@ constexpr double L2_OFFSET_AU = L2_KM / AU_KM;   // ~0.01003
 // floor is re-added; errRomanM then interpolates log(err) linearly in magnitude.
 constexpr double ROMAN_PHOT_FLOOR = 0.001;   //mag, Penny et al. 2019 Table 2 "Error floor 1.0 mmag"
 // ---------------------------------------------------------------------------------------
-// Roman WFI per-exposure astrometric precision, F146 (a.k.a. W149), in milliarcseconds (errRomanA).
+// Roman WFI per-exposure astrometric precision, F146, per coordinate (errRomanA), in milliarcseconds:
+//     sigma = sqrt( (ROMAN_AST_K / SNR)^2 + ROMAN_AST_FLOOR^2 )
+// SNR = 1.0857 / sigma_rand, sigma_rand the photon-noise part of the same exposure's photometric error
+// (errRomanM, the 1 mmag floor removed in quadrature). The relation sigma = k / SNR is the statistical
+// limit of a PSF fit [5] (eqs. 7-8 of [7]); k = 0.792 pixel was measured by [7] on the stpsf F146 PSF
+// sampled on 0.11" pixels (FWHM 1.044 pixel; kappa = k / FWHM = 0.758, larger than a Gaussian's 0.425
+// because the PSF is undersampled; their zero sub-pixel-offset value, the pessimistic one). With our
+// SNR this reproduces [7]'s tabulated 66-s GBTDS curve (medium background) to 2-3% over F146 AB 19-26,
+// so Roman's photometric and astrometric errors now share one SNR. Neither includes crowding or
+// geometric distortion [2][7].
+// The floor: "single-exposure precision for well-exposed point sources is 0.01 pixel, or about 1.1 mas"
+// [1]; adopted by [2] and [7] (added in quadrature by [7]). A systematic, so it does not improve for
+// brighter stars.
 //
 // Sources:
-//   [1] Sanderson et al. 2019, arXiv:1712.05420 sec 1.1: "single-exposure precision for well-exposed
-//       point sources is 0.01 pixel, or about 1.1 mas", improving ~10x when ~100 exposures are stacked.
-//   [2] "Black hole astrometric binaries in the Roman Galactic Bulge Time Domain Survey",
-//       arXiv:2608.24998, Fig. 5: 1% centroiding => "a floor of 1.1 mas for Roman" for sources
-//       F146_Vega < 20.62; background dominated near F146_Vega < 23.5, sigma_ast ~ 10 mas; pixels
-//       "0.11 arcsec"; each GBTDS exposure "66 seconds" at a "12.1 minute" cadence. Their curve derives
-//       from Pandeia and the Roman astrometry tool of Bellini et al. 2024.
+//   [1] Sanderson et al. 2019, arXiv:1712.05420 sec 1.1, improving ~10x when ~100 exposures are stacked.
+//   [2] Lam et al. 2026, arXiv:2608.24998, sec. 4.2.2 and Fig. 5 (same tool as [7], at the 90th-percentile
+//       background); pixels "0.11 arcsec"; each GBTDS exposure "66 seconds" at a "12.1 minute" cadence.
+//   [7] McKinnon & van der Marel 2026, arXiv:2602.00310, Table 1 (F146: k = 0.792 px) and the tool's
+//       data/roman_IM_66_6_gbtds_mid_5stripe_medium_F146_pos_errs.csv (Zenodo 10.5281/zenodo.18407082).
 //
-// PER EXPOSURE: the 0.1 mas figure in both sources is the daily-binned precision (~100 exposures
-// stacked). l.erra[] is a per-epoch error and one row of RomanBaseline.dat is one 12.1-minute
-// exposure, so 1.1 mas is the right floor here; using 0.1 would overstate Roman's astrometry tenfold.
+// PER EXPOSURE: the 0.1 mas figure in [1] is the daily-binned precision (~100 exposures stacked).
+// l.erra[] is a per-epoch error and one row of RomanBaseline.dat is one 12.1-minute exposure, so the
+// per-exposure numbers are the right ones here.
 // ---------------------------------------------------------------------------------------
-// MAGNITUDE SYSTEM. [2]'s anchors (20.62, 23.5) are F146 Vega magnitudes; the simulator's magnitudes
-// are AB (the MIST bolometric-correction tables in CMD/ are "Roman (AB)"). errRomanA converts first:
-// m_Vega = m_AB - F146_AB_MINUS_VEGA. The offset is synphot's AB magnitude of Vega (CALSPEC
-// alpha_lyr_stis_011) through STScI's F146 effective area (Roman_effarea_v8_SCA01_20240301): 1.0324 mag
-// (EXOZIPPy #313 gets 1.037; it lies between STScI-000825's 2MASS J 0.913 and H 1.391, as F146 spans both).
-constexpr double F146_AB_MINUS_VEGA = 1.0324;
-constexpr double ROMAN_PIX_MAS   = 110.0;  //0.11 arcsec pixels [2]
+constexpr double ROMAN_PIX_MAS   = 110.0;                 //0.11 arcsec pixels [2]
 constexpr double ROMAN_AST_FLOOR = 0.01 * ROMAN_PIX_MAS;  //1.1 mas: 1% centroiding [1][2]
-constexpr double ROMAN_AST_MFLR  = 20.62;  //mag below which the floor dominates [2]
-constexpr double ROMAN_AST_MBKG  = 23.5;   //mag where the background starts to dominate [2]
-constexpr double ROMAN_AST_SBKG  = 10.0;   //mas, sigma_ast at ROMAN_AST_MBKG [2]
-// Slope between the two anchors above, log10(10.0/1.1)/(23.5-20.62) = 0.3329 per mag; not a free
-// choice. Source-dominated photon noise would give 0.2/mag and pure background domination 0.4/mag;
-// the transition is under way across this range. A Pandeia-derived table could replace this
-// interpolation, as errlsstA reads files/sigmaA_LSST.txt.
-constexpr double ROMAN_AST_SLOPE_SRC = 0.33285;
+constexpr double ROMAN_AST_K     = 0.792 * ROMAN_PIX_MAS; //87.12 mas: sigma = k / SNR, F146 [7]
 // ---------------------------------------------------------------------------------------
 // The astrometric noise model, three ways.
 //
@@ -500,7 +506,6 @@ constexpr double DARK_MAG = 99.0;
 inline constexpr const char* PATH_BULGE_BASELINE = "./Baseline/BulgeBaseline.dat";
 inline constexpr const char* PATH_ROMAN_BASELINE = "./Baseline/RomanBaseline.dat";
 inline constexpr const char* PATH_LSSTCAM_FOV    = "./Baseline/lsstcam_fov/fov_map.txt";
-inline constexpr const char* PATH_SIGMA_A_LSST   = "./files/sigmaA_LSST.txt";
 inline constexpr const char* PATH_SIGMA_ROMAN    = "./files/sigma_roman.txt";
 inline constexpr const char* PATH_EXT_TABLES     = "./files/ext/ext_tables.dat";
 inline constexpr const char* PATH_LENS_ML        = "./CMD/components/lens_ml.dat";

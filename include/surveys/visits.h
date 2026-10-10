@@ -1,13 +1,11 @@
-// The two survey visit-list containers: `lsst` (Rubin) and `roman`, each holding the photometric
-// error lookup table and the per-visit arrays read from the Baseline/ files.
+// The two survey visit-list containers: `lsst` (Rubin) and `roman`, holding the per-visit arrays read
+// from the Baseline/ files, and for Roman the photometric error lookup table.
 #ifndef ROMAN_SURVEYS_VISITS_H
 #define ROMAN_SURVEYS_VISITS_H
 
 #include "common.h"
 
 struct lsst {
-    std::vector<double> mag;   // Na
-    std::vector<double> err;   // Na
     std::vector<int> filter;    // Nl
     
     std::vector<int> ct;        // Nl -- one slot per Rubin visit; see matchVisibleEpochs
@@ -19,13 +17,13 @@ struct lsst {
     std::vector<double> sig5;   // Nl
     std::vector<double> dist;   // Nl
     std::vector<double> rot;    // Nl -- OpSim rotSkyPos [deg]
+    std::vector<double> fwhm;   // Nl -- geometric PSF FWHM of the visit [arcsec] (from seeingFwhmEff)
 
     //ID  RA  Dec  l  b  start  filter  airmass  seeing  skyBrightness visittime sigma5 targetname distance
     lsst()
-        : mag(Na), err(Na),
-          filter(Nl),
+        : filter(Nl),
           ct(Nl),
-          RA(Nl), DEC(Nl), l(Nl), b(Nl), tim(Nl), sig5(Nl), dist(Nl), rot(Nl)
+          RA(Nl), DEC(Nl), l(Nl), b(Nl), tim(Nl), sig5(Nl), dist(Nl), rot(Nl), fwhm(Nl)
     {}
 };
 

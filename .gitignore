@@ -28,6 +28,7 @@ bin/
 /roman
 /fishertest
 /extinctiontest
+/noisetest
 .git_stamp
 *.log
 *.tmp

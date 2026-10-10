@@ -32,30 +32,12 @@ from cparams import P
 BG = "#fcfcfb"
 C_J, C_L, C_R = "#1f4e79", "#c1121f", "#2a9d8f"   # joint, Rubin, Roman
 
-# errRomanA's constants, read from config/parameters.h and include/common.h
-ROMAN_AST_FLOOR, ROMAN_AST_MFLR, ROMAN_AST_MBKG = P.ROMAN_AST_FLOOR, P.ROMAN_AST_MFLR, P.ROMAN_AST_MBKG
-ROMAN_AST_SLOPE_SRC, ROMAN_AST_SBKG, ROMAN_AST_SLOPE_BKG = P.ROMAN_AST_SLOPE_SRC, P.ROMAN_AST_SBKG, P.ROMAN_AST_SLOPE_BKG
+PROV_PATH = None   # set in main(): the run's provenance says which astrometric error model it used
 
 
 def roman_ast_error(mag):
-    mag = np.asarray(mag, dtype=float)
-    out = np.full(mag.shape, ROMAN_AST_FLOOR)
-    mid = (mag > ROMAN_AST_MFLR) & (mag <= ROMAN_AST_MBKG)
-    out[mid] = ROMAN_AST_FLOOR * 10.0 ** (ROMAN_AST_SLOPE_SRC * (mag[mid] - ROMAN_AST_MFLR))
-    hi = mag > ROMAN_AST_MBKG
-    out[hi] = ROMAN_AST_SBKG * 10.0 ** (ROMAN_AST_SLOPE_BKG * (mag[hi] - ROMAN_AST_MBKG))
-    return out
-
-
-def style(ax, title, xlabel, ylabel):
-    ax.set_facecolor(BG)
-    ax.set_title(title, fontsize=10.5, loc="left", pad=8)
-    ax.set_xlabel(xlabel, fontsize=9)
-    ax.set_ylabel(ylabel, fontsize=9)
-    ax.tick_params(labelsize=8)
-    ax.grid(alpha=0.25, lw=0.6)
-    for s in ("top", "right"):
-        ax.spines[s].set_visible(False)
+    """errRomanA() via romanlib, by the model the run used. Per EXPOSURE, in mas."""
+    return R.roman_ast_error_for_run(mag, PROV_PATH)
 
 
 def cdf(ax, v, w=None, **kw):
@@ -165,10 +147,15 @@ def main():
                     help="MapLMC5.dat -- needed for the event-rate weight")
     ap.add_argument("--log", action="append", default=[],
                     help="run log(s), for sightlines whose map rows a killed run lost")
+    ap.add_argument("--provenance", default=None,
+                    help="the run's run_provenance.txt (default: searched for beside the extract)")
     ap.add_argument("--unweighted", action="store_true",
                     help="deliberately report the raw sample, with no event-rate weight")
     a = ap.parse_args()
 
+    global PROV_PATH
+    PROV_PATH = R.find_provenance(a.provenance, near=a.extract)
+    print(f"Roman astrometric error model of this run: {R.roman_ast_model(PROV_PATH)}")
     d = pd.read_csv(a.extract, sep=r"\s+")
     if "magb_F146" not in d.columns:
         sys.exit("extract lacks magb_F146; re-extract it with column 70 of the event table")

@@ -696,30 +696,88 @@ PROVENANCE_SEARCH = ("run_provenance.txt",
                      "files/MONTLMC/files/run_provenance.txt")
 
 
-# Roman's per-exposure astrometric error, mirrored from src/surveys/noise.cpp errRomanA. The anchors
-# are F146 Vega magnitudes (Lam et al. 2026); the simulator's magnitudes are AB, converted by
-# m_Vega = m_AB - 1.0324. Runs that convert say so in their provenance ("# roman_noise"); runs
-# without that line used the AB magnitude as if Vega, and analyses of them must do the same.
+# Roman's per-exposure, per-coordinate astrometric error [mas], three models over the project's life.
+# The run's run_provenance.txt says which one it used (roman_ast_model); use roman_ast_error_for_run.
+#   "ksnr"      (2026-10-10 on; line "# astrometric_noise"): sqrt((k/SNR)^2 + floor^2), SNR from the
+#               same exposure's F146 photometric error -- src/surveys/noise.cpp errRomanA.
+#   "line_vega" (2026-10-02 to 2026-10-10; "# roman_noise ast: errRomanA(m_AB - ..."): a straight line in
+#               log sigma between Lam et al. 2026's F146 Vega anchors, magnitudes converted AB -> Vega.
+#   "line_ab"   (before 2026-10-02): the same line evaluated at the AB magnitude as if Vega.
+# The line models' constants are a frozen record (they are no longer in config/parameters.h).
 F146_AB_MINUS_VEGA = 1.0324
 ROMAN_AST = dict(floor=1.1, mflr=20.62, mbkg=23.5, sbkg=10.0, slope_src=0.33285, slope_bkg=0.4)
 
 
+def roman_ast_model(prov_path):
+    """Which Roman astrometric error model the run that wrote `prov_path` used (see above)."""
+    text = open(prov_path).read() if prov_path and os.path.exists(prov_path) else ""
+    if "# astrometric_noise" in text:
+        return "ksnr"
+    if "# roman_noise" in text:
+        return "line_vega"
+    return "line_ab"
+
+
 def roman_ast_vega_offset(prov_path):
-    """AB - Vega offset the run that wrote `prov_path` applied before errRomanA (0 if it did not convert)."""
-    if prov_path and os.path.exists(prov_path):
-        if "# roman_noise" in open(prov_path).read():
-            return F146_AB_MINUS_VEGA
-    return 0.0
+    """AB - Vega offset a LINE-model run applied before errRomanA (0 if it did not convert)."""
+    model = roman_ast_model(prov_path)
+    if model == "ksnr":
+        raise ValueError(f"{prov_path}: this run used the k/SNR astrometric model; "
+                         "call roman_ast_error_for_run")
+    return F146_AB_MINUS_VEGA if model == "line_vega" else 0.0
 
 
 def roman_ast_error(mag_ab, ab_minus_vega=F146_AB_MINUS_VEGA):
-    """errRomanA, vectorised: per-exposure, per-coordinate astrometric error [mas] at F146 AB."""
+    """The LINE model (runs before 2026-10-10), vectorised, at F146 AB [mas]."""
     a = ROMAN_AST
     m = np.asarray(mag_ab, dtype=float) - ab_minus_vega
     out = np.where(m > a["mbkg"], a["sbkg"] * 10.0 ** (a["slope_bkg"] * (m - a["mbkg"])),
                    np.where(m > a["mflr"], a["floor"] * 10.0 ** (a["slope_src"] * (m - a["mflr"])),
                             a["floor"]))
     return np.maximum(out, a["floor"])
+
+
+_ROMAN_PHOT = None
+
+
+def roman_phot_error(mag_ab):
+    """errRomanM, vectorised: F146 per-exposure photometric error [mag], from files/sigma_roman.txt
+    anchored to ROMAN_DEPTH5_AB exactly as src/run/inputs.cpp readRomanErrorTable does. Reads the
+    table and constants of THIS checkout, so it describes a run only if neither changed since."""
+    global _ROMAN_PHOT
+    if _ROMAN_PHOT is None:
+        t = np.loadtxt(os.path.join(P.root, "files", "sigma_roman.txt"))
+        mag, err = t[:, 0].copy(), t[:, 1].copy()
+        e5 = 1.0857 / 5.0
+        i = int(np.argmax(err >= e5))
+        if i == 0:
+            raise ValueError("sigma_roman.txt never reaches 5 sigma")
+        f = (np.log(e5) - np.log(err[i - 1])) / (np.log(err[i]) - np.log(err[i - 1]))
+        mag += P.ROMAN_DEPTH5_AB - (mag[i - 1] + f * (mag[i] - mag[i - 1]))
+        phot2 = np.maximum(err ** 2 - P.ROMAN_PHOT_FLOOR ** 2, 0.0)
+        _ROMAN_PHOT = (mag, np.log(np.sqrt(phot2 + P.ROMAN_PHOT_FLOOR ** 2)))
+    mag, logerr = _ROMAN_PHOT
+    m = np.asarray(mag_ab, dtype=float)
+    # log-linear interpolation; brighter than the table: its first value; fainter: the last segment
+    slope = (logerr[-1] - logerr[-2]) / (mag[-1] - mag[-2])
+    out = np.interp(m, mag, logerr)
+    out = np.where(m > mag[-1], logerr[-1] + slope * (m - mag[-1]), out)
+    return np.exp(out)
+
+
+def roman_ast_error_ksnr(mag_ab):
+    """errRomanA (2026-10-10 on), vectorised: sqrt((k/SNR)^2 + floor^2) at F146 AB [mas]."""
+    err = roman_phot_error(mag_ab)
+    rand = np.sqrt(np.maximum(err ** 2 - P.ROMAN_PHOT_FLOOR ** 2, 0.0))
+    return np.hypot(P.ROMAN_AST_K * rand / 1.0857, P.ROMAN_AST_FLOOR)
+
+
+def roman_ast_error_for_run(mag_ab, prov_path):
+    """Roman's per-exposure astrometric error [mas] at F146 AB, by the model the run used."""
+    model = roman_ast_model(prov_path)
+    if model == "ksnr":
+        return roman_ast_error_ksnr(mag_ab)
+    return roman_ast_error(mag_ab, F146_AB_MINUS_VEGA if model == "line_vega" else 0.0)
 
 
 def find_provenance(explicit=None, near=None):

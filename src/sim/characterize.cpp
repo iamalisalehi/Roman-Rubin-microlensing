@@ -10,7 +10,6 @@ Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const Ef
     source& s = ctx.s;
     lens& l = ctx.l;
     astromet& as = ctx.as;
-    lsst& ls = ctx.ls;
     covarian& co = ctx.co;
     covarian& coNS = ctx.coNS;
     const std::string& fnLDt = ctx.outs.fnLDt;
@@ -36,7 +35,7 @@ Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const Ef
 
     if (lc.flagf == 0 or lc.ndw <= 2) {
         errg    = errlsstM(s.magb[2], 2, double(RUBIN_R_DEPTH5_FALLBACK)); //r-band
-        s.errA = errlsstA(ls, s.magb[2]); //r-band
+        s.errA = errlsstA(errg, FWHM[2]); //r-band, a median r visit
         s.errM = std::fabs(std::pow(10.0, - 0.4 * errg) - 1.0); //r-band
         ch.vMean = s.mus;   // the delta-chi-squared statistics keep their zero defaults
     }

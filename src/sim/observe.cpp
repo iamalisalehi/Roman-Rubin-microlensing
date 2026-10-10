@@ -97,7 +97,7 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
             const double satuv = m5v - RUBIN_SATU_BELOW_M5;
             if (magni[fi] >= satuv and magni[fi] <= m5v) {
                 errg = errlsstM(magni[fi], int(fi), m5v); //[mag]
-                errs = errlsstA(ls, magniRubinRef); ///[mas]
+                errs = errlsstA(errg, double(ls.fwhm[sq])); //[mas], this visit's band, depth and seeing
 
                 // Could Rubin have told the two images apart at this epoch? Inside the magnitude
                 // gate on purpose: the criterion counts recorded data points.
@@ -220,8 +220,8 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                 chi3_R += std::fabs((magnioR - s.magb[fiR]) * (magnioR - s.magb[fiR]) / (errgR * errgR));
 
                 // Roman's per-exposure astrometric error (one row of RomanBaseline.dat is one
-                // exposure); constants and sources in config/parameters.h.
-                errsR = errRomanA(magni[fiR]); //[mas]
+                // exposure), from this exposure's photometric SNR; config/parameters.h.
+                errsR = errRomanA(errgR); //[mas]
 
                 // Resolution test, Roman side. s.ut is Roman's own impact parameter here
                 // (trajectory rebuilt in the L2 frame above).

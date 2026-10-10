@@ -81,8 +81,6 @@ constexpr int    coun  = Nl + NlRoman;
 
 constexpr double tetp   = double(M_PI / 3.0);        //parallax
 
-constexpr double ROMAN_AST_SLOPE_BKG = 0.4;
-
 // Finite-difference stencils used by FisherM. For each parameter it evaluates the model at
 // theta + Delta*s[h] for h = 0,1, forms (model - stored)/(Delta*s[h]), and averages the two.
 //

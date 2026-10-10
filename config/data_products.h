@@ -5,17 +5,12 @@
 // re-run the script (python3 tools/sync_data_products.py) after regenerating any data file.
 // `python3 tools/sync_data_products.py --check` (or `make check-data`) says whether this file is stale.
 //
-// Numbers that DESCRIBE THE DATA FILES on disk: row counts, catalogue mean masses and the bright-star
-// floor of an error table. These are measurements of the data, not choices; the read guards in
-// src/run/inputs.cpp fire on a row-count mismatch. Model and survey choices live in config/parameters.h.
+// Numbers that DESCRIBE THE DATA FILES on disk: row counts and catalogue mean masses. These are
+// measurements of the data, not choices; the read guards in src/run/inputs.cpp fire on a row-count
+// mismatch. Model and survey choices live in config/parameters.h.
 
-// ---- Error tables: files/sigmaA_LSST.txt (96 rows), files/sigma_roman.txt (123 rows) ----
-constexpr int Na = 96;     //rows in "sigmaA_LSST.txt"
+// ---- Error table: files/sigma_roman.txt (123 rows) ----
 constexpr int NaRoman = 123;  // rows in sigma_roman.txt
-
-// Bright-star floor of files/sigmaA_LSST.txt (its smallest error value), as shipped. config/parameters.h
-// (section 4, LSST_AST_RENORM) divides the per-visit floor by it; see the note there.
-constexpr double LSST_AST_TABLE_FLOOR = 0.3739576; //mas
 
 // ---- CMD/components/*.dat row counts (data rows, header line excluded) ----
 // CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo. The lists are the

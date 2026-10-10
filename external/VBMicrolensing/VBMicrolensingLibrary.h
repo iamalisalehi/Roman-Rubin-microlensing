@@ -179,6 +179,40 @@ public:
 	void SetObjectCoordinates(char* Coordinates_file, char* Directory_for_satellite_tables);
 	void SetObjectCoordinates(char* CoordinateString);
 	bool AreCoordinatesSet();
+
+	// ====================================================================================================
+	// LOCAL ADDITION to VBMicrolensing v5.6.1 (upstream commit db4f95267d74): NOT part of the library as
+	// distributed by its authors. Added 2026-10-11 for the Roman-Rubin simulator, which vendors this copy.
+	// This is the only change to the upstream files; remove the method and the library is unmodified.
+	//
+	// EarthVelocityOnSky(t0, v) returns in v[0], v[1] the Earth's velocity at time t0 projected on the sky
+	// at the target set by SetObjectCoordinates, along celestial South and West, in AU/day (t0 in the
+	// units of the light curves: JD - 2450000). It is exactly the member vt0 that ComputeParallax builds
+	// for t0_par = t0, the epoch of the geocentric frame (Gould 2004) in which every *Parallax light
+	// curve is computed; vt0 is private and not otherwise reachable.
+	//
+	// Why: the simulator draws events with heliocentric proper motions, while the parallax light curves
+	// are in the geocentric frame, where the lens-source proper motion differs by the Earth's projected
+	// velocity times the relative parallax (mu_geo = mu_hel - v_E,perp * pi_rel; the same relation
+	// ComputeCentroids uses). Converting needs v_E,perp at t0, from the very table the light curve uses.
+	//
+	// Needs SetObjectCoordinates called, and satellite <= nsat (otherwise ComputeParallax returns without
+	// computing and v is not set). The satellite selection does not enter vt0. The method restores
+	// t0_par_fixed and t0_par and leaves the parallax caches (t0old, t0parold) invalidated, so the next
+	// light-curve call recomputes everything; it changes no result of any existing function.
+	// ====================================================================================================
+	void EarthVelocityOnSky(double t0, double* v) {
+		const int keepFixed = t0_par_fixed;
+		const double keepPar = t0_par;
+		t0old = t0parold = 1.e200;	// the parallax caches depend on the target: drop them
+		t0_par_fixed = 0;			// t0_par = t0 inside ComputeParallax
+		ComputeParallax(t0, t0);	// builds vt0, the geocentric frame's Earth velocity at t0
+		t0_par_fixed = keepFixed;
+		t0_par = keepPar;
+		v[0] = vt0[0]; v[1] = vt0[1];	// South, West [AU/day]
+		t0old = t0parold = 1.e200;
+	}
+	// ====================================================================================================
 	// Skowron & Gould root calculation
 	void cmplx_roots_gen(complex*, complex*, int, bool, bool);
 	void cmplx_roots_multigen(complex*, complex**, int, bool, bool);

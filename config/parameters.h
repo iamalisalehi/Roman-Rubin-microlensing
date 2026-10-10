@@ -205,6 +205,13 @@ inline const std::vector<int> RUBIN_REF_BANDS = {2};
 // ==========================================================================================
 
 constexpr double Tobs = 10.0 * year;//LSST observational time: 10 years
+// The simulation clock. Day 0 is the first Rubin bulge visit of the OpSim baseline, MJD 61141.312002288
+// (2026-04-11); every time in the visit lists and every event time t0 is in days from it. It must equal
+// TIME0_MJD in Baseline/readbaselineBulge.py, which subtracts it from the visit times.
+constexpr double SIM_DAY0_MJD = 61141.312002288;
+// VBMicrolensing counts time as JD - 2450000, and JD = MJD + 2400000.5, so its time is MJD - 49999.5.
+// A simulation day t is t + SIM_DAY0_JD2450000 on its clock (11141.812002288 for day 0).
+constexpr double SIM_DAY0_JD2450000 = SIM_DAY0_MJD - 49999.5;
 // ---------------------------------------------------------------------------------------
 // Rubin/LSST per-visit astrometric error, per coordinate (errlsstA), in milliarcseconds:
 //     sigma = sqrt( (LSST_AST_KAPPA * FWHM_visit / SNR_visit)^2 + LSST_AST_FLOOR^2 )
@@ -494,6 +501,12 @@ constexpr double FB_STEP_LARGE = 0.15;
 // matrix goes singular. The counts passed to activePhotParams are therefore >= kMinTeleEpochs or zero.
 constexpr int kMinTeleEpochs = 3;
 
+// Accuracy of VBMicrolensing's finite-source magnification (its Tol): the ABSOLUTE tolerance on the
+// magnification, integrated over annuli of the tabulated uniform-disc profile. tests/vbm_test.cpp measured
+// a worst relative error of 4.7e-5 for the uniform disc at this setting (against direct integration, over
+// rho = 1e-3..0.1); a smaller Tol costs time through more annuli.
+constexpr double VBM_TOL = 1.0e-3;
+
 // ==========================================================================================
 // (8) OUTPUT HISTOGRAM GRIDS
 // ==========================================================================================
@@ -539,6 +552,12 @@ inline constexpr const char* PATH_CMD_HALO       = "./CMD/components/halo.dat";
 // annual parallax interpolates.
 inline constexpr const char* PATH_VBM_ESPL_TABLE = "./external/VBMicrolensing/data/ESPL.tbl";
 inline constexpr const char* PATH_VBM_SUN_TABLE  = "./external/VBMicrolensing/data/SunEphemeris.txt";
+// Roman as a VBMicrolensing "satellite": the directory holds satellite1.txt (Roman at Sun-Earth L2, geocentric
+// RA, Dec and distance, daily; written by tools/make_roman_l2_ephemeris.py), and VBMicrolensing wants a
+// target file beside it, a placeholder here because the target is set per sightline in the code. The
+// directory has NO trailing slash, unlike the output directories below: VBMicrolensing appends its own.
+inline constexpr const char* PATH_ROMAN_EPHEM_DIR = "./files/ephemeris";
+inline constexpr const char* PATH_VBM_TARGET_FILE = "./files/ephemeris/target.txt";
 // Output directory (LpLMC / EfLMC / MapLMC / run_provenance) and the Disk_model debug dumps; both end in a slash.
 inline constexpr const char* PATH_OUT_DIR        = "./files/MONTLMC/files/";
 inline constexpr const char* PATH_DENSITY_DIR    = "./files/density/";

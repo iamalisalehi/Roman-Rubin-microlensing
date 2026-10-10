@@ -17,7 +17,8 @@ from a tabulated Sun ephemeris.
 
 ## Files
 
-Copied from that commit **unmodified**:
+Copied from that commit **unmodified except one local addition to the header** (see
+[Local modifications](#local-modifications)):
 
 | Here | Upstream | What it is |
 |---|---|---|
@@ -31,7 +32,7 @@ Copied from that commit **unmodified**:
 which the LGPL incorporates and asks to accompany the library. Not taken: the Python bindings
 (`lib/python_bindings.cpp`), the sample satellite and event-coordinate tables, the docs and examples.
 
-To check that the files are unmodified (no output = identical):
+To check the copies against upstream (no output = identical; the header is expected to differ, see below):
 
 ```bash
 git clone -q https://github.com/valboz/VBMicrolensing /tmp/vbm
@@ -40,6 +41,35 @@ for f in VBMicrolensingLibrary.cpp VBMicrolensingLibrary.h; do cmp /tmp/vbm/VBMi
 for f in ESPL.tbl SunEphemeris.txt; do cmp /tmp/vbm/VBMicrolensing/data/$f external/VBMicrolensing/data/$f; done
 cmp /tmp/vbm/LICENSE external/VBMicrolensing/LICENSE
 ```
+
+The first `cmp` of the header reports a difference, by design. To see exactly what differs (the output is the
+one added block, lines 182-215; `diff` prints it with the header's CRLF line endings):
+
+```bash
+diff /tmp/vbm/VBMicrolensing/lib/VBMicrolensingLibrary.h external/VBMicrolensing/VBMicrolensingLibrary.h
+```
+
+## Local modifications
+
+One addition to `VBMicrolensingLibrary.h`, made 2026-10-11 for the Roman-Rubin simulator; the `.cpp` and
+the data files are as upstream.
+
+| What | Where |
+|---|---|
+| `void EarthVelocityOnSky(double t0, double* v)`, an inline public method of `VBMicrolensing` | right after `AreCoordinatesSet()`, in a comment block marked "LOCAL ADDITION" |
+
+It returns the Earth's velocity at `t0` projected on the sky at the target, along celestial South and West
+in AU/day: the private member `vt0` that `ComputeParallax` builds for `t0_par = t0`, the geocentric frame
+(Gould 2004) in which every `*Parallax` light curve is computed. The simulator draws events with
+heliocentric proper motions and needs this velocity to convert them to that frame (mu_geo = mu_hel -
+v_E,perp * pi_rel); without the method `vt0` is out of reach, and re-deriving it outside the library would
+duplicate the ephemeris interpolation the light curve uses. The method invalidates the parallax caches
+before and after and restores `t0_par_fixed` and `t0_par`, so it changes no result of any existing
+function (`tests/vbm_test.cpp` passes unchanged). Only `src/events/vbm_model.cpp` calls it.
+
+The LGPL v3 incorporates the GPL v3, whose section 5(a) asks a modified work to carry prominent notices
+stating that it was modified and giving a relevant date: the comment block in the header and this section
+are those notices. The method is under the library's licence, like the rest of the directory.
 
 ## Build and test
 
@@ -60,8 +90,10 @@ make vbmtest && ./vbmtest
 
 ## Updating
 
-1. Copy the same five files, unmodified, from the newer upstream commit.
-2. Run `make vbmtest && ./vbmtest` and the other tests. Do not regenerate `tests/vbm_reference.h` to
+1. Copy the same five files from the newer upstream commit, then re-apply the local addition to the header
+   (the block shown by the `diff` command above) and update its comment if upstream changed `ComputeParallax`.
+2. Run `make vbmtest && ./vbmtest`, `make modeltest && ./modeltest` (which checks the Earth velocity against
+   astropy) and the other tests. Do not regenerate `tests/vbm_reference.h` to
    make an update pass: the references are independent of the library, so a failure means its answers
    moved, which has to be understood first.
 3. Record the new commit hash, date and version above.

@@ -59,10 +59,11 @@ build/tests/%.o: tests/%.cpp
 # run/outputs.o prints GIT_COMMIT into run_provenance.txt; rebuild it when the stamp changes.
 build/run/outputs.o: $(GIT_STAMP)
 
-# VBMicrolensing (external/VBMicrolensing/, LGPL-3.0, copied unmodified from upstream): finite-source
-# magnification, astrometric centroids and ephemeris-based parallax. Its own flags: the same -O2 and
-# -std=c++17 as ours and never -ffast-math (tests/vbm_test.cpp checks that its point-source
-# magnification is bit-identical to ours), but -w: warnings in code we do not edit are noise.
+# VBMicrolensing (external/VBMicrolensing/, LGPL-3.0, copied from upstream with one local addition to the
+# header, see its README): finite-source magnification, astrometric centroids and ephemeris-based
+# parallax. Its own flags: the same -O2 and -std=c++17 as ours and never -ffast-math (tests/vbm_test.cpp
+# checks that its point-source magnification is bit-identical to ours), but -w: warnings in code we do
+# not edit are noise.
 VBM_CXXFLAGS = -O2 -g -std=c++17 -w
 
 $(VBM_OBJ): external/VBMicrolensing/VBMicrolensingLibrary.cpp external/VBMicrolensing/VBMicrolensingLibrary.h
@@ -127,6 +128,21 @@ VBM_TARGET = vbmtest
 $(VBM_TARGET): build/tests/vbm_test.o $(VBM_OBJ)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
+# ---------------------------------------------------------------------------
+# Sky-geometry unit test of the light-curve model (tests/model_test.cpp)
+#
+# Pins the adapter to VBMicrolensing (src/events/vbm_model.cpp) and the Galactic axes of the kinematics
+# against astropy: the ICRS direction of Galactic (l, b) and the rotation to (North, East); that the
+# kinematics' projection axes are (e_l, e_b); the Earth's velocity at t0; and Roman's L2 ephemeris as a
+# satellite. The references are in tests/model_reference.h, written by tests/model_reference.py. Links the
+# real vrel and the adapter. Needs only committed files; run from the repo root:
+#     make modeltest && ./modeltest
+# ---------------------------------------------------------------------------
+MODEL_TARGET = modeltest
+
+$(MODEL_TARGET): build/tests/model_test.o $(LIB_OBJS)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
 # Verify config/data_products.h against the data files on disk. Not part of `all` (CI has no
 # data files). To refresh the header, run `python3 tools/sync_data_products.py`.
 check-data:
@@ -135,8 +151,8 @@ check-data:
 .PHONY: check-data
 
 # Header dependencies written by -MMD
--include $(OBJS:.o=.d) build/tests/fisher_fixture.d build/tests/extinction_test.d build/tests/noise_test.d build/tests/vbm_test.d
+-include $(OBJS:.o=.d) build/tests/fisher_fixture.d build/tests/extinction_test.d build/tests/noise_test.d build/tests/vbm_test.d build/tests/model_test.d
 
 # Clean
 clean:
-	rm -rf build $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET) $(NOISE_TARGET) $(VBM_TARGET)
+	rm -rf build $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET) $(NOISE_TARGET) $(VBM_TARGET) $(MODEL_TARGET)

@@ -25,6 +25,8 @@ jobs:
       run: make noisetest && ./noisetest
     - name: VBMicrolensing unit test
       run: make vbmtest && ./vbmtest
+    - name: Light-curve model sky-geometry test
+      run: make modeltest && ./modeltest
     - name: Python syntax check
       run: python3 -m compileall -q analysis pipeline tools tests CMD Baseline maps.py
     - name: Pipeline script syntax check

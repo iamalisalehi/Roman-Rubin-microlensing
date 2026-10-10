@@ -318,15 +318,19 @@ constexpr double ROMAN_AST_K     = 0.792 * ROMAN_PIX_MAS; //87.12 mas: sigma = k
 // absolute position and sigma(tetE) comes out optimistic. An offset per "frame group" is marginalised
 // in closed form: F_g = sum_blocks F_k - (sum b_k)(sum b_k)^T / sum c_k, per coordinate.
 //
-// WHETHER THE 1.1 mas FLOOR AVERAGES DOWN is unknown: the literature adds it as white noise
-// (justified by the GBTDS's sub-pixel dithers) and quantifies no correlated part. So every event
-// carries three forecasts:
-//   W  white (the literature's assumption): one free offset per telescope; Roman's errors white.
-//   N  nominal: one free offset per Roman ROLL (crowding biases flip with the PSF orientation) and
-//      a per-coordinate error AST_SIGC_N shared by all Roman exposures of the same day (distortion
-//      residuals at "a few x 0.1% of a pixel", Bellini 2024 via Lam et al. 2026).
-//   P  pessimistic: one free offset per Roman SEASON and the WHOLE floor, AST_SIGC_P = 1.1 mas,
-//      shared within each day (it averages only across days).
+// WHETHER ROMAN'S ERRORS AVERAGE DOWN is unknown. The 1.1 mas floor is the exposure-to-exposure
+// scatter of dithered HST data, and the GBTDS dithers by several pixels and sub-pixel steps, so the
+// floor itself is white; no source quantifies an ADDITIONAL error shared by many exposures. An
+// error constant within a frame group costs nothing (its offset is free): what matters is correlation
+// on timescales shorter than an event. Each event carries three forecasts; the per-exposure error
+// (erra, floor included) is the same in all three, and N and P ADD a day-shared term to it:
+//   W  white (the literature's assumption): one free offset per telescope; nothing added.
+//   N  nominal: one free offset per Roman ROLL (static crowding and distortion biases change with the
+//      PSF orientation) plus AST_SIGC_N per coordinate shared by all Roman exposures of the same day
+//      (time-varying distortion residuals at "a few x 0.1% of a pixel", Bellini 2024 via Lam et al. 2026).
+//   P  pessimistic: one free offset per Roman SEASON plus AST_SIGC_P = 1.1 mas shared within each day,
+//      a day-shared error as large as the floor (a day of ~120 exposures then measures no better than
+//      ~1.1 mas). No identified source is this large; it is an extreme bound.
 // Rubin's errors are white with one offset in all three. The day blocks enter by Sherman-Morrison:
 // for a block with weights w_i = 1/erra_i^2 and derivatives d_i, F_k = S_wdd - s^2 S_wd S_wd^T /
 // (1 + s^2 S_w), b_k = S_wd / (1 + s^2 S_w), c_k = S_w / (1 + s^2 S_w), s = sigma_c.

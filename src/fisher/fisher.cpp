@@ -2,12 +2,20 @@
 #include "fisher/fisher.h"
 #include "events/lightcurve.h"
 #include "surveys/noise.h"
+#include <cstring>
 
 
 void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 {
     co.flagi =+ 1;
-    int tt; // tev;
+
+    // The parameter point. Every perturbation below is undone by restoring the saved value (not by
+    // subtracting the step, which can leave it an ulp off), so FisherM returns it bit for bit.
+    const auto point = [&] {
+        return std::array<double, 12>{l.u0, l.tE, l.piE, s.xi, l.t0, s.fb[0], s.fb[1],
+                                      s.mbs[0], s.mbs[1], l.tetE, s.mus1, s.mus2};
+    };
+    const auto point0 = point();
 
 // (K + H + J)/3 = F146
 // Photometry
@@ -26,7 +34,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     // near-degenerate directions, so the correct sigmas for short events are much larger.
     for (int q = 0; q < Nx; ++q) co.Delta1[q] *= kFDStepScale * co.deltaScale[q];
     // mbs enters with unit slope, so its finite difference is exact for any step. fb0 (index 2)
-    // and fb1 (index 7) use the telescope-keyed co.bb[] steps set in the data loop below.
+    // and fb1 (index 7) use the telescope-keyed steps bb[] set per telescope below.
 
     // Three matrices, zeroed together: joint, Rubin-only, Roman-only (see SurveyIdx).
     for (int q = 0; q < NSURV; ++q) {
@@ -47,156 +55,147 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 
 
     // A telescope with fewer than kMinTeleEpochs epochs is left out (see config/parameters.h).
+    // The model is evaluated one observer at a time over all of its epochs, so the epochs are split
+    // by telescope here (stored order kept) and the results put back at their stored index.
     std::array<int, 2> nTele{0, 0};
-    for (int i = 0; i < ndw; ++i) nTele[int(l.tele[i]) == 1 ? 1 : 0] += 1;
+    std::array<std::vector<int>, 2>    epo;  //stored index of each of the telescope's epochs
+    std::array<std::vector<double>, 2> tim;  //and its time
+    for (int i = 0; i < ndw; ++i) {
+        const int tt = int(l.tele[i]);//telescope[0,1] LSST, ELT
+        CHECK(tt == 0 or tt == 1);
+        nTele[tt] += 1;
+        epo[tt].push_back(i);
+        tim[tt].push_back(l.timn[i]);
+    }
 
-    for (int i = 0; i < ndw; ++i) {//data
-        tt = int(l.tele[i]);//telescope[0,1] LSST, ELT
-        if (nTele[tt == 1 ? 1 : 0] < kMinTeleEpochs) continue;
-        const int surv = surveyOfTele(tt); // which single-survey matrix this epoch also feeds
-        co.nepochA[SJOINT] += 1;
-        co.nepochA[surv]   += 1;
+    // dm[i][j] = d(model magnitude of epoch i)/d(theta_j), from the central stencil sig. Each
+    // derivative is needed once per epoch, however many F_jk it enters, so the reference model and
+    // each perturbed model are evaluated once over a telescope's epochs (perturbation outer, epoch
+    // inner). Of the nine parameters only u0, tE, piE, xi and t0 move the source relative to the
+    // lens; fb and mbs enter m = mbs - 2.5 log10(fb A + 1 - fb) through the flux alone, so their
+    // perturbed magnitudes come from the reference A. That is 1 + 2*5 = 11 model evaluations per
+    // epoch; re-deriving the second factor of each of the 45 F_jk would take 1 + 2*9 + 2*45 = 109.
+    std::vector<std::array<double, Nx>> dm(ndw);
+    std::vector<ModelPoint> ref, pert;
+    std::vector<double> lgf;  //2.5 log10(fb A + 1 - fb) of the reference model, per epoch
+    const std::array<std::pair<int, double*>, 5> lcPar{{
+        {0, &l.u0}, {1, &l.tE}, {3, &l.piE}, {4, &s.xi}, {5, &l.t0}}};
 
-        // The fb step is binned on THIS epoch's telescope blend fraction s.fb[tt] (not always
-        // s.fb[0]): bins and steps are chosen so fb[tt] + bb never leaves [0,1], which holds only
-        // if bb is computed from the fb it perturbs. Roman's F146 blend fraction is routinely
-        // higher than Rubin's r-band one.
-        if (s.fb[tt] < FB_BIN_LO)      {co.bb[0] =+ FB_STEP_SMALL; co.bb[1] =+ FB_STEP_LARGE;}
-        else if (s.fb[tt] < FB_BIN_HI) {co.bb[0] =- FB_STEP_SMALL; co.bb[1] =+ FB_STEP_SMALL;}
-        else                      {co.bb[0] =- FB_STEP_SMALL; co.bb[1] =- FB_STEP_LARGE;}
+    for (int tt = 0; tt < 2; ++tt) {
+        const int n = nTele[tt];
+        if (n < kMinTeleEpochs) continue;
+        const int*    ix = epo[tt].data();
+        const double* t  = tim[tt].data();
+        ref.resize(n);  pert.resize(n);  lgf.resize(n);
+        const double fb = s.fb[tt], mbs = s.mbs[tt];  //this telescope's flux pair; never written here
+        CHECK(fb > 0.0);
+        CHECK(fb <= 1.0);
+
+        // Unperturbed model magnitudes, recomputed under the current observer configuration rather
+        // than taken from the cached l.magn[]. Each derivative is (model(theta + Delta) - reference)
+        // / Delta, so the reference must share the observing geometry (as.satScale). When the two
+        // differ, their difference leaks into every derivative as a constant dm/Delta; it cancels in
+        // symmetric stencils but not in the cross-telescope rows, fb's outer bins, or any one-sided
+        // stencil. Every model here is evaluated with the observer that produced these data.
+        evaluateModel(s, l, as, tt, t, n, ref.data());
+        for (int m = 0; m < n; ++m) lgf[m] = 2.5 * std::log10(ref[m].A * fb + 1.0 - fb);
+
+        // u0, tE, piE, xi, t0: one new model per perturbation.
+        for (const auto& [j, par] : lcPar) {
+            const double keep = *par;
+            for (int h = 0; h < 2; ++h) {
+                const double diff = co.Delta1[j] * sig[h];
+                *par = keep + diff;
+                CHECK(l.tE > 0.0);
+                CHECK(l.piE > 0.0);
+                CHECK(l.u0 != 0.0);
+                CHECK(diff != 0.0);
+                evaluateModel(s, l, as, tt, t, n, pert.data());
+                *par = keep;
+                for (int m = 0; m < n; ++m) {
+                    const double magw = mbs - 2.5 * std::log10(pert[m].A * fb + 1.0 - fb);
+                    const double der  = (magw - (mbs - lgf[m])) / diff;
+                    double& d = dm[ix[m]][j];
+                    d = (h == 0) ? der : (d + der) * 0.5;
+                }
+            }
+        }
+
+        // This telescope's flux pair, fb (index 2 or 7) and mbs (6 or 8), from the reference A.
+        // The fb step is binned on THIS telescope's blend fraction s.fb[tt] (not always s.fb[0]):
+        // bins and steps are chosen so fb[tt] + bb never leaves [0,1], which holds only if bb is
+        // computed from the fb it perturbs. Roman's F146 blend fraction is routinely higher than
+        // Rubin's r-band one.
+        const int jfb = (tt == 0) ? 2 : 7, jmbs = (tt == 0) ? 6 : 8;
+        std::array<double, 2> bb;
+        if (fb < FB_BIN_LO)      bb = {+FB_STEP_SMALL, +FB_STEP_LARGE};
+        else if (fb < FB_BIN_HI) bb = {-FB_STEP_SMALL, +FB_STEP_SMALL};
+        else                     bb = {-FB_STEP_SMALL, -FB_STEP_LARGE};
 
         // Apply the plateau scaling and clamp so the step cannot leave the physical range [0,1]
         // (the bin edges guarantee this only at unscaled sizes). Note the outer fb bins are two
         // same-signed (one-sided) steps, so fb carries an O(h) bias there; kFDStepScale makes it
         // negligible.
         {
-            const double fscale = kFDStepScale * co.deltaScale[(tt == 0) ? 2 : 7];
+            const double fscale = kFDStepScale * co.deltaScale[jfb];
             for (int b = 0; b < 2; ++b) {
-                double step = co.bb[b] * fscale;
-                const double lo = 1.0e-6 - s.fb[tt];        //keeps fb strictly above 0
-                const double hi = 1.0 - 1.0e-6 - s.fb[tt];  //keeps fb strictly below 1
+                double step = bb[b] * fscale;
+                const double lo = 1.0e-6 - fb;        //keeps fb strictly above 0
+                const double hi = 1.0 - 1.0e-6 - fb;  //keeps fb strictly below 1
                 if (step < lo) step = lo;
                 if (step > hi) step = hi;
-                co.bb[b] = step;
+                bb[b] = step;
             }
         }
 
-        // Unperturbed model magnitude for THIS epoch, recomputed under the current observer
-        // configuration rather than taken from the cached l.magn[i]. Each derivative is
-        // (model(theta + Delta) - reference) / Delta, so the reference must share the observing
-        // geometry (as.satScale). When the two differ, their difference leaks into every
-        // derivative as a constant dm/Delta; it cancels in symmetric stencils but not in the
-        // cross-telescope rows, fb's outer bins, or any one-sided stencil.
-        lightcurve(s, l, as, l.timn[i], tt);
-        s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
-        const double magn0 = s.mbs[tt] - 2.5 * std::log10(s.Astar * s.fb[tt] + 1.0 - s.fb[tt]);
+        for (int h = 0; h < 2; ++h) {
+            const double dfb  = bb[h];
+            const double dmbs = co.Delta1[jmbs] * sig[h];
+            const double fbp  = fb + dfb, mbsp = mbs + dmbs;  //the perturbed values
+            CHECK(dfb != 0.0);
+            CHECK(fbp > 0.0);
+            CHECK(fbp <= 1.0);
+            CHECK(dmbs != 0.0);
+            for (int m = 0; m < n; ++m) {
+                const double mag0  = mbs - lgf[m];
+                const double magfb = mbs - 2.5 * std::log10(ref[m].A * fbp + 1.0 - fbp);
+                const double magmb = mbsp - lgf[m];
+                const double derfb = (magfb - mag0) / dfb;
+                const double dermb = (magmb - mag0) / dmbs;
+                double& dfbm = dm[ix[m]][jfb];
+                double& dmbm = dm[ix[m]][jmbs];
+                dfbm = (h == 0) ? derfb : (dfbm + derfb) * 0.5;
+                dmbm = (h == 0) ? dermb : (dmbm + dermb) * 0.5;
+            }
+        }
 
+        // The other telescope's flux pair does not enter these epochs: its derivative is exactly 0.
+        for (int m = 0; m < n; ++m) dm[ix[m]][(tt == 0) ? 7 : 2] = dm[ix[m]][(tt == 0) ? 8 : 6] = 0.0;
+    }
+
+    // Accumulate the information sum F_jk = sum_i (dm_i/dtheta_j)(dm_i/dtheta_k)/sigma_i^2 (lower
+    // triangle, epochs in stored order). Each epoch feeds the joint matrix and exactly one
+    // single-survey matrix, so F[SJOINT] == F[SRUBIN] + F[SROMAN] holds element by element.
+    std::array<std::array<double, Nx * Nx>, NSURV> FA{};
+    for (int i = 0; i < ndw; ++i) {//data
+        const int tt = int(l.tele[i]);
+        if (nTele[tt] < kMinTeleEpochs) continue;
+        const int surv = surveyOfTele(tt); // which single-survey matrix this epoch also feeds
+        co.nepochA[SJOINT] += 1;
+        co.nepochA[surv]   += 1;
+        CHECK(l.errm[i] > 0.0);
+        const auto& d = dm[i];
         for (int j = 0; j < Nx; ++j) {
-            for (int h = 0; h < 2; ++h) {
-
-                if (j == 0) {co.diff = double(+co.Delta1[j] * sig[h]) ;      l.u0 += co.diff;}
-                if (j == 1) {co.diff = double(+co.Delta1[j] * sig[h]) ;      l.tE += co.diff;}
-                // fb0 is Rubin's blend fraction: perturb s.fb[0] on Rubin epochs only (perturbing
-                // s.fb[tt] would make parameters 2 and 7 identical on Roman epochs).
-                if (j == 2) {co.diff = (tt == 0) ? double(co.bb[h]) : 1.0;
-                             if (tt == 0) s.fb[0] += co.diff;}
-                // Per-telescope flux parameters affect only their own telescope's epochs; the
-                // other telescope's derivative is zero. co.diff is a nonzero dummy there.
-                if (j == 6) {co.diff = (tt == 0) ? double(+co.Delta1[j] * sig[h]) : 1.0;
-                                 if (tt == 0) s.mbs[0] += co.diff;}
-                if (j == 7) {co.diff = (tt == 1) ? double(co.bb[h]) : 1.0;
-                                 if (tt == 1) s.fb[1]  += co.diff;}
-                if (j == 8) {co.diff = (tt == 1) ? double(+co.Delta1[j] * sig[h]) : 1.0;
-                                 if (tt == 1) s.mbs[1] += co.diff;}
-                if (j == 3) {co.diff = double(+co.Delta1[j] * sig[h]) ;     l.piE += co.diff;}
-                if (j == 4) {co.diff = double(+co.Delta1[j] * sig[h]) ;      s.xi += co.diff;}
-                if (j == 5) {co.diff = double(+co.Delta1[j] * sig[h]) ;      l.t0 += co.diff;}
-
-                // Perturbed model evaluated with the observer that produced THIS datum.
-                lightcurve(s, l, as, l.timn[i], int(l.tele[i]));
-                s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
-                co.magw = s.mbs[tt] - 2.5 * std::log10(s.Astar * s.fb[tt] + 1.0 - s.fb[tt]);
-                co.derm1[h] = double(co.magw - magn0) / co.diff;
-
-                CHECK(l.tE > 0.0);
-                CHECK(s.fb[tt] > 0.0);
-                CHECK(s.fb[tt] <= 1.0);
-                CHECK(l.piE > 0.0);
-                CHECK(l.u0 != 0.0);
-                CHECK(co.diff != 0.0);
-                CHECK(l.errm[i] > 0.0);
-
-                if (j == 0)      l.u0 -= co.diff;
-                if (j == 1)      l.tE -= co.diff;
-                if (j == 2 and tt == 0)  s.fb[0] -= co.diff;
-                if (j == 3)     l.piE -= co.diff;
-                if (j == 4)      s.xi -= co.diff;
-                if (j == 5)      l.t0 -= co.diff;
-                if (j == 6 and tt == 0) s.mbs[0] -= co.diff;
-                if (j == 7 and tt == 1)  s.fb[1] -= co.diff;
-                if (j == 8 and tt == 1) s.mbs[1] -= co.diff;
-            }
-
-            co.derm1f = double(co.derm1[0] + co.derm1[1]) * 0.5;
-
             for (int k = 0; k <= j; ++k) {
-                for (int h = 0; h < 2;  ++h) {
-
-                    if (k == 0) {co.diff = double(+co.Delta1[k] * sig[h]) ;     l.u0 += co.diff;}
-                    if (k == 1) {co.diff = double(+co.Delta1[k] * sig[h]) ;     l.tE += co.diff;}
-                    if (k == 2) {co.diff = (tt == 0) ? double(co.bb[h]) : 1.0;
-                                 if (tt == 0) s.fb[0] += co.diff;}
-                    // Per-telescope flux parameters affect only their own telescope's epochs; the
-                    // other telescope's derivative is zero. co.diff is a nonzero dummy there.
-                    if (k == 6) {co.diff = (tt == 0) ? double(+co.Delta1[k] * sig[h]) : 1.0;
-                                     if (tt == 0) s.mbs[0] += co.diff;}
-                    if (k == 7) {co.diff = (tt == 1) ? double(co.bb[h]) : 1.0;
-                                     if (tt == 1) s.fb[1]  += co.diff;}
-                    if (k == 8) {co.diff = (tt == 1) ? double(+co.Delta1[k] * sig[h]) : 1.0;
-                                     if (tt == 1) s.mbs[1] += co.diff;}
-                    if (k == 3) {co.diff = double(+co.Delta1[k] * sig[h]) ;    l.piE += co.diff;}
-                    if (k == 4) {co.diff = double(+co.Delta1[k] * sig[h]) ;     s.xi += co.diff;}
-                    if (k == 5) {co.diff = double(+co.Delta1[k] * sig[h]) ;     l.t0 += co.diff;}
-
-                    lightcurve(s, l, as, l.timn[i], int(l.tele[i]));
-                    s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
-                    co.magw = s.mbs[tt] - 2.5 * std::log10(s.Astar * s.fb[tt] + 1.0 - s.fb[tt]);
-                    co.derm2[h] = double(co.magw - magn0) / co.diff;
-
-                    CHECK(l.tE > 0.0);
-                    CHECK(s.fb[tt] >= 0.0);
-                    CHECK(s.fb[tt] <= 1.0);
-                    CHECK(l.piE > 0.0);
-                    CHECK(l.u0 != 0.0);
-                    CHECK(co.diff != 0.0);
-                    CHECK(l.errm[i] > 0.0);
-
-                    if (k == 0)      l.u0 -= co.diff;
-                    if (k == 1)      l.tE -= co.diff;
-                    if (k == 2 and tt == 0)  s.fb[0] -= co.diff;
-                    if (k == 3)     l.piE -= co.diff;
-                    if (k == 4)      s.xi -= co.diff;
-                    if (k == 5)      l.t0 -= co.diff;
-                    if (k == 6 and tt == 0) s.mbs[0] -= co.diff;
-                    if (k == 7 and tt == 1)  s.fb[1] -= co.diff;
-                    if (k == 8 and tt == 1) s.mbs[1] -= co.diff;
-                }
-
-                co.derm2f = double(co.derm2[0] + co.derm2[1]) * 0.5;
-
-                // Accumulate the information sum F_jk = sum_i (dm_i/dtheta_j)(dm_i/dtheta_k)/sigma_i^2.
-                // Each epoch feeds the joint matrix and exactly one single-survey matrix, so
-                // F[SJOINT] == F[SRUBIN] + F[SROMAN] holds element by element.
-                {
-                    const double contrib = co.derm1f * co.derm2f / (l.errm[i] * l.errm[i]);
-                    gsl_matrix_set(co.inputA[SJOINT].get(), j, k,
-                                   gsl_matrix_get(co.inputA[SJOINT].get(), j, k) + contrib);
-                    gsl_matrix_set(co.inputA[surv].get(), j, k,
-                                   gsl_matrix_get(co.inputA[surv].get(), j, k) + contrib);
-                }
+                const double contrib = d[j] * d[k] / (l.errm[i] * l.errm[i]);
+                FA[SJOINT][j * Nx + k] += contrib;
+                FA[surv][j * Nx + k]   += contrib;
             }
-        }//end of for J
+        }
     }//end of data for
+    for (int q = 0; q < NSURV; ++q)
+        for (int j = 0; j < Nx; ++j)
+            for (int k = 0; k <= j; ++k) gsl_matrix_set(co.inputA[q].get(), j, k, FA[q][j * Nx + k]);
 
     for (int q = 0; q < NSURV; ++q) {
         for (int j = 0; j < Nx; ++j) {
@@ -259,67 +258,82 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     };
     AstSums rubin;
     std::map<long, AstSums> romanDays;
-    std::array<double, D> dx{}, dy{};
 
-    for (int i = 0; i < ndw; ++i) {
-        // Reference and perturbations use the observer that produced THIS datum.
+    // Per epoch i, ddx[i][j] and ddy[i][j]: the derivatives of the centroid's x and y, by the
+    // central stencil sig for all four astrometric parameters, and in slot Ny the neighbours' share
+    // h. As for the photometry, the reference and each of the 2*Ny perturbed models are evaluated
+    // once over a telescope's epochs: 1 + 2*4 = 9 model evaluations per epoch. Every epoch enters,
+    // whatever its telescope's photometric count.
+    std::vector<std::array<double, D>> ddx(ndw), ddy(ndw);
+    std::vector<double> sx0, sy0;  //reference centroid without the neighbours' share, per epoch
+    const std::array<double*, Ny> astPar{&l.tetE, &s.mus1, &s.mus2, &l.piE};
+
+    for (int tt = 0; tt < 2; ++tt) {
+        const int n = nTele[tt];
+        if (n == 0) continue;
+        const int*    ix = epo[tt].data();
+        const double* t  = tim[tt].data();
+        ref.resize(n);  pert.resize(n);  sx0.resize(n);  sy0.resize(n);
+
         // The neighbours' share of the centroid, fn blendOff / (fs A + 1 - fs), and its derivative with
-        // respect to blendOff. The parameter derivatives below are taken on the centroid WITHOUT this
-        // share: its time profile is the magnification curve, which belongs to the photometric matrix,
-        // and read here (with u0, tE, t0 held fixed) it would hand piE information the split cannot
-        // marginalise. The share enters only through its unknown amplitude, slot Ny.
-        const int tt = int(l.tele[i]);
+        // respect to blendOff, at impact parameter u. The parameter derivatives below are taken on the
+        // centroid WITHOUT this share: its time profile is the magnification curve, which belongs to the
+        // photometric matrix, and read here (with u0, tE, t0 held fixed) it would hand piE information
+        // the split cannot marginalise. The share enters only through its unknown amplitude, slot Ny.
         const double fn = std::max(0.0, 1.0 - s.fb[tt] - s.fLens[tt]);
-        auto nbrShare = [&](double& bx, double& by) {
-            const double u2 = s.ut * s.ut;
+        auto nbrShare = [&](double u, double& bx, double& by) {
+            const double u2 = u * u;
             const double h  = fn / (s.fb[tt] * (u2 + 2.0) / std::sqrt(u2 * (u2 + 4.0)) + 1.0 - s.fb[tt]);
             bx = h * s.blendOff[tt][0];  by = h * s.blendOff[tt][1];
             return h;
         };
-        lightcurve(s, l, as, l.timn[i], tt);
-        double nbx0, nby0;
-        dx[Ny] = dy[Ny] = nbrShare(nbx0, nby0);
-        const double soux0 = s.pos1c - nbx0, souy0 = s.pos2c - nby0;
+
+        // Reference and perturbations use the observer that produced these data.
+        evaluateModel(s, l, as, tt, t, n, ref.data());
+        for (int m = 0; m < n; ++m) {
+            double nbx0, nby0;
+            ddx[ix[m]][Ny] = ddy[ix[m]][Ny] = nbrShare(ref[m].u, nbx0, nby0);
+            sx0[m] = ref[m].pos1c - nbx0;
+            sy0[m] = ref[m].pos2c - nby0;
+        }
 
         for (int j = 0; j < Ny; ++j) {
+            const double keep = *astPar[j];
             for (int h = 0; h < 2; ++h) {
-                // Central stencil for all four astrometric parameters.
-                co.diff = double(co.Delta2[j] * sig[h]);
-                if (j == 0) l.tetE += co.diff;
-                if (j == 1) s.mus1 += co.diff;
-                if (j == 2) s.mus2 += co.diff;
-                if (j == 3) l.piE  += co.diff;
-
-                lightcurve(s, l, as, l.timn[i], tt);
-                double nbx, nby;
-                nbrShare(nbx, nby);
-                co.dera1[h] = double(s.pos1c - nbx - soux0) / co.diff;
-                co.derb1[h] = double(s.pos2c - nby - souy0) / co.diff;
-
+                const double diff = co.Delta2[j] * sig[h];
+                *astPar[j] = keep + diff;
                 CHECK(l.tetE > 0.0);
                 CHECK(l.piE > 0.0);
-                CHECK(co.diff != 0.0);
+                CHECK(diff != 0.0);
+                evaluateModel(s, l, as, tt, t, n, pert.data());
+                *astPar[j] = keep;
                 // A null derivative (epoch at t0 or far from the peak) is legitimate and contributes nothing.
-
-                if (j==0) l.tetE -= co.diff;
-                if (j==1) s.mus1 -= co.diff;
-                if (j==2) s.mus2 -= co.diff;
-                if (j==3)  l.piE -= co.diff;
+                for (int m = 0; m < n; ++m) {
+                    double nbx, nby;
+                    nbrShare(pert[m].u, nbx, nby);
+                    const double derx = (pert[m].pos1c - nbx - sx0[m]) / diff;
+                    const double dery = (pert[m].pos2c - nby - sy0[m]) / diff;
+                    double& dx = ddx[ix[m]][j];
+                    double& dy = ddy[ix[m]][j];
+                    dx = (h == 0) ? derx : (dx + derx) * 0.5;
+                    dy = (h == 0) ? dery : (dy + dery) * 0.5;
+                }
             }
-            dx[j] = (co.dera1[0] + co.dera1[1]) * 0.5;
-            dy[j] = (co.derb1[0] + co.derb1[1]) * 0.5;
         }
+    }
+
+    for (int i = 0; i < ndw; ++i) {
         CHECK(l.erra[i] > 0.0);
         const double w = 1.0 / (l.erra[i] * l.erra[i]);       // per coordinate
         if (int(l.tele[i]) == 0) {
-            rubin.add(w, dx, dy);
+            rubin.add(w, ddx[i], ddy[i]);
         } else {
             CHECK(l.rseas[i] >= 0 and l.rseas[i] < AST_MAX_SEASONS);
             CHECK(l.rroll[i] == 0 or l.rroll[i] == 1);
             AstSums& d = romanDays[long(std::floor(l.timn[i]))];
             if (d.season < 0) { d.season = l.rseas[i]; d.roll = l.rroll[i]; }
             CHECK(d.season == l.rseas[i] and d.roll == l.rroll[i]);
-            d.add(w, dx, dy);
+            d.add(w, ddx[i], ddy[i]);
         }
     }
 
@@ -417,6 +431,9 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 
 
     gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, co.inverB[SJOINT].get(), co.inputB[SJOINT].get(), 0.0, co.summB.get());
+
+    const auto point1 = point();
+    CHECK(std::memcmp(point1.data(), point0.data(), sizeof(point1)) == 0);  //bit for bit, NaN included
 }
 
 ///HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH

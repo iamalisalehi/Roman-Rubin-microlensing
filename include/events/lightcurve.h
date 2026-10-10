@@ -1,4 +1,5 @@
-// The microlensing light curve and astrometric track at one epoch, the observed peak, and the two-image resolution test.
+// The microlensing light curve and astrometric track at one epoch and over many (evaluateModel), the observed peak,
+// and the two-image resolution test.
 #ifndef ROMAN_EVENTS_LIGHTCURVE_H
 #define ROMAN_EVENTS_LIGHTCURVE_H
 
@@ -48,6 +49,18 @@ inline double magnifOf(double u)
 }
 
 void   lightcurve(source & s, lens & l, astromet & as, double, int tele);
+
+// What the Fisher matrices need from the model at one epoch.
+struct ModelPoint {
+    double A;             //magnification, magnifOf(u)
+    double u;             //impact parameter, s.ut
+    double pos1c, pos2c;  //measured light centroid [mas], s.pos1c / s.pos2c
+};
+
+// The current event (s, l, as as they stand) seen by observer `tele` at the n epochs t[0..n-1]:
+// out[i] is the model at t[i]. The one place FisherM asks for the model. See lightcurve.cpp.
+void   evaluateModel(source & s, lens & l, astromet & as, int tele, const double* t, int n,
+                     ModelPoint* out);
 
 // Finds the OBSERVED peak: the Earth-frame, parallax-bent closest approach.
 // Returns {time of the peak, impact parameter there}. See the comment in lightcurve.cpp.

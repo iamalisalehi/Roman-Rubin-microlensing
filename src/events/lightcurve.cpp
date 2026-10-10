@@ -1,4 +1,5 @@
-// Light curve and astrometric track of one event at one epoch, and the observed-peak finder.
+// Light curve and astrometric track of one event at one epoch and over many (evaluateModel), and
+// the observed-peak finder.
 #include "events/lightcurve.h"
 
 // tele: which observatory is asking -- 0 = Rubin (on Earth), 1 = Roman (at Sun-Earth L2).
@@ -81,6 +82,20 @@ void lightcurve(source & s, lens & l, astromet & as, double timh, int tele)
 
     l.pos1  = l.mul1 * (timh - l.t0) - as.ue_n1 * pil ;//x-lens trajectory && parallax[mas]
     l.pos2  = l.mul2 * (timh - l.t0) - as.ue_n2 * pil ;//y-lens trajectory && parallax[mas]
+}
+
+// The model for one parameter set at all of one telescope's epochs: the Fisher matrices ask for it
+// through here and nowhere else, one call per parameter set and telescope. A whole light curve per
+// call is the shape of a library that computes light curves (one observer, many epochs) rather than
+// single points, which can replace the loop below without FisherM changing. For now it is
+// lightcurve() epoch by epoch, and leaves s/as holding the state at t[n-1].
+void evaluateModel(source & s, lens & l, astromet & as, int tele, const double* t, int n,
+                   ModelPoint* out)
+{
+    for (int i = 0; i < n; ++i) {
+        lightcurve(s, l, as, t[i], tele);
+        out[i] = ModelPoint{magnifOf(s.ut), s.ut, s.pos1c, s.pos2c};
+    }
 }
 
 // The OBSERVED peak. The table's t0 and u0 are the closest approach of the straight line in

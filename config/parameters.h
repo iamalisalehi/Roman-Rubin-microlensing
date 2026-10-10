@@ -336,6 +336,13 @@ constexpr double AST_SIGC_N = 0.3;               //mas per coordinate per Roman 
 constexpr double AST_SIGC_P = ROMAN_AST_FLOOR;   //1.1 mas
 constexpr std::array<double, NAVAR> AST_SIGC = {0.0, AST_SIGC_N, AST_SIGC_P};
 constexpr int    AST_MAX_SEASONS = 16;           //Roman seasons a P-variant offset can be keyed on
+// THE BLEND OFFSET IS FREE. The unresolved neighbours sit at a light centroid offset from the source
+// (s.blendOff, drawn in func_source), and as the source brightens the measured centroid slides from
+// them toward it: a magnification-locked shift that real fits must model with two extra parameters per
+// telescope (the offset's two coordinates), since the neighbours' positions are not known in advance.
+// true: those parameters are fitted and marginalised in every variant; false: they are treated as known
+// (the forecast then shows only what the blending costs in light, not in position).
+constexpr bool   AST_BLEND_OFFSET_FREE = true;
 
 // ==========================================================================================
 // (6) LENS POPULATIONS AND MASS FUNCTIONS

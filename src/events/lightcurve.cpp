@@ -64,16 +64,19 @@ void lightcurve(source & s, lens & l, astromet & as, double timh, int tele)
 
     // The MEASURED centroid: the light-weighted position of everything in the PSF. The lensed source
     // (flux fb*A, at its unlensed position + the deflection), the lens's own light (fLens, at the
-    // lens: -u*thetaE from the source) and the other blended stars (at the source's unlensed
-    // position, so they only dilute). Fractions are of this telescope's baseline flux.
+    // lens: -u*thetaE from the source) and the unresolved neighbours (the rest of the baseline flux,
+    // at their light centroid blendOff, which moves with the source). As the source brightens its
+    // share grows and the centroid slides from the neighbours toward it. Fractions are of this
+    // telescope's baseline flux.
     {
         const int    tt  = (tele == 1) ? 1 : 0;
         const double fs  = s.fb[tt], fL = s.fLens[tt];
+        const double fn  = std::max(0.0, 1.0 - fs - fL);
         const double u2  = s.ut * s.ut;
         const double A   = (u2 + 2.0) / std::sqrt(u2 * (u2 + 4.0));
         const double den = fs * A + 1.0 - fs;
-        s.pos1c = s.pos1b + (fs * A * s.def1c - fL * l.tetE * s.ux) / den; //x-centroid[mas]
-        s.pos2c = s.pos2b + (fs * A * s.def2c - fL * l.tetE * s.uy) / den; //y-centroid[mas]
+        s.pos1c = s.pos1b + (fs * A * s.def1c - fL * l.tetE * s.ux + fn * s.blendOff[tt][0]) / den; //x-centroid[mas]
+        s.pos2c = s.pos2b + (fs * A * s.def2c - fL * l.tetE * s.uy + fn * s.blendOff[tt][1]) / den; //y-centroid[mas]
     }
 
     l.pos1  = l.mul1 * (timh - l.t0) - as.ue_n1 * pil ;//x-lens trajectory && parallax[mas]

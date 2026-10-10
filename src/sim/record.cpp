@@ -125,7 +125,9 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
             << co.okBV[AV_N][SJOINT] << " " << co.okBV[AV_N][SROMAN] << " "
             << co.okBV[AV_P][SJOINT] << " " << co.okBV[AV_P][SROMAN] << " "
             << int(l.luminous) << " " << s.fLens[0] << " " << s.fLens[1] << " "
-            << pk.t0obs << " " << pk.uminObs << "\n";
+            << pk.t0obs << " " << pk.uminObs << " "
+            << std::hypot(s.blendOff[0][0], s.blendOff[0][1]) << " "
+            << std::hypot(s.blendOff[1][0], s.blendOff[1][1]) << "\n";
     filg_in.close();
 
     commitSampleDump(ctx, lc, ch, pk);

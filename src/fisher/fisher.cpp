@@ -235,30 +235,51 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     // Sums kept per coordinate: S_w = sum w, S_wd[c][j] = sum w d_cj, S_wdd[c][jk]. Rubin's epochs
     // go into one white group; Roman's go into day blocks (the sigma_c correlation unit), tagged
     // with season and roll so the variants can group them differently.
+    // Each coordinate carries one extra parameter, slot Ny: the light centroid of the telescope's
+    // unresolved neighbours in that coordinate (s.blendOff), unknown to the analyst. Its derivative is
+    // dcentroid/dblendOff = fn / (fs A + 1 - fs), largest at baseline and falling as the source
+    // brightens; it is marginalised below, per telescope and per coordinate (it appears in no other
+    // telescope's or coordinate's data), when AST_BLEND_OFFSET_FREE.
+    constexpr int D = Ny + 1;
     struct AstSums {
         double Sw = 0.0;
-        std::array<std::array<double, Ny>, 2>      Swd{};
-        std::array<std::array<double, Ny * Ny>, 2> Swdd{};
+        std::array<std::array<double, D>, 2>     Swd{};
+        std::array<std::array<double, D * D>, 2> Swdd{};
         int season = -1, roll = -1;
-        void add(double w, const std::array<double, Ny>& dx, const std::array<double, Ny>& dy) {
+        void add(double w, const std::array<double, D>& dx, const std::array<double, D>& dy) {
             Sw += w;
             for (int c = 0; c < 2; ++c) {
                 const auto& d = c ? dy : dx;
-                for (int j = 0; j < Ny; ++j) {
+                for (int j = 0; j < D; ++j) {
                     Swd[c][j] += w * d[j];
-                    for (int k = 0; k < Ny; ++k) Swdd[c][j * Ny + k] += w * d[j] * d[k];
+                    for (int k = 0; k < D; ++k) Swdd[c][j * D + k] += w * d[j] * d[k];
                 }
             }
         }
     };
     AstSums rubin;
     std::map<long, AstSums> romanDays;
-    std::array<double, Ny> dx{}, dy{};
+    std::array<double, D> dx{}, dy{};
 
     for (int i = 0; i < ndw; ++i) {
         // Reference and perturbations use the observer that produced THIS datum.
-        lightcurve(s, l, as, l.timn[i], int(l.tele[i]));
-        const double soux0 = s.pos1c, souy0 = s.pos2c;
+        // The neighbours' share of the centroid, fn blendOff / (fs A + 1 - fs), and its derivative with
+        // respect to blendOff. The parameter derivatives below are taken on the centroid WITHOUT this
+        // share: its time profile is the magnification curve, which belongs to the photometric matrix,
+        // and read here (with u0, tE, t0 held fixed) it would hand piE information the split cannot
+        // marginalise. The share enters only through its unknown amplitude, slot Ny.
+        const int tt = int(l.tele[i]);
+        const double fn = std::max(0.0, 1.0 - s.fb[tt] - s.fLens[tt]);
+        auto nbrShare = [&](double& bx, double& by) {
+            const double u2 = s.ut * s.ut;
+            const double h  = fn / (s.fb[tt] * (u2 + 2.0) / std::sqrt(u2 * (u2 + 4.0)) + 1.0 - s.fb[tt]);
+            bx = h * s.blendOff[tt][0];  by = h * s.blendOff[tt][1];
+            return h;
+        };
+        lightcurve(s, l, as, l.timn[i], tt);
+        double nbx0, nby0;
+        dx[Ny] = dy[Ny] = nbrShare(nbx0, nby0);
+        const double soux0 = s.pos1c - nbx0, souy0 = s.pos2c - nby0;
 
         for (int j = 0; j < Ny; ++j) {
             for (int h = 0; h < 2; ++h) {
@@ -269,9 +290,11 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 if (j == 2) s.mus2 += co.diff;
                 if (j == 3) l.piE  += co.diff;
 
-                lightcurve(s, l, as, l.timn[i], int(l.tele[i]));
-                co.dera1[h] = double(s.pos1c - soux0) / co.diff;
-                co.derb1[h] = double(s.pos2c - souy0) / co.diff;
+                lightcurve(s, l, as, l.timn[i], tt);
+                double nbx, nby;
+                nbrShare(nbx, nby);
+                co.dera1[h] = double(s.pos1c - nbx - soux0) / co.diff;
+                co.derb1[h] = double(s.pos2c - nby - souy0) / co.diff;
 
                 CHECK(l.tetE > 0.0);
                 CHECK(l.piE > 0.0);
@@ -300,37 +323,61 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         }
     }
 
-    // A frame group: sum of block matrices, the block offset-vectors b per coordinate, and c.
+    // A frame group: per coordinate, the sum of block matrices and offset-vectors b, and c.
+    using PerCoord = std::array<std::array<double, D * D>, 2>;
     struct Group {
-        std::array<double, Ny * Ny> F{};
-        std::array<std::array<double, Ny>, 2> b{};
+        PerCoord F{};
+        std::array<std::array<double, D>, 2> b{};
         double c = 0.0;
         void fold(const AstSums& k, double sc) {          // one block, correlated at sigma_c = sc
             const double s2 = sc * sc, den = 1.0 + s2 * k.Sw;
             for (int cc = 0; cc < 2; ++cc)
-                for (int j = 0; j < Ny; ++j) {
+                for (int j = 0; j < D; ++j) {
                     b[cc][j] += k.Swd[cc][j] / den;
-                    for (int m = 0; m < Ny; ++m)
-                        F[j * Ny + m] += k.Swdd[cc][j * Ny + m] - s2 * k.Swd[cc][j] * k.Swd[cc][m] / den;
+                    for (int m = 0; m < D; ++m)
+                        F[cc][j * D + m] += k.Swdd[cc][j * D + m] - s2 * k.Swd[cc][j] * k.Swd[cc][m] / den;
                 }
             c += k.Sw / den;
         }
-        void marginaliseInto(std::array<double, Ny * Ny>& out) const {   // free offset
+        void marginaliseInto(PerCoord& out) const {       // free offset
+            for (int cc = 0; cc < 2; ++cc)
+                for (int jm = 0; jm < D * D; ++jm)
+                    out[cc][jm] += F[cc][jm] - (c > 0.0 ? b[cc][jm / D] * b[cc][jm % D] / c : 0.0);
+        }
+    };
+    // One telescope's per-coordinate matrices -> its Ny x Ny information on the physical parameters,
+    // with the blend offset marginalised (Schur complement of slot Ny). raw = that telescope's
+    // sum w h^2 per coordinate before any marginalisation: when what is left after the offsets is a
+    // vanishing fraction of it, h was constant (no magnification while observed), the blend offset is
+    // indistinguishable from the reference position and carries no cross-information, so nothing is
+    // subtracted.
+    auto physical = [](const PerCoord& G, const std::array<double, 2>& raw, std::array<double, Ny * Ny>& out) {
+        for (int cc = 0; cc < 2; ++cc) {
+            const double hh = G[cc][Ny * D + Ny];
+            const bool   fit = AST_BLEND_OFFSET_FREE and raw[cc] > 0.0 and hh > 1.0e-9 * raw[cc];
             for (int j = 0; j < Ny; ++j)
                 for (int m = 0; m < Ny; ++m)
-                    out[j * Ny + m] += F[j * Ny + m]
-                        - (c > 0.0 ? (b[0][j] * b[0][m] + b[1][j] * b[1][m]) / c : 0.0);
+                    out[j * Ny + m] += G[cc][j * D + m] - (fit ? G[cc][j * D + Ny] * G[cc][m * D + Ny] / hh : 0.0);
         }
     };
 
     std::array<double, Ny * Ny> FL{};
-    { Group g; g.fold(rubin, 0.0); g.marginaliseInto(FL); }
+    {
+        Group g; g.fold(rubin, 0.0);
+        PerCoord G{}; g.marginaliseInto(G);
+        physical(G, {rubin.Swdd[0][Ny * D + Ny], rubin.Swdd[1][Ny * D + Ny]}, FL);
+    }
+    std::array<double, 2> rawR{};
+    for (const auto& [day, k] : romanDays)
+        for (int cc = 0; cc < 2; ++cc) rawR[cc] += k.Swdd[cc][Ny * D + Ny];
     for (int v = 0; v < NAVAR; ++v) {
         std::vector<Group> groups(v == AV_W ? 1 : (v == AV_N ? 2 : AST_MAX_SEASONS));
         for (const auto& [day, k] : romanDays)
             groups[v == AV_W ? 0 : (v == AV_N ? k.roll : k.season)].fold(k, AST_SIGC[v]);
+        PerCoord G{};
+        for (const auto& g : groups) g.marginaliseInto(G);
         std::array<double, Ny * Ny> FR{};
-        for (const auto& g : groups) g.marginaliseInto(FR);
+        physical(G, rawR, FR);
         for (int jm = 0; jm < Ny * Ny; ++jm) {
             co.FBV[v][SRUBIN][jm] = FL[jm];
             co.FBV[v][SROMAN][jm] = FR[jm];

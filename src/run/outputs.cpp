@@ -41,7 +41,10 @@ const char* eventTableHeader()
         "lensLum fLens_L fLens_R "
         // The observed (Earth-frame, parallax-bent) peak time and impact parameter.
         // t0zone, dt_edge and nep_pk_* are measured from t0obs, not from t0.
-        "t0obs umin_obs";
+        "t0obs umin_obs "
+        // Distance of the unresolved neighbours' light centroid from the source [mas], Rubin's
+        // reference band and F146 (0 = no neighbour in the disc).
+        "blendOff_L blendOff_R";
 }
 
 int openOutputs(const RunConfig& cfg, RunOutputs& o) {
@@ -262,7 +265,8 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << satu[6] << " AB\n"
              << "# astrometric_noise   k/SNR (+) floor, SNR from the epoch's photometric error; Roman k "
              << ROMAN_AST_K << " mas, floor " << ROMAN_AST_FLOOR << " mas; Rubin kappa "
-             << LSST_AST_KAPPA << " x visit FWHM_geom, floor " << LSST_AST_FLOOR << " mas\n"
+             << LSST_AST_KAPPA << " x visit FWHM_geom, floor " << LSST_AST_FLOOR << " mas; blend offset "
+             << (AST_BLEND_OFFSET_FREE ? "fitted (marginalised)" : "known") << "\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex.nTables << " x "
              << ex.nDist << ", k " << ex.k << " --" << ex.built << "\n"
 

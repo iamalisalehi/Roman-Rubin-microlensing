@@ -40,6 +40,7 @@ SightlineStart setupSightline(SimContext& ctx, SightlineState& st, const Sightli
     // Each sightline has its own random stream (sightlineSeed in include/util/random.h), so a
     // resumed run reproduces an uninterrupted one.
     rng.seed(sightlineSeed(cfg.seedBase, st.iScan));
+    rngBlend.seed(sightlineSeed(cfg.seedBase ^ BLEND_STREAM_SALT, st.iScan));
     cout << ">>>>>>>>>>> NEW STEP " << st.nde << " <<<<<<<<\t nri:  " << st.nri << endl;
     cout << "longtitude: " << s.lon << "\t latitude: " << s.lat << endl;
 

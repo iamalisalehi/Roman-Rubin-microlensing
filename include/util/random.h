@@ -23,8 +23,14 @@ inline std::uint64_t sightlineSeed(std::uint64_t base, long index)
     return splitmix64(splitmix64(base) ^ static_cast<std::uint64_t>(index));
 }
 
+// A second generator for the positions of unresolved neighbours (func_source), re-seeded per sightline
+// like `rng` but from a salted base, so drawing them leaves every draw of the main stream unchanged.
+inline std::mt19937_64 rngBlend{seed};
+constexpr std::uint64_t BLEND_STREAM_SALT = 0xB7E151628AED2A6BULL;
+
 double RandN(double , double);
 double RandR(double , double);
 int    RandPois(double);
+double RandBlendUnit();   // uniform on [0, 1), from rngBlend
 
 #endif // ROMAN_UTIL_RANDOM_H

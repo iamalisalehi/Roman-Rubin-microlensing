@@ -55,6 +55,9 @@ struct source {
     // Share of each telescope's baseline flux that is the LENS's own light: 0 for dark lenses; for a
     // luminous lens it is already inside the blend (fb counts the source only).
     std::array<double, 2> fLens{};
+    // Light centroid of the unresolved neighbours relative to the source's unlensed position, per
+    // telescope [tt][x, y], in mas (func_source). Their light pulls the measured centroid toward this point.
+    std::array<std::array<double, 2>, 2> blendOff{};
 
     std::vector<double> nssim; // size Num
     std::vector<double> nsdet; // size Num

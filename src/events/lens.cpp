@@ -68,7 +68,11 @@ void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sight
     l.RE     = std::sqrt(4.0 * G * l.Ml * Msun * s.Ds * KP) / velocity;
     l.RE     = l.RE * std::sqrt(l.xls * (1.0 - l.xls)); //meter
     l.tetE   = l.RE / AU / l.Dl; //[mas]
-    s.ros    = 1.0 * Rsun * l.xls / l.RE;
+    // Finite-source size. theta* = Rstar / Ds in tetE's units (1 AU at 1 kpc = 1 mas), so rho =
+    // theta* / thetaE = Rstar * Rsun * xls / RE: the source radius projected onto the lens plane, in
+    // Einstein radii. The two forms are the same number.
+    s.thetaStar = s.Rstar * Rsun / AU / s.Ds; //[mas]
+    s.rho       = s.thetaStar / l.tetE;       //[]
     l.pirel  = 1.0 / l.Dl - 1.0 / s.Ds; //[mas]
     l.piE    = l.pirel / l.tetE; //[]
     // A luminous lens's own light joins the blend. Apparent magnitudes come from its main-sequence

@@ -38,7 +38,10 @@ static std::vector<double> make_grid_log(double min, double max)
 struct source {
     int nums, cl;
 
-    double mass, logT, typ, age, ros;
+    double mass, logT, typ, age;
+    // Finite-source size: the physical radius [Rsun], the angular radius theta* = Rstar / Ds [mas, as
+    // l.tetE], and rho = theta* / thetaE [], the source radius in Einstein radii (func_lens).
+    double Rstar, thetaStar, rho;
     double mus1, mus2, mus;
     double xv, yv, zv;
     double Av; //, Avv;

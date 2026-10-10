@@ -44,7 +44,10 @@ const char* eventTableHeader()
         "t0obs umin_obs "
         // Distance of the unresolved neighbours' light centroid from the source [mas], Rubin's
         // reference band and F146 (0 = no neighbour in the disc).
-        "blendOff_L blendOff_R";
+        "blendOff_L blendOff_R "
+        // Finite-source size: the source radius [Rsun], its angular radius theta* [mas], and
+        // rho = theta* / thetaE, the source radius in Einstein radii.
+        "Rstar thetaStar rho";
 }
 
 int openOutputs(const RunConfig& cfg, RunOutputs& o) {

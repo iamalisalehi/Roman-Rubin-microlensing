@@ -127,7 +127,9 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
             << int(l.luminous) << " " << s.fLens[0] << " " << s.fLens[1] << " "
             << pk.t0obs << " " << pk.uminObs << " "
             << std::hypot(s.blendOff[0][0], s.blendOff[0][1]) << " "
-            << std::hypot(s.blendOff[1][0], s.blendOff[1][1]) << "\n";
+            << std::hypot(s.blendOff[1][0], s.blendOff[1][1]) << " "
+            // finite-source size: radius [Rsun], angular radius [mas], and rho = theta* / thetaE
+            << s.Rstar << " " << s.thetaStar << " " << s.rho << "\n";
     filg_in.close();
 
     commitSampleDump(ctx, lc, ch, pk);
@@ -167,7 +169,7 @@ void commitSampleDump(SimContext& ctx, const LightCurveStats& lc, const Characte
             pr << std::setprecision(10)
                << "# Sample event for class '" << c.name << "'.\n"
                << "# One key per line. Angles in deg, times in days, masses in Msun,\n"
-               << "# distances in kpc, angular scales in mas. A sigma of -1 means the\n"
+               << "# distances in kpc, angular scales in mas, Rstar in Rsun. A sigma of -1 means the\n"
                << "# parameter was NOT measured by that survey (inactive or no epochs),\n"
                << "# never that it was measured to be -1.\n"
                << "class "        << c.name        << "\n"
@@ -183,6 +185,9 @@ void commitSampleDump(SimContext& ctx, const LightCurveStats& lc, const Characte
                << "Ml "           << l.Ml         << "\n"
                << "Dl "           << l.Dl         << "\n"
                << "Ds "           << s.Ds         << "\n"
+               << "Rstar "        << s.Rstar      << "\n"
+               << "thetaStar "    << s.thetaStar  << "\n"
+               << "rho "          << s.rho        << "\n"
                << "Vt "           << l.Vt         << "\n"
                << "murel_yr "     << l.murel * year << "\n"
                << "mus1 "         << s.mus1       << "\n"

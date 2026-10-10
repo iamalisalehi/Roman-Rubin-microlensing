@@ -85,6 +85,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
                 s.mass = cm.mass_thin[num];
                 s.age  = cm.age_thin[num];
                 s.logT = cm.logT_thin[num];
+                s.Rstar = cm.Rstar_thin[num];
                 s.cl   = cm.cl_thin[num];
                 s.typ  = cm.typ_thin[num];
             }
@@ -99,6 +100,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
                 s.mass = cm.mass_bulge[num];
                 s.age  = cm.age_bulge[num];
                 s.logT = cm.logT_bulge[num];
+                s.Rstar = cm.Rstar_bulge[num];
                 s.cl   = cm.cl_bulge[num];
                 s.typ  = cm.typ_bulge[num];
             }
@@ -113,6 +115,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
                 s.mass = cm.mass_thick[num];
                 s.age  = cm.age_thick[num];
                 s.logT = cm.logT_thick[num];
+                s.Rstar = cm.Rstar_thick[num];
                 s.cl   = cm.cl_thick[num];
                 s.typ  = cm.typ_thick[num];
             }
@@ -127,6 +130,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
                 s.mass = cm.mass_halo[num];
                 s.age  = cm.age_halo[num];
                 s.logT = cm.logT_halo[num];
+                s.Rstar = cm.Rstar_halo[num];
                 s.cl   = cm.cl_halo[num];
                 s.typ  = cm.typ_halo[num];
             }

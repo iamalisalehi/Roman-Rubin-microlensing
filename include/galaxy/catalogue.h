@@ -7,6 +7,7 @@
 struct CMD {
     // Thin disk
     std::vector<double> logT_thin;
+    std::vector<double> Rstar_thin;  // stellar radius [Rsun], from the row's Mbol and logT (read_cmd)
     std::vector<double> mass_thin;
     std::vector<std::array<double, M>> Mab_thin; // M × N1
     std::vector<double> typ_thin;
@@ -15,6 +16,7 @@ struct CMD {
 
     // Bulge
     std::vector<double> logT_bulge;
+    std::vector<double> Rstar_bulge; // [Rsun]
     std::vector<double> mass_bulge;
     std::vector<std::array<double, M>> Mab_bulge; // M × N2
     std::vector<double> typ_bulge; 
@@ -23,6 +25,7 @@ struct CMD {
 
     // Thick disk
     std::vector<double> logT_thick;
+    std::vector<double> Rstar_thick; // [Rsun]
     std::vector<double> mass_thick;
     std::vector<std::array<double, M>> Mab_thick; // M × N3
     std::vector<double> typ_thick;
@@ -31,6 +34,7 @@ struct CMD {
 
     // Halo
     std::vector<double> logT_halo;
+    std::vector<double> Rstar_halo; // [Rsun]
     std::vector<double> mass_halo;
     std::vector<std::array<double, M>> Mab_halo; // M × N4
     std::vector<double> typ_halo;
@@ -39,10 +43,10 @@ struct CMD {
 
     // Constructor
     CMD()
-        : logT_thin(N1),  mass_thin(N1),  Mab_thin(N1),  typ_thin(N1),  cl_thin(N1),  age_thin(N1),
-          logT_bulge(N2), mass_bulge(N2), Mab_bulge(N2), typ_bulge(N2), cl_bulge(N2), age_bulge(N2),
-          logT_thick(N3), mass_thick(N3), Mab_thick(N3), typ_thick(N3), cl_thick(N3), age_thick(N3),
-          logT_halo(N4),  mass_halo(N4),  Mab_halo(N4),  typ_halo(N4),  cl_halo(N4),  age_halo(N4)
+        : logT_thin(N1),  Rstar_thin(N1),  mass_thin(N1),  Mab_thin(N1),  typ_thin(N1),  cl_thin(N1),  age_thin(N1),
+          logT_bulge(N2), Rstar_bulge(N2), mass_bulge(N2), Mab_bulge(N2), typ_bulge(N2), cl_bulge(N2), age_bulge(N2),
+          logT_thick(N3), Rstar_thick(N3), mass_thick(N3), Mab_thick(N3), typ_thick(N3), cl_thick(N3), age_thick(N3),
+          logT_halo(N4),  Rstar_halo(N4),  mass_halo(N4),  Mab_halo(N4),  typ_halo(N4),  cl_halo(N4),  age_halo(N4)
     {}
 };
 

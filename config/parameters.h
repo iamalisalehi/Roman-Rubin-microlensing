@@ -503,9 +503,10 @@ constexpr double FB_STEP_LARGE = 0.15;
 constexpr int kMinTeleEpochs = 3;
 
 // Accuracy of VBMicrolensing's finite-source magnification (its Tol): the ABSOLUTE tolerance on the
-// magnification, integrated over annuli of the tabulated uniform-disc profile. tests/vbm_test.cpp measured
-// a worst relative error of 4.7e-5 for the uniform disc at this setting (against direct integration, over
-// rho = 1e-3..0.1); a smaller Tol costs time through more annuli.
+// magnification. For the uniform disc the light curve uses (--source-model espl) it sets where the library
+// leaves its table for the quadrupole expansion in rho (where the correction falls below Tol/10); a limb-darkened
+// disc would integrate annuli of the table to this tolerance. tests/vbm_test.cpp measured a worst relative error
+// of 4.7e-5 for the uniform disc at this setting (against direct integration, over rho = 1e-3..0.1).
 constexpr double VBM_TOL = 1.0e-3;
 
 // ==========================================================================================

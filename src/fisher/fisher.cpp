@@ -1,6 +1,7 @@
 // FisherM (information matrices by finite differences) and ErrorCal (sigmas from the inverses).
 #include "fisher/fisher.h"
 #include "events/lightcurve.h"
+#include "events/vbm_model.h"
 #include "surveys/noise.h"
 #include <cstring>
 
@@ -276,14 +277,21 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         ref.resize(n);  pert.resize(n);  sx0.resize(n);  sy0.resize(n);
 
         // The neighbours' share of the centroid, fn blendOff / (fs A + 1 - fs), and its derivative with
-        // respect to blendOff, at impact parameter u. The parameter derivatives below are taken on the
-        // centroid WITHOUT this share: its time profile is the magnification curve, which belongs to the
-        // photometric matrix, and read here (with u0, tE, t0 held fixed) it would hand piE information
-        // the split cannot marginalise. The share enters only through its unknown amplitude, slot Ny.
+        // respect to blendOff, at the model's magnification A of the epoch. The parameter derivatives below
+        // are taken on the centroid WITHOUT this share: its time profile is the magnification curve, which
+        // belongs to the photometric matrix, and read here (with u0, tE, t0 held fixed) it would hand piE
+        // information the split cannot marginalise. The share enters only through its unknown amplitude,
+        // slot Ny.
+        // For a point source A is magnifOf(u) bit for bit, and the share keeps the form it has always had
+        // (fs (u^2 + 2) / sqrt(u^2 (u^2 + 4)) rounds differently from fs A), so that point-source results do
+        // not move in the last digit; for a finite source it is the model's A, which u alone no longer gives.
         const double fn = std::max(0.0, 1.0 - s.fb[tt] - s.fLens[tt]);
-        auto nbrShare = [&](double u, double& bx, double& by) {
-            const double u2 = u * u;
-            const double h  = fn / (s.fb[tt] * (u2 + 2.0) / std::sqrt(u2 * (u2 + 4.0)) + 1.0 - s.fb[tt]);
+        const bool   finite = (vbmSourceModel() == SourceModel::ESPL);
+        auto nbrShare = [&](const ModelPoint& p, double& bx, double& by) {
+            const double u2   = p.u * p.u;
+            const double flux = finite ? s.fb[tt] * p.A + 1.0 - s.fb[tt]
+                                       : s.fb[tt] * (u2 + 2.0) / std::sqrt(u2 * (u2 + 4.0)) + 1.0 - s.fb[tt];
+            const double h = fn / flux;
             bx = h * s.blendOff[tt][0];  by = h * s.blendOff[tt][1];
             return h;
         };
@@ -292,7 +300,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         evaluateModel(s, l, as, tt, t, n, true, ref.data());
         for (int m = 0; m < n; ++m) {
             double nbx0, nby0;
-            ddx[ix[m]][Ny] = ddy[ix[m]][Ny] = nbrShare(ref[m].u, nbx0, nby0);
+            ddx[ix[m]][Ny] = ddy[ix[m]][Ny] = nbrShare(ref[m], nbx0, nby0);
             sx0[m] = ref[m].pos1c - nbx0;
             sy0[m] = ref[m].pos2c - nby0;
         }
@@ -310,7 +318,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 // A null derivative (epoch at t0 or far from the peak) is legitimate and contributes nothing.
                 for (int m = 0; m < n; ++m) {
                     double nbx, nby;
-                    nbrShare(pert[m].u, nbx, nby);
+                    nbrShare(pert[m], nbx, nby);
                     const double derx = (pert[m].pos1c - nbx - sx0[m]) / diff;
                     const double dery = (pert[m].pos2c - nby - sy0[m]) / diff;
                     double& dx = ddx[ix[m]][j];

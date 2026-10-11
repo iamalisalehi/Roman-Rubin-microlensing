@@ -10,7 +10,8 @@
 //      only from the two visit cadences, and the visit pointers advance whether or not a visit passes
 //      the magnitude gate, so the grid is the same for any model and is laid out first (buildTimeGrid);
 //   2. the model: the grid handed over in blocks, as arrays of epochs, one observer per call --
-//      Rubin's frame at every epoch, Roman's at the epochs where Roman takes a visit (evaluateTrack);
+//      Rubin's frame at every epoch, Roman's at the epochs where Roman takes a visit (evaluateTrack),
+//      with the absolute positions only when the sample dump will write them;
 //   3. the accounting: epoch by epoch in order, the magnitude gates, the noise draws, the chi-squared
 //      sums, the recorded epochs, the resolution test and the sample dump, all reading the model
 //      values phase 2 produced.
@@ -156,6 +157,15 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
     // Phase 1: the time grid.
     buildTimeGrid(st, ls, ro, grid);
 
+    // The absolute positions of source, lens and centroid (a second library call, the astrometric track,
+    // about as costly as the photometric one) are read by the sample dump and by the astrometric
+    // chi-squared diagnostic (chi1a, chi2a below), and by nothing else: the astrometric Fisher matrix asks
+    // the model for its own centroids, and l.soux/souy are never read. So the time loop asks for them only
+    // when the dump is on, and the chi*a sums then exist only for a dump run. Nothing else depends on it:
+    // u, A, ux, uy come from the photometric call either way (evaluateTrack), and the source-velocity
+    // diagnostic below uses the point-lens deflection in both cases.
+    const bool positions = dumpSpec.on;
+
     const std::size_t nSteps = grid.size();
     for (std::size_t first = 0; first < nSteps; first += MODEL_BLOCK) {
         const std::size_t last = std::min(nSteps, first + MODEL_BLOCK);   // this block is [first, last)
@@ -170,9 +180,9 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
         }
         atRubin.resize(tRubin.size());
         atRoman.resize(tRoman.size());
-        evaluateTrack(s, l, as, 0, tRubin.data(), int(tRubin.size()), atRubin.data());
+        evaluateTrack(s, l, as, 0, tRubin.data(), int(tRubin.size()), positions, atRubin.data());
         if (not tRoman.empty())
-            evaluateTrack(s, l, as, 1, tRoman.data(), int(tRoman.size()), atRoman.data());
+            evaluateTrack(s, l, as, 1, tRoman.data(), int(tRoman.size()), positions, atRoman.data());
 
         // Phase 3: the accounting over the block.
         std::size_t jRoman = 0;   // which of atRoman is the next Roman visit's
@@ -183,11 +193,14 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
             // Rubin's geometry (observer on Earth): r. The Roman branch uses its own, q. Only the deflection
             // is carried through every epoch -- the source's velocity is a difference between consecutive
             // epochs' deflections, whichever survey observes them; everything else is computed in the
-            // branch that uses it.
+            // branch that uses it. The deflection is the point lens's, thetaE (ux, uy)/(u^2 + 2), computed
+            // here from the photometric geometry whether or not the library's centroid was asked for, so that
+            // the diagnostic does not depend on the sample dump (the dump records keep the library's).
             const TrackPoint& r = atRubin[j - first];
             const double def1prev = def1p, def2prev = def2p;
-            def1p = r.def1c; //pervious
-            def2p = r.def2c;
+            const double kdef = l.tetE / (r.u * r.u + 2.0);
+            def1p = kdef * r.ux; //pervious
+            def2p = kdef * r.uy;
             sq  = step.sq;
             sqR = step.sqR;
 
@@ -213,11 +226,13 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                     // equals magni[2] (r-band) for the default {2}, since s.mbs[0]/s.fb[0] are built from
                     // the same combination in func_source.
                     const double magniRubinRef = s.mbs[0] - 2.5 * std::log10(r.A * s.fb[0] + 1.0 - s.fb[0]);
-                    const double vs1 = double(s.mus1 + (r.def1c - def1prev) / dt); //[mas/days]
-                    const double vs2 = double(s.mus2 + (r.def2c - def2prev) / dt); //[mas/days]
-                    // Both instruments' astrometric chi-square terms need these.
-                    trajm = std::sqrt(r.pos1b * r.pos1b + r.pos2b * r.pos2b); //stright + parallax
-                    trajp = std::sqrt(r.pos1c * r.pos1c + r.pos2c * r.pos2c); //stright + parallax+lensing
+                    const double vs1 = double(s.mus1 + (def1p - def1prev) / dt); //[mas/days]
+                    const double vs2 = double(s.mus2 + (def2p - def2prev) / dt); //[mas/days]
+                    // Both instruments' astrometric chi-square terms need these (positions only).
+                    if (positions) {
+                        trajm = std::sqrt(r.pos1b * r.pos1b + r.pos2b * r.pos2b); //stright + parallax
+                        trajp = std::sqrt(r.pos1c * r.pos1c + r.pos2c * r.pos2c); //stright + parallax+lensing
+                    }
 
                     // Could Rubin have told the two images apart at this epoch? Inside the magnitude
                     // gate on purpose: the criterion counts recorded data points.
@@ -242,22 +257,25 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                     chi2_L += std::fabs((magnio -  magni0[fi]) * (magnio -  magni0[fi]) / (errg * errg));
                     chi3_L += std::fabs((magnio - s.magb[fi]) * (magnio - s.magb[fi]) / (errg * errg));
 
-                    // erra is the per-coordinate astrometric sigma.
+                    // erra is the per-coordinate astrometric sigma. The draws are made whether or not the
+                    // sums below exist, so that the random stream does not depend on them.
                     sil  = RandN(errs, NOISE_TRUNC_NSIGMA);
                     sil2 = RandN(errs, NOISE_TRUNC_NSIGMA);
 
-                    chi1a += std::fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs)); //real trajectory
-                    chi2a += std::fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs)); //real without lensing
-                    chi3a += std::fabs( sil2  * sil2 / (errs * errs));
-                    chi1a_L += std::fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs));
-                    chi2a_L += std::fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs));
-                    chi3a_L += std::fabs( sil2  * sil2 / (errs * errs));
+                    if (positions) {
+                        chi1a += std::fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs)); //real trajectory
+                        chi2a += std::fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs)); //real without lensing
+                        chi3a += std::fabs( sil2  * sil2 / (errs * errs));
+                        chi1a_L += std::fabs((trajp + sil - trajp) * (trajp + sil - trajp) / (errs * errs));
+                        chi2a_L += std::fabs((trajp + sil - trajm) * (trajp + sil - trajm) / (errs * errs));
+                        chi3a_L += std::fabs( sil2  * sil2 / (errs * errs));
+                    }
 
                     CHECK(ndw < coun); // array-bounds guard — see note on `coun` sizing
                     l.timn[ndw] = tim;
                     l.magn[ndw] = magniRubinRef; // Rubin representative-band model value (RUBIN_REF_BANDS)
                     l.errm[ndw] = errg;
-                    l.soux[ndw] = r.pos1c;
+                    l.soux[ndw] = r.pos1c;   // NaN unless `positions`; never read by the Fisher matrices
                     l.souy[ndw] = r.pos2c;
                     l.erra[ndw] = errs;
                     l.tele[ndw] = 0; // 0 = LSST
@@ -316,8 +334,10 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                 {
                     magni0[fiR] = s.magb[fiR] - 2.5 * std::log10(q.ANoPlx * s.blend[fiR] + 1.0 - s.blend[fiR]);
                     magni[fiR]  = s.magb[fiR] - 2.5 * std::log10(q.A * s.blend[fiR] + 1.0 - s.blend[fiR]);
-                    trajm = std::sqrt(q.pos1b * q.pos1b + q.pos2b * q.pos2b);
-                    trajp = std::sqrt(q.pos1c * q.pos1c + q.pos2c * q.pos2c);
+                    if (positions) {
+                        trajm = std::sqrt(q.pos1b * q.pos1b + q.pos2b * q.pos2b);
+                        trajp = std::sqrt(q.pos1c * q.pos1c + q.pos2c * q.pos2c);
+                    }
                 }
 
                 if (magni[fiR] >= satu[fiR] and magni[fiR] <= thre[fiR]) {
@@ -350,12 +370,14 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
 
                     silR  = RandN(errsR, NOISE_TRUNC_NSIGMA);
                     sil2R = RandN(errsR, NOISE_TRUNC_NSIGMA);
-                    chi1a += std::fabs((trajp + silR - trajp) * (trajp + silR - trajp) / (errsR * errsR));
-                    chi2a += std::fabs((trajp + silR - trajm) * (trajp + silR - trajm) / (errsR * errsR));
-                    chi3a += std::fabs( sil2R * sil2R / (errsR * errsR));
-                    chi1a_R += std::fabs((trajp + silR - trajp) * (trajp + silR - trajp) / (errsR * errsR));
-                    chi2a_R += std::fabs((trajp + silR - trajm) * (trajp + silR - trajm) / (errsR * errsR));
-                    chi3a_R += std::fabs( sil2R * sil2R / (errsR * errsR));
+                    if (positions) {
+                        chi1a += std::fabs((trajp + silR - trajp) * (trajp + silR - trajp) / (errsR * errsR));
+                        chi2a += std::fabs((trajp + silR - trajm) * (trajp + silR - trajm) / (errsR * errsR));
+                        chi3a += std::fabs( sil2R * sil2R / (errsR * errsR));
+                        chi1a_R += std::fabs((trajp + silR - trajp) * (trajp + silR - trajp) / (errsR * errsR));
+                        chi2a_R += std::fabs((trajp + silR - trajm) * (trajp + silR - trajm) / (errsR * errsR));
+                        chi3a_R += std::fabs( sil2R * sil2R / (errsR * errsR));
+                    }
 
                     flag2_R = 0.0;
                     if (std::fabs(magnioR - s.magb[fiR]) > std::fabs(OUTLIER_FLAG_NSIGMA * errgR))    flag2_R = 1.0;
@@ -368,7 +390,7 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                     l.magn[ndw] = magni[fiR]; // F146 magnitude, not magni[2]: FisherM's tt==1 branch
                                                 // compares against the F146-based s.mbs[1]/s.fb[1]
                     l.errm[ndw] = errgR;
-                    l.soux[ndw] = q.pos1c;
+                    l.soux[ndw] = q.pos1c;   // NaN unless `positions`
                     l.souy[ndw] = q.pos2c;
                     l.erra[ndw] = errsR;
                     l.tele[ndw] = 1; // 1 = Roman/F146

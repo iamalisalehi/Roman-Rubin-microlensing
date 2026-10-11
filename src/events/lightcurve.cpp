@@ -5,10 +5,11 @@
 
 namespace {
 
-// The event as the model takes it, from the simulator's structs.
+// The event as the model takes it, from the simulator's structs: the source's size is s.rho, and its model
+// (a point or a uniform disc) is the run's (vbmSourceModel).
 ModelEvent eventOf(const source & s, const lens & l)
 {
-    return ModelEvent{l.u0, l.tE, l.t0, l.piE, s.xi, l.tetE, s.mus1, s.mus2, 1.0 / s.Ds};
+    return ModelEvent{l.u0, l.tE, l.t0, l.piE, s.xi, l.tetE, s.mus1, s.mus2, 1.0 / s.Ds, s.rho, vbmSourceModel()};
 }
 
 // Whether observer `tele` (0 = Rubin on Earth, 1 = Roman) sits at Roman's L2 orbit. as.satScale is a
@@ -21,12 +22,13 @@ bool atL2(const astromet & as, int tele)
     return tele == 1 and as.satScale == 1.0;
 }
 
-// The model's epochs, kept between calls so the hot path does not allocate.
-std::vector<ModelEpoch>& epochScratch(int n)
+// The model's epochs, kept between calls so the hot path does not allocate: [0] the photometric call's,
+// [1] the astrometric call's (evaluateTrack with positions).
+std::vector<ModelEpoch>& epochScratch(int n, int which = 0)
 {
-    static thread_local std::vector<ModelEpoch> v;
-    if (int(v.size()) < n) v.resize(n);
-    return v;
+    static thread_local std::vector<ModelEpoch> v[2];
+    if (int(v[which].size()) < n) v[which].resize(n);
+    return v[which];
 }
 
 // The MEASURED centroid: the light-weighted position of everything in the PSF. The lensed source
@@ -72,8 +74,18 @@ void evaluateModel(const source & s, const lens & l, const astromet & as, int te
 
 // The same light curve for everything that is not the Fisher matrix, with the whole geometry per
 // epoch instead of four numbers: the time loop, the sample dump, the observed peak and the satellite
-// offset ask for it through here and nowhere else. Same shape as evaluateModel above, always with the
-// positions.
+// offset ask for it through here and nowhere else. Same shape as evaluateModel above.
+//
+// u, A, ux, uy and everything computed from them are the photometric call's, whether or not positions are
+// asked for: the library's astrometric call perturbs the parallax vector at every epoch of an array
+// (vbm_model.cpp), which would make a run depend on whether the positions are written. The positions (the
+// source, the lens and the centroid, whose difference is the deflection def1c, def2c) come from a second
+// call over the same epochs, the astrometric one, and cost about as much as the first. Without them the
+// positions are NaN (so that a position read by mistake is loud) and the deflection is the point-lens
+// expression from the source-lens vector: the images' centroid lies thetaE u/(u^2 + 2) from the source,
+// along (ux, uy), exact for a point lens. Under a finite source the library's centroid differs from it while
+// the source is within a few radii of the lens (at the peak of an event that crosses the disc by half the
+// shift and in the opposite direction).
 //
 // The "no parallax" values are the geocentric straight line the light curve is parametrised by,
 //     u_np = u0 (-sin xi, cos xi) + tau (cos xi, sin xi),   tau = (t - t0) / tE,
@@ -82,11 +94,18 @@ void evaluateModel(const source & s, const lens & l, const astromet & as, int te
 // Earth's orbit curving away from its velocity at t0, is the annual parallax, and Roman's offset from the
 // Earth is added on top. Its deflection is thetaE u_np / (u_np^2 + 2).
 void evaluateTrack(const source & s, const lens & l, const astromet & as, int tele, const double* t, int n,
-                   TrackPoint* out)
+                   bool positions, TrackPoint* out)
 {
     std::vector<ModelEpoch>& e = epochScratch(n);
-    vbmEvaluate(eventOf(s, l), atL2(as, tele), true, t, n, e.data());
+    const ModelEvent ev = eventOf(s, l);
+    vbmEvaluate(ev, atL2(as, tele), false, t, n, e.data());
+    const ModelEpoch* ea = nullptr;     // the astrometric call's epochs
+    if (positions) {
+        vbmEvaluate(ev, atL2(as, tele), true, t, n, epochScratch(n, 1).data());
+        ea = epochScratch(n, 1).data();
+    }
     const double sx = std::sin(s.xi), cx = std::cos(s.xi);
+    constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
     for (int i = 0; i < n; ++i) {
         const ModelEpoch & m = e[i];
         TrackPoint & p = out[i];
@@ -100,15 +119,23 @@ void evaluateTrack(const source & s, const lens & l, const astromet & as, int te
         double uNp = std::sqrt(l.u0 * l.u0 + tau * tau);
         if (uNp == 0.0) uNp = 1.0e-50;
         p.uNoPlx = uNp;
-        p.ANoPlx = magnifOf(uNp);
+        p.ANoPlx = vbmMagnification(ev, uNp);   // the same source, on the straight line
         p.def1a = vx * l.tetE / (uNp * uNp + 2.0);   //x-deflection, without parallax[mas]
         p.def2a = vy * l.tetE / (uNp * uNp + 2.0);   //y-deflection, without parallax[mas]
 
-        measuredCentroid(s, l, tele, m, p.def1c, p.def2c, p.pos1c, p.pos2c);
-        p.pos1b = m.srcx;   //x-source trajectory+parallax[mas]
-        p.pos2b = m.srcy;
-        p.lens1 = m.lensx;  //x-lens trajectory && parallax[mas]
-        p.lens2 = m.lensy;
+        if (positions) {
+            // the centroid, in the astrometric call's own frame and with its own A, ux, uy
+            measuredCentroid(s, l, tele, ea[i], p.def1c, p.def2c, p.pos1c, p.pos2c);
+            p.pos1b = ea[i].srcx;   //x-source trajectory+parallax[mas]
+            p.pos2b = ea[i].srcy;
+            p.lens1 = ea[i].lensx;  //x-lens trajectory && parallax[mas]
+            p.lens2 = ea[i].lensy;
+        } else {
+            const double k = l.tetE / (m.u * m.u + 2.0);
+            p.def1c = k * m.ux;
+            p.def2c = k * m.uy;
+            p.pos1b = p.pos2b = p.pos1c = p.pos2c = p.lens1 = p.lens2 = NaN;
+        }
     }
 }
 

@@ -24,7 +24,16 @@
 // the lens, and source and lens move by their heliocentric proper motions over a year, which ties the
 // geocentric draw to the heliocentric velocities; (m) Roman at the centre of the Earth is the Earth, at L2 it
 // is not, and nothing else is allowed; (n) the two seams agree with each other and with the straight line;
-// (p) an epoch outside the ephemerides is refused.
+// (o) evaluateTrack with and without the absolute positions: the same u, A, ux, uy either way, the point-lens
+// deflection and NaN positions without; (p) an epoch outside the ephemerides is refused.
+//
+// The finite source (the uniform disc, --source-model espl): (q) the adapter's magnification is the library's
+// ESPLMag2 and matches the exact magnification of a uniform disc, computed here by quadrature; (r) it goes to
+// the point source as the radius goes to 0; (s) at the peak of an event that crosses the disc the
+// magnification is finite and below the point source's, the centroid shift smaller than the point lens's,
+// and the two seams agree; (t) under --source-model pspl a source radius changes nothing, bit for bit; (u) the
+// no-parallax magnification of the straight line is the same function; (v) the edges: a source of no size,
+// one beyond the library's table, the source on the lens.
 //
 // Bounds on a measured difference are ~3x its value (the value is printed); the ones that compare two
 // computations of the same rotation or projection are held to rounding.
@@ -39,6 +48,8 @@
 #include "events/lightcurve.h"
 #include "galaxy/kinematics.h"
 #include "model_reference.h"
+#include "vbm_reference.h"
+#include "VBMicrolensingLibrary.h"
 #include <unistd.h>
 
 static int nfail = 0;
@@ -57,6 +68,42 @@ static double separation(double ra1, double dec1, double ra2, double dec2) {
                          std::cos(dec1) * std::sin(ra1) - std::cos(dec2) * std::sin(ra2),
                          std::sin(dec1) - std::sin(dec2)};
     return 2.0 * std::asin(0.5 * std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]));
+}
+
+// The exact magnification and flux-weighted image position of a UNIFORM DISC of radius rho [Einstein radii]
+// whose centre is u from a point lens, by quadrature, with no code from the library. In polar coordinates
+// (r, phi) centred on the lens, a point source at distance r has the magnification A(r) = (r^2 + 2) /
+// (r sqrt(r^2 + 4)) and the flux-weighted position of its images A x_img = (r^2 + 3) / sqrt(r^2 + 4) along
+// its own direction. The disc's values are the averages over it. The circle of radius r around the lens lies
+// wholly inside the disc for r < rho - u (u < rho) and its arc inside the disc subtends 2 phi(r),
+// cos phi = (r^2 + u^2 - rho^2) / (2 r u), for |u - rho| < r < u + rho. Then
+//     A  = [ pi R1 sqrt(R1^2 + 4) + int 2 phi r A(r) dr ] / (pi rho^2),   R1 = max(rho - u, 0)
+//          (r A(r) = (r^2 + 2)/sqrt(r^2 + 4) integrates to r sqrt(r^2 + 4)/2),
+//     h  = int 2 sin(phi) r (r^2 + 3)/sqrt(r^2 + 4) dr / (pi rho^2)       (component along the axis lens -> disc centre),
+// over the arcs. r = m - hw cos(theta) between the ends makes the integrands smooth (Simpson, 20000 steps).
+// The centroid of the images lies h/A from the lens, and the deflection from the disc's centre is h/A - u.
+struct DiscRef { double A, h; };
+static DiscRef uniformDisc(double u, double rho) {
+    const double a = std::fabs(u - rho), b = u + rho, m = 0.5 * (a + b), hw = 0.5 * (b - a);
+    const double R1 = std::fmax(rho - u, 0.0);
+    const int N = 20000;                                   // even
+    double sumA = 0.0, sumH = 0.0;
+    for (int k = 0; k <= N; ++k) {
+        const double th = pi * k / N, ct = std::cos(th), st = std::sin(th);
+        const double r = m - hw * ct;
+        // cos phi, written without the cancellation of the plain expression
+        double c;
+        if (u < rho) c = (u * (1.0 + ct * ct) - 2.0 * rho * ct) / (2.0 * r);
+        else         c = 1.0 - rho * rho * st * st / (2.0 * r * u);
+        c = std::fmax(-1.0, std::fmin(1.0, c));
+        const double phi = std::acos(c), sphi = std::sqrt(std::fmax(0.0, 1.0 - c * c));
+        const double w = (k == 0 || k == N) ? 1.0 : (k % 2 ? 4.0 : 2.0);
+        const double dr = hw * st;                         // dr/dtheta
+        sumA += w * 2.0 * phi * (r * r + 2.0) / std::sqrt(r * r + 4.0) * dr;
+        sumH += w * 2.0 * sphi * r * (r * r + 3.0) / std::sqrt(r * r + 4.0) * dr;
+    }
+    const double h3 = pi / N / 3.0, norm = pi * rho * rho;
+    return DiscRef{(pi * R1 * std::sqrt(R1 * R1 + 4.0) + sumA * h3) / norm, sumH * h3 / norm};
 }
 
 int main() {
@@ -206,15 +253,20 @@ int main() {
         source s;
         lens l;
         astromet as;
-        ModelEvent m() const { return ModelEvent{l.u0, l.tE, l.t0, l.piE, s.xi, l.tetE, s.mus1, s.mus2, 1.0 / s.Ds}; }
+        SourceModel sm = SourceModel::PSPL;
+        ModelEvent m() const { return ModelEvent{l.u0, l.tE, l.t0, l.piE, s.xi, l.tetE, s.mus1, s.mus2, 1.0 / s.Ds, s.rho, sm}; }
     };
+    // Every event is a point source (s.rho = 0, the point-source model) unless a test says otherwise; the
+    // seams read the run's source model, which the first tests leave at the point source.
     auto fill = [](Ev& e, double u0, double tE, double t0, double piE, double xi, double tetE) {
         e.l.u0 = u0;  e.l.tE = tE;  e.l.t0 = t0;  e.l.piE = piE;  e.l.tetE = tetE;  e.s.xi = xi;
         e.s.mus1 = 0.004;  e.s.mus2 = -0.003;  e.s.Ds = 8.0;
         e.s.fb = {0.6, 0.7};  e.s.fLens = {0.0, 0.0};  e.s.blendOff = {};
+        e.s.rho = 0.0;  e.sm = SourceModel::PSPL;
         e.as.satScale = 1.0;
     };
     auto ev = std::make_unique<Ev>();
+    vbmSetSourceModel(SourceModel::PSPL);
 
     // (f) The side of the lens the source passes, and the handedness of xi. With the parallax switched off
     // (piE = 1e-9) the library's source-lens vector must be the simulator's straight line on (e_l, e_b),
@@ -267,7 +319,7 @@ int main() {
             std::vector<ModelPoint> mp(300);
             for (int tele = 0; tele < 2; ++tele) {
                 vbmEvaluate(ev->m(), tele == 1, true, tt.data(), 300, me.data());
-                evaluateTrack(ev->s, ev->l, ev->as, tele, tt.data(), 300, tp.data());
+                evaluateTrack(ev->s, ev->l, ev->as, tele, tt.data(), 300, true, tp.data());
                 for (int k = 0; k < 300; ++k) { total += 3; same += (me[k].A == magnifOf(me[k].u)) + (tp[k].A == magnifOf(tp[k].u)); }
                 evaluateModel(ev->s, ev->l, ev->as, tele, tt.data(), 300, false, mp.data());
                 for (int k = 0; k < 300; ++k) same += (mp[k].A == magnifOf(mp[k].u));
@@ -348,8 +400,8 @@ int main() {
                                                  -(fr.toNE[0][0] * pn + fr.toNE[1][0] * pe));
                     fill(*ev, 0.3, 40.0, T_DAY[k], pm, xi, 0.6);
                     TrackPoint e0, e1;
-                    evaluateTrack(ev->s, ev->l, ev->as, 0, &ev->l.t0, 1, &e0);
-                    evaluateTrack(ev->s, ev->l, ev->as, 1, &ev->l.t0, 1, &e1);
+                    evaluateTrack(ev->s, ev->l, ev->as, 0, &ev->l.t0, 1, true, &e0);
+                    evaluateTrack(ev->s, ev->l, ev->as, 1, &ev->l.t0, 1, true, &e1);
                     const double* ref = L2_SHIFT[i][k][ip];
                     const double rn = std::hypot(ref[0], ref[1]);
                     worstNorm = std::fmax(worstNorm, std::fabs(std::hypot(e1.ux - e0.ux, e1.uy - e0.uy) / rn - 1.0));
@@ -361,7 +413,7 @@ int main() {
                     // Roman at the centre of the Earth is the Earth
                     ev->as.satScale = 0.0;
                     TrackPoint e2;
-                    evaluateTrack(ev->s, ev->l, ev->as, 1, &ev->l.t0, 1, &e2);
+                    evaluateTrack(ev->s, ev->l, ev->as, 1, &ev->l.t0, 1, true, &e2);
                     zero = std::fmax(zero, std::hypot(e2.ux - e0.ux, e2.uy - e0.uy));
                 }
         }
@@ -490,11 +542,11 @@ int main() {
         std::vector<double> tt(50);
         for (int k = 0; k < 50; ++k) tt[k] = 1450.0 + k;
         std::vector<TrackPoint> r(50), q1(50), q0(50);
-        evaluateTrack(ev->s, ev->l, ev->as, 0, tt.data(), 50, r.data());
+        evaluateTrack(ev->s, ev->l, ev->as, 0, tt.data(), 50, true, r.data());
         ev->as.satScale = 1.0;
-        evaluateTrack(ev->s, ev->l, ev->as, 1, tt.data(), 50, q1.data());
+        evaluateTrack(ev->s, ev->l, ev->as, 1, tt.data(), 50, true, q1.data());
         ev->as.satScale = 0.0;
-        evaluateTrack(ev->s, ev->l, ev->as, 1, tt.data(), 50, q0.data());
+        evaluateTrack(ev->s, ev->l, ev->as, 1, tt.data(), 50, true, q0.data());
         int same = 0, differ = 0;
         for (int k = 0; k < 50; ++k) {
             same += (q0[k].u == r[k].u) + (q0[k].pos1b == r[k].pos1b) + (q0[k].pos2b == r[k].pos2b) + (q0[k].lens1 == r[k].lens1);
@@ -504,14 +556,14 @@ int main() {
         expect(differ == 50, "(m) satScale = 1: Roman's u differs from Rubin's at every epoch (of 50)", differ, "=", 50.0);
         bool threw = false;
         ev->as.satScale = 0.5;
-        try { evaluateTrack(ev->s, ev->l, ev->as, 1, tt.data(), 50, q1.data()); } catch (const std::runtime_error&) { threw = true; }
+        try { evaluateTrack(ev->s, ev->l, ev->as, 1, tt.data(), 50, true, q1.data()); } catch (const std::runtime_error&) { threw = true; }
         expect(threw, "(m) satScale = 0.5 is refused", threw, "=", 1.0);
         ev->as.satScale = 1.0;
     }
 
     // (n) The seams agree with each other and with the straight line. evaluateModel without centroids is the
-    // photometric track alone (no per-epoch drift of piE_E): u within the drift's reach of evaluateTrack's, and
-    // with centroids it is evaluateTrack's own call, bit for bit. "No parallax" is the geocentric line the
+    // photometric track alone (no per-epoch drift of piE_E), which is also where evaluateTrack's u comes from:
+    // equal, bit for bit; and with centroids it gives evaluateTrack's measured centroid, bit for bit. "No parallax" is the geocentric line the
     // event is parametrised by: at t0 it is the closest approach, u0, and with the parallax off the track is on it
     // up to the light-travel delay the library applies to the clock (see (f)): |u - u_noplx| <= 2 AU/(c tE).
     {
@@ -526,7 +578,7 @@ int main() {
             std::vector<TrackPoint> tp(200);
             std::vector<ModelPoint> ph(200), as(200);
             for (int tele = 0; tele < 2; ++tele) {
-                evaluateTrack(ev->s, ev->l, ev->as, tele, tt.data(), 200, tp.data());
+                evaluateTrack(ev->s, ev->l, ev->as, tele, tt.data(), 200, true, tp.data());
                 evaluateModel(ev->s, ev->l, ev->as, tele, tt.data(), 200, false, ph.data());
                 evaluateModel(ev->s, ev->l, ev->as, tele, tt.data(), 200, true, as.data());
                 for (int k = 0; k < 200; ++k) {
@@ -538,7 +590,7 @@ int main() {
             // the line: u0 at t0, the deflection thetaE u/(u^2 + 2) there (u0 along (-sin xi, cos xi))
             const double t0 = 1500.0;
             TrackPoint p;
-            evaluateTrack(ev->s, ev->l, ev->as, 0, &t0, 1, &p);
+            evaluateTrack(ev->s, ev->l, ev->as, 0, &t0, 1, true, &p);
             atT0 = std::fmax(atT0, std::fabs(p.uNoPlx - 0.3));
             worstDef = std::fmax(worstDef, std::hypot(p.def1a + 0.6 * 0.3 * std::sin(1.1) / (0.3 * 0.3 + 2.0),
                                                        p.def2a - 0.6 * 0.3 * std::cos(1.1) / (0.3 * 0.3 + 2.0)));
@@ -546,15 +598,64 @@ int main() {
             fill(*ev, 0.3, 40.0, 1500.0, 1e-9, 1.1, 0.6);
             ModelPoint ml[200];
             std::vector<TrackPoint> tl(200);
-            evaluateTrack(ev->s, ev->l, ev->as, 1, tt.data(), 200, tl.data());
+            evaluateTrack(ev->s, ev->l, ev->as, 1, tt.data(), 200, true, tl.data());
             for (int k = 0; k < 200; ++k) worstLine = std::fmax(worstLine, std::fabs(tl[k].u - tl[k].uNoPlx));
             (void)ml;
         }
-        bound("(n) evaluateModel (photometry only) vs evaluateTrack: u, max relative difference", worstU, 1e-7);
+        bound("(n) evaluateModel (photometry only) vs evaluateTrack: u, max relative difference", worstU, 1e-300);
         expect(posSame == nPos, "(n) evaluateModel with centroids == evaluateTrack's measured centroid, bitwise", posSame, "=", nPos);
         bound("(n) uNoPlx at t0 vs u0: max |difference|", atT0, 1e-15);
         bound("(n) def_noplx at t0 vs thetaE u0/(u0^2 + 2) along (-sin xi, cos xi): max |difference| [mas]", worstDef, 1e-14);
         bound("(n) at piE = 1e-9 the track is the no-parallax line, to the light-travel bound 2 AU/(c tE): max |u - uNoPlx|", worstLine, 2.0 * 0.005775518331436995 / 40.0);
+    }
+
+    // (o) evaluateTrack with and without the absolute positions (the time loop asks for them only when a sample
+    // dump is written, and a run must not depend on that). u, A, ux, uy, uNoPlx, ANoPlx and the no-parallax
+    // deflection are the photometric call's either way, so bitwise equal, and equal evaluateModel's. The
+    // positions come from a second, astrometric call, whose track differs from the photometric one by the
+    // library's perturbation of piE_E along the array (1e-10 an epoch, 1e-7 at the 1024th epoch, the time
+    // loop's block): printed here for the call itself, and held for the deflection, which also turns by up to
+    // 1.01e-10 x 1024 / piE = 4e-7 rad with the astrometric call's frame. Without positions the deflection is
+    // thetaE (ux, uy)/(u^2 + 2), the point lens's, and the six positions are NaN.
+    {
+        double worstCall = 0.0, worstDef = 0.0, worstDefOwn = 0.0;
+        int same = 0, nSame = 0, photSame = 0, nPhot = 0, isNan = 0, nNan = 0;
+        for (int i = 0; i < N_SIGHT; ++i) {
+            vbmSetSightline(GAL_L[i], GAL_B[i]);
+            fill(*ev, 0.3, 40.0, 1500.0, 0.25, 1.1, 0.6);
+            const int n = 1024;
+            std::vector<double> tt(n);
+            for (int k = 0; k < n; ++k) tt[k] = 1100.0 + 0.9 * k;
+            std::vector<TrackPoint> on(n), off(n);
+            std::vector<ModelPoint> ph(n);
+            std::vector<ModelEpoch> pc(n), ac(n);
+            for (int tele = 0; tele < 2; ++tele) {
+                evaluateTrack(ev->s, ev->l, ev->as, tele, tt.data(), n, true, on.data());
+                evaluateTrack(ev->s, ev->l, ev->as, tele, tt.data(), n, false, off.data());
+                evaluateModel(ev->s, ev->l, ev->as, tele, tt.data(), n, false, ph.data());
+                vbmEvaluate(ev->m(), tele == 1, false, tt.data(), n, pc.data());
+                vbmEvaluate(ev->m(), tele == 1, true, tt.data(), n, ac.data());
+                for (int k = 0; k < n; ++k) {
+                    nSame += 8;  same += (off[k].u == on[k].u) + (off[k].A == on[k].A) + (off[k].ux == on[k].ux)
+                                       + (off[k].uy == on[k].uy) + (off[k].uNoPlx == on[k].uNoPlx)
+                                       + (off[k].ANoPlx == on[k].ANoPlx) + (off[k].def1a == on[k].def1a)
+                                       + (off[k].def2a == on[k].def2a);
+                    nPhot += 2;  photSame += (on[k].u == ph[k].u) + (on[k].A == ph[k].A);
+                    worstCall = std::fmax(worstCall, std::fmax(std::fabs(ac[k].u / pc[k].u - 1.0), std::fabs(ac[k].A / pc[k].A - 1.0)));
+                    const double d = 0.6 / (off[k].u * off[k].u + 2.0);
+                    worstDef = std::fmax(worstDef, std::hypot(off[k].def1c - on[k].def1c, off[k].def2c - on[k].def2c) / (d * off[k].u));
+                    worstDefOwn = std::fmax(worstDefOwn, std::hypot(off[k].def1c - d * off[k].ux, off[k].def2c - d * off[k].uy) / (d * off[k].u));
+                    const double pos[6] = {off[k].pos1b, off[k].pos2b, off[k].pos1c, off[k].pos2c, off[k].lens1, off[k].lens2};
+                    for (double x : pos) { ++nNan; isNan += std::isnan(x); }
+                }
+            }
+        }
+        expect(same == nSame, "(o) positions on vs off: u, A, ux, uy, uNoPlx, ANoPlx, def1a, def2a are bitwise equal", same, "=", nSame);
+        expect(photSame == nPhot, "(o) ... and u, A are evaluateModel's (the photometric call), bitwise", photSame, "=", nPhot);
+        bound("(o) (the library's astrometric call itself: u and A vs its photometric call, max relative difference)", worstCall, 1.5e-7);
+        bound("(o) deflection with positions (library) vs without (point lens): max |difference| / (thetaE u/(u^2 + 2))", worstDef, 1e-6);
+        bound("(o) positions off: deflection vs thetaE (ux, uy)/(u^2 + 2), max relative difference", worstDefOwn, 1e-15);
+        expect(isNan == nNan, "(o) positions off: source, lens and centroid positions are NaN", isNan, "=", nNan);
     }
 
     // (p) Epochs outside the ephemerides are refused rather than extrapolated: the Sun table well before
@@ -574,6 +675,249 @@ int main() {
         expect(refused == 3, "(p) Earth past either end of the Sun table, Roman before its table: refused (of 3)", refused, "=", 3.0);
         std::printf("  (the Earth's ephemeris covers simulation days %.0f to %.0f)\n", first, last);
     }
+
+    // ---------------------------------------------------------------------------------------------------
+    // The finite source: a uniform disc (--source-model espl). The seams read the run's source model and the
+    // source's rho; the direct references are the library's own ESPLMag2 (a second object of it, set up as the
+    // adapter's is: uniform disc, Tol = VBM_TOL), the exact values of tests/vbm_reference.h, and the
+    // quadrature uniformDisc above, which needs nothing of the library.
+    // ---------------------------------------------------------------------------------------------------
+    auto lib = std::make_unique<VBMicrolensing>();
+    lib->LoadESPLTable(PATH_VBM_ESPL_TABLE);
+    lib->Tol = VBM_TOL;
+    lib->a1 = 0.0;
+    vbmSetSightline(GAL_L[0], GAL_B[0]);
+
+    // (q) The adapter's magnification is the library's ESPLMag2 at the track's u, and the exact uniform-disc
+    // magnification to the accuracy vbmtest holds the library to (1e-4). The grid is vbmtest's: rho 1e-3..0.1,
+    // z = u/rho 0.01..30, at t0 of an event with the parallax off, where the track is at u0 = z rho. The
+    // quadrature is checked against the same references first, which is what lets it stand in for them below.
+    {
+        int libSame = 0, seamSame = 0, nGrid = 0;
+        double worstRef = 0.0, worstInt = 0.0, worstQuad = 0.0;
+        vbmSetSourceModel(SourceModel::ESPL);
+        for (int ir = 0; ir < vbmref::N_RHO; ++ir)
+            for (int iz = 0; iz < vbmref::N_Z; ++iz) {
+                const double rho = vbmref::RHO[ir], ref = vbmref::ESPL[0][ir][iz];
+                fill(*ev, vbmref::Z[iz] * rho, 25.0, 1500.0, 1e-9, 1.1, 0.6);
+                ev->s.rho = rho;  ev->sm = SourceModel::ESPL;
+                const double t = ev->l.t0;
+                ModelEpoch o;
+                vbmEvaluate(ev->m(), false, false, &t, 1, &o);
+                ++nGrid;
+                libSame += (o.A == lib->ESPLMag2(o.u, std::exp(std::log(rho))));
+                worstRef = std::fmax(worstRef, std::fabs(o.A / ref - 1.0));
+                const DiscRef q = uniformDisc(o.u, rho);
+                worstInt = std::fmax(worstInt, std::fabs(o.A / q.A - 1.0));
+                worstQuad = std::fmax(worstQuad, std::fabs(q.A / ref - 1.0));
+                TrackPoint tp;  ModelPoint mp;
+                evaluateTrack(ev->s, ev->l, ev->as, 0, &t, 1, true, &tp);
+                evaluateModel(ev->s, ev->l, ev->as, 0, &t, 1, false, &mp);
+                seamSame += (tp.A == o.A) + (mp.A == o.A);
+            }
+        bound("(q) quadrature vs tests/vbm_reference.h, uniform disc, 65 (rho, z): max relative difference", worstQuad, 1e-7);
+        expect(libSame == nGrid, "(q) adapter A == the library's ESPLMag2(u, rho), bitwise, of 65 (rho, z)", libSame, "=", nGrid);
+        bound("(q) adapter A vs the exact uniform-disc magnification (references): max relative difference", worstRef, 1e-4);
+        bound("(q) adapter A vs the exact uniform-disc magnification (quadrature): max relative difference", worstInt, 1e-4);
+        expect(seamSame == 2 * nGrid, "(q) evaluateTrack and evaluateModel give the same A, bitwise, of 130", seamSame, "=", 2 * nGrid);
+    }
+
+    // (r) The finite source tends to the point source with the radius: at rho = 1e-6 (and 1e-4, printed: the
+    // difference is the library's quadrupole term, ~rho^2 at u ~ 0.01) along a whole light curve with
+    // parallax, in both observers.
+    {
+        double worst6 = 0.0, worst4 = 0.0, worstOwn = 0.0;
+        for (double u0 : {0.01, 0.1, 0.3, 1.0, 3.0}) {
+            fill(*ev, u0, 30.0, 1500.0, 0.25, 1.1, 0.6);
+            std::vector<double> tt(300);
+            for (int k = 0; k < 300; ++k) tt[k] = 1380.0 + 0.8 * k;
+            std::vector<ModelEpoch> pt(300), fs(300);
+            for (int tele = 0; tele < 2; ++tele)
+                for (double rho : {1e-6, 1e-4}) {
+                    ev->s.rho = rho;
+                    ev->sm = SourceModel::PSPL;  vbmEvaluate(ev->m(), tele == 1, true, tt.data(), 300, pt.data());
+                    ev->sm = SourceModel::ESPL;  vbmEvaluate(ev->m(), tele == 1, true, tt.data(), 300, fs.data());
+                    for (int k = 0; k < 300; ++k) {
+                        const double d = std::fabs(fs[k].A / pt[k].A - 1.0);
+                        (rho < 1e-5 ? worst6 : worst4) = std::fmax(rho < 1e-5 ? worst6 : worst4, d);
+                        worstOwn = std::fmax(worstOwn, std::fabs(fs[k].u / pt[k].u - 1.0) + std::fabs(fs[k].ux - pt[k].ux));
+                    }
+                }
+        }
+        bound("(r) rho = 1e-6: A of the disc vs the point source, max relative difference", worst6, 5e-9);
+        std::printf("  (rho = 1e-4: the same, %.2e)\n", worst4);
+        bound("(r) the track does not depend on the source: u, ux between the two models, max |difference|", worstOwn, 1e-15);
+    }
+
+    // (s) An event that crosses the disc: rho = 0.01, u0 = 0.3 rho. At the peak the magnification is finite and
+    // below the point source's (333), close to the disc-centre value sqrt(1 + 4/rho^2) = 200; the centroid shift
+    // is the finite-source one, smaller than the point lens's thetaE u/(u^2 + 2) and of the opposite sign (the
+    // images' flux-weighted centroid lies on the lens side of the source); and the library's centroid matches
+    // the quadrature. The two seams agree: the measured centroid of evaluateModel is evaluateTrack's, bit for
+    // bit. (rho = 0.01 and z = 0.3 are both nodes of the library's table, which makes the peak values agree
+    // with the quadrature to rounding; the light curve and a second event at other values do not sit on one.)
+    // The whole light curve is held to the quadrature.
+    {
+        const double rho = 0.01, u0 = 0.3 * rho, tetE = 0.6;
+        fill(*ev, u0, 20.0, 1500.0, 0.25, 1.1, tetE);
+        ev->s.rho = rho;  ev->sm = SourceModel::ESPL;
+        ev->s.fb = {0.5, 0.8};  ev->s.fLens = {0.1, 0.05};  ev->s.blendOff = {{{0.3, -0.2}, {0.1, 0.4}}};
+        const double t0 = ev->l.t0;
+        TrackPoint fsT, psT;
+        ModelPoint fsM;
+        vbmSetSourceModel(SourceModel::ESPL);
+        evaluateTrack(ev->s, ev->l, ev->as, 0, &t0, 1, true, &fsT);
+        evaluateModel(ev->s, ev->l, ev->as, 0, &t0, 1, true, &fsM);
+        vbmSetSourceModel(SourceModel::PSPL);
+        evaluateTrack(ev->s, ev->l, ev->as, 0, &t0, 1, true, &psT);
+        const double centre = std::sqrt(1.0 + 4.0 / (rho * rho));
+        std::printf("  (peak: A = %.3f for the disc, %.3f for the point source, disc centre %.3f)\n", fsT.A, psT.A, centre);
+        expect(std::isfinite(fsT.A) && fsT.A < psT.A, "(s) peak A of the disc is finite and below the point source's", fsT.A, "<", psT.A);
+        expect(fsT.A > 0.9 * centre && fsT.A < centre, "(s) ... and between 0.9 and 1 times the disc-centre value", fsT.A, "<", centre);
+        const DiscRef q = uniformDisc(fsT.u, rho);
+        bound("(s) peak A vs the quadrature: relative difference", std::fabs(fsT.A / q.A - 1.0), 1e-4);
+
+        // the shift of the images' centroid from the source, along the lens -> source axis, in units of thetaE
+        const double defFs = std::hypot(fsT.def1c, fsT.def2c) / tetE, defPs = std::hypot(psT.def1c, psT.def2c) / tetE;
+        const double defRef = q.h / q.A - fsT.u;
+        const double along = (fsT.def1c * fsT.ux + fsT.def2c * fsT.uy) / (tetE * fsT.u);
+        std::printf("  (peak centroid shift / thetaE along the source-lens axis: disc %.5e, quadrature %.5e, point lens %.5e)\n",
+                    along, defRef, defPs);
+        expect(defFs < 0.9 * defPs, "(s) peak centroid shift of the disc is smaller than the point lens's (ratio)", defFs / defPs, "<", 0.9);
+        expect(along < 0.0, "(s) ... and reversed: the centroid lies on the lens side of the source (shift along lens -> source)", along, "<", 0.0);
+        bound("(s) ... along the source-lens vector: ||shift| - |its component along it|| / |shift|", std::fabs(defFs - std::fabs(along)) / defFs, 1e-9);
+        bound("(s) ... and matches the quadrature's: |difference| / (point lens's shift)", std::fabs(along - defRef) / defPs, 2e-3);
+        expect(fsM.A == fsT.A && fsM.pos1c == fsT.pos1c && fsM.pos2c == fsT.pos2c,
+               "(s) the seams agree: A and the measured centroid of evaluateModel and evaluateTrack, bitwise",
+               fsM.A == fsT.A && fsM.pos1c == fsT.pos1c && fsM.pos2c == fsT.pos2c, "=", 1.0);
+
+        // the whole light curve, through the disc and out the other side, against the quadrature
+        const int n = 400;
+        std::vector<double> tt(n);
+        for (int k = 0; k < n; ++k) tt[k] = t0 - 3.0 * ev->l.tE + 6.0 * ev->l.tE * k / (n - 1);
+        std::vector<TrackPoint> lc(n);
+        vbmSetSourceModel(SourceModel::ESPL);
+        evaluateTrack(ev->s, ev->l, ev->as, 0, tt.data(), n, true, lc.data());
+        double worstA = 0.0, worstD = 0.0;
+        for (int k = 0; k < n; ++k) {
+            const DiscRef r = uniformDisc(lc[k].u, rho);
+            worstA = std::fmax(worstA, std::fabs(lc[k].A / r.A - 1.0));
+            const double dRef = r.h / r.A - lc[k].u, d = (lc[k].def1c * lc[k].ux + lc[k].def2c * lc[k].uy) / (tetE * lc[k].u);
+            worstD = std::fmax(worstD, std::fabs(d - dRef) / (lc[k].u / (lc[k].u * lc[k].u + 2.0)));   // of the point lens's shift
+        }
+        bound("(s) light curve, 400 epochs over t0 +- 3 tE: A vs the quadrature, max relative difference", worstA, 1e-5);
+        bound("(s) light curve: centroid shift vs the quadrature, max |difference| / (point lens's shift)", worstD, 6e-5);
+
+        // a second event, with rho and u0/rho off the table's nodes: the interpolation error shows
+        const double rho2 = 0.0137;
+        fill(*ev, 0.3725 * rho2, 20.0, 1500.0, 0.25, 1.1, tetE);
+        ev->s.rho = rho2;  ev->sm = SourceModel::ESPL;
+        TrackPoint off;
+        evaluateTrack(ev->s, ev->l, ev->as, 0, &t0, 1, true, &off);
+        const DiscRef q2 = uniformDisc(off.u, rho2);
+        const double along2 = (off.def1c * off.ux + off.def2c * off.uy) / (tetE * off.u);
+        bound("(s) rho = 0.0137, u0 = 0.3725 rho (off the table's nodes): peak A vs the quadrature", std::fabs(off.A / q2.A - 1.0), 2e-5);
+        bound("(s) ... and its centroid shift: |difference| / (point lens's shift)", std::fabs(along2 - (q2.h / q2.A - off.u)) / (off.u / (off.u * off.u + 2.0)), 2e-5);
+    }
+
+    // (t) Under the point-source model a source radius changes nothing, bit for bit: every field of the
+    // library's adapter and of both seams is the same with s.rho = 0.01 as with s.rho = 0, A is magnifOf(u)
+    // and the no-parallax A is magnifOf(uNoPlx). Under ESPL the same event differs.
+    {
+        int same = 0, total = 0, magnif = 0, nMagnif = 0, differ = 0;
+        vbmSetSourceModel(SourceModel::PSPL);
+        for (double u0 : {0.003, 0.05, 0.4}) {
+            Ev a, b;
+            fill(a, u0, 20.0, 1500.0, 0.25, 1.1, 0.6);  fill(b, u0, 20.0, 1500.0, 0.25, 1.1, 0.6);
+            b.s.rho = 0.01;
+            std::vector<double> tt(500);
+            for (int k = 0; k < 500; ++k) tt[k] = 1440.0 + 0.2 * k;
+            std::vector<ModelEpoch> ma(500), mb(500);
+            std::vector<TrackPoint> ta(500), tb(500);
+            std::vector<ModelPoint> pa(500), pb(500);
+            for (int tele = 0; tele < 2; ++tele)
+                for (bool astro : {false, true}) {
+                    vbmEvaluate(a.m(), tele == 1, astro, tt.data(), 500, ma.data());
+                    vbmEvaluate(b.m(), tele == 1, astro, tt.data(), 500, mb.data());
+                    for (int k = 0; k < 500; ++k) {
+                        total += 3;  same += (ma[k].A == mb[k].A) + (ma[k].u == mb[k].u) + (ma[k].ux == mb[k].ux);
+                        if (astro) { total += 2; same += (ma[k].imgx == mb[k].imgx) + (ma[k].lensy == mb[k].lensy); }
+                    }
+                }
+            for (int tele = 0; tele < 2; ++tele) {
+                evaluateTrack(a.s, a.l, a.as, tele, tt.data(), 500, true, ta.data());
+                evaluateTrack(b.s, b.l, b.as, tele, tt.data(), 500, true, tb.data());
+                evaluateModel(a.s, a.l, a.as, tele, tt.data(), 500, true, pa.data());
+                evaluateModel(b.s, b.l, b.as, tele, tt.data(), 500, true, pb.data());
+                for (int k = 0; k < 500; ++k) {
+                    total += 5;
+                    same += (ta[k].A == tb[k].A) + (ta[k].ANoPlx == tb[k].ANoPlx) + (ta[k].pos1c == tb[k].pos1c)
+                          + (pa[k].A == pb[k].A) + (pa[k].pos2c == pb[k].pos2c);
+                    nMagnif += 3;
+                    magnif += (tb[k].A == magnifOf(tb[k].u)) + (tb[k].ANoPlx == magnifOf(tb[k].uNoPlx)) + (pb[k].A == magnifOf(pb[k].u));
+                }
+            }
+            // and the disc is different at the peak
+            vbmSetSourceModel(SourceModel::ESPL);
+            const double t0 = 1500.0;
+            TrackPoint tfs, tps;
+            evaluateTrack(b.s, b.l, b.as, 0, &t0, 1, true, &tfs);
+            vbmSetSourceModel(SourceModel::PSPL);
+            evaluateTrack(b.s, b.l, b.as, 0, &t0, 1, true, &tps);
+            differ += (tfs.A != tps.A);
+        }
+        expect(same == total, "(t) point-source model: s.rho = 0.01 vs 0 changes no field of the adapter or the seams (bitwise)", same, "=", total);
+        expect(magnif == nMagnif, "(t) ... A == magnifOf(u) and the no-parallax A == magnifOf(uNoPlx), bitwise", magnif, "=", nMagnif);
+        expect(differ == 3, "(t) ... and under the disc the peak A is different, for the three events (of 3)", differ, "=", 3.0);
+    }
+
+    // (u) The magnification of the straight line without parallax (TrackPoint::ANoPlx) is the same function of
+    // its own u: ESPLMag2(uNoPlx, rho) for the disc, bitwise, magnifOf(uNoPlx) for the point.
+    {
+        fill(*ev, 0.02, 25.0, 1500.0, 0.3, 1.1, 0.6);
+        ev->s.rho = 0.01;
+        std::vector<double> tt(300);
+        for (int k = 0; k < 300; ++k) tt[k] = 1440.0 + 0.4 * k;
+        std::vector<TrackPoint> tp(300);
+        int fsSame = 0, psSame = 0;
+        vbmSetSourceModel(SourceModel::ESPL);
+        evaluateTrack(ev->s, ev->l, ev->as, 1, tt.data(), 300, false, tp.data());
+        for (int k = 0; k < 300; ++k) fsSame += (tp[k].ANoPlx == lib->ESPLMag2(tp[k].uNoPlx, 0.01));
+        vbmSetSourceModel(SourceModel::PSPL);
+        evaluateTrack(ev->s, ev->l, ev->as, 1, tt.data(), 300, false, tp.data());
+        for (int k = 0; k < 300; ++k) psSame += (tp[k].ANoPlx == magnifOf(tp[k].uNoPlx));
+        expect(fsSame == 300, "(u) disc: ANoPlx == ESPLMag2(uNoPlx, rho), bitwise, of 300 epochs through the peak", fsSame, "=", 300.0);
+        expect(psSame == 300, "(u) point: ANoPlx == magnifOf(uNoPlx), bitwise, of 300", psSame, "=", 300.0);
+    }
+
+    // (v) The edges. A disc of no size is the point source (the library's point-source function). A radius beyond
+    // the library's table (100) is held at 99, not read out of bounds. A source at the centre of the lens
+    // (u0 = 1e-9 rho) has the finite magnification sqrt(1 + 4/rho^2).
+    {
+        fill(*ev, 0.3, 25.0, 1500.0, 0.25, 1.1, 0.6);
+        const double tt[3] = {1480.0, 1500.0, 1520.0};
+        ModelEpoch pt[3], z0[3], big[3], cap[3];
+        ev->sm = SourceModel::PSPL;  vbmEvaluate(ev->m(), false, true, tt, 3, pt);
+        ev->sm = SourceModel::ESPL;  ev->s.rho = 0.0;   vbmEvaluate(ev->m(), false, true, tt, 3, z0);
+        ev->s.rho = 1e3;   vbmEvaluate(ev->m(), false, true, tt, 3, big);
+        ev->s.rho = 99.0;  vbmEvaluate(ev->m(), false, true, tt, 3, cap);
+        int zero = 0, held = 0, fin = 0;
+        for (int k = 0; k < 3; ++k) {
+            zero += (z0[k].A == pt[k].A) + (z0[k].imgx == pt[k].imgx);
+            held += (big[k].A == cap[k].A) + (big[k].imgx == cap[k].imgx);
+            fin += std::isfinite(big[k].A) && std::fabs(big[k].A - 1.0) < 1e-3 && std::isfinite(big[k].imgx);
+        }
+        expect(zero == 6, "(v) ESPL with rho = 0 is the point source, bitwise (of 6)", zero, "=", 6.0);
+        expect(held == 6 && fin == 3, "(v) rho = 1e3 is held at 99: same as 99, finite, A within 1e-3 of 1", held + fin, "=", 9.0);
+        const double rho = 0.01;
+        fill(*ev, 1e-9 * rho, 25.0, 1500.0, 1e-9, 1.1, 0.6);
+        ev->s.rho = rho;  ev->sm = SourceModel::ESPL;
+        const double t = 1500.0;
+        ModelEpoch o;
+        vbmEvaluate(ev->m(), false, false, &t, 1, &o);
+        bound("(v) u0 = 1e-9 rho: A vs the centre of the disc sqrt(1 + 4/rho^2), relative difference", std::fabs(o.A / std::sqrt(1.0 + 4.0 / (rho * rho)) - 1.0), 1e-4);
+    }
+    vbmSetSourceModel(SourceModel::ESPL);
 
     std::printf("%s (%d failed)\n", nfail ? "FAILED" : "all held", nfail);
     return nfail;

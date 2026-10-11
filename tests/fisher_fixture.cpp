@@ -13,7 +13,12 @@
 //         flat stand-in for errlsstM / errRomanM.
 //
 // Usage: make fishertest && ./fishertest   (modes: --scale S, --sweep, --eigen [S],
-//        --astro-variants, --sweep-astro)
+//        --astro-variants, --sweep-astro, --finite-source)
+//
+// The light-curve model's source is a point (pspl, the default here: the baseline every change to the
+// Fisher matrices is diffed against) or a uniform disc (espl); --source-model pspl|espl picks it, in any
+// mode. Every event of the table has the same source radius, kRho; --finite-source is the mode that puts the
+// source on the lens and compares the two models.
 
 #include "common.h"
 #include "types.h"
@@ -100,6 +105,9 @@ constexpr double kMus1      = +0.008; // source proper motion [mas/day] (~2.9 ma
 constexpr double kMus2      = -0.005;
 constexpr double kMul1      = +0.003; // lens proper motion [mas/day]
 constexpr double kMul2      = +0.002;
+constexpr double kRho       = 1.2e-3; // source radius in Einstein radii: a 1 Rsun dwarf at 8 kpc, theta* = 5.8e-4
+                                      // mas, against thetaE = 0.5 mas. Read by the disc model only; the events
+                                      // pass the source at u0 = 0.3, 250 radii away, where it changes nothing
 
 // Fill in the geometry and stellar quantities that the model (evaluateTrack, evaluateModel) and
 // ErrorCal() read.
@@ -112,6 +120,7 @@ void setupStatic(source& s, lens& l)
     l.Dl  = kDl;
     s.xi  = kXi;
     l.tetE = kTetE;
+    s.rho = kRho;
 
     s.mbs[0] = kMbsRubin;  s.fb[0] = kFbRubin;
     s.mbs[1] = kMbsRoman;  s.fb[1] = kFbRoman;
@@ -137,7 +146,7 @@ void appendEpoch(source& s, lens& l, astromet& as, double tim, int tele, int& nd
 {
     // Roman observes from L2, so its observer displacement differs from Rubin's.
     TrackPoint p;
-    evaluateTrack(s, l, as, tele, &tim, 1, &p);
+    evaluateTrack(s, l, as, tele, &tim, 1, true, &p);
 
     l.timn[ndw] = tim;
     l.magn[ndw] = modelMag(s, tele, p.A);
@@ -889,9 +898,94 @@ int runAstroVariants()
     return bad ? 1 : 0;
 }
 
+// ---------------------------------------------------------------------------------------------
+// The finite source. One event (tE 25 d, peaking inside a Roman season, piE 0.15) with a giant source,
+// rho = 0.01 (theta* = 5e-3 mas, 8.6 Rsun at 8 kpc against thetaE 0.5 mas), passing the lens at u0 = 0.3,
+// 0.8, 2, 5 and 30 source radii, forecast twice: with a point source and with the uniform disc. Each model
+// generates its own noiseless data, so the ratios are the effect of the source on the forecast alone (the
+// Fisher matrix here does not fit rho). Printed: the peak magnification of each model, and for the joint,
+// Rubin and Roman fits the ratio disc / point of sigma(u0), sigma(tE), sigma(piE), sigma(t0) and of the
+// astrometric sigma(thetaE); "-" where either fit has not measured it.
+int runFiniteSource()
+{
+    constexpr double kRhoFs = 0.01;
+    static const double kZ[] = {0.3, 0.8, 2.0, 5.0, 30.0};
+    static const int    kPhot[] = {0, 1, 3, 5};     // u0, tE, piE, t0
+    const SourceModel keep = vbmSourceModel();
+    auto s  = std::make_unique<source>();
+    auto l  = std::make_unique<lens>();
+    auto as = std::make_unique<astromet>();
+    auto co = std::make_unique<covarian>();
+
+    std::cout << "# Finite source: uniform disc / point source, same event (tE 25 d, t0 1636.37, piE 0.15), rho = "
+              << kRhoFs << "\n"
+              << "# ratios of the 1-sigma forecasts, disc over point; '-' = not measured in one of them\n"
+              << "# " << std::left << std::setw(7) << "u0/rho" << std::setw(8) << "survey" << std::right
+              << std::setw(11) << "Apk,point" << std::setw(10) << "Apk,disc";
+    for (int k : kPhot) std::cout << std::setw(10) << kPhotNames[k];
+    std::cout << std::setw(10) << kAstNames[0] << "\n";
+
+    for (double z : kZ) {
+        double sigP[2][NSURV][5];
+        double peak[2];
+        for (int m = 0; m < 2; ++m) {
+            vbmSetSourceModel(m ? SourceModel::ESPL : SourceModel::PSPL);
+            setupStatic(*s, *l);
+            s->rho = kRhoFs;
+            l->tE = 25.0;  l->t0 = 1636.37;  l->u0 = z * kRhoFs;  l->piE = 0.15;
+            int nL = 0, nR = 0;
+            const int ndw = buildLightCurve(*s, *l, *as, nL, nR);
+            l->tE = 25.0;  l->t0 = 1636.37;  l->u0 = z * kRhoFs;  l->piE = 0.15;
+            s->xi = kXi;  s->fb[0] = kFbRubin;  s->fb[1] = kFbRoman;
+            s->mbs[0] = kMbsRubin;  s->mbs[1] = kMbsRoman;
+            TrackPoint p;
+            evaluateTrack(*s, *l, *as, 0, &l->t0, 1, true, &p);
+            peak[m] = p.A;
+            FisherM(*s, *l, *as, *co, ndw);
+            ErrorCal(*co, *l, *s);
+            for (int q = 0; q < NSURV; ++q) {
+                for (int a = 0; a < 4; ++a) sigP[m][q][a] = co->okA[q] ? co->Era[q][kPhot[a]] : -1.0;
+                sigP[m][q][4] = co->okB[q] ? co->Erb[q][0] : -1.0;
+            }
+        }
+        for (int q = 0; q < NSURV; ++q) {
+            const char* qn = (q == SJOINT) ? "joint" : (q == SRUBIN ? "rubin" : "roman");
+            std::cout << "  " << std::left << std::setw(7) << z << std::setw(8) << qn << std::right
+                      << std::setprecision(4) << std::fixed << std::setw(11) << peak[0] << std::setw(10) << peak[1];
+            for (int a = 0; a < 5; ++a) {
+                if (sigP[0][q][a] > 0.0 && sigP[1][q][a] > 0.0)
+                    std::cout << std::setw(10) << std::setprecision(4) << sigP[1][q][a] / sigP[0][q][a];
+                else
+                    std::cout << std::setw(10) << "-";
+            }
+            std::cout << std::defaultfloat << "\n";
+        }
+    }
+    vbmSetSourceModel(keep);
+    return 0;
+}
+
 int main(int argc, char** argv)
 {
+    // --source-model pspl|espl in any mode, taken out of the argument list before the modes read it.
+    SourceModel model = SourceModel::PSPL;
+    {
+        int kept = 1;
+        for (int a = 1; a < argc; ++a) {
+            if (std::string(argv[a]) != "--source-model") { argv[kept++] = argv[a]; continue; }
+            const std::string v = (a + 1 < argc) ? argv[++a] : "";
+            if      (v == "pspl") model = SourceModel::PSPL;
+            else if (v == "espl") model = SourceModel::ESPL;
+            else {
+                std::cerr << "fixture error: --source-model needs pspl or espl, got '" << v << "'\n";
+                return 2;
+            }
+        }
+        argc = kept;
+    }
+    vbmSetSourceModel(model);
     vbmSetSightline(kLon, kLat);
+    if (argc > 1 && std::string(argv[1]) == "--finite-source") return runFiniteSource();
     if (argc > 1 && std::string(argv[1]) == "--astro-variants") return runAstroVariants();
     if (argc > 1 && std::string(argv[1]) == "--sweep-astro") return runSweepAstro();
     if (argc > 1 && std::string(argv[1]) == "--sweep") return runSweep();
@@ -926,6 +1020,8 @@ int main(int argc, char** argv)
     if (!checkSeasonClustering())   ++failures;
     if (!checkFewEpochTelescope())  ++failures;
 
+    if (model == SourceModel::ESPL)
+        std::cout << "# SOURCE MODEL espl: a uniform disc of radius rho = " << kRho << " Einstein radii\n";
     std::cout << "# Fisher-matrix fixture -- synthetic events, no data files required\n"
               << "# Nx=" << Nx << " (photometric)  Ny=" << Ny << " (astrometric)\n"
               << "# One block per event, one row per survey partition.\n"

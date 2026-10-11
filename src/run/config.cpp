@@ -71,6 +71,15 @@ void printUsage(const char* prog) {
         << "  --no-satellite-parallax   put Roman at the centre of the Earth, removing the\n"
         << "                 Earth-L2 spatial baseline while leaving the timing alone. The\n"
         << "                 'off' run of the satellite-parallax experiment\n"
+        << "  --source-model M  the source in the light-curve model: 'espl' (default), a uniform\n"
+        << "                 disc of the star's own radius (finite source, point lens), or 'pspl',\n"
+        << "                 a point. They differ only while the source passes within a few of\n"
+        << "                 its radii of the lens (u0 <~ 3 rho, rho = source radius / thetaE,\n"
+        << "                 ~1e-3 for a dwarf, ~1e-2 for a giant), which ~0.5% (dwarf sources) to\n"
+        << "                 ~3% (giants) of the events do, and for the few events with a larger\n"
+        << "                 source (rho >~ 0.03) at larger u0. espl costs ~2% more than pspl\n"
+        << "                 (instructions per sightline, measured with 300 events), so pspl is\n"
+        << "                 only a small saving. Recorded in run_provenance.txt.\n"
         << "  --dump-samples F  write full light curves and astrometric tracks for a few\n"
         << "                 illustrative events, as described by spec file F. Off by\n"
         << "                 default. Consumes no RNG, so the set of simulated events is\n"
@@ -114,6 +123,16 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
         else if (arg == "--dry-run") cfg.dryRun      = true;
         else if (arg == "--no-satellite-parallax") cfg.noSatPar = true;
         else if (arg == "--pair-satellite") cfg.pairSat = true;
+        else if (arg == "--source-model") {
+            const std::string v = need("--source-model");
+            if      (v == "espl") cfg.sourceModel = SourceModel::ESPL;
+            else if (v == "pspl") cfg.sourceModel = SourceModel::PSPL;
+            else {
+                std::cerr << "ERROR: unknown --source-model '" << v << "'. Known: espl (uniform disc, the "
+                          << "default), pspl (point source).\n";
+                exitCode = 2; return false;
+            }
+        }
         else if (arg == "--dump-samples") cfg.dumpSpec = need("--dump-samples");
         else if (arg == "--population") {
             const std::string want = need("--population");

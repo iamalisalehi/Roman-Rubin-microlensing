@@ -184,7 +184,7 @@ void writeSampleEvent(const SampleSpec& spec, const std::string& cls,
     fm << std::setprecision(8);
     std::vector<TrackPoint> track(grid.size());
     for (int frame = 0; frame < 2; ++frame) {
-        evaluateTrack(s, l, as, frame, grid.data(), static_cast<int>(grid.size()), track.data());
+        evaluateTrack(s, l, as, frame, grid.data(), static_cast<int>(grid.size()), true, track.data());
         for (std::size_t k = 0; k < grid.size(); ++k) {
             const TrackPoint& p = track[k];
             fm << grid[k] << " " << frame << " "

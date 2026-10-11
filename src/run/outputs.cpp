@@ -208,6 +208,10 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
     const double areaPerSightline = gridStep * gridStep; // deg^2; unstratified runs only
 
     {
+        // The light curve's source, for the lightcurve_model line (Tol is the accuracy of the disc's magnification).
+        std::ostringstream sourceText;
+        if (cfg.sourceModel == SourceModel::ESPL) sourceText << "ESPL (uniform disc, Tol " << VBM_TOL << ")";
+        else                                      sourceText << "PSPL";
         std::ostringstream prov;
         prov << "# Roman+Rubin microlensing forecast -- run provenance\n"
              << "# git_commit          " << GIT_COMMIT << "\n"
@@ -274,7 +278,8 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << ROMAN_AST_K << " mas, floor " << ROMAN_AST_FLOOR << " mas; Rubin kappa "
              << LSST_AST_KAPPA << " x visit FWHM_geom, floor " << LSST_AST_FLOOR << " mas; blend offset "
              << (AST_BLEND_OFFSET_FREE ? "fitted (marginalised)" : "known") << "\n"
-             << "# lightcurve_model    VBMicrolensing 5.6.1 PSPL, geocentric parallax (JPL ephemeris), Roman at L2 table\n"
+             << "# lightcurve_model    VBMicrolensing 5.6.1 " << sourceText.str()
+             << ", geocentric parallax (JPL ephemeris), Roman at L2 table\n"
              << "# astrometric_variants W: one frame, white; N: frame per roll + " << cfg.astSigcN
              << " mas/day; P: frame per roll + " << cfg.astSigcP << " mas/day\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex.nTables << " x "

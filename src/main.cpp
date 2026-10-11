@@ -2,6 +2,7 @@
 #include "common.h"
 #include "types.h"
 #include "run/config.h"
+#include "events/vbm_model.h"
 #include "run/inputs.h"
 #include "run/sightlines.h"
 #include "run/outputs.h"
@@ -29,6 +30,7 @@ int main(int argc, char** argv) {
 
     // ---- Stage 1: command line ----
     if (!parseCommandLine(argc, argv, cfg, exitCode)) return exitCode;
+    vbmSetSourceModel(cfg.sourceModel);    // the light-curve model's source: a point or a uniform disc
 
     // ---- Stage 2: the GBTDS detector layout, and the grid steps it bounds ----
     const GbtdsLayout gl = loadGbtdsLayout();

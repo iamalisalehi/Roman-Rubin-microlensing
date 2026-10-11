@@ -9,7 +9,9 @@ For each sightline it
 1. draws source and lens stars from a Besançon Galaxy-model catalogue (or from Kroupa-IMF, remnant,
    black-hole or neutron-star lens populations), with 3D dust extinction at each star's distance;
 2. builds per-band light curves on the two surveys' cadences: Rubin from an OpSim baseline database,
-   Roman from the GBTDS season and field layout;
+   Roman from the GBTDS season and field layout. The model is VBMicrolensing's point lens with the annual
+   parallax of each observer (Roman at L2), for a source that is a uniform disc of the star's own radius
+   (`--source-model espl`, the default) or a point (`pspl`, about 2% cheaper);
 3. applies a detection test, then forecasts parameter precision with a Fisher-matrix analysis,
    photometric (u0, tE, piE, blending, ...) and astrometric (thetaE, source proper motion, piE),
    reported **separately for Roman alone, Rubin alone and the joint data set**.
@@ -47,6 +49,7 @@ make                                  # builds ./roman (run it from the reposito
 make fishertest && ./fishertest       # Fisher-matrix regression test, no data files needed
 make extinctiontest && ./extinctiontest
 make vbmtest && ./vbmtest             # VBMicrolensing against independent references
+make modeltest && ./modeltest         # the light-curve model: sky frames, parallax, point and finite source
 ```
 
 ## Repository layout

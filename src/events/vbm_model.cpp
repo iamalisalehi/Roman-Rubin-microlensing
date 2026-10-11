@@ -11,6 +11,7 @@ namespace {
 std::unique_ptr<VBMicrolensing> gVbm;
 bool gSightlineSet = false;
 SkyFrame gFrame{};
+SourceModel gSourceModel = SourceModel::ESPL;
 // First and last row of the Sun table, as JD - 2450000 (the library's clock). The library reads the Earth's
 // position and velocity from rows around the requested time without checking the range.
 double gSunFirst = 0.0, gSunLast = 0.0;
@@ -30,6 +31,14 @@ constexpr double VBM_PIE_DRIFT = 1.01e-10;
 
 // The sign of the library's u0 for the simulator's positive u0; see vbmEvaluate.
 constexpr double VBM_U0_SIGN = -1.0;
+
+// The largest source radius the library's finite-source table holds [Einstein radii]; it reads outside the
+// table for a larger one ("Source too large!"). A star 99 Einstein radii across magnifies by 1 + 2/rho^2
+// = 1.0002 at most, so the radius is held at 99 there.
+constexpr double ESPL_RHO_MAX = 99.0;
+
+// Whether the event is computed with the finite-source functions: ESPL, and a source that has a size.
+bool finiteSource(const ModelEvent& ev) { return ev.source == SourceModel::ESPL and ev.rho > 0.0; }
 
 VBMicrolensing& vbm() {
     CHECK(gVbm != nullptr);
@@ -123,6 +132,7 @@ void vbmInit() {
     // to the Sun and then evaluate the ephemeris there).
     v->t_in_HJD = false;
     v->Tol = VBM_TOL;
+    v->a1 = 0.0;      // a uniform disc: the library's finite-source functions then use its table directly
 
     gSunFirst = sunFirst;
     gSunLast = sunLast;
@@ -179,6 +189,10 @@ SkyFrame vbmSetSightline(double lDeg, double bDeg) {
     gFrame = f;
     return f;
 }
+
+void vbmSetSourceModel(SourceModel m) { gSourceModel = m; }
+
+SourceModel vbmSourceModel() { return gSourceModel; }
 
 const SkyFrame& vbmSkyFrame() {
     if (!gSightlineSet) throw std::runtime_error("vbmSkyFrame: no sightline set (vbmSetSightline)");
@@ -247,6 +261,7 @@ void vbmEvaluate(const ModelEvent& ev, bool atL2, bool astrometry, const double*
     if (n <= 0) return;
     CHECK(gSightlineSet);
     CHECK(ev.u0 > 0.0 && ev.tE > 0.0 && ev.piE > 0.0);
+    CHECK(std::isfinite(ev.rho) && ev.rho >= 0.0);
     VBMicrolensing& V = vbm();
     const SkyFrame& F = gFrame;
     static thread_local Scratch sc;
@@ -264,16 +279,36 @@ void vbmEvaluate(const ModelEvent& ev, bool atL2, bool astrometry, const double*
     const double piN = pv[0], piE = pv[1];
     const double muN = (F.toNE[0][0] * ev.mus1 + F.toNE[0][1] * ev.mus2) * VBM_DAYS_PER_YEAR;   // mas/yr
     const double muE = (F.toNE[1][0] * ev.mus1 + F.toNE[1][1] * ev.mus2) * VBM_DAYS_PER_YEAR;
-    double pr[9] = {VBM_U0_SIGN * ev.u0, std::log(ev.tE), ev.t0 + SIM_DAY0_JD2450000, piN, piE,
-                    muN, muE, ev.piS, ev.tetE};
+    // The finite-source functions take ln rho after t0 and shift everything behind it by one place; the
+    // astrometric parameters (source proper motion, source parallax, thetaE) follow the last of the others.
+    const bool finite = finiteSource(ev);
+    const double rho = std::min(ev.rho, ESPL_RHO_MAX);
+    double pr[10];
+    if (finite) {
+        const double q[10] = {VBM_U0_SIGN * ev.u0, std::log(ev.tE), ev.t0 + SIM_DAY0_JD2450000, std::log(rho),
+                              piN, piE, muN, muE, ev.piS, ev.tetE};
+        std::copy(q, q + 10, pr);
+    } else {
+        const double q[9] = {VBM_U0_SIGN * ev.u0, std::log(ev.tE), ev.t0 + SIM_DAY0_JD2450000, piN, piE,
+                             muN, muE, ev.piS, ev.tetE};
+        std::copy(q, q + 9, pr);
+    }
 
     V.satellite = atL2 ? 1 : 0;
     V.astrometry = astrometry;
-    if (astrometry)
-        V.PSPLAstroLightCurve(pr, sc.t.data(), sc.mag.data(), sc.c1s.data(), sc.c2s.data(), sc.c1l.data(),
-                              sc.c2l.data(), sc.y1.data(), sc.y2.data(), n);
-    else
-        V.PSPLLightCurveParallax(pr, sc.t.data(), sc.mag.data(), sc.y1.data(), sc.y2.data(), n);
+    if (finite) {
+        if (astrometry)
+            V.ESPLAstroLightCurve(pr, sc.t.data(), sc.mag.data(), sc.c1s.data(), sc.c2s.data(), sc.c1l.data(),
+                                  sc.c2l.data(), sc.y1.data(), sc.y2.data(), n);
+        else
+            V.ESPLLightCurveParallax(pr, sc.t.data(), sc.mag.data(), sc.y1.data(), sc.y2.data(), n);
+    } else {
+        if (astrometry)
+            V.PSPLAstroLightCurve(pr, sc.t.data(), sc.mag.data(), sc.c1s.data(), sc.c2s.data(), sc.c1l.data(),
+                                  sc.c2l.data(), sc.y1.data(), sc.y2.data(), n);
+        else
+            V.PSPLLightCurveParallax(pr, sc.t.data(), sc.mag.data(), sc.y1.data(), sc.y2.data(), n);
+    }
     V.astrometry = false;
     V.satellite = 0;
     if (V.parallaxextrapolation != 0)
@@ -308,7 +343,10 @@ void vbmEvaluate(const ModelEvent& ev, bool atL2, bool astrometry, const double*
         o.uy = y1 * a[1] + y2 * b[1];
         double u = std::sqrt(y1 * y1 + y2 * y2);      // the expression the library squares for its magnification
         o.A = sc.mag[i];
-        if (u == 0.0) { u = 1.0e-50; o.A = magnifOf(u); }
+        if (u == 0.0) {   // the source exactly on the lens: the point source's A diverges, the disc's does not
+            u = 1.0e-50;
+            o.A = finite ? std::sqrt(1.0 + 4.0 / (rho * rho)) : magnifOf(u);
+        }
         o.u = u;
         if (!astrometry) continue;
         // Positions: the library's are on (North, East), absolute from the lens at t0; to (e_l, e_b) by toNE^T.
@@ -319,6 +357,17 @@ void vbmEvaluate(const ModelEvent& ev, bool atL2, bool astrometry, const double*
         o.srcx = o.lensx + ev.tetE * o.ux;
         o.srcy = o.lensy + ev.tetE * o.uy;
     }
+}
+
+double vbmMagnification(const ModelEvent& ev, double u) {
+    CHECK(u > 0.0);
+    CHECK(std::isfinite(ev.rho) && ev.rho >= 0.0);
+    if (!finiteSource(ev)) return magnifOf(u);
+    // The function the finite-source light curve calls for every epoch (ESPLAstroLightCurve), at one u, with
+    // the astrometric flag off so that it leaves no result (astrox1) behind.
+    VBMicrolensing& V = vbm();
+    V.astrometry = false;
+    return V.ESPLMag2(u, std::min(ev.rho, ESPL_RHO_MAX));
 }
 
 int vbmTestSatelliteShift(double tSimDay, double piEN, double piEE, double dy[2]) {

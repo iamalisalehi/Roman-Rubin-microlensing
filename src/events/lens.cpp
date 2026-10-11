@@ -127,6 +127,12 @@ void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sight
     const GeocentricMotion geo = geocentricMotion(l.t0, l.tetE, l.pirel, s.mus1, s.mus2, l.mul1, l.mul2);
     l.tE = geo.tE;
     s.xi = geo.xi;
+    // The draw's own descriptors of the event -- the peak magnification A0 (which preselectEvent tests), the two
+    // images' magnitudes, the FWHM (which the detection test bounds) -- are those of a POINT source at u0,
+    // whatever the run's source model: they pick the events whose light curve is then simulated, and the
+    // random stream with them. A disc changes the peak only for u0 <~ 3 rho (lower than the point source's for
+    // u0 < 0.55 rho, higher beyond: +34% at 0.9 rho, +3.5% at 2 rho, +1.5% at 3 rho), ~0.5% of the draws for
+    // dwarfs, ~3% for giants: preselection can over- and under-select there, by a band near its threshold.
     l.A0  = (l.u0 * l.u0 + 2.0) / std::sqrt(l.u0 * l.u0 * (l.u0 * l.u0 + 4.0));
     l.mi1 = s.magb[2] - 2.5 * std::log10(std::fabs(l.A0 + 1.0) * 0.5 * s.blend[2] + 1.0 - s.blend[2]);
     l.mi2 = s.magb[2] - 2.5 * std::log10(std::fabs(l.A0 - 1.0) * 0.5 * s.blend[2] + 1.0 - s.blend[2]);

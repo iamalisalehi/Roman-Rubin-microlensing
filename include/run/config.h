@@ -3,6 +3,7 @@
 #define ROMAN_RUN_CONFIG_H
 
 #include "common.h"
+#include "events/vbm_model.h"
 
 // Run configuration. Every field is a cost or coverage lever, so each is a runtime flag
 // rather than a constant: a smoke test and a production run differ only in these numbers.
@@ -53,6 +54,10 @@ struct RunConfig {
     // independent chunks that reproduce the whole run.
     long   endIndex    = -1;
     unsigned long long seedBase = seed;
+
+    // The source of the light-curve model: a uniform disc of the star's own radius (ESPL, the default) or a
+    // point (PSPL, cheaper). Recorded in run_provenance.txt.
+    SourceModel sourceModel = SourceModel::ESPL;
 
     // Put Roman at the centre of the Earth, removing the Earth-L2 spatial baseline while
     // leaving the timing untouched. With this flag the output is identical to a run without

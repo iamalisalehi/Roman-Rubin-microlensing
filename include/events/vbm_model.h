@@ -1,6 +1,6 @@
 // The light-curve model's interface to the vendored VBMicrolensing library (external/VBMicrolensing/):
-// the point-source point-lens magnification along the source-lens track with the parallax of the observer,
-// and the astrometric centroid.
+// the point-lens magnification, of a point source or of a uniform disc, along the source-lens track with the
+// parallax of the observer, and the astrometric centroid.
 //
 // This module is the only code that includes the library; its types stay out of this header. It owns one
 // VBMicrolensing object, set up once (vbmInit), pointed at one sightline at a time (vbmSetSightline). The
@@ -19,6 +19,12 @@
 //     Earth's offset on (South, West), the opposite directions.
 //   - Roman is "satellite 1" (the Earth is satellite 0): its geocentric position, a daily table, is added
 //     to the observer's offset, which is how the library does space parallax.
+//   - The source is a point (PSPL) or a uniform disc of radius rho Einstein radii (ESPL, finite source with a
+//     point lens; no limb darkening). The disc's magnification and centroid come from the library's table of
+//     the uniform disc near the lens, and from a quadrupole expansion in rho far from it (the library
+//     switches where the correction falls below Tol/10, Tol = VBM_TOL). The table covers rho from 1e-4 to
+//     100: below 1e-4 it reads the 1e-4 row and is as accurate (1.5e-5 at worst against the exact value,
+//     for rho 1e-6 to 5e-5).
 #ifndef ROMAN_EVENTS_VBM_MODEL_H
 #define ROMAN_EVENTS_VBM_MODEL_H
 
@@ -81,6 +87,15 @@ struct GeocentricMotion {
 GeocentricMotion geocentricMotion(double t0, double tetE, double pirel, double mus1, double mus2,
                                   double mul1, double mul2);
 
+// The source of the light-curve model: a point (PSPL) or a uniform disc (ESPL).
+enum class SourceModel { PSPL, ESPL };
+
+// The source model of the run, which evaluateModel and evaluateTrack read (events/lightcurve.cpp) when they
+// build the ModelEvent of the simulator's source and lens. Set once, before the first light curve; the
+// default is ESPL.
+void        vbmSetSourceModel(SourceModel m);
+SourceModel vbmSourceModel();
+
 // The model of one event, in the parameters the simulator carries.
 struct ModelEvent {
     double u0;           // impact parameter at t0, > 0 [Einstein radii]
@@ -91,11 +106,13 @@ struct ModelEvent {
     double tetE;         // angular Einstein radius [mas]
     double mus1, mus2;   // source proper motion, HELIOCENTRIC, on (e_l, e_b) [mas/day]
     double piS;          // source parallax [mas]
+    double rho;          // source radius in Einstein radii, theta* / thetaE >= 0; read only by ESPL
+    SourceModel source;  // ESPL with rho = 0 is the point source
 };
 
 // The model at one epoch, on (e_l, e_b).
 struct ModelEpoch {
-    double A;                // magnification, magnifOf(u)
+    double A;                // magnification of the model: magnifOf(u) for a point source (bit for bit)
     double u;                // |source - lens| [Einstein radii]
     double ux, uy;           // source - lens, WITH the parallax of the observer [Einstein radii]
     // Positions [mas] on the sky from an origin at the lens at t0; set only when astrometry is asked for.
@@ -112,7 +129,17 @@ struct ModelEpoch {
 //
 // u0 > 0 and the line u0 (-sin xi, cos xi) + tau (cos xi, sin xi) are the legacy straight-line geometry
 // of the source relative to the lens on (e_l, e_b); only the parallax is the library's.
+//
+// The astrometric call perturbs the parallax vector at every epoch (see vbm_model.cpp), which the
+// photometric one does not: the two tracks differ by up to ~2e-10 x (epoch index) Einstein radii, 2e-7 at the
+// end of a 1024-epoch array (and A by that over u).
 void vbmEvaluate(const ModelEvent& ev, bool atL2, bool astrometry, const double* t, int n, ModelEpoch* out);
+
+// The magnification of the event's source at the impact parameter u > 0 [Einstein radii], as vbmEvaluate
+// computes it along the track, but for a given u and so without any parallax: the straight line the
+// light curve is parametrised by. magnifOf(u) for a point source, the library's uniform-disc ESPLMag2 for a
+// finite one.
+double vbmMagnification(const ModelEvent& ev, double u);
 
 // TEST HELPER, not used by the simulation: how far the track of the source relative to the lens, in
 // Einstein radii, moves when the observer is Roman at L2 instead of the Earth, at simulation day tSimDay,

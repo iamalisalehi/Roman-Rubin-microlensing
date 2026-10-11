@@ -58,12 +58,13 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
     // projected perpendicular to the line of sight (~0.87-0.99 of the L2 offset over the year), so
     // L2_OFFSET_AU * piE is only a ceiling; the model is asked for both observers so the projection
     // is not re-derived here. nepL_pk / nepR_pk: epochs of each survey within +-2 tE of t0; satellite
-    // parallax needs contemporaneous coverage. Asking for the model here is safe: it changes nothing.
+    // parallax needs contemporaneous coverage. Asking for the model here is safe: it changes nothing. Only ux, uy
+    // are read, so the positions are not asked for.
     pk.duSat = 0.0;
     {
         TrackPoint atRubin, atRoman;
-        evaluateTrack(s, l, as, 0, &l.t0, 1, &atRubin);
-        evaluateTrack(s, l, as, 1, &l.t0, 1, &atRoman);
+        evaluateTrack(s, l, as, 0, &l.t0, 1, false, &atRubin);
+        evaluateTrack(s, l, as, 1, &l.t0, 1, false, &atRoman);
         pk.duSat = std::hypot(atRoman.ux - atRubin.ux, atRoman.uy - atRubin.uy);
     }
     pk.nepLpk = 0, pk.nepRpk = 0;

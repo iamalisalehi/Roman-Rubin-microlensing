@@ -11,7 +11,9 @@ Detection detectEvent(SimContext& ctx, const LightCurveStats& lc) {
     // direction that counts as evidence of lensing. Signing also makes the joint statistic exactly the
     // sum of the per-survey ones (dchiL = dchiL_L + dchiL_R), which makes detection monotone.
     // dchiP and dchiA are not thresholded; they are signed so that a negative value (the simpler
-    // model fitting better) stays visible.
+    // model fitting better) stays visible. Neither is written to any output. dchiA needs the absolute
+    // positions of the source and the centroid, which the time loop asks the model for only when the sample
+    // dump is on (src/sim/observe.cpp): in an ordinary run its sums stay zero and dchiA is 0.
     d.dchiL   = lc.chi3  - lc.chi1;             //lensing_effect (signed)
     d.dchiP   = lc.chi2  - lc.chi1;             //parallax_effect (signed)
     d.dchiA   = lc.chi2a - lc.chi1a;            //deflection_effect (signed)

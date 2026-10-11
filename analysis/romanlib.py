@@ -817,13 +817,26 @@ def lightcurve_model(prov):
     """The light-curve model that produced a run, from its provenance (a dict from load_provenance).
 
     Runs from the VBMicrolensing model on carry a `lightcurve_model` line (geocentric parallax from the JPL
-    ephemeris, Roman at L2 from its table); the event table then also has the columns tEhel (the heliocentric
-    Einstein time; tE is the geocentric one), piEN and piEE. Provenance without the line is a run of the
-    legacy model, for which tE is the heliocentric time and the table has none of those columns.
+    ephemeris, Roman at L2 from its table, and the source: PSPL or ESPL, see source_model); the event table
+    then also has the columns tEhel (the heliocentric Einstein time; tE is the geocentric one), piEN and
+    piEE. Provenance without the line is a run of the legacy model, for which tE is the heliocentric time
+    and the table has none of those columns.
     """
     if not prov:
         return "unknown"
     return prov.get("lightcurve_model", LIGHTCURVE_LEGACY)
+
+
+def source_model(prov):
+    """The source of the light-curve model that produced a run: "ESPL" (a uniform disc of the star's radius,
+    finite-source point lens) or "PSPL" (a point), from the `lightcurve_model` line of its provenance.
+
+    Every run before the finite source was added is a point-source run, so provenance without the line, or
+    with a line that does not name ESPL, is "PSPL". "unknown" when there is no provenance at all.
+    """
+    if not prov:
+        return "unknown"
+    return "ESPL" if "ESPL" in prov.get("lightcurve_model", "") else "PSPL"
 
 
 def has_geocentric_tE(prov):
@@ -855,6 +868,7 @@ def describe(path_events, path_prov=None):
         prov = load_provenance(path_prov)
         parts.append(f"population={population(prov)}")
         parts.append("lightcurve_model=" + ("vbm" if has_geocentric_tE(prov) else "legacy"))
+        parts.append("source_model=" + source_model(prov))
         for k in ("git_commit", "stride", "events_target", "sightlines_aggregated"):
             if k in prov:
                 parts.append(f"{k}={prov[k]}")

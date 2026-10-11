@@ -2,6 +2,7 @@
 #include "sim/record.h"
 #include "sim/characterize.h"
 #include "events/lightcurve.h"
+#include "events/vbm_model.h"
 #include "run/sample_dump.h"
 #include "fisher/fisher.h"
 
@@ -52,19 +53,18 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
         lc.dsepMax_L, lc.dsepMax_R
     });
 
-    // du_sat: observer separation in Einstein radii at t0, piE * D_perp / AU. D_perp is the separation
+    // du_sat: observer separation in Einstein radii at t0, the distance between the source-lens vectors Roman
+    // and the Earth see at that instant: piE * D_perp / AU, where D_perp is the separation of the two
     // projected perpendicular to the line of sight (~0.87-0.99 of the L2 offset over the year), so
     // L2_OFFSET_AU * piE is only a ceiling; the model is asked for both observers so the projection
     // is not re-derived here. nepL_pk / nepR_pk: epochs of each survey within +-2 tE of t0; satellite
-    // parallax needs contemporaneous coverage. Asking for the model here is safe: FisherM has run, and
-    // the state it touches is not read by the row below and is recomputed by the next draw.
+    // parallax needs contemporaneous coverage. Asking for the model here is safe: it changes nothing.
     pk.duSat = 0.0;
     {
         TrackPoint atRubin, atRoman;
         evaluateTrack(s, l, as, 0, &l.t0, 1, &atRubin);
         evaluateTrack(s, l, as, 1, &l.t0, 1, &atRoman);
-        const double dn1 = atRoman.ue1 - atRubin.ue1, dn2 = atRoman.ue2 - atRubin.ue2;
-        pk.duSat = l.piE * std::sqrt(dn1 * dn1 + dn2 * dn2);
+        pk.duSat = std::hypot(atRoman.ux - atRubin.ux, atRoman.uy - atRubin.uy);
     }
     pk.nepLpk = 0, pk.nepRpk = 0;
     {
@@ -75,6 +75,9 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
             else                      pk.nepLpk += 1;
         }
     }
+
+    double piNE[2];
+    parallaxVectorNE(l.piE, s.xi, piNE);
 
     filg_in.open(testf, std::ios::app);
     filg_in << st.icon           << " " << ch.fisher         << " " << l.tE                      << " "
@@ -129,7 +132,10 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
             << std::hypot(s.blendOff[0][0], s.blendOff[0][1]) << " "
             << std::hypot(s.blendOff[1][0], s.blendOff[1][1]) << " "
             // finite-source size: radius [Rsun], angular radius [mas], and rho = theta* / thetaE
-            << s.Rstar << " " << s.thetaStar << " " << s.rho << "\n";
+            << s.Rstar << " " << s.thetaStar << " " << s.rho << " "
+            // the heliocentric Einstein time (tE above is the geocentric one) and the geocentric parallax
+            // vector on (North, East)
+            << l.tEhel << " " << piNE[0] << " " << piNE[1] << "\n";
     filg_in.close();
 
     commitSampleDump(ctx, lc, ch, pk);
@@ -146,6 +152,8 @@ void commitSampleDump(SimContext& ctx, const LightCurveStats& lc, const Characte
     SampleSpec& dumpSpec = ctx.outs.dumpSpec;
     std::vector<DumpEpoch>& dumpBuf = ctx.outs.dumpBuf;
     long& dumpSeq = ctx.outs.dumpSeq;
+    double piNE[2] = {0.0, 0.0};
+    if (dumpSpec.on) parallaxVectorNE(l.piE, s.xi, piNE);
 
     // Commit this draw's buffered light curve if it fills a requested sample class. Done here, not
     // in the time loop, because the classes are defined by detL/detR/detJ and the Fisher sigmas.
@@ -176,11 +184,14 @@ void commitSampleDump(SimContext& ctx, const LightCurveStats& lc, const Characte
                << "population "   << gPop->name    << "\n"
                << "lon "          << s.lon        << "\n"
                << "lat "          << s.lat        << "\n"
-               << "tE "           << l.tE         << "\n"
+               << "tE "           << l.tE         << "\n"      // geocentric
+               << "tEhel "        << l.tEhel      << "\n"      // heliocentric
                << "t0 "           << l.t0         << "\n"
                << "u0 "           << l.u0         << "\n"
                << "xi "           << s.xi         << "\n"
                << "piE "          << l.piE        << "\n"
+               << "piEN "         << piNE[0]      << "\n"
+               << "piEE "         << piNE[1]      << "\n"
                << "tetE "         << l.tetE       << "\n"
                << "Ml "           << l.Ml         << "\n"
                << "Dl "           << l.Dl         << "\n"

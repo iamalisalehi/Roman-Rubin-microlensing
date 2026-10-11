@@ -58,8 +58,6 @@ EfficiencyBins drawEvent(SimContext& ctx, SightlineState& st, int prevNdw) {
 
     // The per-event accumulators (LightCurveStats, Detection) are fresh value structs, zeroed by their
     // defaults; what lives in the shared objects is reset here.
-    s.def1c = 0.0;
-    s.def2c = 0.0;
     s.errM = 0.0; s.errA  = 0.0;
     return bins;
 }

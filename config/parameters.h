@@ -270,8 +270,9 @@ inline const char* const GBTDS_SCA_FILES[GBTDS_NLAYOUT] = {
 constexpr double SEASON_GAP_MIN_DAYS = 20.0;
 // Sun-Earth L2, where Roman flies, as a fraction of an AU.
 //
-// L2 is on the Sun-Earth line, ~1.5e6 km beyond the Earth, so to leading order Roman's heliocentric
-// position is Earth's scaled by (1 + L2_OFFSET_AU). This gives the joint fit a spatial baseline: the
+// L2 is on the Sun-Earth line, ~1.5e6 km beyond the Earth, so Roman sits L2_OFFSET_AU from the Earth in
+// the anti-Sun direction (the light-curve model reads that as a daily table, files/ephemeris/satellite1.txt,
+// written by tools/make_roman_l2_ephemeris.py from L2_KM). This gives the joint fit a spatial baseline: the
 // difference in impact parameter the two observatories see is
 //     delta_u ~ L2_OFFSET_AU * piE  ~  1e-3  for a typical bulge event,
 // concentrated in high-magnification, short-tE events. Roman's halo orbit about L2 (amplitude

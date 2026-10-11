@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
         c->astSigc[AV_P] = cfg.astSigcP;
     }
 
-    // satScale multiplies L2_OFFSET_AU inside lightcurve(); 0 puts Roman at the centre of the Earth.
+    // satScale selects Roman's orbit in the model (evaluateModel): 1 = at L2, 0 = at the centre of the Earth.
     as->satScale = cfg.noSatPar ? 0.0 : 1.0;
 
     // ---- Stage 3: read the input files ----

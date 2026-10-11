@@ -79,8 +79,6 @@ constexpr int nq = 15;     //resu
 // `lens` is allocated once, so the cost is fixed: (Nl+NlRoman) * 7 buffers * 8 bytes ~= 17.7 MB.
 constexpr int    coun  = Nl + NlRoman;
 
-constexpr double tetp   = double(M_PI / 3.0);        //parallax
-
 // Finite-difference stencils used by FisherM. For each parameter it evaluates the model at
 // theta + Delta*s[h] for h = 0,1, forms (model - stored)/(Delta*s[h]), and averages the two.
 //

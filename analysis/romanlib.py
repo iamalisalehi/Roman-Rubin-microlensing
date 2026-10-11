@@ -808,6 +808,29 @@ def population(prov):
     return prov.get("population", "bulge (implied)")
 
 
+# What older runs' provenance did not say: the light-curve model of every run before the VBMicrolensing one.
+LIGHTCURVE_LEGACY = ("legacy in-house point-source model: circular-orbit parallax tilted by a fixed angle, "
+                     "heliocentric tE and xi")
+
+
+def lightcurve_model(prov):
+    """The light-curve model that produced a run, from its provenance (a dict from load_provenance).
+
+    Runs from the VBMicrolensing model on carry a `lightcurve_model` line (geocentric parallax from the JPL
+    ephemeris, Roman at L2 from its table); the event table then also has the columns tEhel (the heliocentric
+    Einstein time; tE is the geocentric one), piEN and piEE. Provenance without the line is a run of the
+    legacy model, for which tE is the heliocentric time and the table has none of those columns.
+    """
+    if not prov:
+        return "unknown"
+    return prov.get("lightcurve_model", LIGHTCURVE_LEGACY)
+
+
+def has_geocentric_tE(prov):
+    """True for a run whose tE and xi are geocentric (the VBMicrolensing model), False for a legacy run."""
+    return bool(prov) and "lightcurve_model" in prov
+
+
 def assert_same_population(provs, what="this figure"):
     """Refuse to pool runs from different lens populations.
 
@@ -831,6 +854,7 @@ def describe(path_events, path_prov=None):
     if path_prov and os.path.exists(path_prov):
         prov = load_provenance(path_prov)
         parts.append(f"population={population(prov)}")
+        parts.append("lightcurve_model=" + ("vbm" if has_geocentric_tE(prov) else "legacy"))
         for k in ("git_commit", "stride", "events_target", "sightlines_aggregated"):
             if k in prov:
                 parts.append(f"{k}={prov[k]}")

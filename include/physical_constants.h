@@ -22,7 +22,5 @@ constexpr double year = 365.2425;//days
 constexpr double eps = double(0.000000000000005463263454624313654);
 constexpr double ARCSEC_TO_MAS    = 1000.0;
 constexpr double AU_KM        = 1.496e8;
-constexpr double omegae = double(2.0 * M_PI / year); //radian per day
-constexpr double vearth = omegae;                    //radian per day
 
 #endif // PHYSICAL_CONSTANTS_H

@@ -13,8 +13,8 @@ and insists on a coordinates file in the same call.
 satellite1.txt is Roman at the Sun-Earth L2 point. L2 lies on the Sun-Earth line, beyond the Earth, so
 from the Earth it is in the anti-Sun direction: right ascension + 180 deg, declination -Dec of the Sun
 (VBMicrolensing's own geocentric Sun table, external/VBMicrolensing/data/SunEphemeris.txt: JPL Horizons,
-DE441, ICRF), at the distance L2_KM / AU_KM [AU] (config/parameters.h, read through analysis/cparams.py),
-the same offset L2_OFFSET_AU the simulator's own light curve uses. Roman's halo orbit about L2 (amplitude
+DE441, ICRF), at the distance L2_KM / AU_KM [AU] (config/parameters.h, read through analysis/cparams.py;
+L2_OFFSET_AU there). The simulator's light curve takes Roman's position from this table alone. Roman's halo orbit about L2 (amplitude
 ~1e5-1e6 km) is not modelled. The rows are on the Sun table's own grid (integer JD, 12:00 UT), so nothing
 is interpolated, and cover JD 2461000 to 2465201: the simulation, MJD 61141.31 to + Tobs (2026-04 to
 2036-04), plus 100 days either side.

@@ -18,6 +18,7 @@
 #include "common.h"
 #include "types.h"
 #include "events/lightcurve.h"
+#include "events/vbm_model.h"
 #include "surveys/visits.h"
 #include "surveys/schedule.h"
 #include "fisher/fisher.h"
@@ -25,11 +26,12 @@
 namespace {
 
 // ---------------------------------------------------------------------------------------------
-// Sight line. Fixed to the same test field the production runs have been using, so that the
-// parallax geometry (deltao, FI) matches what the real code would compute there.
+// Sight line. The centre of the GBTDS fields. The fixture never runs the sightline setup, so main()
+// points the light-curve model at it (vbmSetSightline): the Earth's orbit seen from here is the
+// parallax of every event, and (kLon, kLat) fixes the axes (e_l, e_b) the event's xi is measured on.
 // ---------------------------------------------------------------------------------------------
-constexpr double kLon = 0.5;   // Galactic longitude [deg]
-constexpr double kLat = -1.0;  // Galactic latitude  [deg]
+constexpr double kLon = 1.0;   // Galactic longitude [deg]
+constexpr double kLat = -1.5;  // Galactic latitude  [deg]
 
 // ---------------------------------------------------------------------------------------------
 // Cadence model. Simplified stand-ins for the two surveys' observing patterns -- enough to
@@ -99,19 +101,12 @@ constexpr double kMus2      = -0.005;
 constexpr double kMul1      = +0.003; // lens proper motion [mas/day]
 constexpr double kMul2      = +0.002;
 
-// Fill in the geometry and stellar quantities that lightcurve() and ErrorCal() read.
+// Fill in the geometry and stellar quantities that the model (evaluateTrack, evaluateModel) and
+// ErrorCal() read.
 void setupStatic(source& s, lens& l)
 {
     s.lon = kLon;
     s.lat = kLat;
-    s.TET = (360.0 - s.lon) / RAa;  // same convention as src/sim/sightline.cpp
-    s.FI  = s.lat / RAa;
-
-    // Reproduce src/galaxy/kinematics.cpp (vrel)'s deltao convention for this sight line.
-    double tetd = s.TET;
-    if (s.TET > pi) tetd = s.TET - 2.0 * pi;
-    l.deltao = pi - std::fabs(tetd);
-    if (tetd < 0.0) l.deltao = -1.0 * l.deltao;
 
     s.Ds  = kDs;
     l.Dl  = kDl;
@@ -129,7 +124,7 @@ void setupStatic(source& s, lens& l)
                       + (s.mus2 - l.mul2) * (s.mus2 - l.mul2));
 }
 
-// True (noiseless) model magnitude for telescope tt at the current lightcurve() state.
+// True (noiseless) model magnitude for telescope tt at magnification Astar.
 double modelMag(const source& s, int tt, double Astar)
 {
     return s.mbs[tt] - 2.5 * std::log10(Astar * s.fb[tt] + 1.0 - s.fb[tt]);
@@ -141,14 +136,14 @@ double modelMag(const source& s, int tt, double Astar)
 void appendEpoch(source& s, lens& l, astromet& as, double tim, int tele, int& ndw, int season = -1)
 {
     // Roman observes from L2, so its observer displacement differs from Rubin's.
-    lightcurve(s, l, as, tim, tele);
-    s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
+    TrackPoint p;
+    evaluateTrack(s, l, as, tele, &tim, 1, &p);
 
     l.timn[ndw] = tim;
-    l.magn[ndw] = modelMag(s, tele, s.Astar);
+    l.magn[ndw] = modelMag(s, tele, p.A);
     l.errm[ndw] = (tele == 0) ? kErrMagRubin : kErrMagRoman;
-    l.soux[ndw] = s.pos1c;
-    l.souy[ndw] = s.pos2c;
+    l.soux[ndw] = p.pos1c;
+    l.souy[ndw] = p.pos2c;
     l.erra[ndw] = (tele == 0) ? kErrAstRubin : kErrAstRoman;
     l.tele[ndw] = tele;
     // Season and roll of a Roman exposure; seasons alternate spring / autumn from the first.
@@ -896,6 +891,7 @@ int runAstroVariants()
 
 int main(int argc, char** argv)
 {
+    vbmSetSightline(kLon, kLat);
     if (argc > 1 && std::string(argv[1]) == "--astro-variants") return runAstroVariants();
     if (argc > 1 && std::string(argv[1]) == "--sweep-astro") return runSweepAstro();
     if (argc > 1 && std::string(argv[1]) == "--sweep") return runSweep();
@@ -947,8 +943,7 @@ int main(int argc, char** argv)
         int nL = 0, nR = 0;
         const int ndw = buildLightCurve(*s, *l, *as, nL, nR);
 
-        // buildLightCurve left lightcurve() evaluated at the final epoch; restore the true
-        // parameter point, since FisherM perturbs from whatever the structs hold.
+        // Restore the true parameter point, since FisherM perturbs from whatever the structs hold.
         l->tE  = ev.tE;
         l->t0  = ev.t0;
         l->u0  = ev.u0;

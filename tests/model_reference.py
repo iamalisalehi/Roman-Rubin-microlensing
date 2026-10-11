@@ -8,7 +8,7 @@ the reference is a header). Deterministic, a few seconds. Nothing here calls the
 VBMicrolensing. Re-run it only when a reference itself changes (sightlines, times); the constants it
 reads from the C++ (the simulation clock, L2) come through analysis/cparams.py.
 
-Five references, at three bulge sightlines (Galactic (l, b) in degrees):
+Seven references, at three bulge sightlines (Galactic (l, b) in degrees):
 
 (a) The ICRS direction of (l, b), twice. ASTROPY: astropy's Galactic frame, which defines the Galactic
     system through FK5 J2000 and the FK5-ICRS frame bias. HIPPARCOS: the rotation the Hipparcos catalogue
@@ -32,6 +32,18 @@ Five references, at three bulge sightlines (Galactic (l, b) in degrees):
     observer displaced by s from the Earth, the library's source-lens track changes by
         dy1 = piE_N s_N + piE_E s_E,      dy2 = piE_N s_E - piE_E s_N
     (y1 along the motion, y2 across, s the displacement's North and East components in AU).
+(f) The conversion of an event drawn with HELIOCENTRIC proper motions to the geocentric frame at t0: for four
+    constructed events (source and lens proper motions on (e_l, e_b), relative parallax, thetaE), the
+    Einstein time and the direction of the source-minus-lens motion in the frame of an Earth moving uniformly
+    with its velocity at t0,
+        mu_geo = mu_hel - v_E,perp * pi_rel          (lens minus source, on (North, East); mas/day),
+        tE = thetaE / |mu_geo|,   xi = direction of -mu_geo on (e_l, e_b),
+    with astropy's (e_l, e_b) -> (N, E) matrix and astropy's Earth velocity.
+(g) The Earth's orbit as the parallax sees it, on (e_l, e_b) [AU], over one year after t0 = T_DAY[1]: X(t) -
+    X(t0) with X the heliocentric position projected on the sky (astropy's ephemeris), tabulated at DEV_OFFSET
+    days after t0, and the shape of the closed orbit: the axis ratio and the position angle (from +l toward +b)
+    of the major axis of its principal axes over one year, sampled at ELL_N uniform times. A source track's
+    departure from the geocentric straight line is piE * (X(t) - X(t0) - V(t0) (t - t0)), V the Earth's velocity.
 """
 import argparse
 import os
@@ -51,6 +63,16 @@ from cparams import P  # noqa: E402
 SIGHTLINES = [(1.0, -1.5), (10.0, -3.0), (358.5, -4.2)]   # Galactic (l, b) [deg]: Roman's fields, and two more
 T_DAYS = [400.0, 1500.0, 3000.37]                           # simulation days (the last is off the daily grid)
 PIE = [(0.3, -0.2), (-0.1, 0.5)]                            # (piE_N, piE_E)
+# (f): constructed events (mus_l, mus_b, mul_l, mul_b [mas/day], pi_rel [mas], thetaE [mas]). The third has a
+# heliocentric relative motion no larger than v_E pi_rel, so the geocentric one is changed by order unity.
+GEO_EVENTS = [(0.004, -0.002, -0.003, 0.001, 0.15, 0.5),
+              (-0.006, 0.003, 0.002, 0.004, 0.30, 1.2),
+              (0.001, 0.005, 0.0015, 0.0045, 0.05, 0.3),
+              (0.0, 0.0, 0.010, 0.0, 0.40, 0.8)]
+# (g): days after t0 at which the displacement is tabulated, and the sampling of the closed orbit
+DEV_OFFSETS = [15.0 * k for k in range(25)]
+ELL_N = 200
+ELL_PERIOD = 365.25
 L2_AU = P.L2_KM / P.AU_KM
 DAY0_JD = P.SIM_DAY0_JD2450000 + 2450000.0                  # JD of simulation day 0
 
@@ -115,11 +137,42 @@ def sun_projection(l, b):
 
 def earth_state(day):
     """Earth's heliocentric velocity [AU/day] and unit position vector (ICRS) at simulation day `day`."""
+    v, r = earth_pos_vel(day)
+    return v, r / np.linalg.norm(r)
+
+
+def earth_pos_vel(day):
+    """Earth's heliocentric velocity [AU/day] and position [AU] (ICRS) at simulation day `day`."""
     t = Time(DAY0_JD + day, format='jd', scale='utc')
     pe, ve = get_body_barycentric_posvel('earth', t)
     ps, vs = get_body_barycentric_posvel('sun', t)
-    r = (pe - ps).xyz.to(u.AU).value
-    return (ve - vs).xyz.to(u.AU / u.day).value, r / np.linalg.norm(r)
+    return (ve - vs).xyz.to(u.AU / u.day).value, (pe - ps).xyz.to(u.AU).value
+
+
+def to_lb(M, v_ne):
+    """(North, East) -> (e_l, e_b) by the transpose of the orthogonal matrix M."""
+    return M.T @ np.asarray(v_ne)
+
+
+def geo_motion(M, vne, ev):
+    """(tE [days], xi [rad]) of an event with heliocentric proper motions ev, for Earth velocity vne (N, E)."""
+    mus_l, mus_b, mul_l, mul_b, pirel, tetE = ev
+    mu_geo = M @ np.array([mul_l - mus_l, mul_b - mus_b]) - np.asarray(vne) * pirel     # lens minus source
+    away = to_lb(M, -mu_geo)                                                            # source minus lens
+    return tetE / np.hypot(*mu_geo), np.arctan2(away[1], away[0]) % (2 * np.pi)
+
+
+def projected_orbit(ra, dec, M, days):
+    """Earth's heliocentric position on (e_l, e_b) [AU] at simulation `days` (astropy's pointing and matrix)."""
+    eN, eE = north_east(ra, dec)
+    return np.array([to_lb(M, [earth_pos_vel(d)[1] @ eN, earth_pos_vel(d)[1] @ eE]) for d in days])
+
+
+def ellipse_shape(X):
+    """(axis ratio, position angle [deg] of the major axis from +l toward +b) of points X (n, 2)."""
+    Q = X - X.mean(0)
+    w, v = np.linalg.eigh(Q.T @ Q / len(Q))
+    return float(np.sqrt(w[0] / w[1])), float(np.degrees(np.arctan2(v[1, 1], v[0, 1])) % 180.0)
 
 
 # ---- header -----------------------------------------------------------------------------------------
@@ -153,6 +206,19 @@ def main():
         sN_sE = [[L2_AU * r @ eN, L2_AU * r @ eE] for _, r in earth]
         shift.append([[[pn * sn + pe * se, pn * se - pe * sn] for pn, pe in PIE] for sn, se in sN_sE])
 
+    # (f) and (g), with astropy's pointing and matrix
+    geo_te, geo_xi, dev, ell = [], [], [], []
+    t0g = T_DAYS[1]
+    with solar_system_ephemeris.set('builtin'):
+        for i, (ra, dec, M) in enumerate(ast):
+            eN, eE = north_east(ra, dec)
+            geo_te.append([[geo_motion(M, vne[i][k], ev)[0] for ev in GEO_EVENTS] for k in range(len(T_DAYS))])
+            geo_xi.append([[geo_motion(M, vne[i][k], ev)[1] for ev in GEO_EVENTS] for k in range(len(T_DAYS))])
+            X0 = projected_orbit(ra, dec, M, [t0g])[0]
+            X = projected_orbit(ra, dec, M, [t0g + d for d in DEV_OFFSETS])
+            dev.append(X - X0)
+            ell.append(ellipse_shape(projected_orbit(ra, dec, M, [t0g + ELL_PERIOD * k / ELL_N for k in range(ELL_N)])))
+
     out = ['// GENERATED by tests/model_reference.py (.roman/bin/python tests/model_reference.py -o tests/model_reference.h).',
            '// Do not edit by hand. The references and their definitions are described in that script.',
            '#ifndef MODEL_REFERENCE_H', '#define MODEL_REFERENCE_H', '', 'namespace modelref {', '',
@@ -176,6 +242,21 @@ def main():
            '//     PIE[ip] = (piE_N, piE_E): L2_SHIFT[sightline][time][ip][y1, y2].',
            'constexpr double PIE[N_PI][2] = %s;' % arr(PIE),
            'constexpr double L2_SHIFT[N_SIGHT][N_T][N_PI][2] = %s;' % arr(shift), '',
+           '// (f) Heliocentric -> geocentric: constructed events GEO_EVENT[ie] = (mus_l, mus_b, mul_l, mul_b [mas/day],',
+           '//     pi_rel [mas], thetaE [mas]) and, for each sightline and time T_DAY, the geocentric tE [days] and xi [rad].',
+           'constexpr int N_GEO = %d;' % len(GEO_EVENTS),
+           'constexpr double GEO_EVENT[N_GEO][6] = %s;' % arr(GEO_EVENTS, 6),
+           'constexpr double GEO_TE[N_SIGHT][N_T][N_GEO] = %s;' % arr(geo_te),
+           'constexpr double GEO_XI[N_SIGHT][N_T][N_GEO] = %s;' % arr(geo_xi), '',
+           '// (g) The Earth\'s heliocentric position relative to t0 = T_DAY[1], X(t) - X(t0) on (e_l, e_b) [AU], at DEV_OFFSET',
+           '//     days after t0, and the closed orbit\'s axis ratio and major-axis angle from +l [deg], sampled at ELL_N',
+           '//     times over ELL_PERIOD days from t0.',
+           'constexpr int N_DEV = %d, ELL_N = %d;' % (len(DEV_OFFSETS), ELL_N),
+           'constexpr double ELL_PERIOD = %r;' % ELL_PERIOD,
+           'constexpr double DEV_OFFSET[N_DEV] = %s;' % arr(DEV_OFFSETS, 8),
+           'constexpr double ORBIT_REF[N_SIGHT][N_DEV][2] = %s;' % arr(dev),
+           'constexpr double ELL_RATIO[N_SIGHT] = %s;' % arr([e[0] for e in ell], 8),
+           'constexpr double ELL_PA[N_SIGHT] = %s;' % arr([e[1] for e in ell], 8), '',
            '}  // namespace modelref', '', '#endif // MODEL_REFERENCE_H', '']
     text = '\n'.join(out)
     if args.output == '-':

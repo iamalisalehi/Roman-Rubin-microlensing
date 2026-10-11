@@ -74,8 +74,8 @@ Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const Ef
             // No-satellite forecast: the same event (same draw, epochs and photometry) re-evaluated with
             // the observer moved to Earth. A controlled comparison of this kind is needed because two
             // runs differing only in L2_OFFSET_AU fork the RNG stream and select different detected
-            // populations (shifting the median sigma_tE by ~15%). satScale carries L2_OFFSET_AU into
-            // lightcurve(); the Fisher matrix uses model derivatives at the true parameters, not
+            // populations (shifting the median sigma_tE by ~15%). satScale puts Roman at L2 or at the Earth in
+            // the model (evaluateModel); the Fisher matrix uses model derivatives at the true parameters, not
             // realised noise, so re-evaluating is legitimate.
             if (cfg.pairSat) {
                 const double keepScale = as.satScale;

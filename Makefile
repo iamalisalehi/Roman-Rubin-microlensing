@@ -76,7 +76,7 @@ $(VBM_OBJ): external/VBMicrolensing/VBMicrolensingLibrary.cpp external/VBMicrole
 # Hand-built synthetic events -> real FisherM/ErrorCal -> a diffable table of sigmas.
 # Needs no data files:
 #     make fishertest && ./fishertest > after.txt && diff before.txt after.txt
-# Links every object except main.o, so it exercises the real FisherM, ErrorCal, lightcurve
+# Links every object except main.o, so it exercises the real FisherM, ErrorCal, evaluateModel
 # and invert_matrix.
 # ---------------------------------------------------------------------------
 FIXTURE_TARGET = fishertest
@@ -133,9 +133,11 @@ $(VBM_TARGET): build/tests/vbm_test.o $(VBM_OBJ)
 #
 # Pins the adapter to VBMicrolensing (src/events/vbm_model.cpp) and the Galactic axes of the kinematics
 # against astropy: the ICRS direction of Galactic (l, b) and the rotation to (North, East); that the
-# kinematics' projection axes are (e_l, e_b); the Earth's velocity at t0; and Roman's L2 ephemeris as a
-# satellite. The references are in tests/model_reference.h, written by tests/model_reference.py. Links the
-# real vrel and the adapter. Needs only committed files; run from the repo root:
+# kinematics' projection axes are (e_l, e_b); the Earth's velocity at t0; Roman's L2 ephemeris as a
+# satellite; and the light-curve model as the simulator calls it (evaluateModel, evaluateTrack): the side of
+# the lens the source passes, the centroid, the heliocentric-to-geocentric conversion, the annual and
+# satellite parallax. The references are in tests/model_reference.h, written by tests/model_reference.py.
+# Links the real vrel and the adapter. Needs only committed files; run from the repo root:
 #     make modeltest && ./modeltest
 # ---------------------------------------------------------------------------
 MODEL_TARGET = modeltest

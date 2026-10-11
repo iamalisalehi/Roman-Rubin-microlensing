@@ -3,6 +3,7 @@
 #include "util/random.h"
 #include "galaxy/catalogue.h"
 #include "galaxy/kinematics.h"
+#include "events/vbm_model.h"
 
 // Draws a lens along the sightline: distance, component, mass, kinematics, and (for a luminous
 // lens) its own light added to the blend.
@@ -79,7 +80,7 @@ void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sight
     // absolute magnitudes (CMD/components/lens_ml.dat), the distance modulus, and the dust in front
     // of the LENS (same tables, at Dl). No random scatter is drawn. fb and mbs of both telescopes
     // are rebuilt from the enlarged blend; fLens records the lens's share, which pulls the
-    // astrometric centroid toward the lens (lightcurve()).
+    // astrometric centroid toward the lens (evaluateTrack).
     s.fLens = {0.0, 0.0};
     if (l.luminous) {
         if (mabFromCatalogue or lensAbsMag(static_cast<int>(l.struc), l.Ml, mab)) {
@@ -115,7 +116,17 @@ void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sight
     l.DeltaT = std::sqrt(4.0 + l.u0 * l.u0) * l.tetE; //[mas]
 
     vrel(s,l);
-    l.tE  = std::fabs(l.RE / (l.Vt * 1000.0 * 3600.0 * 24.0));//[days]
+    // The Galactic model draws HELIOCENTRIC proper motions, and the light curve is parametrised in the frame
+    // of an Earth moving uniformly with its velocity at t0 (events/vbm_model.h), where the lens-source
+    // proper motion differs by the Earth's projected velocity times the relative parallax. tEhel = thetaE /
+    // |mu_hel| is what the draw gives; tE and the direction of motion xi are the geocentric ones the model,
+    // the efficiency bins and the Fisher matrices use. No random numbers are drawn here, so the heliocentric
+    // events are the same draws as before.
+    l.tEhel = std::fabs(l.RE / (l.Vt * 1000.0 * 3600.0 * 24.0));//[days]
+    CHECK(std::fabs(l.tetE / l.murel / l.tEhel - 1.0) < 1.0e-9);   //the same time from the proper motion
+    const GeocentricMotion geo = geocentricMotion(l.t0, l.tetE, l.pirel, s.mus1, s.mus2, l.mul1, l.mul2);
+    l.tE = geo.tE;
+    s.xi = geo.xi;
     l.A0  = (l.u0 * l.u0 + 2.0) / std::sqrt(l.u0 * l.u0 * (l.u0 * l.u0 + 4.0));
     l.mi1 = s.magb[2] - 2.5 * std::log10(std::fabs(l.A0 + 1.0) * 0.5 * s.blend[2] + 1.0 - s.blend[2]);
     l.mi2 = s.magb[2] - 2.5 * std::log10(std::fabs(l.A0 - 1.0) * 0.5 * s.blend[2] + 1.0 - s.blend[2]);

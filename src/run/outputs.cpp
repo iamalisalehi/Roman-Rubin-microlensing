@@ -47,7 +47,11 @@ const char* eventTableHeader()
         "blendOff_L blendOff_R "
         // Finite-source size: the source radius [Rsun], its angular radius theta* [mas], and
         // rho = theta* / thetaE, the source radius in Einstein radii.
-        "Rstar thetaStar rho";
+        "Rstar thetaStar rho "
+        // The Einstein time of the heliocentric draw [days] (tE above is the geocentric one, the one the light
+        // curve and the Fisher matrices use), and the geocentric parallax vector on (North, East): parallel to
+        // the lens-minus-source relative proper motion, of length piE.
+        "tEhel piEN piEE";
 }
 
 int openOutputs(const RunConfig& cfg, RunOutputs& o) {
@@ -270,6 +274,7 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << ROMAN_AST_K << " mas, floor " << ROMAN_AST_FLOOR << " mas; Rubin kappa "
              << LSST_AST_KAPPA << " x visit FWHM_geom, floor " << LSST_AST_FLOOR << " mas; blend offset "
              << (AST_BLEND_OFFSET_FREE ? "fitted (marginalised)" : "known") << "\n"
+             << "# lightcurve_model    VBMicrolensing 5.6.1 PSPL, geocentric parallax (JPL ephemeris), Roman at L2 table\n"
              << "# astrometric_variants W: one frame, white; N: frame per roll + " << cfg.astSigcN
              << " mas/day; P: frame per roll + " << cfg.astSigcP << " mas/day\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex.nTables << " x "

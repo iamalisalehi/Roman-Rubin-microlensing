@@ -97,7 +97,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         // differ, their difference leaks into every derivative as a constant dm/Delta; it cancels in
         // symmetric stencils but not in the cross-telescope rows, fb's outer bins, or any one-sided
         // stencil. Every model here is evaluated with the observer that produced these data.
-        evaluateModel(s, l, as, tt, t, n, ref.data());
+        evaluateModel(s, l, as, tt, t, n, false, ref.data());
         for (int m = 0; m < n; ++m) lgf[m] = 2.5 * std::log10(ref[m].A * fb + 1.0 - fb);
 
         // u0, tE, piE, xi, t0: one new model per perturbation.
@@ -110,7 +110,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 CHECK(l.piE > 0.0);
                 CHECK(l.u0 != 0.0);
                 CHECK(diff != 0.0);
-                evaluateModel(s, l, as, tt, t, n, pert.data());
+                evaluateModel(s, l, as, tt, t, n, false, pert.data());
                 *par = keep;
                 for (int m = 0; m < n; ++m) {
                     const double magw = mbs - 2.5 * std::log10(pert[m].A * fb + 1.0 - fb);
@@ -289,7 +289,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         };
 
         // Reference and perturbations use the observer that produced these data.
-        evaluateModel(s, l, as, tt, t, n, ref.data());
+        evaluateModel(s, l, as, tt, t, n, true, ref.data());
         for (int m = 0; m < n; ++m) {
             double nbx0, nby0;
             ddx[ix[m]][Ny] = ddy[ix[m]][Ny] = nbrShare(ref[m].u, nbx0, nby0);
@@ -305,7 +305,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 CHECK(l.tetE > 0.0);
                 CHECK(l.piE > 0.0);
                 CHECK(diff != 0.0);
-                evaluateModel(s, l, as, tt, t, n, pert.data());
+                evaluateModel(s, l, as, tt, t, n, true, pert.data());
                 *astPar[j] = keep;
                 // A null derivative (epoch at t0 or far from the peak) is legitimate and contributes nothing.
                 for (int m = 0; m < n; ++m) {
@@ -523,8 +523,12 @@ void ErrorCal(covarian & co, lens & l , source & s){
   co.f2 = co.resu[5] * co.resu[5] + co.resu[1] * co.resu[1] + (Era[4] / std::tan(s.xi)) * (Era[4] / std::tan(s.xi))
     - 2.0 * co.resu[1] * Era[4] / std::tan(s.xi) * corr1;
 
-  co.sigmul1 = std::sqrt(Erb[1] * Erb[1] + l.murel * l.murel * std::cos(s.xi) * std::cos(s.xi) * std::fabs(co.f1));
-  co.sigmul2 = std::sqrt(Erb[2] * Erb[2] + l.murel * l.murel * std::sin(s.xi) * std::sin(s.xi) * std::fabs(co.f2));
+  // The relative proper motion the light curve measures, mu = thetaE / tE, is the geocentric one (tE and xi are
+  // geocentric); l.murel is the heliocentric magnitude from the draw. The lens's heliocentric motion also
+  // carries the Earth's velocity times pi_rel, whose error this propagation leaves out.
+  const double muGeo = l.tetE / l.tE;   //[mas/day]
+  co.sigmul1 = std::sqrt(Erb[1] * Erb[1] + muGeo * muGeo * std::cos(s.xi) * std::cos(s.xi) * std::fabs(co.f1));
+  co.sigmul2 = std::sqrt(Erb[2] * Erb[2] + muGeo * muGeo * std::sin(s.xi) * std::sin(s.xi) * std::fabs(co.f2));
 
   co.resu[11] = double(co.sigmul1 / (std::fabs(l.mul1) + eps)); //mu_lens_1
   co.resu[12] = double(co.sigmul2 / (std::fabs(l.mul2) + eps)); //mu_lens_2

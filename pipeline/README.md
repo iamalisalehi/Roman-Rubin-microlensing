@@ -59,7 +59,9 @@ pipeline/pipeline.sh my_run.sh all                 # everything, on this machine
    `fetch` downloads the DECaPS mean map (7 GB) and Marshall's map into `dustmaps/`, then ~35 minutes of queries.
 4. Fetched for you: MIST v2 bolometric-correction tables (`LSST.txz` 2.9 MB, `Roman.txz` 3.9 MB, from
    mist.science) into `CMD/Rubin`, `CMD/Roman`; the LSSTCam focal-plane map (`Baseline/lsstcam_fov/fov_map.txt`).
-   Vendored in git: `files/sigma_roman.txt`, `CMD/empirical/EEM_dwarf_UBVIJHK_colors_Teff.txt`.
+   Vendored in git: `files/sigma_roman.txt`, `CMD/empirical/EEM_dwarf_UBVIJHK_colors_Teff.txt`, and what the
+   light-curve model reads: `external/VBMicrolensing/` (the library and its Sun-ephemeris and finite-source
+   tables) and `files/ephemeris/` (Roman's L2 orbit). Run directories link both.
 
 ## What each stage does
 

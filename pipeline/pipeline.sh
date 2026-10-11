@@ -421,7 +421,8 @@ check_inputs() {
     elif [[ -f $P_EXT ]]; then item req ok EXT_TABLES "$EXT_TABLES"
     else item req MISSING EXT_TABLES "$EXT_TABLES not found"; fi
     local f
-    for f in files/sigma_roman.txt $EEM Baseline/gbtds_layout/sca_layout_spring.txt; do
+    for f in files/sigma_roman.txt $EEM Baseline/gbtds_layout/sca_layout_spring.txt \
+             files/ephemeris/satellite1.txt external/VBMicrolensing/data/SunEphemeris.txt external/VBMicrolensing/data/ESPL.tbl; do
         [[ -f $f ]] && item req ok "$(basename "$f")" "in the clone" || item req MISSING "$(basename "$f")" "$f should come with the git clone"
     done
 }
@@ -565,6 +566,9 @@ make_rundir() {   # make_rundir DIR
     ln -sfn "$ROOT/CMD" "$d/CMD"
     ln -sfn "$ROOT/files/ext/ext_tables.dat" "$d/files/ext/ext_tables.dat"
     ln -sfn "$ROOT/files/sigma_roman.txt" "$d/files/sigma_roman.txt"
+    # The light-curve library's tables and Roman's ephemeris, read from ./external and ./files/ephemeris.
+    ln -sfn "$ROOT/external" "$d/external"
+    ln -sfn "$ROOT/files/ephemeris" "$d/files/ephemeris"
 }
 
 git_desc() { git -C "$ROOT" describe --always --dirty 2>/dev/null || echo nogit; }
@@ -586,7 +590,8 @@ write_provenance() {
         echo "# md5 of the data products this run reads:"
         for f in CMD/components/thin_disk.dat CMD/components/bulge.dat CMD/components/thick_disk.dat CMD/components/halo.dat \
                  CMD/components/lens_ml.dat CMD/components/provenance.txt Baseline/BulgeBaseline.dat Baseline/RomanBaseline.dat \
-                 Baseline/lsstcam_fov/fov_map.txt files/ext/ext_tables.dat files/sigma_roman.txt config/data_products.h; do
+                 Baseline/lsstcam_fov/fov_map.txt files/ext/ext_tables.dat files/sigma_roman.txt config/data_products.h \
+                 files/ephemeris/satellite1.txt external/VBMicrolensing/data/SunEphemeris.txt external/VBMicrolensing/data/ESPL.tbl; do
             echo "md5 $(md5f "$f")  $f"
         done
         echo "# ---- config file ----"
@@ -603,7 +608,9 @@ stage_sim() {
     need_py
     local missing=""
     for f in roman Baseline/BulgeBaseline.dat Baseline/RomanBaseline.dat Baseline/lsstcam_fov/fov_map.txt files/ext/ext_tables.dat \
-             CMD/components/lens_ml.dat CMD/components/bulge.dat files/sigma_roman.txt; do
+             CMD/components/lens_ml.dat CMD/components/bulge.dat files/sigma_roman.txt \
+             files/ephemeris/satellite1.txt files/ephemeris/target.txt \
+             external/VBMicrolensing/data/SunEphemeris.txt external/VBMicrolensing/data/ESPL.tbl; do
         [[ -e $f ]] || missing="$missing $f"
     done
     [[ -z $missing ]] || die "not ready to simulate, missing:$missing -- run the prep stage"

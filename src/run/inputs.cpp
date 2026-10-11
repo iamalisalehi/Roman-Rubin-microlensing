@@ -1,5 +1,6 @@
 // Reading the input files.
 #include "run/inputs.h"
+#include "events/vbm_model.h"
 
 GbtdsLayout loadGbtdsLayout() {
     // Read first: the footprint grid is checked against the real detector size, and the scan
@@ -176,7 +177,19 @@ int readCmdTables(CMD& cm) {
     return 0;
 }
 
+// The light-curve library's tables and Roman's ephemeris: a missing one stops the run here, before any work.
+int readLightCurveModel() {
+    try {
+        vbmInit();
+    } catch (const std::exception& e) {
+        std::cerr << "ERROR: " << e.what() << "\n";
+        return 1;
+    }
+    return 0;
+}
+
 int loadInputs(lsst& ls, roman& ro, extin& ex, CMD& cm, RomanSchedule& sched) {
+    if (int rc = readLightCurveModel())      return rc;
     if (int rc = readRubinVisits(ls))        return rc;
     if (int rc = readRomanErrorTable(ro))    return rc;
     if (int rc = readRomanVisits(ro))        return rc;

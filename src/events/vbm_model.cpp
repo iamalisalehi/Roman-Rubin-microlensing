@@ -1,6 +1,7 @@
 // The light-curve model's interface to the vendored VBMicrolensing library; see events/vbm_model.h.
 // The only file that includes the library.
 #include "events/vbm_model.h"
+#include "events/lightcurve.h"      // magnifOf
 #include "VBMicrolensingLibrary.h"
 
 namespace {
@@ -9,9 +10,26 @@ namespace {
 // only when the first sightline needs it.
 std::unique_ptr<VBMicrolensing> gVbm;
 bool gSightlineSet = false;
+SkyFrame gFrame{};
 // First and last row of the Sun table, as JD - 2450000 (the library's clock). The library reads the Earth's
 // position and velocity from rows around the requested time without checking the range.
 double gSunFirst = 0.0, gSunLast = 0.0;
+
+// The time loop starts 100 days before the survey and ends 100 days after it (src/sim/observe.cpp), and the
+// sample dump's grid spans the same days; the ephemerides must cover them, with a little to spare.
+constexpr double MODEL_PAD_DAYS = 120.0;
+
+// The library's Julian year, the unit of the proper motions in its astrometric parameters [mas/yr]. Not the
+// simulator's `year` (365.2425 d): the conversion from our mas/day must use the library's own.
+constexpr double VBM_DAYS_PER_YEAR = 365.25;
+
+// ComputeCentroids adds this to the East component of the parallax vector at every epoch of an astrometric
+// array call (to keep |piE| from being exactly 0), so epoch i of such a call sees piE_E + (i+1) * 1.01e-10
+// when it rotates the centroid out of the lens frame, and piE_E + i * 1.01e-10 when it computes the track.
+constexpr double VBM_PIE_DRIFT = 1.01e-10;
+
+// The sign of the library's u0 for the simulator's positive u0; see vbmEvaluate.
+constexpr double VBM_U0_SIGN = -1.0;
 
 VBMicrolensing& vbm() {
     CHECK(gVbm != nullptr);
@@ -77,15 +95,15 @@ void vbmInit() {
     requireReadable(targetPath, "the placeholder target; python tools/make_roman_l2_ephemeris.py writes it");
     requireReadable(romanPath, "Roman's ephemeris; python tools/make_roman_l2_ephemeris.py writes it");
 
-    // The ephemerides must cover the simulation, [0, Tobs] days. The library extrapolates silently past a
+    // The ephemerides must cover the simulation, [0, Tobs] days and the padding the time loop adds. The library extrapolates silently past a
     // satellite table, and reads outside the Sun table, which holds the rows around the time it is asked
     // for (up to two beyond it).
     double sunFirst, sunLast, romanFirst, romanLast;
     tableRange(sunPath, sunFirst, sunLast);
     tableRange(romanPath, romanFirst, romanLast);
-    if (sunFirst + 1.0 > SIM_DAY0_JD2450000 || sunLast - 2.0 < SIM_DAY0_JD2450000 + Tobs)
+    if (sunFirst + 1.0 > SIM_DAY0_JD2450000 - MODEL_PAD_DAYS || sunLast - 2.0 < SIM_DAY0_JD2450000 + Tobs + MODEL_PAD_DAYS)
         fail(sunPath + " does not cover the simulation");
-    if (romanFirst > SIM_DAY0_JD2450000 || romanLast < SIM_DAY0_JD2450000 + Tobs)
+    if (romanFirst > SIM_DAY0_JD2450000 - MODEL_PAD_DAYS || romanLast < SIM_DAY0_JD2450000 + Tobs + MODEL_PAD_DAYS)
         fail(romanPath + " does not cover the simulation; regenerate it with tools/make_roman_l2_ephemeris.py");
 
     auto v = std::make_unique<VBMicrolensing>();
@@ -158,7 +176,19 @@ SkyFrame vbmSetSightline(double lDeg, double bDeg) {
     vbm().SetObjectCoordinates(text);
     if (!vbm().AreCoordinatesSet()) fail(std::string("the library rejected the coordinates \"") + text + "\"");
     gSightlineSet = true;
+    gFrame = f;
     return f;
+}
+
+const SkyFrame& vbmSkyFrame() {
+    if (!gSightlineSet) throw std::runtime_error("vbmSkyFrame: no sightline set (vbmSetSightline)");
+    return gFrame;
+}
+
+void vbmEarthSpan(double* firstDay, double* lastDay) {
+    CHECK(gVbm != nullptr);
+    *firstDay = gSunFirst + 1.0 - SIM_DAY0_JD2450000;
+    *lastDay  = gSunLast - 2.0 - SIM_DAY0_JD2450000;
 }
 
 void earthVelocityNE(double tSimDay, double v[2]) {
@@ -169,6 +199,126 @@ void earthVelocityNE(double tSimDay, double v[2]) {
     vbm().EarthVelocityOnSky(t, south_west);
     v[0] = -south_west[0];
     v[1] = -south_west[1];
+}
+
+void parallaxVectorNE(double piE, double xi, double v[2]) {
+    const SkyFrame& F = vbmSkyFrame();
+    const double a = -std::cos(xi), b = -std::sin(xi);          // lens minus source, on (e_l, e_b)
+    v[0] = piE * (F.toNE[0][0] * a + F.toNE[0][1] * b);
+    v[1] = piE * (F.toNE[1][0] * a + F.toNE[1][1] * b);
+}
+
+GeocentricMotion geocentricMotion(double t0, double tetE, double pirel, double mus1, double mus2,
+                                  double mul1, double mul2) {
+    const SkyFrame& F = vbmSkyFrame();
+    double vE[2];
+    earthVelocityNE(t0, vE);
+    // Lens minus source, on (e_l, e_b) then (North, East), then into the geocentric frame.
+    const double dl = mul1 - mus1, db = mul2 - mus2;
+    const double mN = F.toNE[0][0] * dl + F.toNE[0][1] * db - vE[0] * pirel;
+    const double mE = F.toNE[1][0] * dl + F.toNE[1][1] * db - vE[1] * pirel;
+    GeocentricMotion g;
+    g.muGeo = std::hypot(mN, mE);
+    g.tE = tetE / g.muGeo;
+    // The source moves against the lens: -mu_geo, back from (N, E) to (e_l, e_b) by the transpose (the
+    // matrix is orthogonal).
+    const double sN = -mN, sE = -mE;
+    const double xl = F.toNE[0][0] * sN + F.toNE[1][0] * sE;
+    const double xb = F.toNE[0][1] * sN + F.toNE[1][1] * sE;
+    g.xi = std::atan2(xb, xl);
+    if (g.xi < 0.0) g.xi += 2.0 * pi;
+    return g;
+}
+
+namespace {
+
+// The arrays one library call fills, kept between calls so the hot path does not allocate.
+struct Scratch {
+    std::vector<double> t, mag, y1, y2, c1s, c2s, c1l, c2l;
+    void size(std::size_t n, bool astrometry) {
+        for (auto* v : {&t, &mag, &y1, &y2}) if (v->size() < n) v->resize(n);
+        if (astrometry) for (auto* v : {&c1s, &c2s, &c1l, &c2l}) if (v->size() < n) v->resize(n);
+    }
+};
+
+}  // namespace
+
+void vbmEvaluate(const ModelEvent& ev, bool atL2, bool astrometry, const double* t, int n, ModelEpoch* out) {
+    if (n <= 0) return;
+    CHECK(gSightlineSet);
+    CHECK(ev.u0 > 0.0 && ev.tE > 0.0 && ev.piE > 0.0);
+    VBMicrolensing& V = vbm();
+    const SkyFrame& F = gFrame;
+    static thread_local Scratch sc;
+    sc.size(std::size_t(n), astrometry);
+
+    for (int i = 0; i < n; ++i) sc.t[i] = t[i] + SIM_DAY0_JD2450000;
+
+    // The library's parameters. Its source-lens track is written in the frame of the parallax vector (x1 along
+    // piE_vec, x2 a quarter turn from it, counterclockwise on (North, East)), and reads (y1, y2) =
+    // (-tn, -u1) with u1 = u0 + parallax. On (e_l, e_b) the quarter turn counterclockwise on (N, E) is
+    // clockwise (the matrix toNE has determinant -1), so a positive library u0 puts the source on the side of
+    // the lens opposite to the simulator's u0 (-sin xi, cos xi): VBM_U0_SIGN.
+    double pv[2];
+    parallaxVectorNE(ev.piE, ev.xi, pv);
+    const double piN = pv[0], piE = pv[1];
+    const double muN = (F.toNE[0][0] * ev.mus1 + F.toNE[0][1] * ev.mus2) * VBM_DAYS_PER_YEAR;   // mas/yr
+    const double muE = (F.toNE[1][0] * ev.mus1 + F.toNE[1][1] * ev.mus2) * VBM_DAYS_PER_YEAR;
+    double pr[9] = {VBM_U0_SIGN * ev.u0, std::log(ev.tE), ev.t0 + SIM_DAY0_JD2450000, piN, piE,
+                    muN, muE, ev.piS, ev.tetE};
+
+    V.satellite = atL2 ? 1 : 0;
+    V.astrometry = astrometry;
+    if (astrometry)
+        V.PSPLAstroLightCurve(pr, sc.t.data(), sc.mag.data(), sc.c1s.data(), sc.c2s.data(), sc.c1l.data(),
+                              sc.c2l.data(), sc.y1.data(), sc.y2.data(), n);
+    else
+        V.PSPLLightCurveParallax(pr, sc.t.data(), sc.mag.data(), sc.y1.data(), sc.y2.data(), n);
+    V.astrometry = false;
+    V.satellite = 0;
+    if (V.parallaxextrapolation != 0)
+        throw std::runtime_error("vbmEvaluate: the library extrapolated an ephemeris (flag " +
+                                 std::to_string(V.parallaxextrapolation) + "; 1 = Sun table, 2 = Roman's) for " +
+                                 "epochs in [" + std::to_string(t[0]) + ", " + std::to_string(t[n - 1]) + "] days");
+
+    // The lens frame to (e_l, e_b): rotate by the position angle of piE_vec on (N, E), then by the transpose of
+    // toNE. For the unit vectors of the lens frame, e1 = (cosP, sinP) and e2 = (-sinP, cosP) on (N, E), that is
+    //     a = toNE^T e1,   b = toNE^T e2,      (vx, vy) = y1 a + y2 b.
+    // The centroids are rotated by the library with the East component drifted (VBM_PIE_DRIFT); rotating the
+    // lens-frame vector the same way keeps source, lens and image positions mutually consistent -- the lens's
+    // motion, built from the drifted direction, then cancels against the source-lens vector.
+    double a[2] = {0.0, 0.0}, b[2] = {0.0, 0.0};
+    auto frameAxes = [&](double c, double s) {
+        a[0] = F.toNE[0][0] * c + F.toNE[1][0] * s;   a[1] = F.toNE[0][1] * c + F.toNE[1][1] * s;
+        b[0] = -F.toNE[0][0] * s + F.toNE[1][0] * c;  b[1] = -F.toNE[0][1] * s + F.toNE[1][1] * c;
+    };
+    if (!astrometry) {
+        const double nrm = std::sqrt(piN * piN + piE * piE);
+        frameAxes(piN / nrm, piE / nrm);
+    }
+
+    for (int i = 0; i < n; ++i) {
+        if (astrometry) {
+            const double pE = piE + (i + 1) * VBM_PIE_DRIFT, nrm = std::sqrt(piN * piN + pE * pE);
+            frameAxes(piN / nrm, pE / nrm);
+        }
+        ModelEpoch& o = out[i];
+        const double y1 = sc.y1[i], y2 = sc.y2[i];
+        o.ux = y1 * a[0] + y2 * b[0];
+        o.uy = y1 * a[1] + y2 * b[1];
+        double u = std::sqrt(y1 * y1 + y2 * y2);      // the expression the library squares for its magnification
+        o.A = sc.mag[i];
+        if (u == 0.0) { u = 1.0e-50; o.A = magnifOf(u); }
+        o.u = u;
+        if (!astrometry) continue;
+        // Positions: the library's are on (North, East), absolute from the lens at t0; to (e_l, e_b) by toNE^T.
+        o.imgx  = F.toNE[0][0] * sc.c1s[i] + F.toNE[1][0] * sc.c2s[i];
+        o.imgy  = F.toNE[0][1] * sc.c1s[i] + F.toNE[1][1] * sc.c2s[i];
+        o.lensx = F.toNE[0][0] * sc.c1l[i] + F.toNE[1][0] * sc.c2l[i];
+        o.lensy = F.toNE[0][1] * sc.c1l[i] + F.toNE[1][1] * sc.c2l[i];
+        o.srcx = o.lensx + ev.tetE * o.ux;
+        o.srcy = o.lensy + ev.tetE * o.uy;
+    }
 }
 
 int vbmTestSatelliteShift(double tSimDay, double piEN, double piEE, double dy[2]) {

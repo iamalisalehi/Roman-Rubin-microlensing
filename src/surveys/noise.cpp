@@ -1,6 +1,8 @@
 // Photometric and astrometric error models of the two surveys (surveys/noise.h).
 #include "surveys/noise.h"
 
+// Rubin photometric error [mag] of one visit: the LSST model of Ivezic et al. 2019 eq. 4-5, with this
+// visit's own 5-sigma depth sig5, and the bright-end floor LSST_PHOT_FLOOR added in quadrature.
 double errlsstM(double mag, int fi, double sig5){ //LSST Photometric Error 
 
     double x, Delta1 = 0.0;
@@ -14,7 +16,7 @@ double errlsstM(double mag, int fi, double sig5){ //LSST Photometric Error
     CHECK(Delta1 >= 0.00001);
     CHECK(x > 0.0);
    
-    return std::sqrt(delta2 * delta2 + Delta1 * Delta1);
+    return std::sqrt(LSST_PHOT_FLOOR * LSST_PHOT_FLOOR + Delta1 * Delta1);
 }
 
 // Per-epoch astrometric error, per coordinate [mas], from the photometric error of the SAME epoch:
@@ -35,7 +37,7 @@ double errlsstA(double errPhotMag, double fwhmArcsec)
 {
     CHECK(errPhotMag > 0.0);
     CHECK(fwhmArcsec > 0.0);
-    const double error = astromFromPhot(errPhotMag, delta2, LSST_AST_KAPPA * fwhmArcsec * ARCSEC_TO_MAS,
+    const double error = astromFromPhot(errPhotMag, LSST_PHOT_FLOOR, LSST_AST_KAPPA * fwhmArcsec * ARCSEC_TO_MAS,
                                         LSST_AST_FLOOR);
     CHECK(error >= LSST_AST_FLOOR);
     CHECK(std::isfinite(error));

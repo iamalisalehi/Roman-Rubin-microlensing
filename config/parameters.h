@@ -142,7 +142,18 @@ constexpr double ROT_B = 0.00712;
 // NOT freely editable: indices 0-5 = LSST ugrizy and 6 = Roman F146 are hard-coded throughout the
 // code, and every per-filter array below must have exactly M entries.
 constexpr int    M = 6 + 1;    //No. of filters: LSST ugrizy + Roman's F146
-constexpr double delta2 = 0.005;//systematic error: 5 mmag bright-end repeatability (Ivezic et al. 2019, requirement 3)
+// Rubin's bright-end photometric floor [mag]: sigma_sys of the LSST error model (Ivezic et al. 2019
+// eq. 4), sigma^2 = sigma_sys^2 + sigma_rand^2. It is the PSF-modelling and calibration error that
+// remains when photon noise is negligible, per visit and white between visits (errlsstM adds it in
+// quadrature to sigma_rand). 4 mmag, one value for all six bands.
+// Sources: Ivezic et al. 2019 sec. 3.2.1 (the calibration is designed to keep sigma_sys < 5 mmag);
+// SRD LPM-17 table 14, PA1 (design 5, minimum 8, stretch 3 mmag in gri; u, z, y may be 50% larger);
+// Rubin Data Preview 1 (arXiv:2603.23786, sec. 5.5), whose bright isolated stars repeat to 4.8, 2.7,
+// 1.7, 1.0, 2.0, 1.1 mmag in ugrizy (3-8 mmag delivered, without chromatic correction); report
+// comment C4 (4 mmag). A single number is a compromise: the SRD lets u, z, y be 50% larger and
+// DP1's u is 4.8 mmag, so u sits at the edge, while DP1's g to y repeat better than 4 mmag.
+// At saturation sigma_rand is 0.6-0.8 mmag, so the bright end sits on the floor (4.06 mmag in r).
+constexpr double LSST_PHOT_FLOOR = 0.004;
 
 // gamma of the LSST photometric error model, sigma_rand^2 = (0.04 - gamma) x + gamma x^2 (Ivezic
 // et al. 2019 eq. 5, Table 2). Rubin only (index 6, F146, is unused).
@@ -219,7 +230,7 @@ constexpr double SIM_DAY0_JD2450000 = SIM_DAY0_MJD - 49999.5;
 // visit's geometric PSF FWHM (OpSim seeingFwhmGeom = LSST_FWHM_GEOM_SLOPE * seeingFwhmEff +
 // LSST_FWHM_GEOM_OFFSET [6], from the visit list's seeing column); SNR_visit = 1.0857 / sigma_rand, where
 // sigma_rand is the photon-noise part of the same visit's photometric error (errlsstM, with the visit's
-// own band and depth; the 5 mmag calibration term delta2 excluded). kappa depends on the PSF shape and on
+// own band and depth; the LSST_PHOT_FLOOR calibration term excluded). kappa depends on the PSF shape and on
 // whether the source or the sky dominates the noise: 0.425 / 0.60 for a Gaussian, 0.51 / 0.63 for a
 // long-exposure Kolmogorov seeing profile (source / background limited; [5]'s eqs. 11 and 14 evaluated
 // on his eq. 43 profile). Bulge sources are background limited wherever this term is not buried under

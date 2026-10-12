@@ -284,6 +284,8 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "# roman_noise         phot: Penny+2019 curve anchored to 5-sigma "
              << ROMAN_DEPTH5_AB << " AB (66 s); depth " << thre[6] << ", saturation "
              << satu[6] << " AB\n"
+             << "# rubin_noise         phot: Ivezic+2019 eq. 4-5, each visit's m5; floor "
+             << LSST_PHOT_FLOOR << " mag in quadrature\n"
              << "# astrometric_noise   k/SNR (+) floor, SNR from the epoch's photometric error; Roman k "
              << ROMAN_AST_K << " mas, floor " << ROMAN_AST_FLOOR << " mas; Rubin kappa "
              << LSST_AST_KAPPA << " x visit FWHM_geom, floor " << LSST_AST_FLOOR << " mas; blend offset "

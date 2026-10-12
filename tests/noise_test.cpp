@@ -7,7 +7,9 @@
 // (2) Roman reaches its 1.1 mas floor for bright stars and never decreases with magnitude;
 // (3) Rubin, sigma = sqrt((kappa FWHM / SNR)^2 + 10^2) with the SNR of errlsstM, at the 5-sigma
 // depth (an independent evaluation of the formula, which pins units: FWHM in arcsec, sigma in mas),
-// at the bright end (the floor), and its scaling with the visit's seeing and depth.
+// at the bright end (the floor), and its scaling with the visit's seeing and depth;
+// (4) Rubin photometry, errlsstM = hypot(LSST_PHOT_FLOOR, sigma_rand) with sigma_rand written out from
+// Ivezic et al. 2019 eq. 5, the bright end sitting on the floor, and errlsstA independent of the floor.
 #include "common.h"
 #include "surveys/noise.h"
 #include "surveys/visits.h"
@@ -57,6 +59,34 @@ int main() {
     expect(std::fabs(stat2 / stat1 - 2.0) < 1e-9, "Rubin statistical term doubles with the seeing FWHM", stat2 / stat1, 2.0);
     expect(errlsstA(errlsstM(23.0, 2, m5 - 0.5), fw) > s1, "Rubin error grows in a shallower visit",
            errlsstA(errlsstM(23.0, 2, m5 - 0.5), fw), s1);
+
+    // (4) Rubin photometric error: sigma^2 = sigma_sys^2 + sigma_rand^2 (Ivezic et al. 2019 eq. 4-5),
+    // sigma_rand^2 = (0.04 - gamma) x + gamma x^2, x = 10^(0.4 (m - m5)); r band (index 2), gamma 0.039.
+    const double gam = 0.039;
+    const double ms[] = {m5 - 8.3, m5 - 4.0, m5};
+    const char* lab[] = {"m5 - 8.3", "m5 - 4", "m5"};
+    for (int i = 0; i < 3; ++i) {
+        const double x = std::pow(10.0, 0.4 * (ms[i] - m5));
+        const double srand_ = std::sqrt((0.04 - gam) * x + gam * x * x);
+        const double want = std::hypot(LSST_PHOT_FLOOR, srand_);
+        const double got = errlsstM(ms[i], 2, m5);
+        char what[80]; std::snprintf(what, sizeof what, "Rubin r errlsstM = hypot(floor, sigma_rand) at %s", lab[i]);
+        expect(std::fabs(got / want - 1.0) < 1e-12, what, got, want);
+    }
+    const double eSat = errlsstM(m5 - RUBIN_SATU_BELOW_M5, 2, m5);
+    expect(std::fabs(eSat / LSST_PHOT_FLOOR - 1.0) < 0.03, "Rubin r at saturation sits on the photometric floor (3%)",
+           eSat, LSST_PHOT_FLOOR);
+    // errlsstA takes the photon-noise part of errlsstM, so the floor must drop out: compare with the
+    // astrometric error computed from sigma_rand directly.
+    for (int i = 0; i < 3; ++i) {
+        const double x = std::pow(10.0, 0.4 * (ms[i] - m5));
+        const double srand_ = std::sqrt((0.04 - gam) * x + gam * x * x);
+        const double stat = LSST_AST_KAPPA * fw * 1000.0 * srand_ / 1.0857;
+        const double want = std::hypot(stat, LSST_AST_FLOOR);
+        const double got = errlsstA(errlsstM(ms[i], 2, m5), fw);
+        char what[80]; std::snprintf(what, sizeof what, "Rubin r errlsstA independent of the photometric floor at %s", lab[i]);
+        expect(std::fabs(got / want - 1.0) < 1e-9, what, got, want);
+    }
 
     std::printf("%s (%d failed)\n", nfail ? "FAILED" : "all held", nfail);
     return nfail ? 1 : 0;

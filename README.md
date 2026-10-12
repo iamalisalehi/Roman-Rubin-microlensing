@@ -13,8 +13,9 @@ For each sightline it
    parallax of each observer (Roman at L2), for a source that is a uniform disc of the star's own radius
    (`--source-model espl`, the default) or a point (`pspl`, about 2% cheaper);
 3. applies a detection test, then forecasts parameter precision with a Fisher-matrix analysis,
-   photometric (u0, tE, piE, blending, ...) and astrometric (thetaE, source proper motion, piE),
-   reported **separately for Roman alone, Rubin alone and the joint data set**.
+   photometric (u0, tE, piE, blending, ..., and the source radius, where the data see the finite source,
+   which gives thetaE a photometric route beside astrometry) and astrometric (thetaE, source proper
+   motion, piE), reported **separately for Roman alone, Rubin alone and the joint data set**.
 
 ## Requirements
 

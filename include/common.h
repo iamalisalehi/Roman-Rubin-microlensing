@@ -48,12 +48,14 @@ using std::endl;
 using std::cin;
 
 // Photometric Fisher parameters, in index order:
-//   0 u0   1 tE   2 fb0   3 piE   4 xi   5 t0   6 mbs0   7 fb1   8 mbs1
+//   0 u0   1 tE   2 fb0   3 piE   4 xi   5 t0   6 mbs0   7 fb1   8 mbs1   9 ln rho
 // fb0/mbs0 are Rubin's source-flux fraction and baseline magnitude; fb1/mbs1 are Roman's.
 // fb is the fraction of aperture flux coming from the SOURCE, despite the name (see
 // src/events/source.cpp): F_src = fb * 10^(-0.4 mbs), F_bl = (1-fb) * 10^(-0.4 mbs).
+// ln rho is the log of the source radius in Einstein radii, a parameter of a partition's matrix only when the
+// finite source is seen (DCHI_FS in config/parameters.h), never under a point source.
 // Indices 0-4 keep the meanings hard-coded throughout co.resu[].
-constexpr int Nx = 9;
+constexpr int Nx = 10;
 constexpr int Ny = 4;
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 

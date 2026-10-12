@@ -18,7 +18,8 @@
 // The light-curve model's source is a point (pspl, the default here: the baseline every change to the
 // Fisher matrices is diffed against) or a uniform disc (espl); --source-model pspl|espl picks it, in any
 // mode. Every event of the table has the same source radius, kRho; --finite-source is the mode that puts the
-// source on the lens and compares the two models.
+// source on the lens, compares the two models and fits the source radius (ln rho) where the data see it. Under
+// espl, --sweep runs the finite-source events (kFiniteEvents) and adds ln rho to the parameters swept.
 
 #include "common.h"
 #include "types.h"
@@ -87,6 +88,26 @@ const FixtureEvent kEvents[] = {
     {"long_inseason", 100.0, 1636.37, 0.30, 0.10},
     {"long_ingap",    100.0, 2500.37, 0.30, 0.10},
     {"verylong",      900.0, 1800.37, 0.30, 0.05},
+};
+
+// The finite-source events of --sweep under a disc: a tE 25 d event with piE 0.15 peaking inside a Roman
+// season, the source of radius rho passing the lens at u0 = z rho, with z and rho such that ln rho is kept
+// (dchiFS above DCHI_FS): a dwarf, a mid-sized star and a giant, near and outside the disc. The sweep keeps ln rho
+// wherever it is tried (sigLnRhoMax infinite): the step, not the adoption, is what it checks. The radii are away from the
+// rows of the library's disc table (log-spaced; 1e-3 and 1e-2 lie on one, where a central difference in ln rho
+// straddles a row and averages the two cells beside it). Inside the disc the table's cells in u/rho (0.01) set
+// the resolution of the u0 derivative, which the u0 step (absolute) cannot follow for a dwarf. kEvents' own
+// source (kRho, 250 radii from the lens) never fits ln rho.
+struct FiniteEvent { FixtureEvent ev; double rho; };
+const FiniteEvent kFiniteEvents[] = {
+    {{"fs_dwarf_z2",    25.0, 1636.37, 2.0 * 1.5e-3, 0.15}, 1.5e-3},
+    {{"fs_mid_z0.8",    25.0, 1636.37, 0.8 * 1.5e-2, 0.15}, 1.5e-2},
+    {{"fs_mid_z1.5",    25.0, 1636.37, 1.5 * 1.5e-2, 0.15}, 1.5e-2},
+    {{"fs_mid_z2",      25.0, 1636.37, 2.0 * 1.5e-2, 0.15}, 1.5e-2},
+    {{"fs_mid_z4",      25.0, 1636.37, 4.0 * 1.5e-2, 0.15}, 1.5e-2},
+    {{"fs_giant_z1.5",  25.0, 1636.37, 1.5 * 5.0e-2, 0.15}, 5.0e-2},
+    {{"fs_giant_z2",    25.0, 1636.37, 2.0 * 5.0e-2, 0.15}, 5.0e-2},
+    {{"fs_giant_z3",    25.0, 1636.37, 3.0 * 5.0e-2, 0.15}, 5.0e-2},
 };
 
 // Parameters held fixed across all events, so that differences in the printed sigmas are
@@ -291,7 +312,7 @@ bool checkT0Marginalization(const covarian& co, const char* evName, bool verbose
 
         // {u0, tE, fb, piE, xi} = indices 0-4, intersected with this partition's active subset.
         std::vector<int> sub;
-        for (int k : activePhotParams(q, co.nepochA[SRUBIN], co.nepochA[SROMAN])) if (k <= 4) sub.push_back(k);
+        for (int k : activePhotParams(co, q)) if (k <= 4) sub.push_back(k);
         const int nsub = static_cast<int>(sub.size());
 
         gsl_matrix      *F5 = gsl_matrix_alloc(nsub, nsub);
@@ -349,7 +370,7 @@ bool checkInverseRoundTrip(const covarian& co, const char* evName, int dim, bool
         // Only the active submatrix was inverted, so only it can round-trip to the identity.
         static const std::vector<int> kAllAst = {0, 1, 2, 3};
         const std::vector<int> actP = photometric
-            ? activePhotParams(q, co.nepochA[SRUBIN], co.nepochA[SROMAN]) : std::vector<int>();
+            ? activePhotParams(co, q) : std::vector<int>();
         const std::vector<int>& act = photometric ? actP : kAllAst;
         (void)dim;
         const int n = static_cast<int>(act.size());
@@ -390,8 +411,12 @@ bool checkInverseRoundTrip(const covarian& co, const char* evName, int dim, bool
     return ok;
 }
 
-const char* kPhotNames[] = {"u0", "tE", "fb0", "piE", "xi", "t0", "mbs0", "fb1", "mbs1"};
+const char* kPhotNames[] = {"u0", "tE", "fb0", "piE", "xi", "t0", "mbs0", "fb1", "mbs1", "lnrho"};
 const char* kAstNames[]  = {"tetE", "mus1", "mus2", "piE"};
+
+// How many photometric parameters the tables show. ln rho (the last) exists only for a finite source, so a
+// point-source run shows the nine it has: its tables are those of a model without the tenth.
+int nPhotShown() { return (vbmSourceModel() == SourceModel::ESPL) ? Nx : Nx - 1; }
 
 void printRow(const char* label, int nep, int ok, double cond,
               const std::vector<double>& era, const std::vector<double>& erb)
@@ -401,7 +426,7 @@ void printRow(const char* label, int nep, int ok, double cond,
               << std::setw(5) << ok
               << std::scientific << std::setprecision(2) << std::setw(11) << cond;
     std::cout << std::scientific << std::setprecision(3);
-    for (int k = 0; k < Nx; ++k) std::cout << std::setw(12) << era[k];
+    for (int k = 0; k < nPhotShown(); ++k) std::cout << std::setw(12) << era[k];
     std::cout << std::setw(12) << erb[0] << "\n";
 }
 
@@ -432,10 +457,21 @@ int runSweep()
 
     std::cout << "event,tE,survey,param,param_idx,scale,sigma,cond,ok\n";
 
-    for (const auto& ev : kEvents) {
-        for (int pidx = 0; pidx < Nx; ++pidx) {
+    // The table's events, each with the source of setupStatic; under a disc, the finite-source ones, which
+    // fit ln rho (index 9, the last parameter, absent from a point-source sweep).
+    std::vector<std::pair<FixtureEvent, double>> events;
+    if (vbmSourceModel() == SourceModel::ESPL) for (const auto& f : kFiniteEvents) events.push_back({f.ev, f.rho});
+    else                                       for (const auto& e : kEvents) events.push_back({e, kRho});
+
+    co->sigLnRhoMax = std::numeric_limits<double>::infinity();
+    for (const auto& [ev, rho] : events) {
+        for (int pidx = 0; pidx < nPhotShown(); ++pidx) {
             for (double sc : kScales) {
+                // u0 is stepped by an absolute amount: a step reaching the lens would put the source on its
+                // other side (u0 < 0), which the model does not take.
+                if (pidx == 0 and FD_STEP_U0 * kFDStepScale * sc >= ev.u0) continue;
                 setupStatic(*s, *l);
+                s->rho = rho;
                 l->tE  = ev.tE;  l->t0 = ev.t0;
                 l->u0  = ev.u0;  l->piE = ev.piE;
 
@@ -493,7 +529,7 @@ int runEigen(double scale)
 
         FisherM(*s, *l, *as, *co, ndw);
 
-        const auto act = activePhotParams(SJOINT, co->nepochA[SRUBIN], co->nepochA[SROMAN]);
+        const auto act = activePhotParams(*co, SJOINT);
         const int dim = int(act.size());
         gsl_matrix* F = co->inputA[SJOINT].get();
 
@@ -899,70 +935,226 @@ int runAstroVariants()
 }
 
 // ---------------------------------------------------------------------------------------------
-// The finite source. One event (tE 25 d, peaking inside a Roman season, piE 0.15) with a giant source,
-// rho = 0.01 (theta* = 5e-3 mas, 8.6 Rsun at 8 kpc against thetaE 0.5 mas), passing the lens at u0 = 0.3,
-// 0.8, 2, 5 and 30 source radii, forecast twice: with a point source and with the uniform disc. Each model
-// generates its own noiseless data, so the ratios are the effect of the source on the forecast alone (the
-// Fisher matrix here does not fit rho). Printed: the peak magnification of each model, and for the joint,
-// Rubin and Roman fits the ratio disc / point of sigma(u0), sigma(tE), sigma(piE), sigma(t0) and of the
-// astrometric sigma(thetaE); "-" where either fit has not measured it.
+// The finite source. One event (tE 25 d, peaking inside a Roman season, piE 0.15) with a source of radius
+// rho passing the lens at u0 = z rho: a dwarf (rho 1e-3, theta* = 5e-4 mas), a mid-sized star (1e-2) and a
+// giant (5e-2, 43 Rsun at 8 kpc against thetaE 0.5 mas, a luminous bulge giant; 1e-2 is 8.6 Rsun), at z from
+// the lens inside the disc out to where the disc has no effect. Each is forecast three ways, every one on its
+// own noiseless data:
+//   point  the point-source model,
+//   fixed  the uniform disc with rho held at its true value, ln rho not a parameter (dchiFSMin infinite),
+//   free   the uniform disc as production forecasts it: ln rho a parameter where dchiFS >= DCHI_FS and it is
+//          measured to sigma(ln rho) <= SIGLNRHO_MAX,
+//   tried  the same without the second condition (sigLnRhoMax infinite): ln rho wherever dchiFS reaches the bar.
+// Printed per partition: the peak magnification of the disc, dchiFS (the disc against the point at the true
+// parameters), whether the partition tries ln rho ("try") and whether production keeps it ("on"), sigma(ln rho)
+// of the tried fit, the fractional error of the photometric thetaE (rel_ph) and of the combined photometric and
+// astrometric thetaE (rel_c) of the production forecast against the astrometric one alone (rel_a), the
+// correlation of ln rho and piE, and the ratios sigma(fixed)/sigma(point), sigma(free)/sigma(point) and
+// sigma(tried)/sigma(point) of u0, tE and piE: the first is the information the disc adds when its radius is
+// taken as known, the second what is left of it once the radius is fitted where it is measured, the third what
+// fitting it where it is not measured does to them. '-' = not measured.
+// Asserted: fitting ln rho can only loosen the other sigmas; a partition that does not keep it has exactly the
+// sigmas of rho held fixed; the point source's magnification is the disc model's own track through magnifOf
+// (what FisherM's dchiFS relies on); sigma(ln rho) of the joint fit is no worse than a single survey's; the
+// combined thetaE is no worse than either route.
+struct FsRun {
+    double peak = 0.0;
+    double sig[NSURV][3];                         // u0, tE, piE; -1 = not measured
+    double tetE[NSURV], dchi[NSURV], slr[NSURV], relPh[NSURV], relC[NSURV], corr[NSURV];
+    int    on[NSURV];
+};
+
+namespace {
+
+FsRun fsForecast(SourceModel model, double dchiMin, double sigMax, double rho, double z, source& s, lens& l, astromet& as, covarian& co)
+{
+    static const int kP[] = {0, 1, 3};     // u0, tE, piE
+    vbmSetSourceModel(model);
+    setupStatic(s, l);
+    s.rho = rho;
+    l.tE = 25.0;  l.t0 = 1636.37;  l.u0 = z * rho;  l.piE = 0.15;
+    int nL = 0, nR = 0;
+    const int ndw = buildLightCurve(s, l, as, nL, nR);
+    l.tE = 25.0;  l.t0 = 1636.37;  l.u0 = z * rho;  l.piE = 0.15;
+    s.xi = kXi;  s.fb[0] = kFbRubin;  s.fb[1] = kFbRoman;
+    s.mbs[0] = kMbsRubin;  s.mbs[1] = kMbsRoman;
+    TrackPoint p;
+    evaluateTrack(s, l, as, 0, &l.t0, 1, true, &p);
+    FsRun r;
+    r.peak = p.A;
+    co.dchiFSMin = dchiMin;
+    co.sigLnRhoMax = sigMax;
+    FisherM(s, l, as, co, ndw);
+    ErrorCal(co, l, s);
+    for (int q = 0; q < NSURV; ++q) {
+        for (int a = 0; a < 3; ++a) r.sig[q][a] = co.okA[q] ? co.Era[q][kP[a]] : -1.0;
+        r.tetE[q] = co.okB[q] ? co.Erb[q][0] : -1.0;
+        r.dchi[q] = co.dchiFS[q];
+        r.on[q]   = co.rhoOn[q];
+        r.slr[q]  = co.okA[q] ? co.Era[q][9] : -1.0;
+        r.relPh[q] = co.relTetEph[q];
+        r.relC[q]  = co.relTetEc[q];
+        r.corr[q]  = co.corrRhoPiE[q];
+    }
+    return r;
+}
+
+// The disc model's track is the point source's: at every epoch of the event, both observers, the model with
+// the source radius set to zero (a point source) has the same u and the magnification magnifOf(u).
+bool checkPointIsTrack(double rho, double z, source& s, lens& l, astromet& as)
+{
+    vbmSetSourceModel(SourceModel::ESPL);
+    setupStatic(s, l);
+    s.rho = rho;
+    l.tE = 25.0;  l.t0 = 1636.37;  l.u0 = z * rho;  l.piE = 0.15;
+    int nL = 0, nR = 0;
+    const int ndw = buildLightCurve(s, l, as, nL, nR);
+    l.tE = 25.0;  l.t0 = 1636.37;  l.u0 = z * rho;  l.piE = 0.15;
+    s.xi = kXi;
+    bool ok = true;
+    for (int tt = 0; tt < 2; ++tt) {
+        std::vector<double> t;
+        for (int i = 0; i < ndw; ++i) if (l.tele[i] == tt) t.push_back(l.timn[i]);
+        if (t.empty()) continue;
+        std::vector<ModelPoint> disc(t.size()), pt(t.size());
+        evaluateModel(s, l, as, tt, t.data(), int(t.size()), false, disc.data());
+        s.rho = 0.0;
+        evaluateModel(s, l, as, tt, t.data(), int(t.size()), false, pt.data());
+        s.rho = rho;
+        for (size_t i = 0; i < t.size(); ++i)
+            if (pt[i].u != disc[i].u or pt[i].A != magnifOf(disc[i].u)) {
+                std::cerr << "FAIL [finite/track] rho " << rho << " z " << z << " telescope " << tt << " epoch " << i
+                          << ": u " << pt[i].u << " vs " << disc[i].u << ", A " << pt[i].A << " vs "
+                          << magnifOf(disc[i].u) << "\n";
+                ok = false;
+                break;
+            }
+    }
+    return ok;
+}
+
+}  // namespace
+
 int runFiniteSource()
 {
-    constexpr double kRhoFs = 0.01;
-    static const double kZ[] = {0.3, 0.8, 2.0, 5.0, 30.0};
-    static const int    kPhot[] = {0, 1, 3, 5};     // u0, tE, piE, t0
+    struct Grid { double rho; std::vector<double> z; };
+    static const Grid kGrid[] = {
+        {1.0e-3, {1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 10.0, 30.0}},
+        {1.0e-2, {0.3, 0.8, 2.0, 3.0, 4.0, 4.5, 5.0, 6.0, 30.0}},
+        {5.0e-2, {0.3, 0.8, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0}},
+    };
+    const double kInf = std::numeric_limits<double>::infinity();
     const SourceModel keep = vbmSourceModel();
     auto s  = std::make_unique<source>();
     auto l  = std::make_unique<lens>();
     auto as = std::make_unique<astromet>();
     auto co = std::make_unique<covarian>();
+    int failures = 0;
 
-    std::cout << "# Finite source: uniform disc / point source, same event (tE 25 d, t0 1636.37, piE 0.15), rho = "
-              << kRhoFs << "\n"
-              << "# ratios of the 1-sigma forecasts, disc over point; '-' = not measured in one of them\n"
-              << "# " << std::left << std::setw(7) << "u0/rho" << std::setw(8) << "survey" << std::right
-              << std::setw(11) << "Apk,point" << std::setw(10) << "Apk,disc";
-    for (int k : kPhot) std::cout << std::setw(10) << kPhotNames[k];
-    std::cout << std::setw(10) << kAstNames[0] << "\n";
+    std::cout << "# Finite source, tE 25 d, t0 1636.37 (in a Roman season), piE 0.15. ln rho is tried where dchiFS >= "
+              << DCHI_FS << " and kept where sigma(ln rho) <= " << SIGLNRHO_MAX << " (on).\n"
+              << "# sigma(u0), sigma(tE), sigma(piE): ratio to the point-source forecast, for rho fixed | rho as production\n"
+              << "# forecasts it | ln rho tried wherever dchiFS reaches the bar. sig(lnrho), corr: of the tried fit. '-' = not measured.\n"
+              << "# rel_a, rel_ph, rel_c: fractional error of thetaE from astrometry, from photometry (theta*/rho,\n"
+              << "# sigma(ln theta*) = " << THETASTAR_SIGLN << "), and combined (production).\n"
+              << "# " << std::left << std::setw(7) << "rho" << std::setw(7) << "u0/rho" << std::setw(7) << "survey" << std::right
+              << std::setw(9) << "Apk,disc" << std::setw(10) << "dchiFS" << std::setw(4) << "try" << std::setw(4) << "on"
+              << std::setw(11) << "sig(lnrho)" << std::setw(9) << "rel_a" << std::setw(9) << "rel_ph" << std::setw(9) << "rel_c"
+              << std::setw(6) << "corr" << " |" << std::setw(23) << "u0 fix|prod|tried" << std::setw(25) << "tE fix|prod|tried"
+              << std::setw(25) << "piE fix|prod|tried" << "\n";
 
-    for (double z : kZ) {
-        double sigP[2][NSURV][5];
-        double peak[2];
-        for (int m = 0; m < 2; ++m) {
-            vbmSetSourceModel(m ? SourceModel::ESPL : SourceModel::PSPL);
-            setupStatic(*s, *l);
-            s->rho = kRhoFs;
-            l->tE = 25.0;  l->t0 = 1636.37;  l->u0 = z * kRhoFs;  l->piE = 0.15;
-            int nL = 0, nR = 0;
-            const int ndw = buildLightCurve(*s, *l, *as, nL, nR);
-            l->tE = 25.0;  l->t0 = 1636.37;  l->u0 = z * kRhoFs;  l->piE = 0.15;
-            s->xi = kXi;  s->fb[0] = kFbRubin;  s->fb[1] = kFbRoman;
-            s->mbs[0] = kMbsRubin;  s->mbs[1] = kMbsRoman;
-            TrackPoint p;
-            evaluateTrack(*s, *l, *as, 0, &l->t0, 1, true, &p);
-            peak[m] = p.A;
-            FisherM(*s, *l, *as, *co, ndw);
-            ErrorCal(*co, *l, *s);
+    auto ratio = [](double a, double b) {
+        std::ostringstream o;
+        if (a > 0.0 and b > 0.0) o << std::fixed << std::setprecision(3) << a / b; else o << "-";
+        return o.str();
+    };
+    auto sci = [](double v, int prec = 2) {
+        std::ostringstream o;
+        if (v > 0.0) o << std::scientific << std::setprecision(prec) << v; else o << "-";
+        return o.str();
+    };
+
+    for (const Grid& g : kGrid) {
+        for (double z : g.z) {
+            if (!checkPointIsTrack(g.rho, z, *s, *l, *as)) ++failures;
+            const FsRun point = fsForecast(SourceModel::PSPL, DCHI_FS, SIGLNRHO_MAX, g.rho, z, *s, *l, *as, *co);
+            const FsRun fixed = fsForecast(SourceModel::ESPL, kInf, SIGLNRHO_MAX, g.rho, z, *s, *l, *as, *co);
+            const FsRun prod  = fsForecast(SourceModel::ESPL, DCHI_FS, SIGLNRHO_MAX, g.rho, z, *s, *l, *as, *co);
+            const FsRun tried = fsForecast(SourceModel::ESPL, DCHI_FS, kInf, g.rho, z, *s, *l, *as, *co);
             for (int q = 0; q < NSURV; ++q) {
-                for (int a = 0; a < 4; ++a) sigP[m][q][a] = co->okA[q] ? co->Era[q][kPhot[a]] : -1.0;
-                sigP[m][q][4] = co->okB[q] ? co->Erb[q][0] : -1.0;
+                const char* qn = (q == SJOINT) ? "joint" : (q == SRUBIN ? "rubin" : "roman");
+                const double relA = (prod.tetE[q] > 0.0) ? prod.tetE[q] / kTetE : -1.0;
+                const bool tries = tried.on[q] != 0;
+                std::cout << "  " << std::left << std::setw(7) << g.rho << std::setw(7) << z << std::setw(7) << qn << std::right
+                          << std::setprecision(4) << std::fixed << std::setw(9) << prod.peak
+                          << std::setw(10) << std::setprecision(1) << prod.dchi[q] << std::setw(4) << tried.on[q] << std::setw(4) << prod.on[q]
+                          << std::setw(11) << sci(tried.slr[q]) << std::setw(9) << sci(relA) << std::setw(9) << sci(prod.relPh[q])
+                          << std::setw(9) << sci(prod.relC[q]);
+                if (tries) std::cout << std::setw(6) << std::setprecision(2) << std::fixed << tried.corr[q];
+                else       std::cout << std::setw(6) << "-";
+                std::cout << " |";
+                for (int a = 0; a < 3; ++a)
+                    std::cout << std::setw(a == 0 ? 8 : 9) << ratio(fixed.sig[q][a], point.sig[q][a]) << std::setw(7)
+                              << ratio(prod.sig[q][a], point.sig[q][a]) << std::setw(8) << ratio(tried.sig[q][a], point.sig[q][a]);
+                std::cout << std::defaultfloat << std::setprecision(6) << "\n";
+
+                // ---- assertions ----
+                const std::string tag = "[finite/" + std::to_string(g.rho) + "," + std::to_string(z) + "," + qn + "] ";
+                const bool adopt = tries and tried.slr[q] > 0.0 and tried.slr[q] <= SIGLNRHO_MAX;
+                if (tries != (prod.dchi[q] >= DCHI_FS) or fixed.on[q] or (bool(prod.on[q]) != adopt)) {
+                    std::cerr << "FAIL " << tag << "fit flags disagree with dchiFS and sigma(ln rho): dchiFS " << prod.dchi[q]
+                              << ", tried " << tried.on[q] << ", sigma " << tried.slr[q] << ", on " << prod.on[q] << "\n";
+                    ++failures;
+                }
+                if (prod.on[q]) {
+                    if (!(prod.slr[q] > 0.0) or !(prod.relPh[q] >= THETASTAR_SIGLN) or !(std::fabs(prod.corr[q]) <= 1.0)) {
+                        std::cerr << "FAIL " << tag << "sigma(ln rho) " << prod.slr[q] << ", rel_ph " << prod.relPh[q]
+                                  << ", corr " << prod.corr[q] << "\n";
+                        ++failures;
+                    }
+                    const double ra = relA, rp = prod.relPh[q], rc = prod.relC[q];
+                    if (!(rc <= rp * (1.0 + 1e-12)) or (ra > 0.0 and !(rc <= ra * (1.0 + 1e-12)))) {
+                        std::cerr << "FAIL " << tag << "combined thetaE error " << rc << " is worse than a route (" << ra << ", " << rp << ")\n";
+                        ++failures;
+                    }
+                } else {
+                    if (prod.slr[q] != -1.0 or prod.relPh[q] != -1.0) {
+                        std::cerr << "FAIL " << tag << "ln rho not kept but reports a result\n";
+                        ++failures;
+                    }
+                    // Not kept: exactly the forecast with rho held at its true value.
+                    for (int a = 0; a < 3; ++a)
+                        if (prod.sig[q][a] != fixed.sig[q][a] or prod.relC[q] != fixed.relC[q]) {
+                            std::cerr << "FAIL " << tag << "ln rho not kept but the forecast differs from rho fixed: sigma " << a << " "
+                                      << prod.sig[q][a] << " vs " << fixed.sig[q][a] << "\n";
+                            ++failures;
+                            break;
+                        }
+                }
+                // Adding a parameter to a matrix cannot tighten the others (the entries of the rest are the same).
+                for (const FsRun* r : {&prod, &tried})
+                    if (r->on[q])
+                        for (int a = 0; a < 3; ++a)
+                            if (fixed.sig[q][a] > 0.0 and r->sig[q][a] < fixed.sig[q][a] * (1.0 - 1e-9)) {
+                                std::cerr << "FAIL " << tag << "sigma(" << kPhotNames[a == 0 ? 0 : (a == 1 ? 1 : 3)]
+                                          << ") fell when ln rho was fitted: " << fixed.sig[q][a] << " -> " << r->sig[q][a] << "\n";
+                                ++failures;
+                            }
             }
-        }
-        for (int q = 0; q < NSURV; ++q) {
-            const char* qn = (q == SJOINT) ? "joint" : (q == SRUBIN ? "rubin" : "roman");
-            std::cout << "  " << std::left << std::setw(7) << z << std::setw(8) << qn << std::right
-                      << std::setprecision(4) << std::fixed << std::setw(11) << peak[0] << std::setw(10) << peak[1];
-            for (int a = 0; a < 5; ++a) {
-                if (sigP[0][q][a] > 0.0 && sigP[1][q][a] > 0.0)
-                    std::cout << std::setw(10) << std::setprecision(4) << sigP[1][q][a] / sigP[0][q][a];
-                else
-                    std::cout << std::setw(10) << "-";
+            if (tried.on[SJOINT]) {
+                // The joint fit can be no worse than a single survey that tries it too.
+                for (int q = 1; q < NSURV; ++q)
+                    if (tried.on[q] and tried.slr[SJOINT] > tried.slr[q] * (1.0 + 1e-9)) {
+                        std::cerr << "FAIL [finite/" << g.rho << "," << z << "] sigma(ln rho) joint " << tried.slr[SJOINT]
+                                  << " > single survey " << tried.slr[q] << "\n";
+                        ++failures;
+                    }
             }
-            std::cout << std::defaultfloat << "\n";
         }
     }
     vbmSetSourceModel(keep);
-    return 0;
+    std::cout << (failures ? "# FAIL -- finite-source assertions failed\n" : "# PASS -- all finite-source assertions held\n");
+    return failures ? 1 : 0;
 }
 
 int main(int argc, char** argv)
@@ -1023,7 +1215,7 @@ int main(int argc, char** argv)
     if (model == SourceModel::ESPL)
         std::cout << "# SOURCE MODEL espl: a uniform disc of radius rho = " << kRho << " Einstein radii\n";
     std::cout << "# Fisher-matrix fixture -- synthetic events, no data files required\n"
-              << "# Nx=" << Nx << " (photometric)  Ny=" << Ny << " (astrometric)\n"
+              << "# Nx=" << nPhotShown() << " (photometric)  Ny=" << Ny << " (astrometric)\n"
               << "# One block per event, one row per survey partition.\n"
               << "# ok=1 usable inverse, ok=0 not characterizable (sigmas print as -1).\n"
               << "# Asserted: F[joint] == F[rubin] + F[roman] exactly, sigma_joint <= both, and\n"
@@ -1066,7 +1258,7 @@ int main(int argc, char** argv)
                   << "  (rubin=" << nL << ", roman=" << nR << ")\n";
         std::cout << std::left << std::setw(10) << "# survey"
                   << std::right << std::setw(7) << "nep" << std::setw(5) << "ok" << std::setw(11) << "cond";
-        for (int k = 0; k < Nx; ++k) std::cout << std::setw(12) << kPhotNames[k];
+        for (int k = 0; k < nPhotShown(); ++k) std::cout << std::setw(12) << kPhotNames[k];
         std::cout << std::setw(12) << kAstNames[0] << "\n";
 
         printRow("joint", co->nepochA[SJOINT], co->okA[SJOINT], co->condA[SJOINT], co->Era[SJOINT], co->Erb[SJOINT]);
@@ -1112,7 +1304,7 @@ int main(int argc, char** argv)
             // A rejected partition must not carry a condition number (a stale value from the
             // previous event would look real); inactive parameters must not carry a sigma.
             if (co->okA[q]) {
-                const auto act = activePhotParams(q, co->nepochA[SRUBIN], co->nepochA[SROMAN]);
+                const auto act = activePhotParams(*co, q);
                 for (int k = 0; k < Nx; ++k) {
                     const bool isActive = std::find(act.begin(), act.end(), k) != act.end();
                     if (!isActive && co->Era[q][k] >= 0.0) {
@@ -1126,6 +1318,22 @@ int main(int argc, char** argv)
             if (!co->okA[q] && co->condA[q] != -1.0) {
                 std::cerr << "FAIL [" << ev.name << "] rejected photometric partition " << q
                           << " carries a stale condition number " << co->condA[q] << "\n";
+                ++failures;
+            }
+        }
+
+        // The finite source's results: a point source fits no ln rho and computes no dchiFS; a disc fits it only
+        // where dchiFS reached the bar and sigma(ln rho) is at most SIGLNRHO_MAX, and nowhere else is there a
+        // sigma, a photometric thetaE or a correlation to read.
+        for (int q = 0; q < NSURV; ++q) {
+            const bool point = (model == SourceModel::PSPL);
+            const bool fitted = co->rhoOn[q] != 0;
+            if ((point and (co->dchiFS[q] != -1.0 or fitted)) or
+                (fitted and not (co->dchiFS[q] >= co->dchiFSMin and co->Era[q][9] > 0.0 and co->Era[q][9] <= co->sigLnRhoMax)) or
+                (not fitted and (co->Era[q][9] != -1.0 or co->relTetEph[q] != -1.0 or not std::isnan(co->corrRhoPiE[q])))) {
+                std::cerr << "FAIL [" << ev.name << "] partition " << q << " finite-source results inconsistent: dchiFS "
+                          << co->dchiFS[q] << ", ln rho " << (fitted ? "fitted" : "not fitted") << ", sigma(ln rho) "
+                          << co->Era[q][9] << "\n";
                 ++failures;
             }
         }

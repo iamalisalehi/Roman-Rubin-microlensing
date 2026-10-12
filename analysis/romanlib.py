@@ -247,6 +247,13 @@ def sigma(df, param, survey, noise="W"):
     param  : "tE" | "piE"    (photometric, gated on okA)
              "tetE"          (astrometric, gated on okB)
              "Ml"            (derived from tetE and piE, gated on its own positivity)
+             "lnrho"         (photometric sigma of ln rho, the source radius in Einstein radii; gated on okA)
+             "tetE_ph"       (FRACTIONAL error of the photometric thetaE = theta*/rho, sqrt(sigma(ln rho)^2 +
+                              sigma(ln theta*)^2); gated on okA)
+             "lnrho" and "tetE_ph" exist only in partitions whose data saw the finite source (dchiFS >= the bar
+             DCHI_FS) and measured its size (sigma(ln rho) <= SIGLNRHO_MAX), --source-model espl: NaN everywhere
+             else, which is not a failure to measure but ln rho not being a parameter of the fit (see
+             rho_fitted, finite_source_dchi).
     survey : "joint" | "rubin" | "roman"
     noise  : astrometric noise variant for "tetE" and "Ml": "W" white (the main
              columns), "N" nominal, "P" pessimistic (columns sigtetE_N<q>, relMl_P<q>, gated on
@@ -268,6 +275,10 @@ def sigma(df, param, survey, noise="W"):
         col, gate = f"sigtetE_{v_}{q}", f"okB_{v_}{q}"
     elif param == "Ml":
         col, gate = f"relMl_{v_}{q}", None
+    elif param == "lnrho":
+        col, gate = f"siglnrho_{q}", f"okA_{q}"
+    elif param == "tetE_ph":
+        col, gate = f"rel_tetEph_{q}", f"okA_{q}"
     else:
         raise KeyError(f"unknown param {param!r}")
 
@@ -276,6 +287,31 @@ def sigma(df, param, survey, noise="W"):
     if gate is not None:
         ok &= (df[gate] == 1)
     return v.where(ok)
+
+
+def rho_fitted(df, survey):
+    """Boolean: was ln rho a parameter of this survey's photometric Fisher matrix for the event?
+
+    True where the survey's data saw the finite source (dchiFS >= DCHI_FS) and measured its size to
+    sigma(ln rho) <= SIGLNRHO_MAX. A point-source run (--source-model pspl) has none, and in an espl run most
+    events have none: for them the source radius is held at its true value and every sigma, including relMl, is
+    what it would be without the finite source.
+    """
+    q = SURVEYS[survey]
+    return (df[f"okA_{q}"] == 1) & (df[f"siglnrho_{q}"] > 0.0)
+
+
+def finite_source_dchi(df, survey):
+    """dchiFS of the survey's partition, NaN where it was not computed (the -1 sentinel: a point-source run, an
+    event never characterised, a telescope left out for too few epochs).
+
+    dchiFS is the chi-squared by which the partition's epochs separate the uniform disc from a point source at
+    the true parameters; ln rho is tried where it reaches DCHI_FS (cparams: P.DCHI_FS) and kept if sigma(ln rho)
+    <= P.SIGLNRHO_MAX. Unlike siglnrho and rel_tetEph it is defined for events that are not fitted, so it is the
+    variable to bin the finite-source effect in.
+    """
+    v = df[f"dchiFS_{SURVEYS[survey]}"].astype(float)
+    return v.where(v >= 0.0)
 
 
 def characterized(df, survey):

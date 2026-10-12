@@ -51,7 +51,13 @@ const char* eventTableHeader()
         // The Einstein time of the heliocentric draw [days] (tE above is the geocentric one, the one the light
         // curve and the Fisher matrices use), and the geocentric parallax vector on (North, East): parallel to
         // the lens-minus-source relative proper motion, of length piE.
-        "tEhel piEN piEE";
+        "tEhel piEN piEE "
+        // The finite source as a fitted parameter (--source-model espl; DCHI_FS): the delta-chi2 of the disc against
+        // a point source at the true parameters, sigma(ln rho), and the fractional error of the photometric thetaE =
+        // theta* / rho, for the joint, Rubin and Roman partitions. dchiFS is -1 where not computed (point source,
+        // nothing characterised, no epochs); sigma(ln rho) and rel_tetEph are -1 wherever ln rho is not a parameter
+        // of that partition's fit (dchiFS below the bar DCHI_FS, or sigma(ln rho) above SIGLNRHO_MAX).
+        "dchiFS_J dchiFS_L dchiFS_R siglnrho_J siglnrho_L siglnrho_R rel_tetEph_J rel_tetEph_L rel_tetEph_R";
 }
 
 int openOutputs(const RunConfig& cfg, RunOutputs& o) {
@@ -212,6 +218,10 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
         std::ostringstream sourceText;
         if (cfg.sourceModel == SourceModel::ESPL) sourceText << "ESPL (uniform disc, Tol " << VBM_TOL << ")";
         else                                      sourceText << "PSPL";
+        std::ostringstream fitText;
+        if (cfg.sourceModel == SourceModel::ESPL)
+            fitText << "ln rho fitted per partition when dchiFS >= " << DCHI_FS << " and sigma(ln rho) <= " << SIGLNRHO_MAX;
+        else                                      fitText << "not fitted (point source)";
         std::ostringstream prov;
         prov << "# Roman+Rubin microlensing forecast -- run provenance\n"
              << "# git_commit          " << GIT_COMMIT << "\n"
@@ -280,6 +290,9 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << (AST_BLEND_OFFSET_FREE ? "fitted (marginalised)" : "known") << "\n"
              << "# lightcurve_model    VBMicrolensing 5.6.1 " << sourceText.str()
              << ", geocentric parallax (JPL ephemeris), Roman at L2 table\n"
+             // The bar on dchiFS above which ln rho is fitted, and the theta* uncertainty of the photometric thetaE.
+             << "# finite_source_fit   " << fitText.str()
+             << "   # sigma(ln theta*) " << THETASTAR_SIGLN << ", assumed measured from the source's colour\n"
              << "# astrometric_variants W: one frame, white; N: frame per roll + " << cfg.astSigcN
              << " mas/day; P: frame per roll + " << cfg.astSigcP << " mas/day\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex.nTables << " x "

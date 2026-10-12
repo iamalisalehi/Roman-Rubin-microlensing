@@ -483,12 +483,19 @@ constexpr std::array<double, 4> kFDStepScaleB = {1.0, 1.0, 1.0, 1.0e-2};
 // (u0 by 0.15, tE and t0 by 0.25*tE), far up the truncation-error branch; kFDStepScale shrinks them
 // into the convergence plateau (flat to <0.2% over 1e-6..1e-3 of the base steps; 1e-4 sits two
 // decades clear of the round-off wall). Re-run ./fishertest --sweep (tests/c3_step_sweep.py) after
-// changing any of them.
+// changing any of them. FD_STEP_LNRHO is swept by ./fishertest --sweep --source-model espl --params lnrho (on
+// events whose data see the finite source): sigma(ln rho) is flat to 0.05% for steps in ln rho from 2.5e-9 to
+// 2.5e-6 and within 1% from 2.5e-10 to 2.5e-5. Below that round-off takes over (15% at 2.5e-11); above it the step
+// carries epochs across cells of the library's disc table (0.01 in u/rho; rows 0.092 apart in ln rho), whose
+// derivative is piecewise constant, and sigma moves by percent (5% at 2.5e-4). At the production step (2.5e-7)
+// the derivative of the disc magnification agrees with the exact uniform disc's to 1% (the table's resolution),
+// for u/rho = 0.5-6 and rho = 1.5e-3-5e-2.
 constexpr double FD_STEP_U0       = 0.1507586576;      //u0 (absolute)
 constexpr double FD_STEP_TE_FRAC  = 0.254674;          //tE and t0: step = tE * this [days]
 constexpr double FD_STEP_PIE_FRAC = 0.2509463534656;   //piE: step = this * piE
 constexpr double FD_STEP_XI_DEG   = 3.0;               //xi [deg]; converted to radians at the use
 constexpr double FD_STEP_MBS      = 0.05;              //mbs0 / mbs1 [mag]; the model is linear in mbs, so exact
+constexpr double FD_STEP_LNRHO    = 0.0025;            //ln rho (the source radius, see DCHI_FS); absolute, in ln rho
 constexpr double kFDStepScale     = 1.0e-4;            //plateau scale applied to every Delta1[] and fb step
 // fb0 / fb1 steps (blend fraction, bounded to [0,1]). The step pair is chosen from the epoch's own
 // telescope's fb so that fb + step never leaves the range: fb < FB_BIN_LO -> {+SMALL, +LARGE};
@@ -508,6 +515,48 @@ constexpr int kMinTeleEpochs = 3;
 // disc would integrate annuli of the table to this tolerance. tests/vbm_test.cpp measured a worst relative error
 // of 4.7e-5 for the uniform disc at this setting (against direct integration, over rho = 1e-3..0.1).
 constexpr double VBM_TOL = 1.0e-3;
+
+// ---------------------------------------------------------------------------------------
+// The source radius as a fitted parameter (photometric parameter 9, ln rho; --source-model espl only).
+//
+// With a finite source the light curve depends on rho = theta* / thetaE, so a fit that sees the disc measures
+// rho, and with theta* known from the source's colour and magnitude (THETASTAR_SIGLN) that is a photometric
+// route to the Einstein radius, thetaE = theta* / rho, beside the astrometric one. It matters for the other
+// parameters too: the part of the light curve the disc shapes cannot be credited to u0, tE and piE as well,
+// which a matrix holding rho at its true value does (for an event that crosses the disc, 15-25% in their
+// sigmas). Fitting ln rho for EVERY event is wrong the other way: when the source passes far from the lens
+// (u0 >> rho) the light curve hardly depends on rho, sigma(ln rho) is ~100, the matrix is nearly singular,
+// and that leaks into the sigmas of the other parameters (about 5% scatter at VBM_TOL 1e-3).
+//
+// So ln rho is a parameter of a survey partition's photometric matrix only when that partition's data see the
+// disc AND measure its size, in two steps. The pre-filter: dchiFS is the chi-squared by which they separate the
+// uniform disc from a point source at the true parameters, the sum over the epochs the partition's matrix uses of
+// ((m_disc - m_point) / sigma_m)^2, and DCHI_FS is the bar on it. 25 is a 5-sigma separation of the two models, the
+// usual one-parameter significance. dchiFS is not marginalised over the other parameters, though, and a source
+// that only shades the light curve (u0 several radii) can pass it with ln rho unmeasured; so the second step,
+// SIGLNRHO_MAX below, adopts ln rho only if the matrix with it gives sigma(ln rho) small enough. A partition
+// that does not pass both is forecast with rho held at its true value, as a point source is. Under
+// --source-model pspl ln rho is never a parameter and dchiFS is not computed. (The astrometric matrix holds
+// all the photometric parameters fixed, rho with them; see FisherM.)
+constexpr double DCHI_FS = 25.0;
+
+// The largest sigma(ln rho) with which a partition that passed the DCHI_FS pre-filter keeps ln rho: rho measured to
+// 30%, a ~3-sigma detection of the source's size. Beyond it the finite-source term is degenerate with u0 (for u0
+// several radii it is ~rho^2/u^2 of the point-source light curve, which a shift of u0 mimics) and the linear
+// Fisher approximation in ln rho fails: rho^2 would vary by a factor e^(2 sigma) over the 1-sigma range. Such an
+// event is not a measurement of the source's size; an analysis would fit it with a point source, and so does the
+// forecast (rho held at its true value).
+constexpr double SIGLNRHO_MAX = 0.3;
+
+// One-sigma uncertainty of ln theta*, the angular radius of the source star [], the fraction by which the
+// photometric thetaE = theta* / rho is uncertain on top of sigma(ln rho):
+//     sigma(ln thetaE_phot)^2 = sigma(ln rho)^2 + THETASTAR_SIGLN^2.
+// 7% is what the surface-brightness-colour relations give for a bulge giant or dwarf calibrated on the red
+// clump (Yoo et al. 2004, ApJ 603, 139; Boyajian et al. 2014, MNRAS 447, 846). It assumes theta* is MEASURED
+// from the source's colour, which the model here does not simulate (Roman is F146 only, so no colour is made
+// for the event): every event is credited with the colour it would be observed to have, and the 7% is
+// independent of the lensing fit.
+constexpr double THETASTAR_SIGLN = 0.07;
 
 // ==========================================================================================
 // (8) OUTPUT HISTOGRAM GRIDS

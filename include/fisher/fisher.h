@@ -30,8 +30,12 @@ inline int surveyOfTele(int tele) { return (tele == 0) ? SRUBIN : SROMAN; }
 // in a Roman gap has no Roman data, so the joint fit falls back to Rubin's parameter set rather
 // than going singular. kMinTeleEpochs (minimum epochs for a telescope to enter the photometric
 // matrices) is in config/parameters.h.
+//
+// ln rho (9) is in the set only when the partition's data see the finite source and measure its size (rhoFree;
+// DCHI_FS and SIGLNRHO_MAX in config/parameters.h), which FisherM decides per partition and records in
+// covarian::rhoOn.
 
-inline std::vector<int> activePhotParams(int surv, int nRubinEpochs, int nRomanEpochs)
+inline std::vector<int> activePhotParams(int surv, int nRubinEpochs, int nRomanEpochs, bool rhoFree)
 {
     const std::vector<int> shared = {0, 1, 3, 4, 5};  //u0, tE, piE, xi, t0
     const std::vector<int> rubinFlux = {2, 6};        //fb0, mbs0
@@ -42,6 +46,7 @@ inline std::vector<int> activePhotParams(int surv, int nRubinEpochs, int nRomanE
     const bool wantRoman = (surv == SROMAN) || (surv == SJOINT && nRomanEpochs > 0);
     if (wantRubin) out.insert(out.end(), rubinFlux.begin(), rubinFlux.end());
     if (wantRoman) out.insert(out.end(), romanFlux.begin(), romanFlux.end());
+    if (rhoFree)   out.push_back(9);                  //ln rho
     std::sort(out.begin(), out.end());
     return out;
 }
@@ -93,10 +98,35 @@ struct covarian {
     std::array<double, NSURV> condB;
 
     // Fractional 1-sigma on the lens mass, per survey. Ml = tetE / (kappa * piE) is not fitted, so
-    // the fractional errors of tetE (astrometric matrix: sub-mas centroid motion, Roman) and piE
-    // (photometric matrix: parallax over a long baseline, Rubin) add in quadrature.
+    // the fractional errors of tetE (astrometric matrix: sub-mas centroid motion, Roman; and, when the
+    // finite source is seen, photometric: theta* / rho) and piE (photometric matrix: parallax over a long
+    // baseline, Rubin) add in quadrature.
     // -1.0 = not measurable in this partition, never a measured value.
     std::array<double, NSURV> relMl;
+
+    // The finite source (--source-model espl; see DCHI_FS in config/parameters.h). Per partition:
+    //   dchiFS      the chi-squared by which that partition's epochs separate the uniform disc from a point
+    //               source at the true parameters; -1 = not computed (point source, or no epochs).
+    //   rhoOn       1 = ln rho is a parameter of the partition's photometric matrix: dchiFS >= dchiFSMin and,
+    //               fitted, sigma(ln rho) <= sigLnRhoMax; Era[q][9] is its sigma. 0 = rho held at its true value
+    //               (below the bar, or not measured well enough), Era[q][9] = -1.
+    //   relTetEph   fractional 1-sigma on thetaE = theta* / rho, sqrt(sigma(ln rho)^2 + THETASTAR_SIGLN^2);
+    //               -1 where ln rho was not fitted.
+    //   relTetEc    the fractional 1-sigma on thetaE from the astrometric and photometric routes together,
+    //               inverse-variance combined; the one route that exists if only one does; -1 = neither.
+    //   corrRhoPiE  correlation of ln rho with the photometric piE in the partition's inverse matrix: how
+    //               far the combination of the two thetaE and piE errors as uncorrelated (ErrorCal) is off.
+    //               NaN where ln rho was not fitted. A diagnostic, not an output.
+    // dchiFSMin and sigLnRhoMax are DCHI_FS and SIGLNRHO_MAX unless a test overrides them: dchiFSMin infinite
+    // holds rho at its true value everywhere, zero tries it wherever the disc exists; sigLnRhoMax infinite keeps
+    // it wherever it was tried and the matrix inverted.
+    std::array<double, NSURV> dchiFS;
+    std::array<int, NSURV>    rhoOn;
+    std::array<double, NSURV> relTetEph;
+    std::array<double, NSURV> relTetEc;
+    std::array<double, NSURV> corrRhoPiE;
+    double dchiFSMin = DCHI_FS;
+    double sigLnRhoMax = SIGLNRHO_MAX;
 
     // Multiplicative override on each photometric parameter's finite-difference step; 1.0 is the
     // production value. A runtime knob so the step-size sweep can run many values in one process.
@@ -132,6 +162,11 @@ struct covarian {
             condA[q] = -1.0;
             condB[q] = -1.0;
             relMl[q] = -1.0;
+            dchiFS[q] = -1.0;
+            rhoOn[q] = 0;
+            relTetEph[q] = -1.0;
+            relTetEc[q] = -1.0;
+            corrRhoPiE[q] = std::numeric_limits<double>::quiet_NaN();
         }
         for (int k = 0; k < Nx; ++k) {
             deltaScale[k] = 1.0;
@@ -207,6 +242,12 @@ inline int synergyClass(const covarian& co)
     if ( co.okA[SRUBIN] && !co.okA[SROMAN]) return SYN_RUBIN_ONLY;
     if (!co.okA[SRUBIN] &&  co.okA[SROMAN]) return SYN_ROMAN_ONLY;
     return SYN_JOINT_ONLY;
+}
+
+// The active photometric parameters of partition `surv` of an event whose matrices are in `co`.
+inline std::vector<int> activePhotParams(const covarian& co, int surv)
+{
+    return activePhotParams(surv, co.nepochA[SRUBIN], co.nepochA[SROMAN], co.rhoOn[surv] != 0);
 }
 
 void   ErrorCal(covarian & co, lens &l, source &s);

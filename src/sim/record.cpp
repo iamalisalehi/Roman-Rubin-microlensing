@@ -136,7 +136,12 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
             << s.Rstar << " " << s.thetaStar << " " << s.rho << " "
             // the heliocentric Einstein time (tE above is the geocentric one) and the geocentric parallax
             // vector on (North, East)
-            << l.tEhel << " " << piNE[0] << " " << piNE[1] << "\n";
+            << l.tEhel << " " << piNE[0] << " " << piNE[1] << " "
+            // the finite source as a fitted parameter: dchiFS, sigma(ln rho) and the fractional error of the
+            // photometric thetaE = theta* / rho, joint / Rubin / Roman; -1 where not computed or ln rho is not a parameter
+            << co.dchiFS[SJOINT] << " " << co.dchiFS[SRUBIN] << " " << co.dchiFS[SROMAN] << " "
+            << co.Era[SJOINT][9] << " " << co.Era[SRUBIN][9] << " " << co.Era[SROMAN][9] << " "
+            << co.relTetEph[SJOINT] << " " << co.relTetEph[SRUBIN] << " " << co.relTetEph[SROMAN] << "\n";
     filg_in.close();
 
     commitSampleDump(ctx, lc, ch, pk);

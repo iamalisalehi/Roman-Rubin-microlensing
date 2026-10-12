@@ -21,7 +21,7 @@ int invert_matrix(covarian & co, int flag, int surv)
 
     static const std::vector<int> kAllAst = {0, 1, 2, 3};
     const std::vector<int> actPhot = photometric
-        ? activePhotParams(surv, co.nepochA[SRUBIN], co.nepochA[SROMAN])
+        ? activePhotParams(co, surv)
         : std::vector<int>();
     const std::vector<int>& act = photometric ? actPhot : kAllAst;
     return invertNormalized(in, out, act, cond, &co.deter);

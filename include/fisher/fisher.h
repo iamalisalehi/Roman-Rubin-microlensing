@@ -81,6 +81,9 @@ struct covarian {
     std::array<std::array<int, NSURV>, NAVAR>    okBV{};
     std::array<std::array<double, NSURV>, NAVAR> condBV{};
     std::array<std::array<double, NSURV>, NAVAR> relMlV{};
+    // cov(thetaE, piE) of each variant's astrometric inverse [mas, per unit piE], the covariance the mass and
+    // distance errors need when the astrometric piE is the route (ErrorCal, lnCovTetPi). 0 where okBV = 0.
+    std::array<std::array<double, NSURV>, NAVAR> covTetPiV{};
     std::array<std::array<std::array<double, Ny * Ny>, NSURV>, NAVAR> FBV{};  // the matrices
 
     // Per-survey epoch counts and characterizability flags. A partition with no epochs, or fewer
@@ -100,7 +103,9 @@ struct covarian {
     // Fractional 1-sigma on the lens mass, per survey. Ml = tetE / (kappa * piE) is not fitted, so
     // the fractional errors of tetE (astrometric matrix: sub-mas centroid motion, Roman; and, when the
     // finite source is seen, photometric: theta* / rho) and piE (photometric matrix: parallax over a long
-    // baseline, Rubin) add in quadrature.
+    // baseline, Rubin) add in quadrature, less twice their covariance c = cov(ln tetE, ln piE): -wp cov(ln rho,
+    // ln piE) with the photometric piE, (1 - wp) cov(tetE, piE) / (tetE piE) with the astrometric one (wp the
+    // photometric weight in the combined tetE; ErrorCal, lnCovTetPi). relMlV[v] is the same for noise variant v.
     // -1.0 = not measurable in this partition, never a measured value.
     std::array<double, NSURV> relMl;
 

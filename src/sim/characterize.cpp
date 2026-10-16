@@ -32,6 +32,7 @@ Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const Ef
         for (int v = 0; v < NAVAR; ++v) {
             co.okBV[v][q] = 0; co.condBV[v][q] = -1.0; co.relMlV[v][q] = -1.0;
             for (int k = 0; k < Ny; ++k) co.ErbV[v][q][k] = -1.0;
+            co.covTetPiV[v][q] = 0.0;
         }
     }
 

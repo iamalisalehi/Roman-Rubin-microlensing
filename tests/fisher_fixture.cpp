@@ -814,7 +814,9 @@ bool checkSeasonClustering()
 // Prints, per event and partition, sigma(tetE), the astrometric sigma(piE) and relMl under each
 // variant, and ASSERTS sigma_W <= sigma_N <= sigma_P on tetE. N adds roll offsets and noise
 // correlated within a day to W, and P adds season offsets and a larger sigma_c; neither extra
-// parameters nor positively correlated noise can add information, so a violation is a bug.
+// parameters nor positively correlated noise can add information, so a violation is a bug. Also asserted:
+// relMlV of every variant against the lens-mass error formed here from an independent inversion of the variant's
+// matrix (route, thetaE-piE or ln rho-piE covariance; see lnCovTetPi), and relMlV[W] == relMl.
 // ---------------------------------------------------------------------------------------------
 
 // One stray epoch from a telescope must not make the joint photometric matrix singular. Take an
@@ -898,7 +900,7 @@ int runAstroVariants()
     auto as = std::make_unique<astromet>();
     auto co = std::make_unique<covarian>();
     const char* vn[NAVAR] = {"W", "N", "P"};
-    int bad = 0;
+    int bad = 0, nMassChecked = 0, nMassAst = 0;
     std::cout << "# Step 3c astrometric noise variants: W white | N roll offsets + "
               << AST_SIGC_N << " mas/day | P roll offsets + " << AST_SIGC_P << " mas/day\n"
               << "# event,tE,partition,variant,ok,sig_tetE,sig_piE_ast,relMl,ratio_tetE_to_W\n";
@@ -922,6 +924,46 @@ int runAstroVariants()
                           << co->relMlV[v][q] << ',' << std::fixed << std::setprecision(3)
                           << ((w0 > 0.0 && co->ErbV[v][q][0] > 0.0) ? co->ErbV[v][q][0] / w0 : -1.0)
                           << std::defaultfloat << '\n';
+            // Independent check of the lens-mass error of every variant: invert FBV[v][q] here (GSL LU, not the
+            // production invertNormalized), take rt (the astrometric thetaE of this variant combined with the
+            // photometric one by inverse variance) and the better piE route, form c by the rule (photometric piE:
+            // -wp cov(ln rho, ln piE); astrometric piE: (1 - wp) cov(thetaE, piE) / (thetaE piE)), and compare
+            // sqrt(rt^2 + rpi^2 - 2c) with relMlV. Variant W is the main result: relMlV[AV_W] == relMl exactly.
+            if (co->relMlV[AV_W][q] != co->relMl[q]) {
+                std::cout << "#   FAIL " << ev.name << " " << qn << ": relMlV[W] " << co->relMlV[AV_W][q]
+                          << " != relMl " << co->relMl[q] << "\n";
+                ++bad;
+            }
+            for (int v = 0; v < NAVAR; ++v) {
+                if (!co->okBV[v][q]) continue;
+                gsl_matrix* M = gsl_matrix_alloc(Ny, Ny);
+                gsl_matrix* Minv = gsl_matrix_alloc(Ny, Ny);
+                gsl_permutation* perm = gsl_permutation_alloc(Ny);
+                for (int j = 0; j < Ny; ++j)
+                    for (int m = 0; m < Ny; ++m) gsl_matrix_set(M, j, m, co->FBV[v][q][j * Ny + m]);
+                int sgn = 0;
+                gsl_linalg_LU_decomp(M, perm, &sgn);
+                gsl_linalg_LU_invert(M, perm, Minv);
+                const double sT = std::sqrt(gsl_matrix_get(Minv, 0, 0)), sP = std::sqrt(gsl_matrix_get(Minv, 3, 3));
+                const double cTP = gsl_matrix_get(Minv, 0, 3);
+                gsl_matrix_free(M); gsl_matrix_free(Minv); gsl_permutation_free(perm);
+                const double ra = sT / l->tetE, rph = co->relTetEph[q];
+                const double rt = (rph >= 0.0) ? ra * rph / std::hypot(ra, rph) : ra;
+                const double wp = (rph >= 0.0) ? rt * rt / (rph * rph) : 0.0;
+                const double rp1 = (co->Era[q][3] >= 0.0) ? co->Era[q][3] / l->piE : -1.0, rp2 = sP / l->piE;
+                const bool   phot = (rp1 >= 0.0 and rp1 < rp2);
+                const double rpi = phot ? rp1 : rp2;
+                const double c = phot ? -wp * gsl_matrix_get(co->inverA[q].get(), 9, 3) / l->piE * (co->Era[q][9] >= 0.0 ? 1.0 : 0.0)
+                                      : (1.0 - wp) * cTP / (l->tetE * l->piE);
+                const double want = std::sqrt(rt * rt + rpi * rpi - 2.0 * c);
+                if (!(std::fabs(co->relMlV[v][q] / want - 1.0) <= 1e-6)) {
+                    std::cout << "#   FAIL " << ev.name << " " << qn << " " << vn[v] << ": relMlV " << co->relMlV[v][q]
+                              << " vs independent " << want << (phot ? " (phot piE)" : " (ast piE)") << "\n";
+                    ++bad;
+                }
+                ++nMassChecked;
+                if (!phot) ++nMassAst;
+            }
             for (int v = 1; v < NAVAR; ++v) {
                 const double a0 = co->ErbV[v - 1][q][0], a1 = co->ErbV[v][q][0];
                 if (co->okBV[v - 1][q] && co->okBV[v][q] && a1 < a0 * (1.0 - 1e-9)) {
@@ -932,6 +974,8 @@ int runAstroVariants()
             }
         }
     }
+    std::cout << "# relMlV checked against an independent inversion: " << nMassChecked << " cases, " << nMassAst
+              << " on the astrometric piE route\n";
     std::cout << (bad ? "# FAIL -- variant ordering violated\n" : "# PASS -- sigma_W <= sigma_N <= sigma_P everywhere\n");
     return bad ? 1 : 0;
 }
@@ -1178,9 +1222,12 @@ int runFiniteSource()
 // resu[13] (old) and the old formula with the sign of the tE-xi cross term of the mu_1 term corrected (old+),
 // which show what the sign and the thetaE-mus correlations change.
 // Asserted: the identity above (to 1e-9); relMuL and sigVL are the -1 sentinel exactly where a partition lacks a
-// matrix or relMl; Sigma(thetaE) / thetaE^2 is relTetEc^2; with the photometric piE, the variance of ln thetaE -
-// ln piE is relMl^2 (relMass); with the astrometric piE it differs from relMl^2 by the thetaE-piE correlation of
-// the astrometric matrix, which relMl leaves out (printed).
+// matrix or relMl; Sigma(thetaE) / thetaE^2 is relTetEc^2; on BOTH piE routes the variance of ln thetaE - ln piE is
+// relMl^2 and, for the joint partition, that of ln thetaE + ln piE times (1 - D_L/D_S)^2 is rel_Dl^2 (resu[10]), to
+// 1e-9 (relMass, lnCovTetPi: c = cov(ln thetaE, ln piE) of the combined thetaE with the route's piE). The same two
+// are also sampled in the Monte Carlo (the columns "ln M", "ln pi_rel", mc/lin at the full and the scaled errors; the
+// scaled ones asserted within 3%); the route and the correlation c / (rt rpi) are printed per row, and at least one
+// row must take the astrometric route with |c / (rt rpi)| above 0.05, so the astrometric term is exercised.
 // ---------------------------------------------------------------------------------------------
 constexpr int kLmDraws = 200000;
 
@@ -1190,7 +1237,7 @@ int runLensMotion()
     auto l  = std::make_unique<lens>();
     auto as = std::make_unique<astromet>();
     auto co = std::make_unique<covarian>();
-    int failures = 0;
+    int failures = 0, nAstCorr = 0;
     std::mt19937_64 rng(20261012ULL);
     std::normal_distribution<double> gauss(0.0, 1.0);
 
@@ -1201,6 +1248,7 @@ int runLensMotion()
 
     std::cout << "# Lens motion: |mu_L| [mas/day], |v_L| [km/s] (heliocentric), relMuL = sigma(|mu_L|)/|mu_L|, sigVL = sqrt(lambda_max of cov(v_L)) [km/s], frame-independent.\n"
               << "# mc/lin: sample sd of " << kLmDraws << " draws from the parameter covariance over the linear propagation, for |mu_L| then, for v_L, sqrt(largest eigenvalue of the sample covariance) over sigVL\n"
+              << "# ln M, ln pi_rel: the sample sd of ln thetaE -/+ ln piE (over the draws with thetaE, piE > 0) over the linear one, at the full and at the scaled errors; c/rt.rpi: the correlation of ln thetaE and ln piE used.\n"
               << "# (rel_v = sigVL/|v_L|, heliocentric); the last two at the covariance scaled in sigma by 'scale' to bring relMuL, rel_v (sigVL/|v_L|) and every parameter's error (xi in rad; mus against |mu_L|) to at most 2%.\n"
               << "# 'old', 'old+': the previous joint resu[13] and the same with the mu_1 tE-xi cross term's sign corrected. '-' = not measured.\n";
     for (const auto& [ev, rho] : events) {
@@ -1254,7 +1302,8 @@ int runLensMotion()
         std::cout << std::left << std::setw(10) << "# survey" << std::right << std::setw(4) << "ok"
                   << std::setw(11) << "relMuL" << std::setw(11) << "mc/lin" << std::setw(11) << "sigVL" << std::setw(11) << "mc/lin"
                   << std::setw(10) << "rel_v" << std::setw(8) << "scale" << std::setw(9) << "mc/lin" << std::setw(9) << "mc/lin"
-                  << std::setw(8) << "ln rho" << std::setw(8) << "piE" << std::setw(13) << "dlnMl-relMl" << "\n";
+                  << std::setw(8) << "ln rho" << std::setw(8) << "piE" << std::setw(13) << "dlnMl-relMl"
+                  << std::setw(9) << "c/rt.rpi" << std::setw(9) << "lnM" << std::setw(9) << "lnPirel" << std::setw(9) << "lnM" << std::setw(9) << "lnPirel" << "\n";
         static const char* kName[NSURV] = {"joint", "rubin", "roman"};
         for (int q = 0; q < NSURV; ++q) {
             double S[NLM][NLM];
@@ -1289,8 +1338,19 @@ int runLensMotion()
                           << " vs relTetEc^2 = " << co->relTetEc[q] * co->relTetEc[q] << "\n";
                 ++failures;
             }
+            const double vLnPi = vTet + S[LM_PIE][LM_PIE] / (pp * pp) + 2.0 * S[LM_TETE][LM_PIE] / (tt * pp);
+            const double cRho = S[LM_TETE][LM_PIE] / (tt * pp) / std::sqrt(vTet * S[LM_PIE][LM_PIE] / (pp * pp));   // c / (rt rpi)
+            if (!photPi and std::fabs(cRho) > 0.05) ++nAstCorr;
             const double dMl = vLnMl / (co->relMl[q] * co->relMl[q]) - 1.0;
-            if (photPi and std::fabs(dMl) > 1e-9) {
+            if (q == SJOINT) {
+                const double rd = (1.0 - l->Dl / s->Ds) * (1.0 - l->Dl / s->Ds) * vLnPi / (co->resu[10] * co->resu[10]) - 1.0;
+                if (!(std::fabs(rd) <= 1e-9)) {
+                    std::cerr << "FAIL [lens-motion/" << ev.name << "] joint: (1 - Dl/Ds)^2 var(ln thetaE + ln piE) = "
+                              << (1.0 - l->Dl / s->Ds) * (1.0 - l->Dl / s->Ds) * vLnPi << " vs rel_Dl^2 = " << co->resu[10] * co->resu[10] << "\n";
+                    ++failures;
+                }
+            }
+            if (!(std::fabs(dMl) <= 1e-9)) {
                 std::cerr << "FAIL [lens-motion/" << ev.name << "] partition " << q << ": var(ln thetaE - ln piE) = " << vLnMl
                           << " vs relMl^2 = " << co->relMl[q] * co->relMl[q] << "\n";
                 ++failures;
@@ -1315,8 +1375,9 @@ int runLensMotion()
             for (int i = 0; i < NLM; ++i)
                 for (int k = 0; k < NLM; ++k) A[i][k] = sg[i] * gsl_matrix_get(V, i, k) * std::sqrt(std::max(gsl_vector_get(ev_, k), 0.0));
             gsl_eigen_symmv_free(w);  gsl_vector_free(ev_);  gsl_matrix_free(V);  gsl_matrix_free(C);
-            auto monteCarlo = [&](double f, double& rMu, double& rV) {
+            auto monteCarlo = [&](double f, double& rMu, double& rV, double& rM, double& rP) {
                 double n = 0, mM = 0, sM = 0, mV[2] = {0, 0}, cV[2][2] = {{0, 0}, {0, 0}};    // Welford
+                double nl = 0, mLm = 0, sLm = 0, mLp = 0, sLp = 0;        // ln thetaE -/+ ln piE, over the draws where both are > 0
                 for (int d = 0; d < kLmDraws; ++d) {
                     double z[NLM], p[NLM];
                     for (int k = 0; k < NLM; ++k) z[k] = gauss(rng);
@@ -1325,6 +1386,13 @@ int runLensMotion()
                         for (int k = 0; k < NLM; ++k) p[i] += f * A[i][k] * z[k];
                     }
                     const LensMotion m = lensMotion(mc, p[0], p[1], p[2], p[3], p[4], p[5]);
+                    if (p[LM_TETE] > 0.0 and p[LM_PIE] > 0.0) {
+                        const double lm = std::log(p[LM_TETE]) - std::log(p[LM_PIE]), lp = std::log(p[LM_TETE]) + std::log(p[LM_PIE]);
+                        nl += 1.0;
+                        const double dm = lm - mLm, dp = lp - mLp;
+                        mLm += dm / nl;  sLm += dm * (lm - mLm);
+                        mLp += dp / nl;  sLp += dp * (lp - mLp);
+                    }
                     const double a = std::hypot(m.mu[0], m.mu[1]);
                     n += 1.0;
                     const double dM = a - mM;
@@ -1336,9 +1404,11 @@ int runLensMotion()
                 rMu = std::sqrt(sM / (n - 1.0)) / (f * linMu);
                 const double va = cV[0][0] / (n - 1.0), vd = cV[1][1] / (n - 1.0), vb = cV[0][1] / (n - 1.0);
                 rV  = std::sqrt(0.5 * (va + vd) + std::hypot(0.5 * (va - vd), vb)) / (f * linV);
+                rM  = std::sqrt(sLm / (nl - 1.0)) / (f * std::sqrt(vLnMl));
+                rP  = std::sqrt(sLp / (nl - 1.0)) / (f * std::sqrt(vLnPi));
             };
-            double rMu1, rV1, rMu2, rV2;
-            monteCarlo(1.0, rMu1, rV1);
+            double rMu1, rV1, rMu2, rV2, rM1, rP1, rM2, rP2;
+            monteCarlo(1.0, rMu1, rV1, rM1, rP1);
             // The same at a covariance scaled down until every error is at most 2%, if they are not already:
             // the regime where the linear propagation has to hold, whatever the fixture's errors are.
             // The condition is on the size of every parameter's error, not only on the two along the vectors: an error
@@ -1349,10 +1419,11 @@ int runLensMotion()
                 worst = std::max(worst, sg[i] / ref);
             }
             const double fSmall = std::min(1.0, 0.02 / worst);
-            monteCarlo(fSmall, rMu2, rV2);
-            if (std::fabs(rMu2 - 1.0) > 0.03 or std::fabs(rV2 - 1.0) > 0.03) {
+            monteCarlo(fSmall, rMu2, rV2, rM2, rP2);
+            if (std::fabs(rMu2 - 1.0) > 0.03 or std::fabs(rV2 - 1.0) > 0.03 or std::fabs(rM2 - 1.0) > 0.03 or std::fabs(rP2 - 1.0) > 0.03) {
                 std::cerr << "FAIL [lens-motion/" << ev.name << "] partition " << q << ": at errors scaled by " << fSmall
-                          << " the Monte Carlo/linear ratios are " << rMu2 << " (|mu_L|), " << rV2 << " (|v_L|)\n";
+                          << " the Monte Carlo/linear ratios are " << rMu2 << " (|mu_L|), " << rV2 << " (|v_L|), " << rM2
+                          << " (ln M), " << rP2 << " (ln pi_rel)\n";
                 ++failures;
             }
 
@@ -1363,7 +1434,8 @@ int runLensMotion()
                       << std::setprecision(3) << std::setw(10) << co->sigVL[q] / v0
                       << std::setprecision(4) << std::setw(8) << fSmall << std::setprecision(3) << std::setw(9) << rMu2 << std::setw(9) << rV2
                       << std::setw(8) << (co->Era[q][9] >= 0.0 ? "yes" : "no") << std::setw(8) << (photPi ? "phot" : "ast")
-                      << std::scientific << std::setprecision(2) << std::setw(13) << dMl << "\n";
+                      << std::scientific << std::setprecision(2) << std::setw(13) << dMl << std::fixed << std::setprecision(3)
+                      << std::setw(9) << cRho << std::setw(9) << rM1 << std::setw(9) << rP1 << std::setw(9) << rM2 << std::setw(9) << rP2 << "\n";
         }
 
         // The previous joint formula, recomputed: its f1, f2 and sigmul from the joint matrices.
@@ -1388,6 +1460,11 @@ int runLensMotion()
                 ++failures;
             }
         }
+    }
+    std::cout << "\n# rows on the astrometric piE route with |c / (rt rpi)| > 0.05: " << nAstCorr << "\n";
+    if (nAstCorr == 0) {
+        std::cerr << "FAIL [lens-motion] no fixture row takes the astrometric route with a non-negligible c: the astrometric term is untested\n";
+        ++failures;
     }
     std::cout << "\n#\n" << (failures ? "# FAIL -- lens-motion assertions failed\n" : "# PASS -- all lens-motion assertions held\n");
     return failures ? 1 : 0;

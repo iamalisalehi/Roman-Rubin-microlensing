@@ -57,7 +57,15 @@ const char* eventTableHeader()
         // theta* / rho, for the joint, Rubin and Roman partitions. dchiFS is -1 where not computed (point source,
         // nothing characterised, no epochs); sigma(ln rho) and rel_tetEph are -1 wherever ln rho is not a parameter
         // of that partition's fit (dchiFS below the bar DCHI_FS, or sigma(ln rho) above SIGLNRHO_MAX).
-        "dchiFS_J dchiFS_L dchiFS_R siglnrho_J siglnrho_L siglnrho_R rel_tetEph_J rel_tetEph_L rel_tetEph_R";
+        "dchiFS_J dchiFS_L dchiFS_R siglnrho_J siglnrho_L siglnrho_R rel_tetEph_J rel_tetEph_L rel_tetEph_R "
+        // The lens's motion on the sky (ErrorCal, lensMotion in events/vbm_model.h): the fractional error of its
+        // heliocentric proper motion, sigma(|mu_L|) / |mu_L| (rel_mul is the joint one, the same number as relMuL_J),
+        // and the 1-sigma error of the lens's velocity on the sky, v_L = D_L mu_L, along its worst-measured direction,
+        // sqrt(lambda_max) of its 2x2 covariance [km/s] (frame-independent: a per-axis bound, not the error of |v_L|),
+        // for the joint, Rubin and Roman partitions; -1 = not measured (no photometric or astrometric matrix, or no
+        // piE or thetaE by any route). vLperp is the true HELIOCENTRIC |v_L| = D_L |mu_L| [km/s]; sigVL / vLperp is
+        // only a heliocentric relative error.
+        "relMuL_J relMuL_L relMuL_R sigVL_J sigVL_L sigVL_R vLperp";
 }
 
 int openOutputs(const RunConfig& cfg, RunOutputs& o) {

@@ -6,6 +6,7 @@
 #include "common.h"
 #include "types.h"
 #include "fisher/linalg.h"
+#include "events/vbm_model.h"
 
 // ---------------------------------------------------------------------------------------------
 // Which subset of a single event's light curve a Fisher matrix was accumulated from.
@@ -56,7 +57,6 @@ struct covarian {
     int    flagi;
     
     double deter;
-    double sigmul1, sigmul2, f1, f2;
     double magw;
     double derm1f, derm2f, dera1f, derb1f, dera2f, derb2f, diff;
 
@@ -103,6 +103,22 @@ struct covarian {
     // baseline, Rubin) add in quadrature.
     // -1.0 = not measurable in this partition, never a measured value.
     std::array<double, NSURV> relMl;
+
+    // The lens's motion on the sky, per partition (ErrorCal; the model is lensMotion in events/vbm_model.h, the
+    // propagation lensMotionCovariance / lensMotionPropagate below):
+    //   relMuL   sigma(|mu_L|) / |mu_L|, mu_L the lens's heliocentric proper motion;
+    //   sigVL    sqrt(lambda_max(covVL)) [km/s]: the 1-sigma error of the lens's velocity on the sky, v_L = D_L mu_L,
+    //            along its worst-measured direction (the direction xi is the weak parameter, so the error ellipse is
+    //            elongated). Independent of the reference frame: the Sun's velocity added to go to the Galactic rest
+    //            frame shifts v_L, not its covariance. A per-axis bound, not the error of |v_L|;
+    //   covMuL, covVL   the 2x2 covariances (row major) of mu_L [mas/day] and v_L [km/s] on (e_l, e_b).
+    // -1 = not measured: the partition has no photometric or no astrometric matrix, or no piE or thetaE by any
+    // route (relMl < 0); the covariances are then 0. lmCheck is the largest relative departure of the closed-form
+    // lensMotion at the true parameters from the draw's own (mul1, mul2) and v_L, set by ErrorCal; -1 before it.
+    std::array<double, NSURV> relMuL;
+    std::array<double, NSURV> sigVL;
+    std::array<std::array<double, 4>, NSURV> covMuL{}, covVL{};
+    double lmCheck = -1.0;
 
     // The finite source (--source-model espl; see DCHI_FS in config/parameters.h). Per partition:
     //   dchiFS      the chi-squared by which that partition's epochs separate the uniform disc from a point
@@ -162,6 +178,8 @@ struct covarian {
             condA[q] = -1.0;
             condB[q] = -1.0;
             relMl[q] = -1.0;
+            relMuL[q] = -1.0;
+            sigVL[q] = -1.0;
             dchiFS[q] = -1.0;
             rhoOn[q] = 0;
             relTetEph[q] = -1.0;
@@ -249,6 +267,19 @@ inline std::vector<int> activePhotParams(const covarian& co, int surv)
 {
     return activePhotParams(surv, co.nepochA[SRUBIN], co.nepochA[SROMAN], co.rhoOn[surv] != 0);
 }
+
+// The parameters of the lens-motion model lensMotion, in the order its covariance is given.
+enum LensMotionPar { LM_TE = 0, LM_XI, LM_PIE, LM_TETE, LM_MUS1, LM_MUS2, NLM };
+
+// The covariance of those six parameters in partition q, from the photometric matrix inverA[q] (tE, xi, piE,
+// ln rho) and the astrometric one inverB[q] (thetaE, mus1, mus2, piE), which are independent: the astrometric
+// matrix holds the photometric parameters fixed and vice versa, so the blocks do not talk. piE and thetaE are
+// taken by the routes relMl takes. False (S = 0) where relMl[q] < 0 or a matrix is missing.
+bool   lensMotionCovariance(const covarian& co, const lens& l, int q, double S[NLM][NLM]);
+// Linear propagation of S through lensMotion at the point p (central differences): the 2x2 covariances of mu_L
+// [mas/day] and v_L [km/s].
+void   lensMotionPropagate(const MotionContext& c, const double p[NLM], const double S[NLM][NLM],
+                           double Smu[2][2], double Sv[2][2]);
 
 void   ErrorCal(covarian & co, lens &l, source &s);
 void   FisherM(source & s, lens & l, astromet & as,  covarian & co, int);

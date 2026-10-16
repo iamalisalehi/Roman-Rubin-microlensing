@@ -580,8 +580,100 @@ static double relMass(double rt, double rpi, bool withCov, double rph, double co
   return std::sqrt(var);
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// The lens's motion on the sky and its error (lensMotion, events/vbm_model.h). The six parameters of the model,
+// p = (tE, xi, piE, thetaE, mus1, mus2), are not fitted together: the photometric matrix gives tE, xi, piE (and ln
+// rho), the astrometric one thetaE, mus1, mus2, piE, and each holds the other's parameters fixed, so the two
+// matrices are independent blocks. p is a linear map of independent variables,
+//     a = (tE, xi, piE_phot, ln rho)  from inverA[q],   b = (thetaE_ast, mus1, mus2, piE_ast)  from inverB[q],
+//     e = the error of ln theta*  (variance THETASTAR_SIGLN^2),
+// and its covariance is L Sigma L^T. The pieces of L:
+//   - piE is the photometric one (a) or the astrometric one (b), the route relMl takes (the better one);
+//   - thetaE is the inverse-variance combination of the astrometric thetaE and the photometric theta* / rho
+//     that relTetEc is: delta thetaE = (1 - wp) delta thetaE_ast + wp thetaE (-delta ln rho + e), with the photometric
+//     weight wp = relTetEc^2 / relTetEph^2 (the weight of ln thetaE_phot in ln thetaE_c, as relMass has it). So
+//     thetaE carries the covariance of thetaE_ast with mus (and with piE_ast) from the astrometric matrix, and
+//     that of ln rho with tE, xi and piE_phot from the photometric one;
+//   - mus1, mus2 are the astrometric ones.
+// Sigma(thetaE)/thetaE^2 comes out as relTetEc^2 and, with piE photometric, the variance of ln thetaE - ln piE as
+// relMl^2 (relMass), which the fixture asserts.
+bool lensMotionCovariance(const covarian& co, const lens& l, int q, double S[NLM][NLM])
+{
+  for (int i = 0; i < NLM; ++i) for (int j = 0; j < NLM; ++j) S[i][j] = 0.0;
+  if (!(co.okA[q] and co.okB[q] and co.relMl[q] >= 0.0)) return false;
+  const auto& Era = co.Era[q];
+  const auto& Erb = co.Erb[q];
+  const double rp1 = (Era[3] >= 0.0) ? Era[3] / (std::fabs(l.piE) + eps) : -1.0;
+  const double rp2 = (Erb[3] >= 0.0) ? Erb[3] / (std::fabs(l.piE) + eps) : -1.0;
+  const bool photPi = (rp1 >= 0.0 and (rp2 < 0.0 or rp1 < rp2));      //the route relMl takes
+  const bool rho    = (Era[9] >= 0.0);                                 //ln rho is a parameter of this partition
+  if (Era[1] < 0.0 or Era[4] < 0.0 or Erb[0] < 0.0 or Erb[1] < 0.0 or Erb[2] < 0.0 or (rp1 < 0.0 and rp2 < 0.0))
+      return false;
+  const double wp = (rho and co.relTetEph[q] > 0.0 and co.relTetEc[q] >= 0.0)
+                  ? co.relTetEc[q] * co.relTetEc[q] / (co.relTetEph[q] * co.relTetEph[q]) : 0.0;
+
+  // Sigma of (a[0..3], b[4..7], e[8]).
+  static const int ia[4] = {1, 4, 3, 9};
+  constexpr int NB = 9;
+  double Sb[NB][NB] = {};
+  const int na = rho ? 4 : 3;
+  for (int i = 0; i < na; ++i)
+      for (int j = 0; j < na; ++j) Sb[i][j] = gsl_matrix_get(co.inverA[q].get(), ia[i], ia[j]);
+  for (int i = 0; i < Ny; ++i)
+      for (int j = 0; j < Ny; ++j) Sb[4 + i][4 + j] = gsl_matrix_get(co.inverB[q].get(), i, j);
+  Sb[8][8] = THETASTAR_SIGLN * THETASTAR_SIGLN;
+
+  double L[NLM][NB] = {};
+  L[LM_TE][0] = 1.0;
+  L[LM_XI][1] = 1.0;
+  L[LM_PIE][photPi ? 2 : 7] = 1.0;
+  L[LM_TETE][4] = 1.0 - wp;
+  if (rho) { L[LM_TETE][3] = -wp * l.tetE; L[LM_TETE][8] = wp * l.tetE; }
+  L[LM_MUS1][5] = 1.0;
+  L[LM_MUS2][6] = 1.0;
+
+  double LS[NLM][NB] = {};
+  for (int i = 0; i < NLM; ++i)
+      for (int k = 0; k < NB; ++k)
+          for (int m = 0; m < NB; ++m) LS[i][k] += L[i][m] * Sb[m][k];
+  for (int i = 0; i < NLM; ++i)
+      for (int j = 0; j < NLM; ++j)
+          for (int k = 0; k < NB; ++k) S[i][j] += LS[i][k] * L[j][k];
+  return true;
+}
+
+void lensMotionPropagate(const MotionContext& c, const double p[NLM], const double S[NLM][NLM],
+                         double Smu[2][2], double Sv[2][2])
+{
+  // Central differences of the closed-form function: smooth, so a relative step of 1e-5 is good to ~1e-10 (the
+  // function is linear in mus). xi and the proper motions have a floor to the step, a zero or tiny value must not
+  // make it vanish.
+  static const double floorStep[NLM] = {0.0, 1.0, 0.0, 0.0, 1.0e-3, 1.0e-3};
+  double Jmu[2][NLM], Jv[2][NLM];
+  for (int k = 0; k < NLM; ++k) {
+      const double h = 1.0e-5 * std::max(std::fabs(p[k]), floorStep[k]);
+      double pp[NLM], pm[NLM];
+      for (int i = 0; i < NLM; ++i) pp[i] = pm[i] = p[i];
+      pp[k] += h; pm[k] -= h;
+      const LensMotion a = lensMotion(c, pp[LM_TE], pp[LM_XI], pp[LM_PIE], pp[LM_TETE], pp[LM_MUS1], pp[LM_MUS2]);
+      const LensMotion b = lensMotion(c, pm[LM_TE], pm[LM_XI], pm[LM_PIE], pm[LM_TETE], pm[LM_MUS1], pm[LM_MUS2]);
+      for (int i = 0; i < 2; ++i) {
+          Jmu[i][k] = (a.mu[i] - b.mu[i]) / (2.0 * h);
+          Jv[i][k]  = (a.v[i]  - b.v[i])  / (2.0 * h);
+      }
+  }
+  for (int i = 0; i < 2; ++i)
+      for (int j = 0; j < 2; ++j) {
+          Smu[i][j] = Sv[i][j] = 0.0;
+          for (int k = 0; k < NLM; ++k)
+              for (int m = 0; m < NLM; ++m) {
+                  Smu[i][j] += Jmu[i][k] * S[k][m] * Jmu[j][m];
+                  Sv[i][j]  += Jv[i][k]  * S[k][m] * Jv[j][m];
+              }
+      }
+}
+
 void ErrorCal(covarian & co, lens & l , source & s){
-  double corr1;
 
   // Per-survey 1-sigma forecasts. -1.0 marks a partition that is not characterizable (too few
   // epochs or singular matrix) and, for the photometric sigmas, a parameter outside the
@@ -655,8 +747,6 @@ void ErrorCal(covarian & co, lens & l , source & s){
   const auto& Era = co.Era[SJOINT];
   const auto& Erb = co.Erb[SJOINT];
 
-  corr1 = double(gsl_matrix_get(co.inverA[SJOINT].get(), 1, 4) / std::fabs(Era[1] * Era[4])); //correlation tE  && xi
-
   co.resu[0]  = double(Era[0] / (std::fabs(l.u0)    + eps));
   co.resu[1]  = double(Era[1] / (std::fabs(l.tE)    + eps));
   co.resu[2]  = double(Era[2] / (std::fabs(s.fb[0]) + eps));
@@ -683,20 +773,42 @@ void ErrorCal(covarian & co, lens & l , source & s){
               : -1.0;
   co.resu[10] = std::fabs(co.resu[9] * (s.Ds - l.Dl) / s.Ds); //Dl
 
-  co.f1 = co.resu[5] * co.resu[5] + co.resu[1] * co.resu[1] + (Era[4] * std::tan(s.xi)) * (Era[4] * std::tan(s.xi))
-    - 2.0 * co.resu[1] * Era[4] * std::tan(s.xi) * corr1;
-  co.f2 = co.resu[5] * co.resu[5] + co.resu[1] * co.resu[1] + (Era[4] / std::tan(s.xi)) * (Era[4] / std::tan(s.xi))
-    - 2.0 * co.resu[1] * Era[4] / std::tan(s.xi) * corr1;
-
-  // The relative proper motion the light curve measures, mu = thetaE / tE, is the geocentric one (tE and xi are
-  // geocentric); l.murel is the heliocentric magnitude from the draw. The lens's heliocentric motion also
-  // carries the Earth's velocity times pi_rel, whose error this propagation leaves out.
-  const double muGeo = l.tetE / l.tE;   //[mas/day]
-  co.sigmul1 = std::sqrt(Erb[1] * Erb[1] + muGeo * muGeo * std::cos(s.xi) * std::cos(s.xi) * std::fabs(co.f1));
-  co.sigmul2 = std::sqrt(Erb[2] * Erb[2] + muGeo * muGeo * std::sin(s.xi) * std::sin(s.xi) * std::fabs(co.f2));
-
-  co.resu[11] = double(co.sigmul1 / (std::fabs(l.mul1) + eps)); //mu_lens_1
-  co.resu[12] = double(co.sigmul2 / (std::fabs(l.mul2) + eps)); //mu_lens_2
-  co.resu[13] = std::sqrt(co.sigmul1 * co.sigmul1 + co.sigmul2 * co.sigmul2) / (std::fabs(l.mul) + eps); //mu_lens
+  // The lens's proper motion and velocity on the sky, per partition (lensMotion; the covariance of its parameters
+  // is lensMotionCovariance). Only the default astrometric matrix (variant W) enters, not the noise variants N, P.
+  // mu_rel = thetaE / tE is the geocentric one (tE, xi are geocentric); the lens's heliocentric motion adds the
+  // source's (mus, astrometry) and the Earth's velocity times pi_rel = thetaE piE. First the identity that pins the
+  // model: at the true parameters it must return the draw's mul1, mul2 and v_L.
+  const MotionContext mc = motionContext(l.t0, 1.0 / s.Ds);
+  const double pTrue[NLM] = {l.tE, s.xi, l.piE, l.tetE, s.mus1, s.mus2};
+  const LensMotion m0 = lensMotion(mc, pTrue[LM_TE], pTrue[LM_XI], pTrue[LM_PIE], pTrue[LM_TETE], pTrue[LM_MUS1], pTrue[LM_MUS2]);
+  {
+      const double vconv = l.Dl * AU / (1000.0 * 24.0 * 3600.0);   //[km/s per mas/day]
+      const double dmu = std::hypot(m0.mu[0] - l.mul1, m0.mu[1] - l.mul2) / (std::hypot(l.mul1, l.mul2) + eps);
+      const double dv  = std::hypot(m0.v[0] - l.mul1 * vconv, m0.v[1] - l.mul2 * vconv) / (std::hypot(l.mul1, l.mul2) * vconv + eps);
+      co.lmCheck = std::max(dmu, dv);
+  }
+  const double muAbs = std::hypot(m0.mu[0], m0.mu[1]);
+  for (int q = 0; q < NSURV; ++q) {
+      co.relMuL[q] = -1.0;
+      co.sigVL[q]  = -1.0;
+      co.covMuL[q].fill(0.0);
+      co.covVL[q].fill(0.0);
+      double Sp[NLM][NLM], Smu[2][2], Sv[2][2];
+      if (!lensMotionCovariance(co, l, q, Sp) or !(muAbs > 0.0)) continue;
+      lensMotionPropagate(mc, pTrue, Sp, Smu, Sv);
+      // sigma(|x|) of a vector x with covariance C: the error along x, x_hat^T C x_hat.
+      const double ux = m0.mu[0] / muAbs, uy = m0.mu[1] / muAbs;
+      co.relMuL[q] = std::sqrt(std::fabs(ux * ux * Smu[0][0] + 2.0 * ux * uy * Smu[0][1] + uy * uy * Smu[1][1])) / muAbs;
+      // sigVL: the largest eigenvalue of the symmetric 2x2 Sigma_v, (a+d)/2 + sqrt(((a-d)/2)^2 + b^2), whatever
+      // the frame the velocity is later referred to.
+      co.sigVL[q]  = std::sqrt(0.5 * (Sv[0][0] + Sv[1][1]) + std::hypot(0.5 * (Sv[0][0] - Sv[1][1]), Sv[0][1]));
+      co.covMuL[q] = {Smu[0][0], Smu[0][1], Smu[1][0], Smu[1][1]};
+      co.covVL[q]  = {Sv[0][0], Sv[0][1], Sv[1][0], Sv[1][1]};
+  }
+  const auto& cm = co.covMuL[SJOINT];
+  const bool lmJ = (co.relMuL[SJOINT] >= 0.0);
+  co.resu[11] = lmJ ? double(std::sqrt(cm[0]) / (std::fabs(l.mul1) + eps)) : -1.0; //mu_lens_1
+  co.resu[12] = lmJ ? double(std::sqrt(cm[3]) / (std::fabs(l.mul2) + eps)) : -1.0; //mu_lens_2
+  co.resu[13] = co.relMuL[SJOINT];                                                 //mu_lens
   co.resu[14] = std::sqrt(Erb[1]  * Erb[1]  +  Erb[2] * Erb[2])  / (std::fabs(s.mus) + eps); // mu_source
 }

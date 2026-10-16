@@ -87,6 +87,33 @@ struct GeocentricMotion {
 GeocentricMotion geocentricMotion(double t0, double tetE, double pirel, double mus1, double mus2,
                                   double mul1, double mul2);
 
+// The lens's own motion on the sky, from the parameters a light curve and the astrometry measure. The light curve
+// gives the geocentric lens-source relative proper motion: its size is thetaE / tE, its direction the parallax
+// vector's, i.e. xi (parallaxVectorNE: piE_vec is along lens minus source, so the source moves along +xi).
+// geocentricMotion's inverse, then, with the source's own heliocentric motion added:
+//     mu_rel,geo (lens minus source, e_l e_b) = -(thetaE / tE) (cos xi, sin xi)
+//     mu_rel,hel = mu_rel,geo + v_E,perp(t0) * pi_rel,   pi_rel = thetaE piE     (N, E; Gould 2004)
+//     mu_L,hel   = mu_S + mu_rel,hel                                           (mu_S = (mus1, mus2) from astrometry)
+//     D_L = 1 / (pi_rel + pi_S),   v_L = D_L mu_L,hel      (pi_S the source parallax, taken as known)
+// At the true parameters it returns the draw's (mul1, mul2) and v_L = mul * Dl * AU / (1000 * 86400): the identity
+// that pins every sign and frame, checked on every characterised event (ErrorCal's lmCheck).
+struct LensMotion {
+    double mu[2];  // mu_L,hel on (e_l, e_b) [mas/day]
+    double v[2];   // v_L = D_L mu_L,hel on (e_l, e_b) [km/s], heliocentric
+    double DL;     // [kpc]
+};
+// What the function takes from the event and the sightline beyond the fitted parameters: Earth's velocity on
+// (N, E) at t0, the frame matrix, the source parallax.
+struct MotionContext {
+    double vE[2];       // Earth's velocity on (North, East) at t0 [AU/day]
+    double toNE[2][2];  // the sightline's SkyFrame::toNE
+    double piS;         // source parallax [mas]
+};
+// t0 on the simulation clock [days]; piS [mas]. Needs a sightline set.
+MotionContext motionContext(double t0, double piS);
+// tE [days] and xi [rad] geocentric, piE [], tetE [mas], mus1/mus2 heliocentric on (e_l, e_b) [mas/day].
+LensMotion lensMotion(const MotionContext& c, double tE, double xi, double piE, double tetE, double mus1, double mus2);
+
 // The source of the light-curve model: a point (PSPL) or a uniform disc (ESPL).
 enum class SourceModel { PSPL, ESPL };
 

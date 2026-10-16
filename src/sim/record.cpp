@@ -141,7 +141,13 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
             // photometric thetaE = theta* / rho, joint / Rubin / Roman; -1 where not computed or ln rho is not a parameter
             << co.dchiFS[SJOINT] << " " << co.dchiFS[SRUBIN] << " " << co.dchiFS[SROMAN] << " "
             << co.Era[SJOINT][9] << " " << co.Era[SRUBIN][9] << " " << co.Era[SROMAN][9] << " "
-            << co.relTetEph[SJOINT] << " " << co.relTetEph[SRUBIN] << " " << co.relTetEph[SROMAN] << "\n";
+            << co.relTetEph[SJOINT] << " " << co.relTetEph[SRUBIN] << " " << co.relTetEph[SROMAN] << " "
+            // the lens's proper motion and velocity on the sky: fractional error of |mu_L| and the error of v_L along
+            // its worst-measured direction [km/s] (sqrt of the largest eigenvalue of its covariance) per partition
+            // (-1 = not measured), and the true heliocentric |v_L| = D_L |mu_L| [km/s]
+            << co.relMuL[SJOINT] << " " << co.relMuL[SRUBIN] << " " << co.relMuL[SROMAN] << " "
+            << co.sigVL[SJOINT] << " " << co.sigVL[SRUBIN] << " " << co.sigVL[SROMAN] << " "
+            << l.mul * l.Dl * AU / (1000.0 * 24.0 * 3600.0) << "\n";
     filg_in.close();
 
     commitSampleDump(ctx, lc, ch, pk);

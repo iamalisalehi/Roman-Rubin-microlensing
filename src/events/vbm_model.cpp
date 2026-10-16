@@ -244,6 +244,32 @@ GeocentricMotion geocentricMotion(double t0, double tetE, double pirel, double m
     return g;
 }
 
+MotionContext motionContext(double t0, double piS) {
+    const SkyFrame& F = vbmSkyFrame();
+    MotionContext c;
+    earthVelocityNE(t0, c.vE);
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j) c.toNE[i][j] = F.toNE[i][j];
+    c.piS = piS;
+    return c;
+}
+
+LensMotion lensMotion(const MotionContext& c, double tE, double xi, double piE, double tetE, double mus1, double mus2) {
+    const double muGeo = tetE / tE;
+    const double pirel = tetE * piE;
+    // Lens minus source in the geocentric frame, on (e_l, e_b) then (N, E); back to the heliocentric frame by the
+    // Earth's velocity times pi_rel (geocentricMotion subtracts it); back to (e_l, e_b) by the transpose.
+    const double gl = -muGeo * std::cos(xi), gb = -muGeo * std::sin(xi);
+    const double hN = c.toNE[0][0] * gl + c.toNE[0][1] * gb + c.vE[0] * pirel;
+    const double hE = c.toNE[1][0] * gl + c.toNE[1][1] * gb + c.vE[1] * pirel;
+    LensMotion m;
+    m.mu[0] = mus1 + c.toNE[0][0] * hN + c.toNE[1][0] * hE;
+    m.mu[1] = mus2 + c.toNE[0][1] * hN + c.toNE[1][1] * hE;
+    m.DL = 1.0 / (pirel + c.piS);   // [kpc]: parallaxes in mas
+    for (int i = 0; i < 2; ++i) m.v[i] = m.mu[i] * m.DL * AU / (1000.0 * 24.0 * 3600.0);   // kinematics.cpp's conversion
+    return m;
+}
+
 namespace {
 
 // The arrays one library call fills, kept between calls so the hot path does not allocate.

@@ -13,7 +13,7 @@
 //         flat stand-in for errlsstM / errRomanM.
 //
 // Usage: make fishertest && ./fishertest   (modes: --scale S, --sweep, --eigen [S],
-//        --astro-variants, --sweep-astro, --finite-source)
+//        --astro-variants, --sweep-astro, --finite-source, --lens-motion)
 //
 // The light-curve model's source is a point (pspl, the default here: the baseline every change to the
 // Fisher matrices is diffed against) or a uniform disc (espl); --source-model pspl|espl picks it, in any
@@ -21,6 +21,8 @@
 // source on the lens, compares the two models and fits the source radius (ln rho) where the data see it. Under
 // espl, --sweep runs the finite-source events (kFiniteEvents) and adds ln rho to the parameters swept.
 
+#include <random>
+#include <gsl/gsl_eigen.h>
 #include "common.h"
 #include "types.h"
 #include "events/lightcurve.h"
@@ -1157,6 +1159,240 @@ int runFiniteSource()
     return failures ? 1 : 0;
 }
 
+// ---------------------------------------------------------------------------------------------
+// The lens's motion on the sky and its error (--lens-motion; ErrorCal, lensMotion in events/vbm_model.h). The
+// fixture's lens is not self-consistent as it stands (its piE, tE and xi are set by hand, not drawn from a Dl and
+// the proper motions), so here each event gets the lens its parameters imply: pi_rel = piE thetaE fixes Dl
+// (1 / Dl = pi_rel + 1 / Ds), and mul is built from the geocentric motion tE and xi describe and the Earth's
+// velocity at t0 -- by this test's own inverse of geocentricMotion, which the production function then has to
+// undo: geocentricMotion(Dl, mus, mul) returns the event's tE and xi, and lensMotion returns mul and v_L. Neither
+// touches the light curve, which depends on tE, xi, piE, thetaE and mus only.
+// Per event and partition: the true |mu_L| [mas/day] and |v_L| [km/s], the errors relMuL = sigma(|mu_L|) / |mu_L|
+// and sigVL = sqrt(lambda_max) of the 2x2 covariance of v_L [km/s] (the error along the worst-measured direction)
+// by linear propagation, and a Monte Carlo of the same: kLmDraws parameter vectors
+// from the covariance of the six parameters, pushed through the closed-form function; "mc/lin" is the sample's
+// standard deviation of |mu_L| over the linear one, and sqrt of the largest eigenvalue of the SAMPLE covariance of
+// the v_L draws over sigVL. The linear propagation is exact to first order, so
+// expect ratios of 1 within a few percent where the relative errors are below ~0.1, and departures (the function
+// is nonlinear: |.|, 1/pi_rel, the angle) above it. Then, the joint relMuL next to the previous formula's
+// resu[13] (old) and the old formula with the sign of the tE-xi cross term of the mu_1 term corrected (old+),
+// which show what the sign and the thetaE-mus correlations change.
+// Asserted: the identity above (to 1e-9); relMuL and sigVL are the -1 sentinel exactly where a partition lacks a
+// matrix or relMl; Sigma(thetaE) / thetaE^2 is relTetEc^2; with the photometric piE, the variance of ln thetaE -
+// ln piE is relMl^2 (relMass); with the astrometric piE it differs from relMl^2 by the thetaE-piE correlation of
+// the astrometric matrix, which relMl leaves out (printed).
+// ---------------------------------------------------------------------------------------------
+constexpr int kLmDraws = 200000;
+
+int runLensMotion()
+{
+    auto s  = std::make_unique<source>();
+    auto l  = std::make_unique<lens>();
+    auto as = std::make_unique<astromet>();
+    auto co = std::make_unique<covarian>();
+    int failures = 0;
+    std::mt19937_64 rng(20261012ULL);
+    std::normal_distribution<double> gauss(0.0, 1.0);
+
+    std::vector<std::pair<FixtureEvent, double>> events;   // the event, and its source radius
+    for (const auto& ev : kEvents) events.push_back({ev, kRho});
+    if (vbmSourceModel() == SourceModel::ESPL)
+        for (const auto& fe : kFiniteEvents) events.push_back({fe.ev, fe.rho});
+
+    std::cout << "# Lens motion: |mu_L| [mas/day], |v_L| [km/s] (heliocentric), relMuL = sigma(|mu_L|)/|mu_L|, sigVL = sqrt(lambda_max of cov(v_L)) [km/s], frame-independent.\n"
+              << "# mc/lin: sample sd of " << kLmDraws << " draws from the parameter covariance over the linear propagation, for |mu_L| then, for v_L, sqrt(largest eigenvalue of the sample covariance) over sigVL\n"
+              << "# (rel_v = sigVL/|v_L|, heliocentric); the last two at the covariance scaled in sigma by 'scale' to bring relMuL, rel_v (sigVL/|v_L|) and every parameter's error (xi in rad; mus against |mu_L|) to at most 2%.\n"
+              << "# 'old', 'old+': the previous joint resu[13] and the same with the mu_1 tE-xi cross term's sign corrected. '-' = not measured.\n";
+    for (const auto& [ev, rho] : events) {
+        setupStatic(*s, *l);
+        s->rho = rho;
+        l->tE = ev.tE;  l->t0 = ev.t0;  l->u0 = ev.u0;  l->piE = ev.piE;
+        int nL = 0, nR = 0;
+        const int ndw = buildLightCurve(*s, *l, *as, nL, nR);
+        l->tE = ev.tE;  l->t0 = ev.t0;  l->u0 = ev.u0;  l->piE = ev.piE;
+        s->xi = kXi;  s->fb[0] = kFbRubin;  s->fb[1] = kFbRoman;
+
+        // The self-consistent lens.
+        const SkyFrame& F = vbmSkyFrame();
+        l->pirel = l->piE * l->tetE;
+        l->Dl = 1.0 / (l->pirel + 1.0 / s->Ds);
+        double vE[2];
+        earthVelocityNE(l->t0, vE);
+        const double gl = -l->tetE / l->tE * std::cos(s->xi), gb = -l->tetE / l->tE * std::sin(s->xi);
+        const double hN = F.toNE[0][0] * gl + F.toNE[0][1] * gb + vE[0] * l->pirel;
+        const double hE = F.toNE[1][0] * gl + F.toNE[1][1] * gb + vE[1] * l->pirel;
+        l->mul1 = s->mus1 + F.toNE[0][0] * hN + F.toNE[1][0] * hE;
+        l->mul2 = s->mus2 + F.toNE[0][1] * hN + F.toNE[1][1] * hE;
+        l->mul  = std::hypot(l->mul1, l->mul2);
+        {
+            const GeocentricMotion g = geocentricMotion(l->t0, l->tetE, l->pirel, s->mus1, s->mus2, l->mul1, l->mul2);
+            if (std::fabs(g.tE / l->tE - 1.0) > 1e-9 or std::fabs(g.xi - s->xi) > 1e-9) {
+                std::cerr << "FAIL [lens-motion/" << ev.name << "] the constructed lens does not give tE, xi back: tE "
+                          << g.tE << " vs " << l->tE << ", xi " << g.xi << " vs " << s->xi << "\n";
+                ++failures;
+            }
+        }
+
+        FisherM(*s, *l, *as, *co, ndw);
+        ErrorCal(*co, *l, *s);
+
+        const MotionContext mc = motionContext(l->t0, 1.0 / s->Ds);
+        const double p0[NLM] = {l->tE, s->xi, l->piE, l->tetE, s->mus1, s->mus2};
+        const LensMotion m0 = lensMotion(mc, p0[0], p0[1], p0[2], p0[3], p0[4], p0[5]);
+        const double mu0 = std::hypot(m0.mu[0], m0.mu[1]), v0 = std::hypot(m0.v[0], m0.v[1]);
+        const double vconv = l->Dl * AU / (1000.0 * 24.0 * 3600.0);
+        if (!(co->lmCheck < 1e-9) or std::fabs(v0 / (l->mul * vconv) - 1.0) > 1e-9 or std::fabs(m0.DL / l->Dl - 1.0) > 1e-9) {
+            std::cerr << "FAIL [lens-motion/" << ev.name << "] closed form does not reproduce the draw: lmCheck "
+                      << co->lmCheck << ", |v_L| " << v0 << " vs " << l->mul * vconv << ", D_L " << m0.DL << " vs " << l->Dl << "\n";
+            ++failures;
+        }
+
+        std::cout << "\n# " << ev.name << "  tE=" << std::fixed << std::setprecision(1) << ev.tE << "  rho=" << std::scientific
+                  << std::setprecision(2) << rho << "  |mu_L|=" << std::setprecision(5) << mu0 << " mas/day  |v_L|="
+                  << std::fixed << std::setprecision(2) << v0 << " km/s  Dl=" << l->Dl << " kpc  lmCheck=" << std::scientific
+                  << std::setprecision(1) << co->lmCheck << "\n";
+        std::cout << std::left << std::setw(10) << "# survey" << std::right << std::setw(4) << "ok"
+                  << std::setw(11) << "relMuL" << std::setw(11) << "mc/lin" << std::setw(11) << "sigVL" << std::setw(11) << "mc/lin"
+                  << std::setw(10) << "rel_v" << std::setw(8) << "scale" << std::setw(9) << "mc/lin" << std::setw(9) << "mc/lin"
+                  << std::setw(8) << "ln rho" << std::setw(8) << "piE" << std::setw(13) << "dlnMl-relMl" << "\n";
+        static const char* kName[NSURV] = {"joint", "rubin", "roman"};
+        for (int q = 0; q < NSURV; ++q) {
+            double S[NLM][NLM];
+            const bool have = lensMotionCovariance(*co, *l, q, S);
+            const bool want = co->okA[q] and co->okB[q] and co->relMl[q] >= 0.0;
+            if (have != want or (have != (co->relMuL[q] >= 0.0)) or (have != (co->sigVL[q] >= 0.0)) or
+                (!have and (co->relMuL[q] != -1.0 or co->sigVL[q] != -1.0))) {
+                std::cerr << "FAIL [lens-motion/" << ev.name << "] partition " << q << " sentinel: relMuL " << co->relMuL[q]
+                          << ", sigVL " << co->sigVL[q] << ", relMl " << co->relMl[q] << "\n";
+                ++failures;
+            }
+            if (!have) {
+                std::cout << std::left << std::setw(10) << kName[q] << std::right << std::setw(4) << 0 << "         -          -          -          -\n";
+                continue;
+            }
+            // Linear propagation, independently: relMuL / sigVL from ErrorCal against the same from S here.
+            double Smu[2][2], Sv[2][2];
+            lensMotionPropagate(mc, p0, S, Smu, Sv);
+            const double ux = m0.mu[0] / mu0, uy = m0.mu[1] / mu0;
+            const double linMu = std::sqrt(ux * ux * Smu[0][0] + 2 * ux * uy * Smu[0][1] + uy * uy * Smu[1][1]);
+            const double linV  = std::sqrt(0.5 * (Sv[0][0] + Sv[1][1]) + std::sqrt(0.25 * (Sv[0][0] - Sv[1][1]) * (Sv[0][0] - Sv[1][1]) + Sv[0][1] * Sv[0][1]));
+
+            // thetaE and ln Ml against relTetEc and relMl.
+            const double tt = l->tetE, pp = l->piE;
+            const double rp1 = (co->Era[q][3] >= 0.0) ? co->Era[q][3] / (std::fabs(l->piE) + eps) : -1.0;
+            const double rp2 = (co->Erb[q][3] >= 0.0) ? co->Erb[q][3] / (std::fabs(l->piE) + eps) : -1.0;
+            const bool photPi = (rp1 >= 0.0 and (rp2 < 0.0 or rp1 < rp2));
+            const double vTet = S[LM_TETE][LM_TETE] / (tt * tt);
+            const double vLnMl = vTet + S[LM_PIE][LM_PIE] / (pp * pp) - 2.0 * S[LM_TETE][LM_PIE] / (tt * pp);
+            if (std::fabs(vTet / (co->relTetEc[q] * co->relTetEc[q]) - 1.0) > 1e-9) {
+                std::cerr << "FAIL [lens-motion/" << ev.name << "] partition " << q << ": Sigma(thetaE)/thetaE^2 = " << vTet
+                          << " vs relTetEc^2 = " << co->relTetEc[q] * co->relTetEc[q] << "\n";
+                ++failures;
+            }
+            const double dMl = vLnMl / (co->relMl[q] * co->relMl[q]) - 1.0;
+            if (photPi and std::fabs(dMl) > 1e-9) {
+                std::cerr << "FAIL [lens-motion/" << ev.name << "] partition " << q << ": var(ln thetaE - ln piE) = " << vLnMl
+                          << " vs relMl^2 = " << co->relMl[q] * co->relMl[q] << "\n";
+                ++failures;
+            }
+            if (std::fabs(linMu / mu0 / co->relMuL[q] - 1.0) > 1e-9 or std::fabs(linV / co->sigVL[q] - 1.0) > 1e-9) {
+                std::cerr << "FAIL [lens-motion/" << ev.name << "] partition " << q << ": ErrorCal's relMuL, sigVL differ from the propagation here\n";
+                ++failures;
+            }
+
+            // Monte Carlo from the covariance f^2 S: the correlation matrix's eigenvectors, scaled by the sigmas.
+            // Returns the sample standard deviations of |mu_L| and |v_L| over the linear ones of the same covariance.
+            double sg[NLM];
+            for (int i = 0; i < NLM; ++i) sg[i] = std::sqrt(S[i][i]);
+            gsl_matrix* C = gsl_matrix_alloc(NLM, NLM);
+            for (int i = 0; i < NLM; ++i)
+                for (int j = 0; j < NLM; ++j) gsl_matrix_set(C, i, j, S[i][j] / (sg[i] * sg[j]));
+            gsl_vector* ev_ = gsl_vector_alloc(NLM);
+            gsl_matrix* V = gsl_matrix_alloc(NLM, NLM);
+            gsl_eigen_symmv_workspace* w = gsl_eigen_symmv_alloc(NLM);
+            gsl_eigen_symmv(C, ev_, V, w);
+            double A[NLM][NLM];                                  // dp = f A z, A = sg * V sqrt(lambda)
+            for (int i = 0; i < NLM; ++i)
+                for (int k = 0; k < NLM; ++k) A[i][k] = sg[i] * gsl_matrix_get(V, i, k) * std::sqrt(std::max(gsl_vector_get(ev_, k), 0.0));
+            gsl_eigen_symmv_free(w);  gsl_vector_free(ev_);  gsl_matrix_free(V);  gsl_matrix_free(C);
+            auto monteCarlo = [&](double f, double& rMu, double& rV) {
+                double n = 0, mM = 0, sM = 0, mV[2] = {0, 0}, cV[2][2] = {{0, 0}, {0, 0}};    // Welford
+                for (int d = 0; d < kLmDraws; ++d) {
+                    double z[NLM], p[NLM];
+                    for (int k = 0; k < NLM; ++k) z[k] = gauss(rng);
+                    for (int i = 0; i < NLM; ++i) {
+                        p[i] = p0[i];
+                        for (int k = 0; k < NLM; ++k) p[i] += f * A[i][k] * z[k];
+                    }
+                    const LensMotion m = lensMotion(mc, p[0], p[1], p[2], p[3], p[4], p[5]);
+                    const double a = std::hypot(m.mu[0], m.mu[1]);
+                    n += 1.0;
+                    const double dM = a - mM;
+                    mM += dM / n;  sM += dM * (a - mM);
+                    const double d0 = m.v[0] - mV[0], d1 = m.v[1] - mV[1];
+                    mV[0] += d0 / n;  mV[1] += d1 / n;
+                    cV[0][0] += d0 * (m.v[0] - mV[0]);  cV[1][1] += d1 * (m.v[1] - mV[1]);  cV[0][1] += d0 * (m.v[1] - mV[1]);
+                }
+                rMu = std::sqrt(sM / (n - 1.0)) / (f * linMu);
+                const double va = cV[0][0] / (n - 1.0), vd = cV[1][1] / (n - 1.0), vb = cV[0][1] / (n - 1.0);
+                rV  = std::sqrt(0.5 * (va + vd) + std::hypot(0.5 * (va - vd), vb)) / (f * linV);
+            };
+            double rMu1, rV1, rMu2, rV2;
+            monteCarlo(1.0, rMu1, rV1);
+            // The same at a covariance scaled down until every error is at most 2%, if they are not already:
+            // the regime where the linear propagation has to hold, whatever the fixture's errors are.
+            // The condition is on the size of every parameter's error, not only on the two along the vectors: an error
+            // across them (xi, or the proper motions against |mu_L|) is nonlinear in its own right.
+            double worst = std::max(co->relMuL[q], co->sigVL[q] / v0);
+            for (int i = 0; i < NLM; ++i) {
+                const double ref = (i == LM_XI) ? 1.0 : (i == LM_MUS1 or i == LM_MUS2) ? mu0 : std::fabs(p0[i]);
+                worst = std::max(worst, sg[i] / ref);
+            }
+            const double fSmall = std::min(1.0, 0.02 / worst);
+            monteCarlo(fSmall, rMu2, rV2);
+            if (std::fabs(rMu2 - 1.0) > 0.03 or std::fabs(rV2 - 1.0) > 0.03) {
+                std::cerr << "FAIL [lens-motion/" << ev.name << "] partition " << q << ": at errors scaled by " << fSmall
+                          << " the Monte Carlo/linear ratios are " << rMu2 << " (|mu_L|), " << rV2 << " (|v_L|)\n";
+                ++failures;
+            }
+
+            std::cout << std::left << std::setw(10) << kName[q] << std::right << std::setw(4) << 1 << std::scientific << std::setprecision(3)
+                      << std::setw(11) << co->relMuL[q] << std::fixed << std::setprecision(3) << std::setw(11) << rMu1
+                      << std::scientific << std::setprecision(3) << std::setw(11) << co->sigVL[q]
+                      << std::fixed << std::setprecision(3) << std::setw(11) << rV1
+                      << std::setprecision(3) << std::setw(10) << co->sigVL[q] / v0
+                      << std::setprecision(4) << std::setw(8) << fSmall << std::setprecision(3) << std::setw(9) << rMu2 << std::setw(9) << rV2
+                      << std::setw(8) << (co->Era[q][9] >= 0.0 ? "yes" : "no") << std::setw(8) << (photPi ? "phot" : "ast")
+                      << std::scientific << std::setprecision(2) << std::setw(13) << dMl << "\n";
+        }
+
+        // The previous joint formula, recomputed: its f1, f2 and sigmul from the joint matrices.
+        {
+            const auto& Era = co->Era[SJOINT];
+            const auto& Erb = co->Erb[SJOINT];
+            const double rtE = Era[1] / (std::fabs(l->tE) + eps), rTet = Erb[0] / (std::fabs(l->tetE) + eps);
+            const double corr1 = gsl_matrix_get(co->inverA[SJOINT].get(), 1, 4) / std::fabs(Era[1] * Era[4]);
+            const double tn = std::tan(s->xi), muGeo = l->tetE / l->tE;
+            auto oldRel = [&](double sign1) {
+                const double f1 = rTet * rTet + rtE * rtE + (Era[4] * tn) * (Era[4] * tn) + sign1 * 2.0 * rtE * Era[4] * tn * corr1;
+                const double f2 = rTet * rTet + rtE * rtE + (Era[4] / tn) * (Era[4] / tn) - 2.0 * rtE * Era[4] / tn * corr1;
+                const double s1 = std::sqrt(Erb[1] * Erb[1] + muGeo * muGeo * std::cos(s->xi) * std::cos(s->xi) * std::fabs(f1));
+                const double s2 = std::sqrt(Erb[2] * Erb[2] + muGeo * muGeo * std::sin(s->xi) * std::sin(s->xi) * std::fabs(f2));
+                return std::sqrt(s1 * s1 + s2 * s2) / (std::fabs(l->mul) + eps);
+            };
+            if (co->okA[SJOINT] and co->okB[SJOINT])
+                std::cout << "#   joint relMuL: new " << std::scientific << std::setprecision(3) << co->relMuL[SJOINT]
+                          << "   old " << oldRel(-1.0) << "   old+ " << oldRel(+1.0) << "   (resu[13] = " << co->resu[13] << ")\n";
+            if (co->resu[13] != co->relMuL[SJOINT]) {
+                std::cerr << "FAIL [lens-motion/" << ev.name << "] resu[13] is not the joint relMuL\n";
+                ++failures;
+            }
+        }
+    }
+    std::cout << "\n#\n" << (failures ? "# FAIL -- lens-motion assertions failed\n" : "# PASS -- all lens-motion assertions held\n");
+    return failures ? 1 : 0;
+}
+
 int main(int argc, char** argv)
 {
     // --source-model pspl|espl in any mode, taken out of the argument list before the modes read it.
@@ -1178,6 +1414,7 @@ int main(int argc, char** argv)
     vbmSetSourceModel(model);
     vbmSetSightline(kLon, kLat);
     if (argc > 1 && std::string(argv[1]) == "--finite-source") return runFiniteSource();
+    if (argc > 1 && std::string(argv[1]) == "--lens-motion") return runLensMotion();
     if (argc > 1 && std::string(argv[1]) == "--astro-variants") return runAstroVariants();
     if (argc > 1 && std::string(argv[1]) == "--sweep-astro") return runSweepAstro();
     if (argc > 1 && std::string(argv[1]) == "--sweep") return runSweep();

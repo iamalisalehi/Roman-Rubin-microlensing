@@ -25,6 +25,7 @@ Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const Ef
         co.flagi = 0;
         co.condA[q] = -1.0; co.condB[q] = -1.0;
         co.relMl[q] = -1.0;
+        co.relMuL[q] = -1.0; co.sigVL[q] = -1.0; co.covMuL[q].fill(0.0); co.covVL[q].fill(0.0);
         co.dchiFS[q] = -1.0; co.rhoOn[q] = 0; co.relTetEph[q] = -1.0; co.relTetEc[q] = -1.0;
         for (int k = 0; k < Nx; ++k) co.Era[q][k] = -1.0;
         for (int k = 0; k < Ny; ++k) co.Erb[q][k] = -1.0;
@@ -62,6 +63,7 @@ Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const Ef
                 // conditioning test is okA.
                 st.nerr += co.okA[SJOINT] ? 1.0 : 0.0;
                 ErrorCal(co, l, s);
+                CHECK(co.lmCheck < 1.0e-9);   //the lens-motion model reproduces the draw's mul and v_L
 
                 std::ofstream fil0_append(fnLDt, std::ios::app);
                 fil0_append << std::fixed << std::setprecision(5)

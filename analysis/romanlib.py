@@ -250,6 +250,14 @@ def sigma(df, param, survey, noise="W"):
              "lnrho"         (photometric sigma of ln rho, the source radius in Einstein radii; gated on okA)
              "tetE_ph"       (FRACTIONAL error of the photometric thetaE = theta*/rho, sqrt(sigma(ln rho)^2 +
                               sigma(ln theta*)^2); gated on okA)
+             "muL"           (FRACTIONAL error of the lens's heliocentric proper motion |mu_L|: astrometry gives
+                              mus and thetaE, the light curve tE and the direction xi, with the parallax; columns
+                              relMuL_<q>, gated on its own positivity, as "Ml")
+             "vL"            (1-sigma error [km/s] of the lens's velocity on the sky, v_L = D_L mu_L, along its
+                              worst-measured direction: sqrt of the largest eigenvalue of its 2x2 covariance; columns
+                              sigVL_<q>. FRAME-INDEPENDENT, so it holds for the heliocentric or the Galactic-rest-frame
+                              velocity alike. vLperp is the HELIOCENTRIC truth |v_L| = D_L |mu_L|; since sigVL is a
+                              per-axis bound, sigVL / vLperp is only a heliocentric relative error)
              "lnrho" and "tetE_ph" exist only in partitions whose data saw the finite source (dchiFS >= the bar
              DCHI_FS) and measured its size (sigma(ln rho) <= SIGLNRHO_MAX), --source-model espl: NaN everywhere
              else, which is not a failure to measure but ln rho not being a parameter of the fit (see
@@ -275,6 +283,10 @@ def sigma(df, param, survey, noise="W"):
         col, gate = f"sigtetE_{v_}{q}", f"okB_{v_}{q}"
     elif param == "Ml":
         col, gate = f"relMl_{v_}{q}", None
+    elif param == "muL":
+        col, gate = f"relMuL_{q}", None
+    elif param == "vL":
+        col, gate = f"sigVL_{q}", None
     elif param == "lnrho":
         col, gate = f"siglnrho_{q}", f"okA_{q}"
     elif param == "tetE_ph":

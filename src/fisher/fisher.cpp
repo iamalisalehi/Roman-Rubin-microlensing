@@ -5,6 +5,12 @@
 #include "surveys/noise.h"
 #include <cstring>
 
+namespace {
+long gRhoFallback = 0, gRhoFallbackLost = 0;
+}
+long rhoFallbackCount()     { return gRhoFallback; }
+long rhoFallbackLostCount() { return gRhoFallbackLost; }
+
 
 void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 {
@@ -47,7 +53,10 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         co.condA[q] = -1.0;
         co.condB[q] = -1.0;
         co.dchiFS[q] = -1.0;
-        co.rhoOn[q] = 0;
+        co.rhoFit[q] = 0;
+        co.rhoMeas[q] = 0;
+        co.rhoFallback[q] = 0;
+        co.sigLnRhoData[q] = -1.0;
         for (int j = 0; j < Nx; ++j) {
             for (int k = 0; k < Nx; ++k) {
                 gsl_matrix_set(co.inputA[q].get(), j, k, 0.0);
@@ -79,8 +88,9 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     // relative to the lens; fb and mbs enter m = mbs - 2.5 log10(fb A + 1 - fb) through the flux alone,
     // so their perturbed magnitudes come from the reference A. That is 1 + 2*5 = 11 model evaluations
     // per epoch; re-deriving the second factor of each of the 45 F_jk would take 1 + 2*9 + 2*45 = 109.
-    // The tenth, ln rho, changes the shape of the magnification near the lens and costs two more
-    // evaluations per epoch, but only for a partition that sees the finite source (below).
+    // The tenth, ln rho, changes the shape of the magnification near the lens. Its derivative is the analytic
+    // quadrupole term far from the lens and a finite difference of the library's disc table near it, so the
+    // model is evaluated twice more only for the epochs near the lens, which most events have none of (below).
     std::vector<std::array<double, Nx>> dm(ndw);
     std::vector<ModelPoint> ref, pert;
     std::array<std::vector<double>, 2> lgfT;  //2.5 log10(fb A + 1 - fb) of the reference model, per epoch
@@ -90,6 +100,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     // Whether the model has a source size to fit: a uniform disc with a radius. Under a point source
     // (--source-model pspl) ln rho is not a parameter and dchiFS is not computed.
     const bool hasDisc = (vbmSourceModel() == SourceModel::ESPL) and s.rho > 0.0;
+    const bool fitRho  = hasDisc and not co.rhoFixed;   //ln rho is a parameter of every partition with data
     std::array<double, 2> dchiT{0.0, 0.0};  //each telescope's share of dchiFS
 
     for (int tt = 0; tt < 2; ++tt) {
@@ -127,6 +138,48 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 d += r * r;
             }
             dchiT[tt] = d;
+        }
+
+        // ln rho. Far from the lens (u >= rhoDerivAnalyticU(rho), RHO_DERIV_QUAD_U rho) the disc's magnification is the point source's plus a
+        // quadrupole term exactly proportional to rho^2, so dA/d ln rho = 2 quad(u, rho) and no model is evaluated.
+        // Nearer, the derivative is the finite difference of the library's disc magnification in ln rho (rho ->
+        // rho exp(+-Delta); its table is bilinear in ln rho, rows 0.092 apart, so inside a cell it is the slope of the
+        // cell holding rho), computed for those epochs only. The library leaves its table for the quadrupole at
+        // quad ~ Tol / 10; rhoDerivAnalyticU keeps every difference on the table side of that switch, where the two
+        // branches differ by ~Tol and a step of 1e-7 would turn the jump into a derivative a million times the true one.
+        if (fitRho) {
+            const double conv = -2.5 / std::log(10.0) * fb;   //dm = conv dA / (fb A + 1 - fb)
+            const double uAn = rhoDerivAnalyticU(s.rho);
+            std::vector<int> near;                            //this telescope's epochs that need the table
+            for (int m = 0; m < n; ++m) {
+                const double u = ref[m].u;
+                if (u >= uAn) {
+                    const double dA = 2.0 * discQuadrupole(u, s.rho);
+                    dm[ix[m]][9] = conv * dA / (ref[m].A * fb + 1.0 - fb);
+                } else near.push_back(m);
+            }
+            if (!near.empty()) {
+                const int nn = int(near.size());
+                std::vector<double> tn(nn);
+                for (int k = 0; k < nn; ++k) tn[k] = t[near[k]];
+                std::vector<ModelPoint> pn(nn);
+                const double keep = s.rho;
+                for (int h = 0; h < 2; ++h) {
+                    const double diff = co.Delta1[9] * sig[h];
+                    s.rho = keep * std::exp(diff);
+                    CHECK(std::isfinite(s.rho) and s.rho > 0.0);
+                    CHECK(diff != 0.0);
+                    evaluateModel(s, l, as, tt, tn.data(), nn, false, pn.data());
+                    s.rho = keep;
+                    for (int k = 0; k < nn; ++k) {
+                        const int m = near[k];
+                        const double magw = mbs - 2.5 * std::log10(pn[k].A * fb + 1.0 - fb);
+                        const double der  = (magw - (mbs - lgf[m])) / diff;
+                        double& d = dm[ix[m]][9];
+                        d = (h == 0) ? der : (d + der) * 0.5;
+                    }
+                }
+            }
         }
 
         // u0, tE, piE, xi, t0: one new model per perturbation.
@@ -202,56 +255,21 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         for (int m = 0; m < n; ++m) dm[ix[m]][(tt == 0) ? 7 : 2] = dm[ix[m]][(tt == 0) ? 8 : 6] = 0.0;
     }
 
-    // Is the finite source seen? dchiFS of a partition is the sum of its telescopes' shares (the joint is
-    // Rubin + Roman; a telescope left out above has none). Partitions at or above the bar DCHI_FS try ln rho as a
-    // parameter; the joint is at or above both single surveys, so its derivative is taken whenever either tries.
-    // A partition below the bar holds rho at its true value. Whether a trying partition keeps ln rho is decided
-    // after its matrix is inverted, below (SIGLNRHO_MAX).
+    // dchiFS of a partition is the sum of its telescopes' shares (the joint is Rubin + Roman; a telescope left out
+    // above has none). A diagnostic of how strongly the partition's data see the disc; it gates nothing.
     if (hasDisc) {
         const bool useL = nTele[0] >= kMinTeleEpochs, useR = nTele[1] >= kMinTeleEpochs;
         if (useL)         co.dchiFS[SRUBIN] = dchiT[0];
         if (useR)         co.dchiFS[SROMAN] = dchiT[1];
         if (useL or useR) co.dchiFS[SJOINT] = (useL ? dchiT[0] : 0.0) + (useR ? dchiT[1] : 0.0);
-        for (int q = 0; q < NSURV; ++q) co.rhoOn[q] = (co.dchiFS[q] >= co.dchiFSMin) ? 1 : 0;
-    }
-
-    // ln rho: one perturbed model per step and telescope, as for u0 and tE above; none at all (for the great
-    // majority of events) unless some partition tries it. The source radius is perturbed multiplicatively,
-    // rho -> rho exp(+-Delta), so the step is in ln rho. The uniform disc's table is bilinear in ln rho (rows
-    // 0.092 apart), so for a step inside a cell the derivative is the slope of the cell holding rho.
-    if (co.rhoOn[SJOINT]) {
-        const double keep = s.rho;
-        for (int tt = 0; tt < 2; ++tt) {
-            const int n = nTele[tt];
-            if (n < kMinTeleEpochs) continue;
-            const int*    ix = epo[tt].data();
-            const double* t  = tim[tt].data();
-            const std::vector<double>& lgf = lgfT[tt];
-            pert.resize(n);
-            const double fb = s.fb[tt], mbs = s.mbs[tt];
-            for (int h = 0; h < 2; ++h) {
-                const double diff = co.Delta1[9] * sig[h];
-                s.rho = keep * std::exp(diff);
-                CHECK(std::isfinite(s.rho) and s.rho > 0.0);
-                CHECK(diff != 0.0);
-                evaluateModel(s, l, as, tt, t, n, false, pert.data());
-                s.rho = keep;
-                for (int m = 0; m < n; ++m) {
-                    const double magw = mbs - 2.5 * std::log10(pert[m].A * fb + 1.0 - fb);
-                    const double der  = (magw - (mbs - lgf[m])) / diff;
-                    double& d = dm[ix[m]][9];
-                    d = (h == 0) ? der : (d + der) * 0.5;
-                }
-            }
-        }
     }
 
     // Accumulate the information sum F_jk = sum_i (dm_i/dtheta_j)(dm_i/dtheta_k)/sigma_i^2 (lower
     // triangle, epochs in stored order). Each epoch feeds the joint matrix and exactly one
     // single-survey matrix, so F[SJOINT] == F[SRUBIN] + F[SROMAN] holds element by element.
-    // ln rho's derivative is zero unless some partition tries it (rhoOn[SJOINT] is the union), and its rows then
-    // add nothing: leave them out of the sum.
-    const int nj = co.rhoOn[SJOINT] ? Nx : Nx - 1;
+    // ln rho's derivative is zero unless the source is a disc, and its rows then add nothing: leave them out of the
+    // sum.
+    const int nj = fitRho ? Nx : Nx - 1;
     std::array<std::array<double, Nx * Nx>, NSURV> FA{};
     for (int i = 0; i < ndw; ++i) {//data
         const int tt = int(l.tele[i]);
@@ -269,6 +287,16 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
             }
         }
     }//end of data for
+    // ln rho is a parameter of every partition that has data (under a disc), with the Gaussian prior RHO_PRIOR_SIGLN
+    // added once to each matrix after the data: the joint matrix carries one prior, not Rubin's plus Roman's. The
+    // data part of F[9][9] is kept for a partition that has to give ln rho up (below).
+    const double priorInfo = std::isfinite(co.rhoPriorSigLn) ? 1.0 / (co.rhoPriorSigLn * co.rhoPriorSigLn) : 0.0;
+    std::array<double, NSURV> f99data{};
+    for (int q = 0; q < NSURV; ++q) {
+        co.rhoFit[q] = (fitRho and co.nepochA[q] > 0) ? 1 : 0;
+        f99data[q] = FA[q][9 * Nx + 9];
+        if (co.rhoFit[q]) FA[q][9 * Nx + 9] += priorInfo;
+    }
     for (int q = 0; q < NSURV; ++q)
         for (int j = 0; j < Nx; ++j)
             for (int k = 0; k <= j; ++k) gsl_matrix_set(co.inputA[q].get(), j, k, FA[q][j * Nx + k]);
@@ -280,26 +308,33 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 gsl_matrix_set(co.inputA[q].get(), j, k, element);
             }
         }
-        // A partition with fewer epochs than its ACTIVE parameters is rank-deficient (e.g. a short
-        // event peaking in a Roman gap has no Roman data): report it as not characterizable
-        // rather than inverting it into a meaningless ~1e10 sigma.
-        co.okA[q] = (co.nepochA[q] >= static_cast<int>(activePhotParams(co, q).size()))
-                        ? invert_matrix(co, 0, q) : 0;
+        // A partition with fewer epochs than its ACTIVE data parameters (ln rho, held by its prior, not counted) is
+        // rank-deficient (e.g. a short event peaking in a Roman gap has no Roman data): report it as not
+        // characterizable rather than inverting it into a meaningless ~1e10 sigma.
+        const bool enough = co.nepochA[q] >= static_cast<int>(activePhotParams(co, q).size()) - co.rhoFit[q];
+        co.okA[q] = enough ? invert_matrix(co, 0, q) : 0;
 
-        // A partition that passed the dchiFS pre-filter keeps ln rho only if the data MEASURE the source's size:
-        // the matrix inverted with it, and sigma(ln rho) is at most SIGLNRHO_MAX (config/parameters.h). Otherwise
-        // the finite-source term is degenerate with u0 and no linear forecast of it holds, and the partition is
-        // forecast as a point-source event would be fitted, with rho held at its true value: the nine-parameter
-        // inversion, which is what an event below the pre-filter gets, bit for bit (the matrix entries of the
-        // other parameters are the same ones).
-        if (co.rhoOn[q]) {
-            const bool measured = co.okA[q]
-                and std::sqrt(std::fabs(gsl_matrix_get(co.inverA[q].get(), 9, 9))) <= co.sigLnRhoMax;
-            if (!measured) {
-                co.rhoOn[q] = 0;
-                co.okA[q] = (co.nepochA[q] >= static_cast<int>(activePhotParams(co, q).size()))
-                                ? invert_matrix(co, 0, q) : 0;
+        // If the matrix with ln rho does not invert, the partition gives it up and is forecast with rho held at its
+        // true value: the nine-parameter inversion, whose matrix entries are the same ones. Counted, since it should
+        // not happen: the prior keeps ln rho's own row well conditioned.
+        if (co.rhoFit[q] and not co.okA[q]) {
+            co.rhoFit[q] = 0;
+            if (enough) {
+                co.rhoFallback[q] = 1;
+                ++gRhoFallback;
+                gsl_matrix_set(co.inputA[q].get(), 9, 9, f99data[q]);
+                co.okA[q] = invert_matrix(co, 0, q);
+                if (not co.okA[q]) ++gRhoFallbackLost;
             }
+        }
+
+        // What the data alone say about ln rho. The prior adds 1/sp^2 to F[9][9] and nothing else, so the marginal
+        // precision of ln rho is the data's plus the prior's, exactly: 1/sigma_post^2 = 1/sigma_data^2 + 1/sp^2.
+        if (co.rhoFit[q]) {
+            const double iPost = 1.0 / gsl_matrix_get(co.inverA[q].get(), 9, 9);
+            const double iData = iPost - priorInfo;
+            co.sigLnRhoData[q] = (iData > 1.0e-12 * iPost) ? 1.0 / std::sqrt(iData) : -1.0;
+            co.rhoMeas[q] = (co.sigLnRhoData[q] > 0.0 and co.sigLnRhoData[q] <= co.sigLnRhoMax) ? 1 : 0;
         }
     }
 
@@ -568,7 +603,7 @@ static double combineRel(double a, double b)
 // joint events on that route), so there the mass error is larger and the distance error smaller than in quadrature.
 // The thetaE used is the inverse-variance combination of the astrometric and the photometric (theta* / rho) one,
 // ln thetaE_c = (1 - wp) ln thetaE_astr + wp ln thetaE_phot, wp = rt^2 / rph^2 (rph = relTetEph, the photometric
-// route's own fractional error; wp = 0 where ln rho is not a parameter of the partition). The piE used is the
+// route's own fractional error; wp = 0 where rho is not measured in the partition). The piE used is the
 // photometric or the astrometric one, whichever is the better. c then has one source per route:
 //   - photometric piE: it shares a matrix with ln rho, ln thetaE_phot = ln theta* - ln rho (theta* independent), so
 //     c = -wp cov(ln rho, ln piE) = -wp corr s rpi (corr = corrRhoPiE, s = sigma(ln rho)). The astrometric thetaE
@@ -629,7 +664,7 @@ bool lensMotionCovariance(const covarian& co, const lens& l, int q, double S[NLM
   const double rp1 = (Era[3] >= 0.0) ? Era[3] / (std::fabs(l.piE) + eps) : -1.0;
   const double rp2 = (Erb[3] >= 0.0) ? Erb[3] / (std::fabs(l.piE) + eps) : -1.0;
   const bool photPi = (rp1 >= 0.0 and (rp2 < 0.0 or rp1 < rp2));      //the route relMl takes
-  const bool rho    = (Era[9] >= 0.0);                                 //ln rho is a parameter of this partition
+  const bool rho    = (co.rhoMeas[q] != 0 and Era[9] >= 0.0);          //the photometric thetaE is used
   if (Era[1] < 0.0 or Era[4] < 0.0 or Erb[0] < 0.0 or Erb[1] < 0.0 or Erb[2] < 0.0 or (rp1 < 0.0 and rp2 < 0.0))
       return false;
   const double wp = (rho and co.relTetEph[q] > 0.0 and co.relTetEc[q] >= 0.0)
@@ -714,19 +749,20 @@ void ErrorCal(covarian & co, lens & l , source & s){
       }
   }
 
-  // The Einstein radius has two routes. Astrometry gives it directly (Erb[0]). When the finite source is seen
-  // (ln rho a parameter of the partition, index 9) the light curve gives it as thetaE = theta* / rho, with
-  // the fractional error of ln rho and of the source's angular radius theta* (THETASTAR_SIGLN) added in
-  // quadrature. The two are combined by inverse variance, as independent measurements (they come from different
+  // The Einstein radius has two routes. Astrometry gives it directly (Erb[0]). When the data measure the source's
+  // size (rhoMeas: the partition's data-only sigma(ln rho) is at most SIGLNRHO_MAX) the light curve gives it as
+  // thetaE = theta* / rho, with the fractional error of ln rho (the posterior one) and of the source's angular
+  // radius theta* (THETASTAR_SIGLN) added in quadrature. The two are combined by inverse variance, as independent measurements (they come from different
   // matrices, and theta* is independent of the fit). The lens mass below takes the combined thetaE; its error
   // carries the covariance of ln rho with the photometric piE, which share a matrix (lnCovTetPi), co.corrRhoPiE
   // being its correlation coefficient.
   for (int q = 0; q < NSURV; ++q) {
       const double rastr = (co.Erb[q][0] >= 0.0) ? co.Erb[q][0] / (std::fabs(l.tetE) + eps) : -1.0;
-      co.relTetEph[q] = (co.Era[q][9] >= 0.0) ? std::sqrt(co.Era[q][9] * co.Era[q][9] + THETASTAR_SIGLN * THETASTAR_SIGLN) : -1.0;
+      const bool rhoUsed = co.rhoMeas[q] and co.okA[q] and co.Era[q][9] >= 0.0;
+      co.relTetEph[q] = rhoUsed ? std::sqrt(co.Era[q][9] * co.Era[q][9] + THETASTAR_SIGLN * THETASTAR_SIGLN) : -1.0;
       co.relTetEc[q]  = combineRel(rastr, co.relTetEph[q]);
       co.corrRhoPiE[q] = std::numeric_limits<double>::quiet_NaN();
-      if (co.Era[q][9] >= 0.0 and co.Era[q][3] > 0.0)
+      if (rhoUsed and co.Era[q][3] > 0.0)
           co.corrRhoPiE[q] = gsl_matrix_get(co.inverA[q].get(), 9, 3) / (co.Era[q][9] * co.Era[q][3]);
   }
 

@@ -247,9 +247,10 @@ def sigma(df, param, survey, noise="W"):
     param  : "tE" | "piE"    (photometric, gated on okA)
              "tetE"          (astrometric, gated on okB)
              "Ml"            (derived from tetE and piE, gated on its own positivity)
-             "lnrho"         (photometric sigma of ln rho, the source radius in Einstein radii; gated on okA)
-             "tetE_ph"       (FRACTIONAL error of the photometric thetaE = theta*/rho, sqrt(sigma(ln rho)^2 +
-                              sigma(ln theta*)^2); gated on okA)
+             "lnrho"         (the DATA-ONLY sigma of ln rho, the source radius in Einstein radii: what the survey's
+                              photometry alone says, the prior P.RHO_PRIOR_SIGLN left out; gated on okA)
+             "tetE_ph"       (FRACTIONAL error of the photometric thetaE = theta*/rho, sqrt(sigma_post(ln rho)^2 +
+                              sigma(ln theta*)^2), the posterior sigma with the prior; gated on okA)
              "muL"           (FRACTIONAL error of the lens's heliocentric proper motion |mu_L|: astrometry gives
                               mus and thetaE, the light curve tE and the direction xi, with the parallax; columns
                               relMuL_<q>, gated on its own positivity, as "Ml")
@@ -258,10 +259,10 @@ def sigma(df, param, survey, noise="W"):
                               sigVL_<q>. FRAME-INDEPENDENT, so it holds for the heliocentric or the Galactic-rest-frame
                               velocity alike. vLperp is the HELIOCENTRIC truth |v_L| = D_L |mu_L|; since sigVL is a
                               per-axis bound, sigVL / vLperp is only a heliocentric relative error)
-             "lnrho" and "tetE_ph" exist only in partitions whose data saw the finite source (dchiFS >= the bar
-             DCHI_FS) and measured its size (sigma(ln rho) <= SIGLNRHO_MAX), --source-model espl: NaN everywhere
-             else, which is not a failure to measure but ln rho not being a parameter of the fit (see
-             rho_fitted, finite_source_dchi).
+             --source-model espl only (NaN under pspl). "lnrho" is written for every characterised partition (ln rho is a
+             parameter of all of them, with a Gaussian prior of width P.RHO_PRIOR_SIGLN); NaN where the data hold no
+             information on it. "tetE_ph" exists only where rho is MEASURED, the data-only sigma(ln rho) <=
+             P.SIGLNRHO_MAX (see rho_measured); elsewhere thetaE comes from astrometry alone.
     survey : "joint" | "rubin" | "roman"
     noise  : astrometric noise variant for "tetE" and "Ml": "W" white (the main
              columns), "N" nominal, "P" pessimistic (columns sigtetE_N<q>, relMl_P<q>, gated on
@@ -301,16 +302,18 @@ def sigma(df, param, survey, noise="W"):
     return v.where(ok)
 
 
-def rho_fitted(df, survey):
-    """Boolean: was ln rho a parameter of this survey's photometric Fisher matrix for the event?
+def rho_measured(df, survey):
+    """Boolean: did this survey's photometry MEASURE the source radius, so that the photometric thetaE = theta*/rho
+    entered the event's thetaE, mass, distance and lens motion?
 
-    True where the survey's data saw the finite source (dchiFS >= DCHI_FS) and measured its size to
-    sigma(ln rho) <= SIGLNRHO_MAX. A point-source run (--source-model pspl) has none, and in an espl run most
-    events have none: for them the source radius is held at its true value and every sigma, including relMl, is
-    what it would be without the finite source.
+    True where the partition was characterised and the DATA-ONLY sigma(ln rho) (the siglnrho column, prior left out)
+    is at most P.SIGLNRHO_MAX. ln rho is fitted in every partition of an espl run, with a Gaussian prior of width
+    P.RHO_PRIOR_SIGLN, so a False here is not a missing fit but a source radius the data do not pin down: its
+    uncertainty is then only marginalised over. A point-source run (--source-model pspl) has none.
     """
     q = SURVEYS[survey]
-    return (df[f"okA_{q}"] == 1) & (df[f"siglnrho_{q}"] > 0.0)
+    s = df[f"siglnrho_{q}"].astype(float)
+    return (df[f"okA_{q}"] == 1) & (s > 0.0) & (s <= P.SIGLNRHO_MAX)
 
 
 def finite_source_dchi(df, survey):
@@ -318,9 +321,9 @@ def finite_source_dchi(df, survey):
     event never characterised, a telescope left out for too few epochs).
 
     dchiFS is the chi-squared by which the partition's epochs separate the uniform disc from a point source at
-    the true parameters; ln rho is tried where it reaches DCHI_FS (cparams: P.DCHI_FS) and kept if sigma(ln rho)
-    <= P.SIGLNRHO_MAX. Unlike siglnrho and rel_tetEph it is defined for events that are not fitted, so it is the
-    variable to bin the finite-source effect in.
+    the true parameters: a diagnostic of how strongly the disc is seen. It gates nothing (ln rho is fitted in every
+    partition; rho counts as measured by sigma(ln rho), see rho_measured). Unlike rel_tetEph it is defined for
+    events whose rho is not measured, so it is the variable to bin the finite-source effect in.
     """
     v = df[f"dchiFS_{SURVEYS[survey]}"].astype(float)
     return v.where(v >= 0.0)

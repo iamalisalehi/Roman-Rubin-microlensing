@@ -26,7 +26,8 @@ Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const Ef
         co.condA[q] = -1.0; co.condB[q] = -1.0;
         co.relMl[q] = -1.0;
         co.relMuL[q] = -1.0; co.sigVL[q] = -1.0; co.covMuL[q].fill(0.0); co.covVL[q].fill(0.0);
-        co.dchiFS[q] = -1.0; co.rhoOn[q] = 0; co.relTetEph[q] = -1.0; co.relTetEc[q] = -1.0;
+        co.dchiFS[q] = -1.0; co.rhoFit[q] = 0; co.rhoMeas[q] = 0; co.rhoFallback[q] = 0; co.sigLnRhoData[q] = -1.0;
+        co.relTetEph[q] = -1.0; co.relTetEc[q] = -1.0;
         for (int k = 0; k < Nx; ++k) co.Era[q][k] = -1.0;
         for (int k = 0; k < Ny; ++k) co.Erb[q][k] = -1.0;
         for (int v = 0; v < NAVAR; ++v) {

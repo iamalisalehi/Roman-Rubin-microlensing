@@ -168,6 +168,34 @@ void vbmEvaluate(const ModelEvent& ev, bool atL2, bool astrometry, const double*
 // finite one.
 double vbmMagnification(const ModelEvent& ev, double u);
 
+// The quadrupole term of a uniform disc's magnification far from the lens: A(u, rho) = A_point(u) + quad + O(rho^4),
+//     quad = 4 (u^2 + 1) rho^2 / (u^3 (u^2 + 4)^(5/2)),
+// the correction the library adds to the point source where it falls below Tol / 10. Exactly proportional to rho^2, so
+// dA / d ln rho = 2 quad there.
+inline double discQuadrupole(double u, double rho)
+{
+    const double u2 = u * u, u24 = u2 + 4.0;
+    return 4.0 * (u2 + 1.0) * rho * rho / (u2 * u * u24 * u24 * std::sqrt(u24));
+}
+
+// The impact parameter u beyond which dA / d ln rho of a disc of radius rho is taken as the analytic quadrupole's,
+// 2 quad (FisherM): RHO_DERIV_QUAD_U rho, or, for a source so large that the library has already left its table
+// there (quad * 10 < VBM_TOL, rho above ~0.3), just under the library's switch, so that a finite difference below it
+// never straddles the switch.
+inline double rhoDerivAnalyticU(double rho)
+{
+    double u = RHO_DERIV_QUAD_U * rho;
+    if (discQuadrupole(u, rho) * 10.0 < VBM_TOL) {
+        double lo = 1.0e-3 * rho, hi = u;               // the library is on its table at lo, on the quadrupole at hi
+        for (int i = 0; i < 80; ++i) {
+            const double mid = std::sqrt(lo * hi);
+            (discQuadrupole(mid, rho) * 10.0 < VBM_TOL ? hi : lo) = mid;
+        }
+        u = lo * (1.0 - 1.0e-3);
+    }
+    return u;
+}
+
 // TEST HELPER, not used by the simulation: how far the track of the source relative to the lens, in
 // Einstein radii, moves when the observer is Roman at L2 instead of the Earth, at simulation day tSimDay,
 // for the parallax vector (piEN, piEE). dy = (y1 - y1_Earth, y2 - y2_Earth), y1 along the motion and y2

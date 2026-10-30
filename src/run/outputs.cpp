@@ -52,11 +52,14 @@ const char* eventTableHeader()
         // curve and the Fisher matrices use), and the geocentric parallax vector on (North, East): parallel to
         // the lens-minus-source relative proper motion, of length piE.
         "tEhel piEN piEE "
-        // The finite source as a fitted parameter (--source-model espl; DCHI_FS): the delta-chi2 of the disc against
-        // a point source at the true parameters, sigma(ln rho), and the fractional error of the photometric thetaE =
-        // theta* / rho, for the joint, Rubin and Roman partitions. dchiFS is -1 where not computed (point source,
-        // nothing characterised, no epochs); sigma(ln rho) and rel_tetEph are -1 wherever ln rho is not a parameter
-        // of that partition's fit (dchiFS below the bar DCHI_FS, or sigma(ln rho) above SIGLNRHO_MAX).
+        // The finite source as a fitted parameter (--source-model espl): the delta-chi2 of the disc against a point
+        // source at the true parameters (a diagnostic of how strongly the disc is seen), the sigma(ln rho) the
+        // partition's DATA alone give (the prior RHO_PRIOR_SIGLN left out), and the fractional error of the photometric
+        // thetaE = theta* / rho, for the joint, Rubin and Roman partitions. dchiFS is -1 where not computed (point
+        // source, nothing characterised, no epochs); sigma(ln rho) is -1 where the partition was not characterised,
+        // under a point source, or where the data hold no information on it; rel_tetEph is -1 wherever rho is not
+        // measured (data-only sigma(ln rho) above SIGLNRHO_MAX) and is then sqrt(posterior sigma(ln rho)^2 +
+        // sigma(ln theta*)^2).
         "dchiFS_J dchiFS_L dchiFS_R siglnrho_J siglnrho_L siglnrho_R rel_tetEph_J rel_tetEph_L rel_tetEph_R "
         // The lens's motion on the sky (ErrorCal, lensMotion in events/vbm_model.h): the fractional error of its
         // heliocentric proper motion, sigma(|mu_L|) / |mu_L| (rel_mul is the joint one, the same number as relMuL_J),
@@ -228,7 +231,9 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
         else                                      sourceText << "PSPL";
         std::ostringstream fitText;
         if (cfg.sourceModel == SourceModel::ESPL)
-            fitText << "ln rho fitted per partition when dchiFS >= " << DCHI_FS << " and sigma(ln rho) <= " << SIGLNRHO_MAX;
+            fitText << "ln rho fitted in every partition with data, Gaussian prior sigma(ln rho) " << RHO_PRIOR_SIGLN
+                    << "; rho measured (photometric thetaE used) where the data-only sigma(ln rho) <= " << SIGLNRHO_MAX
+                    << "; dA/d ln rho analytic quadrupole beyond u/rho " << RHO_DERIV_QUAD_U;
         else                                      fitText << "not fitted (point source)";
         std::ostringstream prov;
         prov << "# Roman+Rubin microlensing forecast -- run provenance\n"
@@ -300,7 +305,7 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << (AST_BLEND_OFFSET_FREE ? "fitted (marginalised)" : "known") << "\n"
              << "# lightcurve_model    VBMicrolensing 5.6.1 " << sourceText.str()
              << ", geocentric parallax (JPL ephemeris), Roman at L2 table\n"
-             // The bar on dchiFS above which ln rho is fitted, and the theta* uncertainty of the photometric thetaE.
+             // The prior on ln rho, the bar for rho to count as measured, and the theta* uncertainty of the photometric thetaE.
              << "# finite_source_fit   " << fitText.str()
              << "   # sigma(ln theta*) " << THETASTAR_SIGLN << ", assumed measured from the source's colour\n"
              << "# astrometric_variants W: one frame, white; N: frame per roll + " << cfg.astSigcN

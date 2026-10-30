@@ -506,7 +506,7 @@ constexpr double FD_STEP_TE_FRAC  = 0.254674;          //tE and t0: step = tE * 
 constexpr double FD_STEP_PIE_FRAC = 0.2509463534656;   //piE: step = this * piE
 constexpr double FD_STEP_XI_DEG   = 3.0;               //xi [deg]; converted to radians at the use
 constexpr double FD_STEP_MBS      = 0.05;              //mbs0 / mbs1 [mag]; the model is linear in mbs, so exact
-constexpr double FD_STEP_LNRHO    = 0.0025;            //ln rho (the source radius, see DCHI_FS); absolute, in ln rho
+constexpr double FD_STEP_LNRHO    = 0.0025;            //ln rho (the source radius, see RHO_PRIOR_SIGLN); absolute, in ln rho
 constexpr double kFDStepScale     = 1.0e-4;            //plateau scale applied to every Delta1[] and fb step
 // fb0 / fb1 steps (blend fraction, bounded to [0,1]). The step pair is chosen from the epoch's own
 // telescope's fb so that fb + step never leaves the range: fb < FB_BIN_LO -> {+SMALL, +LARGE};
@@ -535,29 +535,48 @@ constexpr double VBM_TOL = 1.0e-3;
 // route to the Einstein radius, thetaE = theta* / rho, beside the astrometric one. It matters for the other
 // parameters too: the part of the light curve the disc shapes cannot be credited to u0, tE and piE as well,
 // which a matrix holding rho at its true value does (for an event that crosses the disc, 15-25% in their
-// sigmas). Fitting ln rho for EVERY event is wrong the other way: when the source passes far from the lens
-// (u0 >> rho) the light curve hardly depends on rho, sigma(ln rho) is ~100, the matrix is nearly singular,
-// and that leaks into the sigmas of the other parameters (about 5% scatter at VBM_TOL 1e-3).
+// sigmas).
 //
-// So ln rho is a parameter of a survey partition's photometric matrix only when that partition's data see the
-// disc AND measure its size, in two steps. The pre-filter: dchiFS is the chi-squared by which they separate the
-// uniform disc from a point source at the true parameters, the sum over the epochs the partition's matrix uses of
-// ((m_disc - m_point) / sigma_m)^2, and DCHI_FS is the bar on it. 25 is a 5-sigma separation of the two models, the
-// usual one-parameter significance. dchiFS is not marginalised over the other parameters, though, and a source
-// that only shades the light curve (u0 several radii) can pass it with ln rho unmeasured; so the second step,
-// SIGLNRHO_MAX below, adopts ln rho only if the matrix with it gives sigma(ln rho) small enough. A partition
-// that does not pass both is forecast with rho held at its true value, as a point source is. Under
-// --source-model pspl ln rho is never a parameter and dchiFS is not computed. (The astrometric matrix holds
+// So ln rho is a parameter of EVERY survey partition's photometric matrix that has data (a point source has none).
+// Where the light curve hardly depends on it (the source passes far from the lens, u0 >> rho) a bare linear fit
+// would give it sigma(ln rho) ~ 1e2-1e4 and let that leak into the other sigmas (u0 up to x200, singular matrices),
+// which a real fit never sees: rho is bounded before the fit, theta* from the source's colour (7%) and thetaE from
+// the Galaxy model at the event's tE. That bound is RHO_PRIOR_SIGLN below, a Gaussian prior on ln rho added to the
+// partition's information matrix, once per matrix.
+//
+// Whether rho is MEASURED, so that thetaE = theta* / rho is a route to the lens mass and distance, is decided on
+// what the DATA alone say, SIGLNRHO_MAX below, never on the prior. dchiFS, the chi-squared by which a partition's
+// epochs separate the uniform disc from a point source at the true parameters (sum of ((m_disc - m_point) /
+// sigma_m)^2), is still computed and written as the diagnostic of how strongly the disc is seen; it gates nothing.
+// Under --source-model pspl ln rho is never a parameter and dchiFS is not computed. (The astrometric matrix holds
 // all the photometric parameters fixed, rho with them; see FisherM.)
-constexpr double DCHI_FS = 25.0;
 
-// The largest sigma(ln rho) with which a partition that passed the DCHI_FS pre-filter keeps ln rho: rho measured to
-// 30%, a ~3-sigma detection of the source's size. Beyond it the finite-source term is degenerate with u0 (for u0
-// several radii it is ~rho^2/u^2 of the point-source light curve, which a shift of u0 mimics) and the linear
-// Fisher approximation in ln rho fails: rho^2 would vary by a factor e^(2 sigma) over the 1-sigma range. Such an
-// event is not a measurement of the source's size; an analysis would fit it with a point source, and so does the
-// forecast (rho held at its true value).
+// One-sigma width of the Gaussian prior on ln rho, added to the information matrix of every partition in which ln
+// rho is a parameter (F[9][9] += 1 / RHO_PRIOR_SIGLN^2; the joint matrix gets one prior, not Rubin's plus Roman's).
+// theta* is known to 7% (THETASTAR_SIGLN) and thetaE of an event of known tE to a factor of ~2 from the Galactic
+// model (the half 16-84% width of ln rho at fixed tE, measured on the simulated events of sightline 795, is 0.7 to
+// 1.0), so ln rho = ln theta* - ln thetaE is known to ~1 before the light curve is looked at. Tested
+// (tests/fisher_fixture.cpp --finite-source): for u0 >= 30 rho every sigma is the point-source one, for u0 <= 2 rho
+// sigma(ln rho) is the data's, and in between the other sigmas are inflated honestly by the unknown rho.
+constexpr double RHO_PRIOR_SIGLN = 1.0;
+
+// The largest DATA-ONLY sigma(ln rho) (the matrix's without the prior) at which a partition has measured the
+// source's size: rho to 30%, a ~3-sigma detection. Only then is the photometric thetaE = theta* / rho used (the
+// combined thetaE, the lens mass, distance and motion take it); a partition that does not measure rho is
+// forecast with thetaE from astrometry alone, its ln rho only marginalised over with the prior. Beyond the bar
+// the finite-source term is degenerate with u0 (for u0 several radii it is ~rho^2/u^2 of the point-source light
+// curve, which a shift of u0 mimics) and the linear approximation in ln rho fails: rho^2 would vary by a factor
+// e^(2 sigma) over the 1-sigma range.
 constexpr double SIGLNRHO_MAX = 0.3;
+
+// The derivative of the disc magnification with respect to ln rho, epoch by epoch, is the finite difference of
+// VBMicrolensing's uniform-disc magnification for u < RHO_DERIV_QUAD_U * rho (the table of the disc, smooth there),
+// and the analytic quadrupole term, dA/d ln rho = 2 * quad(u, rho), beyond. The library switches from its table to
+// "point source + quadrupole" where the quadrupole falls below Tol / 10, and a step in ln rho that straddles that
+// switch turns the small jump between the branches into a derivative ~1e6 times the true one: a fake measurement
+// of rho. Beyond RHO_DERIV_QUAD_U the quadrupole is the disc's derivative to within 1% (tests/fisher_fixture.cpp
+// --finite-source, derivative block, against the exact uniform disc), so the analytic term loses nothing there.
+constexpr double RHO_DERIV_QUAD_U = 10.0;
 
 // One-sigma uncertainty of ln theta*, the angular radius of the source star [], the fraction by which the
 // photometric thetaE = theta* / rho is uncertain on top of sigma(ln rho):

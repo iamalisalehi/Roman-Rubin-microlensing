@@ -137,10 +137,11 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
             // the heliocentric Einstein time (tE above is the geocentric one) and the geocentric parallax
             // vector on (North, East)
             << l.tEhel << " " << piNE[0] << " " << piNE[1] << " "
-            // the finite source as a fitted parameter: dchiFS, sigma(ln rho) and the fractional error of the
-            // photometric thetaE = theta* / rho, joint / Rubin / Roman; -1 where not computed or ln rho is not a parameter
+            // the finite source as a fitted parameter: dchiFS, the sigma(ln rho) the data alone give (the prior left
+            // out) and the fractional error of the photometric thetaE = theta* / rho (posterior sigma(ln rho) with
+            // theta*), joint / Rubin / Roman; -1 where not computed, not fitted or, for rel_tetEph, rho not measured
             << co.dchiFS[SJOINT] << " " << co.dchiFS[SRUBIN] << " " << co.dchiFS[SROMAN] << " "
-            << co.Era[SJOINT][9] << " " << co.Era[SRUBIN][9] << " " << co.Era[SROMAN][9] << " "
+            << co.sigLnRhoData[SJOINT] << " " << co.sigLnRhoData[SRUBIN] << " " << co.sigLnRhoData[SROMAN] << " "
             << co.relTetEph[SJOINT] << " " << co.relTetEph[SRUBIN] << " " << co.relTetEph[SROMAN] << " "
             // the lens's proper motion and velocity on the sky: fractional error of |mu_L| and the error of v_L along
             // its worst-measured direction [km/s] (sqrt of the largest eigenvalue of its covariance) per partition

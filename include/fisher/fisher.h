@@ -32,9 +32,9 @@ inline int surveyOfTele(int tele) { return (tele == 0) ? SRUBIN : SROMAN; }
 // than going singular. kMinTeleEpochs (minimum epochs for a telescope to enter the photometric
 // matrices) is in config/parameters.h.
 //
-// ln rho (9) is in the set only when the partition's data see the finite source and measure its size (rhoFree;
-// DCHI_FS and SIGLNRHO_MAX in config/parameters.h), which FisherM decides per partition and records in
-// covarian::rhoOn.
+// ln rho (9) is in the set when the partition has data and the source is a disc (rhoFree; RHO_PRIOR_SIGLN in
+// config/parameters.h), which FisherM records per partition in covarian::rhoFit. Whether the data MEASURE it is
+// covarian::rhoMeas (SIGLNRHO_MAX).
 
 inline std::vector<int> activePhotParams(int surv, int nRubinEpochs, int nRomanEpochs, bool rhoFree)
 {
@@ -125,28 +125,38 @@ struct covarian {
     std::array<std::array<double, 4>, NSURV> covMuL{}, covVL{};
     double lmCheck = -1.0;
 
-    // The finite source (--source-model espl; see DCHI_FS in config/parameters.h). Per partition:
+    // The finite source (--source-model espl; see RHO_PRIOR_SIGLN in config/parameters.h). Per partition:
     //   dchiFS      the chi-squared by which that partition's epochs separate the uniform disc from a point
-    //               source at the true parameters; -1 = not computed (point source, or no epochs).
-    //   rhoOn       1 = ln rho is a parameter of the partition's photometric matrix: dchiFS >= dchiFSMin and,
-    //               fitted, sigma(ln rho) <= sigLnRhoMax; Era[q][9] is its sigma. 0 = rho held at its true value
-    //               (below the bar, or not measured well enough), Era[q][9] = -1.
-    //   relTetEph   fractional 1-sigma on thetaE = theta* / rho, sqrt(sigma(ln rho)^2 + THETASTAR_SIGLN^2);
-    //               -1 where ln rho was not fitted.
+    //               source at the true parameters, a diagnostic of how strongly the disc is seen; -1 = not computed
+    //               (point source, or no epochs).
+    //   rhoFit      1 = ln rho is a parameter of the partition's photometric matrix (a disc, and the partition has
+    //               data, unless rhoFixed); Era[q][9] is its posterior sigma, the prior included. 0 = rho held at
+    //               its true value (point source, no data, rhoFixed, or the 10-parameter inversion failed:
+    //               rhoFallback), Era[q][9] = -1.
+    //   sigLnRhoData  the sigma(ln rho) the partition's DATA alone give, 1 / sqrt(1 / Era[q][9]^2 - 1 / prior^2) (the
+    //               prior touches only F[9][9], so this is exact); -1 = not fitted, or no information in the data.
+    //   rhoMeas     1 = the data measure rho: rhoFit and sigLnRhoData <= sigLnRhoMax. Only then the photometric
+    //               thetaE = theta* / rho is used.
+    //   relTetEph   fractional 1-sigma on thetaE = theta* / rho, sqrt(Era[q][9]^2 + THETASTAR_SIGLN^2); -1 where rho
+    //               is not measured.
     //   relTetEc    the fractional 1-sigma on thetaE from the astrometric and photometric routes together,
     //               inverse-variance combined; the one route that exists if only one does; -1 = neither.
     //   corrRhoPiE  correlation of ln rho with the photometric piE in the partition's inverse matrix: how
     //               far the combination of the two thetaE and piE errors as uncorrelated (ErrorCal) is off.
-    //               NaN where ln rho was not fitted. A diagnostic, not an output.
-    // dchiFSMin and sigLnRhoMax are DCHI_FS and SIGLNRHO_MAX unless a test overrides them: dchiFSMin infinite
-    // holds rho at its true value everywhere, zero tries it wherever the disc exists; sigLnRhoMax infinite keeps
-    // it wherever it was tried and the matrix inverted.
+    //               NaN where rho is not measured. A diagnostic, not an output.
+    // rhoFixed, rhoPriorSigLn and sigLnRhoMax are the production settings unless a test overrides them: rhoFixed
+    // holds rho at its true value everywhere (ln rho never a parameter); rhoPriorSigLn infinite drops the prior;
+    // sigLnRhoMax infinite makes rho measured wherever it is fitted and the data give it any information.
     std::array<double, NSURV> dchiFS;
-    std::array<int, NSURV>    rhoOn;
+    std::array<int, NSURV>    rhoFit;
+    std::array<int, NSURV>    rhoMeas;
+    std::array<int, NSURV>    rhoFallback;   //1 = ln rho was a parameter but its matrix did not invert (see FisherM)
+    std::array<double, NSURV> sigLnRhoData;
     std::array<double, NSURV> relTetEph;
     std::array<double, NSURV> relTetEc;
     std::array<double, NSURV> corrRhoPiE;
-    double dchiFSMin = DCHI_FS;
+    bool   rhoFixed = false;
+    double rhoPriorSigLn = RHO_PRIOR_SIGLN;
     double sigLnRhoMax = SIGLNRHO_MAX;
 
     // Multiplicative override on each photometric parameter's finite-difference step; 1.0 is the
@@ -186,7 +196,10 @@ struct covarian {
             relMuL[q] = -1.0;
             sigVL[q] = -1.0;
             dchiFS[q] = -1.0;
-            rhoOn[q] = 0;
+            rhoFit[q] = 0;
+            rhoMeas[q] = 0;
+            rhoFallback[q] = 0;
+            sigLnRhoData[q] = -1.0;
             relTetEph[q] = -1.0;
             relTetEc[q] = -1.0;
             corrRhoPiE[q] = std::numeric_limits<double>::quiet_NaN();
@@ -270,7 +283,7 @@ inline int synergyClass(const covarian& co)
 // The active photometric parameters of partition `surv` of an event whose matrices are in `co`.
 inline std::vector<int> activePhotParams(const covarian& co, int surv)
 {
-    return activePhotParams(surv, co.nepochA[SRUBIN], co.nepochA[SROMAN], co.rhoOn[surv] != 0);
+    return activePhotParams(surv, co.nepochA[SRUBIN], co.nepochA[SROMAN], co.rhoFit[surv] != 0);
 }
 
 // The parameters of the lens-motion model lensMotion, in the order its covariance is given.
@@ -285,6 +298,11 @@ bool   lensMotionCovariance(const covarian& co, const lens& l, int q, double S[N
 // [mas/day] and v_L [km/s].
 void   lensMotionPropagate(const MotionContext& c, const double p[NLM], const double S[NLM][NLM],
                            double Smu[2][2], double Sv[2][2]);
+
+// How often, over the run so far, ln rho was a parameter of a partition whose matrix failed to invert with it (the
+// partition is then forecast with rho held at its true value) and how often the nine-parameter matrix failed too.
+long   rhoFallbackCount();
+long   rhoFallbackLostCount();
 
 void   ErrorCal(covarian & co, lens &l, source &s);
 void   FisherM(source & s, lens & l, astromet & as,  covarian & co, int);

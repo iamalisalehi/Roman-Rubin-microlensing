@@ -152,7 +152,11 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
             // the probability the per-object selection (--blend-thinning) keeps this draw
             << s.pKeep << " "
             // the Fisher error of the blend fractions: Rubin's f_S (joint, Rubin-only), Roman's (joint, Roman-only); -1 = not measured
-            << co.Era[SJOINT][2] << " " << co.Era[SRUBIN][2] << " " << co.Era[SJOINT][7] << " " << co.Era[SROMAN][7] << "\n";
+            << co.Era[SJOINT][2] << " " << co.Era[SRUBIN][2] << " " << co.Era[SJOINT][7] << " " << co.Era[SROMAN][7];
+    // the dust in front of the lens per band [mag], u g r i z y F146
+    for (int i = 0; i < M; ++i)
+        filg_in << " " << l.Alens[i];
+    filg_in << "\n";
     filg_in.close();
 
     commitSampleDump(ctx, lc, ch, pk);

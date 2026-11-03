@@ -78,16 +78,20 @@ void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sight
     l.piE    = l.pirel / l.tetE; //[]
     // A luminous lens's own light joins the blend. Apparent magnitudes come from its main-sequence
     // absolute magnitudes (CMD/components/lens_ml.dat), the distance modulus, and the dust in front
-    // of the LENS (same tables, at Dl). No random scatter is drawn. fb and mbs of both telescopes
+    // of the LENS (same tables, at Dl; l.Alens). No random scatter is drawn. fb and mbs of both telescopes
     // are rebuilt from the enlarged blend; fLens records the lens's share, which pulls the
     // astrometric centroid toward the lens (evaluateTrack).
     s.fLens = {0.0, 0.0};
+    // The dust in front of the lens is recorded for every lens (the dark-lens test places a hypothetical
+    // main-sequence star at Dl); no random numbers are drawn.
+    const double AvL = interpExtinctionAlongSightline(ex, sightlineIdx, l.Dl);
+    for (int i = 0; i < M; ++i)
+        l.Alens[i] = std::max(0.0, AvL * AlAv(lambda_um[i], Rv[static_cast<int>(l.struc)]));
     if (l.luminous) {
         if (mabFromCatalogue or lensAbsMag(static_cast<int>(l.struc), l.Ml, mab)) {
-            const double AvL = interpExtinctionAlongSightline(ex, sightlineIdx, l.Dl);
             std::array<double, M> fluxL{};
             for (int i = 0; i < M; ++i) {
-                const double AiL = std::max(0.0, AvL * AlAv(lambda_um[i], Rv[static_cast<int>(l.struc)]));
+                const double AiL = l.Alens[i];
                 fluxL[i] = std::pow(10.0, -0.4 * (mab[i] + 5.0 * std::log10(l.Dl * 100.0) + AiL));
                 s.Fluxb[i] += fluxL[i];
                 s.magb[i]   = -2.5 * std::log10(s.Fluxb[i]);

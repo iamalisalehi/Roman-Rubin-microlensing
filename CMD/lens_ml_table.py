@@ -39,6 +39,15 @@ number of the component's dwarfs in the bin. Comment lines ('#') above the table
                     disc dwarfs alone, pooled over the components, and needs --dwarfs besancon.
                     Ignored for bos10.
 
+  --hypothesis      instead of the lens table, write ms_hypothesis.dat (default components_staging/
+                    ms_hypothesis.dat; pass --out to place it): the main-sequence relation for the dark-lens test,
+                    which needs masses above 1 Msun (neutron stars, black holes). One row per row of the Pecaut &
+                    Mamajek sequence with 0.08 <= Msun, up to its top (O3V), at the sequence's own mass: Mbol and
+                    Teff from the table, logg from the builder's formula, the MIST bolometric corrections (AB) at the
+                    thin disc's median [M/H], [a/Fe] (one relation for all Galactic components), clamped onto the BC
+                    grid. Above the top mass a consumer clamps to the last row (conservative: a real star of that
+                    mass is brighter). Rows: mass Mab_u Mab_g Mab_r Mab_i Mab_z Mab_y Mab_F146.
+
 A bin in which a component has no stars (the bulge below its mass floor of 0.156 Msun; the thick disc
 and the halo below ~0.155; the halo's high-mass bins) takes the empirical relation at the component's
 median metallicity, with n = 0; the output lists those bins in a comment line.
@@ -196,6 +205,65 @@ def table_legacy(a):
     print(f"wrote {a.out}: {nrow} rows")
 
 
+HYP_MASS_MIN = 0.08          # Msun: below this the object is a brown dwarf, which the dark-lens test treats as dark anyway
+HYP_MASS_MAX = 1000.0        # no upper cut: the sequence's own top row ends it
+
+
+def table_hypothesis(a):
+    """Main-sequence mass -> absolute AB magnitudes on the Pecaut & Mamajek sequence rows, 0.08 Msun to its top."""
+    cat, rep = BC.read_catalogue(a.input, ["Pop", "Mass", "[M/H]", "[a/Fe]", "CL", "Typ"])
+    sel = ((BC.component_codes(cat["Pop"]) == 0) & (cat["CL"] == 5) & (cat["Typ"] < BC.DARK_TYP[0])
+           & (BC.qmass(cat["Mass"]) >= BINS[0] - BC.MASS_EPS))
+    mh = float(np.median(cat["M_H"][sel].astype(np.float64)))
+    afe = float(np.median(cat["a_Fe"][sel].astype(np.float64)))
+    mh_c, afe_c = BC.clamp_to_grid(np.array([mh]), np.array([afe]))
+    emp = BC.EmpiricalDwarfs(mass_range=(HYP_MASS_MIN, HYP_MASS_MAX), n_rows=None)
+    m = emp.mass
+    logT = np.log10(emp.teff)
+    mbol = 4.74 - 2.5 * emp.logL
+    logg = BC.logg_formula(m, logT, mbol)
+    mags = BC.BCSet().mags(logT, logg, mbol, np.full(len(m), mh), np.full(len(m), afe), clamp=True)
+    if not np.isfinite(mags).all():
+        bad = [emp.spt[i] for i in np.flatnonzero(~np.isfinite(mags).all(axis=1))]
+        raise RuntimeError(f"no MIST bolometric correction after the grid clamp for sequence rows {bad}; "
+                           "raise HYP_MASS_MIN or extend the BC grid")
+    # The sequence's adopted masses are tentative and not monotone in spectral type (M8.5V sits at 0.080
+    # Msun but M8V at 0.085; A7V at 1.77 but A8V at 1.81), so sorted by mass the magnitudes reverse. A
+    # heavier main-sequence star is not fainter: a row is kept only if it is brighter in r and F146 than
+    # every kept row of lower mass.
+    order = np.argsort(emp.mass, kind="stable")
+    kept, best_r, best_f = [], np.inf, np.inf
+    for i in order:
+        if mags[i, 2] < best_r and mags[i, 6] < best_f:
+            kept.append(i)
+            best_r, best_f = mags[i, 2], mags[i, 6]
+    dropped = [emp.spt[i] for i in order if i not in set(kept)]
+    return emp, kept, dropped, mags, mh, afe, mh_c, afe_c, rep
+
+
+def write_hypothesis(a, emp, kept, dropped, mags, mh, afe, mh_c, afe_c, rep):
+    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
+    with open(a.out, "w") as f:
+        f.write("# main-sequence mass -> absolute magnitude (AB) for the dark-lens test (a hypothetical main-sequence lens "
+                f"of the event's mass); lens_ml_table.py --hypothesis\n")
+        f.write(f"# source: {emp.version}, {BC.EMPIRICAL_TABLE}: the sequence rows with Msun >= {HYP_MASS_MIN} "
+                f"({emp.spt[kept[0]]} to {emp.spt[kept[-1]]}), at the sequence's own mass; Mbol = 4.74 - 2.5 logL "
+                "and Teff from the table, logg from the builder's formula; the empirical route's MIST bolometric corrections\n")
+        f.write(f"# one relation for all Galactic components: BCs at the thin disc's median [M/H], [a/Fe] of {BC.shown(a.input)} "
+                f"dwarfs: {mh:.3f} {afe:.3f} -> {mh_c[0]:.3f} {afe_c[0]:.3f} after the BC-grid clamp; "
+                f"input rows skipped (field count != {rep['n_fields']}): {rep['n_skipped']}\n")
+        f.write("# rows dropped so that the magnitudes fall with mass (the sequence's adopted masses are not monotone in "
+                "spectral type; a row is kept only if brighter in r and F146 than every kept row of lower mass): "
+                + ", ".join(dropped) + "\n")
+        f.write(f"# above {emp.mass[kept[-1]]:.2f} Msun (the top row) a consumer clamps to the last row: conservative, a real star "
+                "of that mass is brighter\n")
+        f.write("# mass Mab_u Mab_g Mab_r Mab_i Mab_z Mab_y Mab_F146\n")
+        for i in kept:
+            f.write(f"{emp.mass[i]:.4f} " + " ".join(f"{v:.4f}" for v in mags[i]) + "\n")
+    print(f"wrote {a.out}: {len(kept)} rows ({len(dropped)} dropped as non-monotone), "
+          f"{emp.mass[kept[0]]:.3f}-{emp.mass[kept[-1]]:.3f} Msun")
+
+
 def summarise(path):
     t = pd.read_csv(path, sep=r"\s+", comment="#", header=None,
                     names=["comp", "m_lo", "m_hi", "n"] + ["u", "g", "r", "i", "z", "y", "F146"])
@@ -219,8 +287,16 @@ def main(argv=None):
                          "Writing components/lens_ml.dat needs it explicitly.")
     ap.add_argument("--dmax", type=float, default=None,
                     help="kpc; only for --input Besancon/bos9.dat (default 1.5): nearby dwarfs only")
+    ap.add_argument("--hypothesis", action="store_true",
+                    help="write the main-sequence table for the dark-lens test (ms_hypothesis.dat) instead of the lens table")
     a = ap.parse_args(argv)
     a.input = resolve(a.input)
+    if a.hypothesis:
+        if os.path.basename(a.input).startswith("bos9"):
+            raise SystemExit("--hypothesis needs the bos10-style catalogue: pass --input Besancon/bos10")
+        a.out = os.path.join(here, BC.STAGING_ROOT, "ms_hypothesis.dat") if a.out is None else resolve(a.out)
+        write_hypothesis(a, *table_hypothesis(a))
+        return
     legacy = os.path.basename(a.input).startswith("bos9")
     if a.out is None:
         a.out = os.path.join(here, BC.STAGING_ROOT, BC.variant_name(a.input, a.dwarfs, "none"), "lens_ml.dat")

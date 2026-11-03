@@ -100,6 +100,9 @@ struct source {
 struct lens {
     int numl;
     bool luminous = false;          // a living (main-sequence) star, whose light is blended
+    // Dust in front of the lens, per band [mag] (u g r i z y F146): A_V at Dl along the sightline times A_lambda/A_V of
+    // the lens's component, >= 0. Set for every lens, dark or luminous; a luminous lens's light uses these numbers.
+    std::array<double, M> Alens{};
 
     double Ml, Dl, vl, Vt, xls, u0, A0, mi1, mi2;
     double rhomaxl, RE, t0, murel, DeltaT;

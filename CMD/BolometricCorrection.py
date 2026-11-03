@@ -400,7 +400,9 @@ class EmpiricalDwarfs:
     The rows kept have finite Msun, Teff and logL with 0.075 <= Msun <= 1.0 (41 of them); both
     quantities are interpolated linearly in log10(mass) and held flat beyond the first/last row."""
 
-    def __init__(self, path=EMPIRICAL_TABLE):
+    def __init__(self, path=EMPIRICAL_TABLE, mass_range=EMPIRICAL_MASS, n_rows=EMPIRICAL_ROWS):
+        """mass_range / n_rows: the sequence kept (Msun, inclusive) and how many rows it must have; the
+        defaults are the 0.075-1.0 Msun sequence the lens and source relations use. n_rows = None skips the count."""
         names, rows = None, []
         with open(path, "r") as f:
             for line in f:
@@ -430,9 +432,9 @@ class EmpiricalDwarfs:
 
         mass, teff, logl = col("Msun"), col("Teff"), col("logL")
         keep = (np.isfinite(mass) & np.isfinite(teff) & np.isfinite(logl)
-                & (mass >= EMPIRICAL_MASS[0]) & (mass <= EMPIRICAL_MASS[1]))
-        if int(keep.sum()) != EMPIRICAL_ROWS:
-            raise RuntimeError(f"{path}: {int(keep.sum())} usable rows, expected {EMPIRICAL_ROWS}")
+                & (mass >= mass_range[0]) & (mass <= mass_range[1]))
+        if n_rows is not None and int(keep.sum()) != n_rows:
+            raise RuntimeError(f"{path}: {int(keep.sum())} usable rows, expected {n_rows}")
         order = np.argsort(mass[keep], kind="stable")
         self.mass, self.teff, self.logL = mass[keep][order], teff[keep][order], logl[keep][order]
         self.spt = [rows[i][0] for i in np.flatnonzero(keep)[order]]

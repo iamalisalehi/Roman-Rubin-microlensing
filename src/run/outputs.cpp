@@ -77,7 +77,11 @@ const char* eventTableHeader()
         // The Fisher error of the blend fraction f_S (co.Era[q][2] for Rubin's, [7] for Roman's): sigfb0 is Rubin's f_S from
         // the joint (_J) and the Rubin-only (_L) matrix, sigfb1 Roman's from the joint and the Roman-only (_R) matrix;
         // -1 = not characterised (no matrix, or the parameter is not in the fit, e.g. Roman's f_S without Roman data).
-        "sigfb0_J sigfb0_L sigfb1_J sigfb1_R";
+        "sigfb0_J sigfb0_L sigfb1_J sigfb1_R "
+        // Alens_<band>: the dust in front of the lens [mag] in u g r i z y F146 (A_V at D_L along the sightline times
+        // A_lambda/A_V of the lens's component), written for every lens, dark or luminous; the apparent magnitude of a
+        // main-sequence star of the lens's mass is Mab(M) + 5 log10(D_L / 10 pc) + Alens.
+        "Alens_u Alens_g Alens_r Alens_i Alens_z Alens_y Alens_F146";
 }
 
 int openOutputs(const RunConfig& cfg, RunOutputs& o) {

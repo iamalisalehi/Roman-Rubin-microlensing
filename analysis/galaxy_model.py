@@ -11,8 +11,12 @@ This is a port, not a second model: every constant mirrors `config/parameters.h`
 `check_against_map()` compares the recomputed column densities with the map file's own and is the
 first thing to run after any change to `Disk_model`.
 
-    from galaxy_model import density_profile, lens_distance_norm
-    prof = density_profile(l, b)
+The bar's normalisation changed on 2026-11-03: runs made before then multiplied it by a second factor,
+LEGACY_BAR_NORM = 0.45. Every profile therefore takes the run's `bar_norm`, and `bar_norm_for_map()`
+reads which one a run used from its own map file.
+
+    from galaxy_model import bar_norm_for_map, density_profile, lens_distance_norm
+    prof = density_profile(l, b, bar_norm=bar_norm_for_map(sightlines))
     Z = lens_distance_norm(prof, Ds_array)
 """
 
@@ -29,6 +33,13 @@ RAA = 180.0 / np.pi
 BINARY_FRACTION = P.binary_fraction
 RHO0, D0, EPCI, CORR = P.rho0, P.d0, P.epci, P.corr
 BAR_MASS_RESCALE = P.BAR_MASS_RESCALE   # calibrated to the Han & Gould (2003) Baade's Window benchmark
+
+# The bar's second factor in runs made before 2026-11-03 ("total mass 1.7e10 Msun", computed without
+# BAR_MASS_RESCALE, so the bar was normalised twice: 937 instead of 2,086 Msun/pc^2 toward Baade's
+# window). config/parameters.h no longer has it; the analysis keeps it to weight those runs.
+CURRENT_BAR_NORM = 1.0
+LEGACY_BAR_NORM = 0.45
+BAR_NORMS = (CURRENT_BAR_NORM, LEGACY_BAR_NORM)
 
 # Mean stellar mass per component, the divisors in Nstari: config/data_products.h's MEANMASS_*, the
 # mean mass of each complete CMD population (provenance.txt, mean_mass_population). A run made with
@@ -49,8 +60,39 @@ class Profile:
         self.Nstart = Nstart         # stars/deg^2, the column
 
 
-def density_profile(lon, lat):
-    """Port of `Disk_model(s, numt)`: densities and column totals toward (lon, lat) in degrees."""
+def density_profile(lon, lat, bar_norm=None):
+    """Port of `Disk_model(s, numt)`: densities and column totals toward (lon, lat) in degrees.
+
+    bar_norm: the run's extra factor on the bar, CURRENT_BAR_NORM (1.0) or LEGACY_BAR_NORM (0.45);
+    bar_norm_for_map() says which. There is no default, so a run is never weighted with the other bulge.
+    """
+    return _profile(_components(lon, lat), check_bar_norm(bar_norm))
+
+
+def check_bar_norm(bar_norm):
+    if bar_norm not in BAR_NORMS:
+        raise ValueError(
+            f"bar_norm must be one of {BAR_NORMS}, got {bar_norm!r}: {CURRENT_BAR_NORM} for runs made on or "
+            f"after 2026-11-03 (their run_provenance.txt has a bulge_norm line), {LEGACY_BAR_NORM} before. "
+            f"bar_norm_for_map(sightlines) reads it from the run's map file.")
+    return bar_norm
+
+
+def _profile(comp, bar_norm):
+    """A Profile from _components()'s output and the run's bar factor."""
+    lon, lat, x, thin, thick, halo, bar = comp
+    bulge = bar * bar_norm
+    rho_tot = thin + thick + bulge + halo
+    # Shell volume per square degree: x^2 dx in kpc^3 -> pc^3, times (pi/180)^2 sr per deg^2.
+    shell = x * x * STEP * 1.0e9 * (np.pi / 180.0)**2
+    Rostart = float(np.sum(rho_tot * shell))
+    Nstart = float(np.sum(BINARY_FRACTION * (thin / MBAR_THIN + thick / MBAR_THICK
+                                             + halo / MBAR_HALO + bulge / MBAR_BULGE) * shell))
+    return Profile(lon, lat, x, rho_tot, Rostart, Nstart)
+
+
+def _components(lon, lat):
+    """The four densities [Msun/pc^3] along (lon, lat); the bar before any bar_norm."""
     TET, FI = (360.0 - lon) / RAA, lat / RAA
     x = np.arange(1, NUM) * STEP
     zb = np.sin(FI) * x
@@ -104,15 +146,8 @@ def density_profile(lon, lat):
     mE = 2.27 / 87.0 * BAR_MASS_RESCALE
     rhoE = mE * np.exp(-r4) * np.where(r2 <= 6.83, 1.0, np.exp(-4.0 * (r2 - 6.83)**2))
 
-    bulge = (np.abs(rhoS) + np.abs(rhoE)) * 0.45           # total mass 1.7e10 Msun
-
-    rho_tot = thin + thick + bulge + halo
-    # Shell volume per square degree: x^2 dx in kpc^3 -> pc^3, times (pi/180)^2 sr per deg^2.
-    shell = x * x * STEP * 1.0e9 * (np.pi / 180.0)**2
-    Rostart = float(np.sum(rho_tot * shell))
-    Nstart = float(np.sum(BINARY_FRACTION * (thin / MBAR_THIN + thick / MBAR_THICK
-                                             + halo / MBAR_HALO + bulge / MBAR_BULGE) * shell))
-    return Profile(lon, lat, x, rho_tot, Rostart, Nstart)
+    bar = np.abs(rhoS) + np.abs(rhoE)
+    return lon, lat, x, thin, thick, halo, bar
 
 
 def lens_distance_norm(prof, Ds):
@@ -140,24 +175,69 @@ def lens_distance_norm(prof, Ds):
 BLOCK = 512
 
 
-def check_against_map(sightlines, tol=0.05):
+def _map_worst(sightlines):
+    """Worst |dex| of the recomputed log10 Rostart and log10 Nstart against the map file's, as two
+    {bar_norm: dex} dicts, and the number of map rows compared."""
+    wr, wn, n = {bn: 0.0 for bn in BAR_NORMS}, {bn: 0.0 for bn in BAR_NORMS}, 0
+    for lon, lat, lr, ln in zip(sightlines["lon"], sightlines["lat"],
+                                sightlines["log10_Rostart"], sightlines["log10_Nstart"]):
+        if not np.isfinite(lon):
+            continue
+        comp = _components(lon, lat)          # the expensive part, shared by both factors
+        for bn in BAR_NORMS:
+            prof = _profile(comp, bn)
+            wr[bn] = max(wr[bn], abs(np.log10(prof.Rostart) - lr))
+            wn[bn] = max(wn[bn], abs(np.log10(prof.Nstart) - ln))
+        n += 1
+    return wr, wn, n
+
+
+# Detection compares the MASS column only: Nstart also depends on the star lists' mean masses, which
+# older runs had different (their Nstart is off by up to 0.11 dex for that reason alone). The map's one
+# decimal puts the right factor within 0.05 dex; the wrong one is 0.19-0.26 dex off on a bulge run.
+DETECT_TOL = 0.06
+
+
+def bar_norm_for_map(sightlines, tol=DETECT_TOL):
+    """The bar factor a run used, from its map file (load_sightlines): the one whose mass columns match.
+
+    Raises if neither matches (the port has drifted from the C++) or if both do (a map with no sightline
+    where the bulge moves the one-decimal column; pass bar_norm explicitly then).
+    """
+    wr, _, n = _map_worst(sightlines)
+    return _pick_bar_norm(wr, n, tol)
+
+
+def _pick_bar_norm(worst, n, tol):
+    fits = [bn for bn in BAR_NORMS if worst[bn] <= tol]
+    shown = ", ".join(f"bar_norm {bn}: {worst[bn]:.3f} dex" for bn in BAR_NORMS)
+    if not n:
+        raise ValueError("the map file has no sightline to read the bar normalisation from; pass bar_norm")
+    if not fits:
+        raise AssertionError(
+            f"galaxy_model.py's mass column disagrees with the map file over {n} sightlines ({shown}; "
+            f"tolerance {tol}). The port has drifted from Disk_model() in src/galaxy/density.cpp.")
+    if len(fits) > 1:
+        raise ValueError(
+            f"the map file's {n} sightline(s) fit both bar normalisations ({shown}), so it cannot say which "
+            f"the run used. Pass bar_norm: {CURRENT_BAR_NORM} if its run_provenance.txt has a bulge_norm line, "
+            f"else {LEGACY_BAR_NORM}.")
+    return fits[0]
+
+
+def check_against_map(sightlines, tol=0.05, bar_norm=None):
     """Recompute every sightline's column densities and compare with the map file's own.
 
     The map file writes `log10 Rostart` and `log10 Nstart` to ONE decimal, so agreement is only
     ever testable at the 0.05 dex level -- that is the guard's resolution, not its precision.
-    Returns (worst_dex, n_checked). Raises if the port has drifted from the C++.
+    bar_norm None: the factor bar_norm_for_map() finds. Returns (worst_dex, n_checked, bar_norm).
+    Raises if the port has drifted from the C++.
     """
-    worst, n = 0.0, 0
-    for _, row in sightlines.iterrows():
-        if not np.isfinite(row.get("lon", np.nan)):
-            continue
-        prof = density_profile(row["lon"], row["lat"])
-        worst = max(worst,
-                    abs(np.log10(prof.Rostart) - row["log10_Rostart"]),
-                    abs(np.log10(prof.Nstart) - row["log10_Nstart"]))
-        n += 1
-    if n and worst > tol:
+    wr, wn, n = _map_worst(sightlines)
+    bar_norm = _pick_bar_norm(wr, n, DETECT_TOL) if bar_norm is None else check_bar_norm(bar_norm)
+    w = max(wr[bar_norm], wn[bar_norm])
+    if n and w > tol:
         raise AssertionError(
-            f"galaxy_model.py disagrees with the map file by {worst:.3f} dex over {n} sightlines "
-            f"(tolerance {tol}). The port has drifted from Disk_model() in src/galaxy/density.cpp.")
-    return worst, n
+            f"galaxy_model.py (bar_norm {bar_norm}) disagrees with the map file by {w:.3f} dex over {n} "
+            f"sightlines (tolerance {tol}). The port has drifted from Disk_model() in src/galaxy/density.cpp.")
+    return w, n, bar_norm

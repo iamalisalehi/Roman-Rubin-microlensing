@@ -99,9 +99,9 @@ constexpr double HALO_NORM = 5281.0;                          //total mass 1.2e9
 constexpr double BAR_ANGLE_DEG = 12.89;                       //bar angle [deg]
 constexpr double BAR_MASS_RESCALE = 0.24529; // calibrated so bulge column density toward
                                              // Baade's Window (l=1, b=-3.9) matches the
-                                             // Han & Gould (2003) HST benchmark: 2086 Msun/pc^2
+                                             // Han & Gould (2003) HST benchmark: 2086 Msun/pc^2.
+                                             // The bar's only normalisation: S+E total 9.3e9 Msun.
 constexpr double BAR_CUTOFF_K = 4.0;                          //Gaussian cut-off exp(-K (r2-Rc)^2) beyond Rc
-constexpr double BAR_NORM = 0.45;                             //total mass 1.7e10 Msun
 constexpr double BAR_S_RX0 = 1.46;
 constexpr double BAR_S_RY0 = 0.49;
 constexpr double BAR_S_RZ0 = 0.39;

@@ -58,11 +58,11 @@ def main():
     sl = R.load_sightlines(a.map)
     over = R.nsim_from_logs(a.log)
 
-    worst, n_checked = G.check_against_map(sl)
+    worst, n_checked, bar_norm = G.check_against_map(sl)
     print(f"density port vs map file: worst {worst:.3f} dex over {n_checked} sightlines "
-          f"(map writes 1 decimal, so 0.05 is the resolution)")
+          f"(map writes 1 decimal, so 0.05 is the resolution); bar_norm {bar_norm}")
 
-    w = R.event_weight(df, sl, nsim_override=over)
+    w = R.event_weight(df, sl, nsim_override=over, bar_norm=bar_norm)
     df = df.assign(W=w)
 
     # ---- F4: fraction measured better than 10%, footprint sample ----

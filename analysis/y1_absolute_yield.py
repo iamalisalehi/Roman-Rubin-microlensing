@@ -94,9 +94,10 @@ class Run:
         self.sl = R.load_sightlines(self.map)
         override = R.nsim_from_logs(self.logs)
         df = self.df
-        df["y"] = np.asarray(R.yield_weight(df, self.sl, self.tobs_days, nsim_override=override),
-                             dtype=np.float64)
-        df["gamma"] = np.asarray(R.draw_rate(df), dtype=np.float64)
+        bar_norm = R.run_bar_norm(self.sl)       # this run's bulge (the factor changed 2026-11-03)
+        df["y"] = np.asarray(R.yield_weight(df, self.sl, self.tobs_days, nsim_override=override,
+                                            bar_norm=bar_norm), dtype=np.float64)
+        df["gamma"] = np.asarray(R.draw_rate(df, bar_norm=bar_norm), dtype=np.float64)
         df["P"] = np.asarray(R.acceptance_probability(df, self.sl, fixed_rubin_depths), dtype=np.float64)
         # An int32 sightline code rather than a (lon, lat) tuple per row, to save memory;
         # self.keys[code] is the tuple.

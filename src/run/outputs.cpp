@@ -310,6 +310,9 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "   # sigma(ln theta*) " << THETASTAR_SIGLN << ", assumed measured from the source's colour\n"
              << "# astrometric_variants W: one frame, white; N: frame per roll + " << cfg.astSigcN
              << " mas/day; P: frame per roll + " << cfg.astSigcP << " mas/day\n"
+             // Runs whose provenance lacks this line also multiplied the bar by 0.45 (analysis/galaxy_model.py).
+             << "# bulge_norm          Robin+2012 S+E bars x BAR_MASS_RESCALE " << BAR_MASS_RESCALE
+             << " only   # Han & Gould 2003 column toward Baade's window\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex.nTables << " x "
              << ex.nDist << ", k " << ex.k << " --" << ex.built << "\n"
 

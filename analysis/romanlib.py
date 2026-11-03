@@ -552,15 +552,141 @@ def nsim_from_logs(paths):
     return out
 
 
-def attach_weight(df, map_path=None, log_paths=(), unweighted=False):
+# ---- Counting conventions ----
+#
+# A run keeps a drawn source either whenever its peak is visible ("every-star") or, with
+# --blend-thinning (and in every run made before that option existed), with probability pKeep, the
+# chance that one star of its blend is "realised" (Sajadian & Makler, criterion ii: "per-object").
+# event_weight / yield_weight count draws as drawn, so they are the every-star weight of an
+# every-star run and the per-object weight of a per-object run. count_weight converts to the other.
+SELECTIONS = ("every-star", "per-object")
+CONVENTIONS = SELECTIONS
+
+
+def selection_mode(prov_path):
+    """The run's source-selection mode, from the `source_selection` line of run_provenance.txt.
+
+    A provenance file without the line is a run made before the option existed: "per-object".
+    A missing file raises: the mode decides the weight, so it is never guessed.
+    """
+    if not os.path.exists(prov_path):
+        raise FileNotFoundError(
+            f"{prov_path}: no run_provenance.txt beside the map file, so the run's source-selection "
+            f"mode is unknown. Pass the mode explicitly (attach_weight(..., mode=...)), or put the "
+            f"run's provenance file next to the map; the script option --convention only chooses "
+            f"the counting convention, not the run's mode.")
+    mode = load_provenance(prov_path).get("source_selection", "per-object")
+    if mode not in SELECTIONS:
+        raise ValueError(f"{prov_path}: source_selection {mode!r}; expected one of {SELECTIONS}")
+    return mode
+
+
+def keep_probability(df, sightlines, mode, fixed_rubin_depths=False):
+    """Per-row probability that a per-object run keeps the draw (the table's pKeep column).
+
+    Tables written by the current simulator have pKeep in both modes. Without it, a per-object run's
+    value is rebuilt by acceptance_probability (agreeing to the table's 6 printed digits); an
+    every-star table without pKeep cannot be rebuilt and raises. fixed_rubin_depths is the
+    approximation of acceptance_probability for maps without per-sightline depths.
+    """
+    if "pKeep" in df.columns:
+        return df["pKeep"].to_numpy(np.float64)
+    if mode != "per-object":
+        raise ValueError(
+            "this every-star table has no pKeep column, so the per-object convention cannot be "
+            "rebuilt; load the table with pKeep (do not restrict usecols to leave it out)")
+    need = ["u0", "lon", "lat"] + [f"{k}_{f}" for k in ("magb", "blend") for f in FILTERS]
+    gone = [c for c in need if c not in df.columns]
+    if gone:
+        raise ValueError(f"the table lacks {gone}, which the per-object keep probability is rebuilt "
+                         f"from; load them, or pass --convention per-object")
+    try:
+        return acceptance_probability(df, sightlines, fixed_rubin_depths)
+    except ValueError as e:
+        raise ValueError(f"{e}. The every-star convention of a per-object run needs this keep "
+                         f"probability; pass --convention per-object to count as the run did") from e
+
+
+def count_weight(w, p_keep, mode, convention, detected=None):
+    """Weight w (event_weight or yield_weight, as the run drew it) in the requested convention.
+
+    run mode      every-star    per-object
+    every-star    w             w * p_keep
+    per-object    w / p_keep    w
+    A per-object run kept each draw with probability p_keep, so 1/p_keep restores the dropped
+    sources. A draw with p_keep = 0 (its peak is below the depth, or the band is saturated) was
+    never kept: it has no light curve and is not detected in either convention, so the weights are
+    meant for sums over detected rows. `detected` (boolean per row) says which rows are: an
+    undetected row with w > 0 and p_keep <= 0 gets weight 0, a detected one raises (the rebuild
+    disagrees with the simulator). Without `detected`, any such row raises.
+    """
+    if mode not in SELECTIONS:
+        raise ValueError(f"run mode {mode!r}; expected one of {SELECTIONS}")
+    if convention not in CONVENTIONS:
+        raise ValueError(f"convention {convention!r}; expected one of {CONVENTIONS}")
+    w = np.asarray(w, dtype=np.float64)
+    if convention == mode:
+        return w.copy()
+    p = np.asarray(p_keep, dtype=np.float64)
+    if mode == "every-star":
+        return w * p
+    bad = (w > 0) & ~(p > 0)
+    if detected is not None:
+        bad &= np.asarray(detected, dtype=bool)
+    if bad.any():
+        raise ValueError(f"{int(bad.sum())} row(s) with weight > 0 have a keep probability of 0"
+                         + ("" if detected is not None else " (no `detected` flag given to tell "
+                            "undetectable draws from detected ones)")
+                         + ": 1/pKeep is undefined. Use the per-object convention, or re-run")
+    return np.where((w > 0) & (p > 0), w / np.where(p > 0, p, 1.0), 0.0)
+
+
+def add_convention_option(ap):
+    """Add the --convention option every weighted script offers (default every-star)."""
+    ap.add_argument("--convention", choices=CONVENTIONS, default="every-star",
+                    help="how a source star is counted: every-star (each star whose peak is visible; "
+                         "the default) or per-object (Sajadian & Makler criterion ii: with "
+                         "probability equal to its blend fraction). Legacy runs give every-star "
+                         "numbers by 1/pKeep, which needs the Rubin depths in the map file")
+    return ap
+
+
+def keep_columns(table_path, map_path, convention):
+    """Extra event-table columns `attach_weight` needs when `usecols` restricts the load.
+
+    None when the convention is the run's own; the pKeep column when the table has it; else the
+    columns the per-object keep probability is rebuilt from.
+    """
+    mode = selection_mode(os.path.join(os.path.dirname(os.path.abspath(map_path)),
+                                       "run_provenance.txt"))
+    if convention == mode:
+        return []
+    with open(table_path) as fh:
+        header = fh.readline().lstrip("#").split()
+    if "pKeep" in header:
+        return ["pKeep"]
+    return [c for c in ["u0", "lon", "lat", "detJ"] + [f"{k}_{f}" for k in ("magb", "blend")
+                                                        for f in FILTERS] if c in header]
+
+
+def attach_weight(df, map_path=None, log_paths=(), unweighted=False, convention="every-star",
+                  mode=None):
     """Return (weights, label) for a pooled statistic over `df`.
 
     The plumbing every figure script needs: read the sightline table, patch in `nsim` for
     sightlines a killed run's map file lost, and build the per-event weight.
 
+    `convention` is how a source is counted: "every-star" (each star whose peak is visible; the
+    headline) or "per-object" (Sajadian & Makler criterion ii: a star counts with probability equal
+    to its blend fraction). `mode` is the run's own selection, read from the run_provenance.txt
+    beside the map file unless given. See count_weight; when the conversion divides by pKeep, draws
+    that were never kept and are not detected (detJ) get weight 0.
+
     `unweighted=True` returns ones and says so in the label. A script must never fall back to
     unweighted silently: the unweighted sample over-represents long-tE events roughly tenfold.
     """
+    if convention not in CONVENTIONS:
+        raise ValueError(f"convention {convention!r}; expected one of {CONVENTIONS}")
     if unweighted:
         return pd.Series(1.0, index=df.index), "unweighted"
     if not map_path:
@@ -568,9 +694,16 @@ def attach_weight(df, map_path=None, log_paths=(), unweighted=False):
             "pooled statistics need the event-rate weight. Pass the map file "
             "(--map), adding --log for a run whose map file lost rows, or pass --unweighted "
             "to say deliberately that this figure is of the raw sample.")
+    if mode is None:
+        mode = selection_mode(os.path.join(os.path.dirname(os.path.abspath(map_path)),
+                                           "run_provenance.txt"))
     sl = load_sightlines(map_path)
     w = event_weight(df, sl, nsim_override=nsim_from_logs(log_paths))
-    return w, f"event-rate weighted, N_eff = {kish_neff(w):,.0f}"
+    if convention != mode:
+        det = (df["detJ"] == 1).to_numpy() if "detJ" in df.columns else None
+        w = pd.Series(count_weight(w.to_numpy(), keep_probability(df, sl, mode), mode, convention,
+                                   detected=det), index=df.index)
+    return w, f"event-rate weighted, {convention}, N_eff = {kish_neff(w):,.0f}"
 
 
 # ---- Absolute yields ----
@@ -694,11 +827,12 @@ def acceptance_probability(df, sightlines, fixed_rubin_depths=False):
 
 
 def yield_weight(df, sightlines, tobs_days, nsim_override=None, bar_norm=None):
-    """Per-row expected number of events in the window, for F = 1, per resolved object.
+    """Per-row expected number of events in the window, for F = 1.
 
     y_i = T * [w_area Nstar / nsim] * gamma_i. Summing y_i over detected rows gives the
     detected yield with every lens drawn from the population and F = 1; multiply by F.
-    Divide each y_i by acceptance_probability() to count events on every star instead.
+    nsim counts every draw, so y_i is on every star in an every-star run and per resolved object in
+    a per-object (legacy) run; count_weight(y, p_keep, mode, convention) converts to the other.
     bar_norm: as in event_weight (None reads it from `sightlines`).
     """
     w = event_weight(df, sightlines, nsim_override=nsim_override, bar_norm=bar_norm).to_numpy()

@@ -156,6 +156,7 @@ def main():
                     help="rows per read chunk; holds peak memory to one chunk plus survivors")
     ap.add_argument("--unweighted", action="store_true",
                     help="deliberately report the raw sample, with no event-rate weight")
+    R.add_convention_option(ap)
     ap.add_argument("--dex", type=float, default=0.5, help="cell size in dex (default 0.5)")
     ap.add_argument("--te-range", type=float, nargs=2, default=(-0.5, 3.5))
     ap.add_argument("--pie-range", type=float, nargs=2, default=(-2.5, 1.0))
@@ -165,7 +166,7 @@ def main():
     # read. Undetected events are kept: the characterized fraction needs them as denominator.
     df = R.load_events(args.events, keep=R.keep_weightable(args.map, args.log),
                        chunksize=args.chunksize)
-    w, wlabel = R.attach_weight(df, args.map, args.log, args.unweighted)
+    w, wlabel = R.attach_weight(df, args.map, args.log, args.unweighted, convention=args.convention)
     df["W"] = w
     print(R.describe(args.events, args.provenance))
     print(f"  weighting: {wlabel}")

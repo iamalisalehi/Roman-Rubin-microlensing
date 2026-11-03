@@ -4,7 +4,7 @@
 y1_absolute_yield.py tabulates the yield at a few literature values of F. N is exactly linear in
 F (F enters only through the prefactor F / <M>, and <M> is fixed by the mass function), so the
 content of those tables is one coefficient per selection, the yield at F = 1 (N_1), and the rule
-N(F) = F * N_1. This script reads y1's CSV, recovers N_1 for every selection, checks that
+N(F) = F * N_1. Counts are every star, the per-object count beside it. This script reads y1's CSV, recovers N_1 for every selection, checks that
 linearity holds across the grid, writes the coefficients as a table, and draws N(F) with the
 literature abundances marked.
 
@@ -55,7 +55,7 @@ def coefficients(df):
     d = df.assign(k_obj=df.N_per_object / df.F, e_obj=df.err_per_object / df.F,
                   k_all=df.N_all_stars / df.F, e_all=df.err_all_stars / df.F)
     g = d.groupby(["run", "scope", "selection"], sort=False)
-    spread = g.k_obj.agg(lambda s: s.max() / s.min() - 1.0)
+    spread = g.k_all.agg(lambda s: s.max() / s.min() - 1.0)
     if (spread > 1e-9).any():
         raise SystemExit(f"N/F is not constant in F -- the CSV is not linear:\n{spread[spread > 1e-9]}")
     return g.first()[["n_mc", "k_obj", "e_obj", "k_all", "e_all"]].reset_index()
@@ -71,8 +71,8 @@ def figure(k, out, src):
         sub = k[(k.run == pop) & (k.scope == SCOPE)].set_index("selection")
         for sel, col, ls, lab in CURVES:
             r = sub.loc[sel]
-            ax.plot(F, F * r.k_obj, color=ps.SURVEY[col], ls=ls, label=lab)
-            ax.fill_between(F, F * (r.k_obj - r.e_obj), F * (r.k_obj + r.e_obj),
+            ax.plot(F, F * r.k_all, color=ps.SURVEY[col], ls=ls, label=lab)
+            ax.fill_between(F, F * (r.k_all - r.e_all), F * (r.k_all + r.e_all),
                             color=ps.SURVEY[col], alpha=0.15, lw=0)
         for lab, f, applies in LITERATURE_F:
             if pop in applies:
@@ -92,7 +92,7 @@ def figure(k, out, src):
     h, l = axes[0].get_legend_handles_labels()
     fig.legend(h, l, loc="lower center", bbox_to_anchor=(0.5, axes[0].get_position().y1), ncol=len(CURVES),
                frameon=False, fontsize=6.5)
-    ps.stamp(fig, f"y3_yield_vs_F.py from {src}; per-object convention; band = MC 1-sigma")
+    ps.stamp(fig, f"y3_yield_vs_F.py from {src}; every-star convention; band = MC 1-sigma")
     return ps.save_figure(fig, os.path.join(out, "y3_yield_vs_F"))
 
 
@@ -111,13 +111,13 @@ def main():
     bulge = k[k.run == "bulge"].set_index(["scope", "selection"])
     for (run, scope), sub in k.groupby(["run", "scope"], sort=False):
         lines += [f"## {run}, {scope}", "",
-                  "| selection | MC draws | N_1 per object | N_1 all stars | eta |",
+                  "| selection | MC draws | N_1 every star | N_1 per object | eta |",
                   "|---|---|---|---|---|"]
         for _, r in sub.iterrows():
             key = (scope, r.selection)
-            eta = (r.k_obj / bulge.loc[key].k_obj) if (run != "bulge" and key in bulge.index) else np.nan
-            lines.append(f"| {r.selection} | {r.n_mc:,} | {r.k_obj:.4g} ± {r.e_obj:.2g} "
-                         f"| {r.k_all:.4g} ± {r.e_all:.2g} | {eta:.3g} |")
+            eta = (r.k_all / bulge.loc[key].k_all) if (run != "bulge" and key in bulge.index) else np.nan
+            lines.append(f"| {r.selection} | {r.n_mc:,} | {r.k_all:.4g} ± {r.e_all:.2g} "
+                         f"| {r.k_obj:.4g} ± {r.e_obj:.2g} | {eta:.3g} |")
         lines.append("")
     with open(os.path.join(a.out, "y3_coefficients.md"), "w") as fh:
         fh.write("\n".join(lines) + "\n")

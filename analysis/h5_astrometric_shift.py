@@ -333,6 +333,7 @@ def main():
                     help="run log(s), for sightlines whose map rows a killed run lost")
     ap.add_argument("--unweighted", action="store_true",
                     help="deliberately report the raw sample, with no event-rate weight")
+    R.add_convention_option(ap)
     args = ap.parse_args()
 
     # Filtered chunked read: joint detections are a small fraction of the table, and reading it
@@ -365,7 +366,7 @@ def main():
         return
 
     # Weight after every cut: each panel's fractions and medians are over the surviving sample.
-    w, wlabel = R.attach_weight(df, args.map, args.log, args.unweighted)
+    w, wlabel = R.attach_weight(df, args.map, args.log, args.unweighted, convention=args.convention)
     w = w.to_numpy()
     print(f"  weighting: {wlabel}")
 

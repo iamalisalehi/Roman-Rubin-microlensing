@@ -94,6 +94,7 @@ def main():
                     help="the paired run's log(s), for sightlines its map file lost")
     ap.add_argument("--unweighted", action="store_true",
                     help="deliberately report raw-sample medians, with no event-rate weight")
+    R.add_convention_option(ap)
     a = ap.parse_args()
 
     df, weightable = load(a.pairs)
@@ -110,7 +111,8 @@ def main():
             "raw-sample numbers.")
 
     # Weights are attached to the full frame before subsetting so every selection carries its own.
-    w, wlabel = R.attach_weight(df, a.map, a.log, a.unweighted or not weightable)
+    w, wlabel = R.attach_weight(df, a.map, a.log, a.unweighted or not weightable,
+                             convention=a.convention)
     df = df.assign(W=w)
     print(f"   weighting: {wlabel}")
 

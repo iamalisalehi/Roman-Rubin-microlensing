@@ -151,6 +151,7 @@ def main():
                     help="the run's run_provenance.txt (default: searched for beside the extract)")
     ap.add_argument("--unweighted", action="store_true",
                     help="deliberately report the raw sample, with no event-rate weight")
+    R.add_convention_option(ap)
     a = ap.parse_args()
 
     global PROV_PATH
@@ -170,7 +171,7 @@ def main():
     d["shift_max"] = np.where(u0 <= r2, tetE / np.sqrt(8.0), tetE * u0 / (u0 * u0 + 2.0))
     cov = d[d.ndwR > 0].copy()
 
-    w, wlabel = R.attach_weight(cov, a.map, a.log, a.unweighted)
+    w, wlabel = R.attach_weight(cov, a.map, a.log, a.unweighted, convention=a.convention)
     w = w.to_numpy()
     print(f"weighting: {wlabel}")
 

@@ -119,12 +119,13 @@ def main():
                     help="rows per read chunk; holds peak memory to one chunk plus survivors")
     ap.add_argument("--unweighted", action="store_true",
                     help="deliberately report the raw sample, with no event-rate weight")
+    R.add_convention_option(ap)
     a = ap.parse_args()
 
     # Stream the table and drop rows of barren sightlines (no nsim, weight 0, no detection) as
     # they are read; reading it whole can exhaust memory on a small machine.
     df = R.load_events(a.events, keep=R.keep_weightable(a.map, a.log), chunksize=a.chunksize)
-    w, wlabel = R.attach_weight(df, a.map, a.log, a.unweighted)
+    w, wlabel = R.attach_weight(df, a.map, a.log, a.unweighted, convention=a.convention)
     df["W"] = w
     print(f"weighting: {wlabel}")
     edges = [float(x) for x in a.te_edges.split(",")]

@@ -227,6 +227,17 @@ def main():
     if pos != n_total:
         sys.exit(f"chunks end at sightline {pos}, the scan has {n_total}")
 
+    # 1b. one selection convention across the chunks (a mix cannot be weighted consistently)
+    sel = {}
+    for k, cd in enumerate(cdirs):
+        line = [l for l in open(os.path.join(cd, PROV)).read().splitlines() if l.startswith("# source_selection")]
+        sel[k] = line[0].split("#")[1].split()[1] if line else "per-object (no source_selection line)"
+    if len(set(sel.values())) > 1:
+        first = sel[0]
+        k = next(k for k in sel if sel[k] != first)
+        sys.exit(f"chunks differ in source_selection: chunk 0 is '{first}', chunk {k} is '{sel[k]}'. "
+                 "Re-run the odd chunks with the same --blend-thinning setting. Not merging.")
+
     # 2. the files: the union over chunks (a chunk with no events may lack some), concatenated in order
     names = []
     for cd in cdirs:

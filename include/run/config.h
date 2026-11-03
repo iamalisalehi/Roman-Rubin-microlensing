@@ -68,6 +68,12 @@ struct RunConfig {
     // effect, because moving the observer changes which events are detected.
     bool   pairSat     = false;
 
+    // Source selection. false (default, "every star"): a drawn source is kept whenever its peak is
+    // visible to Rubin or to Roman, whatever its blend. true ("per object", --blend-thinning): the
+    // previous convention, a visible source is also kept only with probability equal to its blend
+    // fraction, i.e. one candidate per resolved object (Sajadian & Makler 2022).
+    bool   blendThinning = false;
+
     // Path to a sample-event dump spec, or empty for no dump. The dump consumes no RNG, so a
     // run with it is event-for-event the same as one without.
     std::string dumpSpec;

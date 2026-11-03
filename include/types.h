@@ -82,6 +82,11 @@ struct source {
     std::vector<double> Mab;   // size M+1
     std::vector<double> Map;   // size M+1
 
+    // Probability the per-object selection (--blend-thinning) keeps this draw:
+    // 1 - (1 - blend[2]*[Rubin sees the peak]) * (1 - blend[6]*[Roman sees the peak]) [].
+    // Set on every draw by preselectEvent; 0 when neither survey sees the peak.
+    double pKeep = 0.0;
+
     GalacticComponent struc;
     // Constructor
     source()

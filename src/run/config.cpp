@@ -27,6 +27,13 @@ void printUsage(const char* prog) {
         << "                 on the 2026-09-05 v2 run. Resuming at the map count would\n"
         << "                 re-simulate that gap and append duplicate rows to test5.dat.\n"
         << "                 If the run resumed an earlier one, add its --start-index too.\n"
+        << "  --blend-thinning\n"
+        << "                 select sources per resolved object: a source whose peak is\n"
+        << "                 visible is kept only with probability equal to its blend\n"
+        << "                 fraction (r for Rubin, F146 for Roman), the convention before\n"
+        << "                 the every-star selection. Default: every source whose peak is\n"
+        << "                 visible is kept, whatever its blend. The per-object keep\n"
+        << "                 probability is the pKeep column in both modes.\n"
         << "  --pair-satellite\n"
         << "                 characterise each detected event twice, with Roman at L2 and\n"
         << "                 with the offset zeroed, writing both forecasts to h3_pair.dat.\n"
@@ -123,6 +130,7 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
         else if (arg == "--dry-run") cfg.dryRun      = true;
         else if (arg == "--no-satellite-parallax") cfg.noSatPar = true;
         else if (arg == "--pair-satellite") cfg.pairSat = true;
+        else if (arg == "--blend-thinning") cfg.blendThinning = true;
         else if (arg == "--source-model") {
             const std::string v = need("--source-model");
             if      (v == "espl") cfg.sourceModel = SourceModel::ESPL;

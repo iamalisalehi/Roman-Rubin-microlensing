@@ -68,7 +68,12 @@ const char* eventTableHeader()
         // for the joint, Rubin and Roman partitions; -1 = not measured (no photometric or astrometric matrix, or no
         // piE or thetaE by any route). vLperp is the true HELIOCENTRIC |v_L| = D_L |mu_L| [km/s]; sigVL / vLperp is
         // only a heliocentric relative error.
-        "relMuL_J relMuL_L relMuL_R sigVL_J sigVL_L sigVL_R vLperp";
+        "relMuL_J relMuL_L relMuL_R sigVL_J sigVL_L sigVL_R vLperp "
+        // pKeep: the probability that the per-object selection (--blend-thinning; Sajadian & Makler's one candidate
+        // per resolved object) keeps this draw, 1 - (1 - f_r [Rubin sees the peak]) (1 - f_F146 [Roman sees the
+        // peak]) with f the source's flux fraction in r and in F146. It is written in both selection modes: weighting
+        // an every-star event by pKeep gives the per-object count, dividing a per-object event by it the every-star one.
+        "pKeep";
 }
 
 int openOutputs(const RunConfig& cfg, RunOutputs& o) {
@@ -326,6 +331,11 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
                                                                     : cfg.dumpSpec) << "\n"
              << "# pair_satellite      " << (cfg.pairSat ? 1 : 0)
              << "   # every detection characterised at L2 AND at Earth\n"
+             // Every aggregate built from detections in the C++ output (MapLMC, EfLMC*, LpLMC, the end-of-run
+             // summary) counts what the selection keeps: in an every-star run, every source whose peak is visible.
+             << "# source_selection    " << (cfg.blendThinning ? "per-object" : "every-star")
+             << "   # every-star: each source with a visible peak is kept; per-object: kept with probability = its "
+                "blend fraction (pKeep column). Detection aggregates (MapLMC, EfLMC, LpLMC, summary) count what is kept\n"
              << "# dchi_det            " << cfg.dchiDet
              << "   # fixed detection bar; every yield is conditioned on it\n";
         if (!cfg.dryRun) {   // a dry run must not overwrite the last run's provenance

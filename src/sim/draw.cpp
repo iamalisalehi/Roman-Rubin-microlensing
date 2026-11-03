@@ -86,10 +86,17 @@ bool preselectEvent(SimContext& ctx, const SightlineState& st) {
     testL = RandR(0.0, 1.0);
     testR = RandR(0.0, 1.0);
     // Independent accept draws per survey (reusing one would correlate the two decisions), each
-    // weighted by that survey's own blend fraction.
+    // weighted by that survey's own blend fraction. Both are drawn in both modes so the random
+    // sequence is the same until a draw the two modes decide differently.
     acceptRubin = rubinDetectable and (testL <= s.blend[2]);
     acceptRoman = romanDetectable and (testR <= s.blend[6]);
 
-    return acceptRubin or acceptRoman;
+    // The per-object keep probability, recorded in both modes so the analysis can weight an
+    // every-star run to the per-object convention (or the reverse).
+    s.pKeep = 1.0 - (1.0 - (rubinDetectable ? s.blend[2] : 0.0))
+                  * (1.0 - (romanDetectable ? s.blend[6] : 0.0));
+
+    if (ctx.cfg.blendThinning) return acceptRubin or acceptRoman;
+    return rubinDetectable or romanDetectable;
 }
 

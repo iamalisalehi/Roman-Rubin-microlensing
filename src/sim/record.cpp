@@ -148,7 +148,9 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
             // (-1 = not measured), and the true heliocentric |v_L| = D_L |mu_L| [km/s]
             << co.relMuL[SJOINT] << " " << co.relMuL[SRUBIN] << " " << co.relMuL[SROMAN] << " "
             << co.sigVL[SJOINT] << " " << co.sigVL[SRUBIN] << " " << co.sigVL[SROMAN] << " "
-            << l.mul * l.Dl * AU / (1000.0 * 24.0 * 3600.0) << "\n";
+            << l.mul * l.Dl * AU / (1000.0 * 24.0 * 3600.0) << " "
+            // the probability the per-object selection (--blend-thinning) keeps this draw
+            << s.pKeep << "\n";
     filg_in.close();
 
     commitSampleDump(ctx, lc, ch, pk);

@@ -150,7 +150,9 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
             << co.sigVL[SJOINT] << " " << co.sigVL[SRUBIN] << " " << co.sigVL[SROMAN] << " "
             << l.mul * l.Dl * AU / (1000.0 * 24.0 * 3600.0) << " "
             // the probability the per-object selection (--blend-thinning) keeps this draw
-            << s.pKeep << "\n";
+            << s.pKeep << " "
+            // the Fisher error of the blend fractions: Rubin's f_S (joint, Rubin-only), Roman's (joint, Roman-only); -1 = not measured
+            << co.Era[SJOINT][2] << " " << co.Era[SRUBIN][2] << " " << co.Era[SJOINT][7] << " " << co.Era[SROMAN][7] << "\n";
     filg_in.close();
 
     commitSampleDump(ctx, lc, ch, pk);

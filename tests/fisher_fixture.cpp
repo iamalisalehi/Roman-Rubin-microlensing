@@ -13,7 +13,7 @@
 //         flat stand-in for errlsstM / errRomanM.
 //
 // Usage: make fishertest && ./fishertest   (modes: --scale S, --sweep, --eigen [S],
-//        --astro-variants, --sweep-astro, --finite-source, --lens-motion)
+//        --astro-variants, --sweep-astro, --finite-source, --lens-motion, --blend)
 //
 // The light-curve model's source is a point (pspl, the default here: the baseline every change to the
 // Fisher matrices is diffed against) or a uniform disc (espl); --source-model pspl|espl picks it, in any
@@ -1639,6 +1639,128 @@ int runLensMotion()
     return failures ? 1 : 0;
 }
 
+// ---------------------------------------------------------------------------------------------
+// The blend-fraction errors (--blend; the event table's sigfb0_J sigfb0_L sigfb1_J sigfb1_R columns are
+// co.Era[q][2] and co.Era[q][7]). Per fixture event and partition: sigma(fb0) (Rubin's f_S) and sigma(fb1) (Roman's),
+// asserted > 0 where the partition is characterised and the parameter is in activePhotParams, and the -1 sentinel
+// otherwise; and the joint error no larger than either single survey's (sigma_J <= sigma_L for fb0, <= sigma_R for fb1,
+// relative slack 1e-6). Then the accuracy at small f_S, where the new selection sends many more very blended Rubin
+// events to the Fisher matrix: copies of one Rubin-covered event with Rubin's f_S set to 1e-2 ... 1e-5, the
+// finite-difference steps scaled by 0.1, 1 and 10 (as --scale does); sigma(tE) and sigma(fb0) of the joint and of the
+// Rubin matrix must agree across the scales within 1% (the Rubin matrix only for f_S >= 1e-4). The table is printed; the exit status is non-zero on a failure.
+int runBlend()
+{
+    auto s  = std::make_unique<source>();
+    auto l  = std::make_unique<lens>();
+    auto as = std::make_unique<astromet>();
+    auto co = std::make_unique<covarian>();
+    int failures = 0;
+
+    // One forecast at the event ev with Rubin's f_S = fRubin and every step scaled by stepScale.
+    const auto forecast = [&](const FixtureEvent& ev, double fRubin, double stepScale) {
+        for (int q = 0; q < Nx; ++q) co->deltaScale[q] = stepScale;
+        setupStatic(*s, *l);
+        s->fb[0] = fRubin;
+        l->tE = ev.tE; l->t0 = ev.t0; l->u0 = ev.u0; l->piE = ev.piE;
+        int nL = 0, nR = 0;
+        const int ndw = buildLightCurve(*s, *l, *as, nL, nR);
+        l->tE = ev.tE; l->t0 = ev.t0; l->u0 = ev.u0; l->piE = ev.piE;
+        s->xi = kXi; s->fb[0] = fRubin; s->fb[1] = kFbRoman;
+        FisherM(*s, *l, *as, *co, ndw);
+        ErrorCal(*co, *l, *s);
+    };
+
+    static const char* kPart[] = {"joint", "rubin", "roman"};
+    std::cout << "# sigma(fb0), sigma(fb1) per fixture event and partition (-1 = not characterised)\n"
+              << std::left << std::setw(16) << "# event" << std::setw(8) << "survey" << std::right << std::setw(4) << "ok"
+              << std::setw(14) << "sigma(fb0)" << std::setw(14) << "sigma(fb1)" << "\n";
+    std::cout << std::scientific << std::setprecision(5);
+    for (const auto& ev : kEvents) {
+        forecast(ev, kFbRubin, 1.0);
+        for (int q = 0; q < NSURV; ++q) {
+            std::cout << std::left << std::setw(16) << ev.name << std::setw(8) << kPart[q] << std::right << std::setw(4)
+                      << int(co->okA[q]) << std::setw(14) << co->Era[q][2] << std::setw(14) << co->Era[q][7] << "\n";
+            const auto act = activePhotParams(*co, q);
+            for (const int k : {2, 7}) {
+                const bool want = co->okA[q] && std::find(act.begin(), act.end(), k) != act.end();
+                const double v = co->Era[q][k];
+                if (want ? !(v > 0.0) : v != -1.0) {
+                    std::cerr << "FAIL [" << ev.name << "] partition " << kPart[q] << ": sigma(" << kPhotNames[k] << ")=" << v
+                              << (want ? " where it is characterised (want > 0)\n" : " where it is not (want the -1 sentinel)\n");
+                    ++failures;
+                }
+            }
+        }
+        const double slack = 1e-6;
+        if (co->okA[SJOINT] && co->okA[SRUBIN] && co->Era[SJOINT][2] > 0.0 && co->Era[SRUBIN][2] > 0.0
+            && co->Era[SJOINT][2] > co->Era[SRUBIN][2] * (1.0 + slack)) {
+            std::cerr << "FAIL [" << ev.name << "] sigma(fb0) joint " << co->Era[SJOINT][2] << " > Rubin " << co->Era[SRUBIN][2] << "\n";
+            ++failures;
+        }
+        if (co->okA[SJOINT] && co->okA[SROMAN] && co->Era[SJOINT][7] > 0.0 && co->Era[SROMAN][7] > 0.0
+            && co->Era[SJOINT][7] > co->Era[SROMAN][7] * (1.0 + slack)) {
+            std::cerr << "FAIL [" << ev.name << "] sigma(fb1) joint " << co->Era[SJOINT][7] << " > Roman " << co->Era[SROMAN][7] << "\n";
+            ++failures;
+        }
+    }
+
+    // Small f_S in Rubin.
+    const FixtureEvent& ev = kEvents[2];   // mid_inseason: Rubin and Roman both cover it
+    static const double kFs[]     = {1e-2, 1e-3, 1e-4, 1e-5};
+    static const double kScales[] = {0.1, 1.0, 10.0};
+    std::cout << "\n# Rubin f_S small, event " << ev.name << ": sigma(tE) [d] and sigma(fb0) at step scales 0.1 / 1 / 10; spread = (max-min)/min\n"
+              << std::left << std::setw(10) << "# f_S" << std::setw(8) << "survey";
+    for (const char* p : {"tE", "fb0"}) {
+        for (double sc : kScales) { std::ostringstream h; h << p << "@" << sc; std::cout << std::right << std::setw(13) << h.str(); }
+        std::cout << std::setw(11) << (std::string(p) + " spread");
+    }
+    std::cout << "\n";
+    for (const double f : kFs) {
+        double v[2][2][3];   // [partition: joint, rubin][param: tE, fb0][scale]
+        int okq[2][3];
+        for (int is = 0; is < 3; ++is) {
+            forecast(ev, f, kScales[is]);
+            for (int ip = 0; ip < 2; ++ip) {
+                const int q = ip == 0 ? SJOINT : SRUBIN;
+                okq[ip][is] = co->okA[q];
+                v[ip][0][is] = co->Era[q][1];
+                v[ip][1][is] = co->Era[q][2];
+            }
+        }
+        for (int ip = 0; ip < 2; ++ip) {
+            const bool nearSingular = (ip == 1 && f < 5e-5);
+            std::cout << std::left << std::scientific << std::setprecision(0) << std::setw(10) << f
+                      << std::setw(8) << (ip == 0 ? "joint" : "rubin") << std::setprecision(5);
+            for (int ik = 0; ik < 2; ++ik) {
+                double lo = v[ip][ik][0], hi = v[ip][ik][0];
+                for (int is = 0; is < 3; ++is) {
+                    std::cout << std::right << std::setw(13) << v[ip][ik][is];
+                    lo = std::min(lo, v[ip][ik][is]); hi = std::max(hi, v[ip][ik][is]);
+                }
+                const bool good = okq[ip][0] && okq[ip][1] && okq[ip][2] && lo > 0.0;
+                const double spread = good ? (hi - lo) / lo : -1.0;
+                std::cout << std::setw(11) << std::setprecision(3) << spread << std::setprecision(5);
+                // Rubin alone at f_S = 1e-5 is near-singular (sigma(tE) ~ 1/f_S: no information on tE from Rubin alone), so its
+                // step spread is not held to 1%; it is asserted to be far from characterised instead (sigma(tE) / tE > 100).
+                if (nearSingular) {
+                    if (ik == 0 && !(good && lo / ev.tE > 100.0)) {
+                        std::cerr << "FAIL [f_S=" << f << "] rubin sigma(tE)/tE not > 100 at every step scale\n";
+                        ++failures;
+                    }
+                } else if (!good || spread > 0.01) {
+                    std::cerr << "FAIL [f_S=" << f << "] " << (ip == 0 ? "joint" : "rubin") << " sigma(" << (ik ? "fb0" : "tE")
+                              << ") " << (good ? "differs across the step scales by " : "not characterised at every scale; spread ") << spread << "\n";
+                    ++failures;
+                }
+            }
+            std::cout << "\n";
+        }
+    }
+
+    std::cout << "\n#\n" << (failures ? "# FAIL -- blend assertions failed\n" : "# PASS -- all blend assertions held\n");
+    return failures ? 1 : 0;
+}
+
 int main(int argc, char** argv)
 {
     // --source-model pspl|espl in any mode, taken out of the argument list before the modes read it.
@@ -1661,6 +1783,7 @@ int main(int argc, char** argv)
     vbmSetSightline(kLon, kLat);
     if (argc > 1 && std::string(argv[1]) == "--finite-source") return runFiniteSource();
     if (argc > 1 && std::string(argv[1]) == "--lens-motion") return runLensMotion();
+    if (argc > 1 && std::string(argv[1]) == "--blend") return runBlend();
     if (argc > 1 && std::string(argv[1]) == "--astro-variants") return runAstroVariants();
     if (argc > 1 && std::string(argv[1]) == "--sweep-astro") return runSweepAstro();
     if (argc > 1 && std::string(argv[1]) == "--sweep") return runSweep();

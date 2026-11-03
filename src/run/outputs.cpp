@@ -73,7 +73,11 @@ const char* eventTableHeader()
         // per resolved object) keeps this draw, 1 - (1 - f_r [Rubin sees the peak]) (1 - f_F146 [Roman sees the
         // peak]) with f the source's flux fraction in r and in F146. It is written in both selection modes: weighting
         // an every-star event by pKeep gives the per-object count, dividing a per-object event by it the every-star one.
-        "pKeep";
+        "pKeep "
+        // The Fisher error of the blend fraction f_S (co.Era[q][2] for Rubin's, [7] for Roman's): sigfb0 is Rubin's f_S from
+        // the joint (_J) and the Rubin-only (_L) matrix, sigfb1 Roman's from the joint and the Roman-only (_R) matrix;
+        // -1 = not characterised (no matrix, or the parameter is not in the fit, e.g. Roman's f_S without Roman data).
+        "sigfb0_J sigfb0_L sigfb1_J sigfb1_R";
 }
 
 int openOutputs(const RunConfig& cfg, RunOutputs& o) {

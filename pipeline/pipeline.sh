@@ -76,6 +76,7 @@ source "$CONFIG"
 : "${SUBMIT:=1}"
 : "${KEEP_CHUNKS:=1}"
 : "${ANALYSES:=yields figures}"
+: "${OGLE_TABLE3:=}"
 : "${PYTHON:=.roman/bin/python}"
 : "${GSL:=auto}"
 : "${GSL_URL:=https://ftp.gnu.org/gnu/gsl/gsl-2.8.tar.gz}"
@@ -86,6 +87,7 @@ P_BESANCON=$(absp "$BESANCON_CATALOGUE")
 P_OPSIM=$(absp "$OPSIM_DB")
 P_RUN=$(absp "$RUN_ROOT")
 PY=$(absp "$PYTHON")
+P_OGLE=""; [[ -n $OGLE_TABLE3 ]] && P_OGLE=$(absp "$OGLE_TABLE3")
 P_EXT=""; [[ -n $EXT_TABLES && $EXT_TABLES != build ]] && P_EXT=$(absp "$EXT_TABLES")
 
 STAMPS=$ROOT/pipeline/.stamps          # prep/fetch stamps: one per data configuration, so one per clone
@@ -207,7 +209,7 @@ run_step() {
 # ------------------------------------------------------------------------------------------------
 COMPONENT_FILES="CMD/components/thin_disk.dat CMD/components/bulge.dat CMD/components/thick_disk.dat CMD/components/halo.dat CMD/components/provenance.txt"
 EEM=CMD/empirical/EEM_dwarf_UBVIJHK_colors_Teff.txt
-PREP_STEPS="catalogue lens_ml rubin_visits roman_visits fovmap extinction sync build"
+PREP_STEPS="catalogue lens_ml ms_hypothesis rubin_visits roman_visits fovmap extinction sync build"
 
 step_def() {
     S_STAMP=$STAMPS/$1.stamp; S_OPTS=""; S_INS=""; S_OUTS=""; S_FN=""
@@ -221,6 +223,8 @@ step_def() {
         lens_ml)
             S_FN=do_lens_ml; S_OPTS="dwarfs=$CATALOGUE_DWARFS"
             S_INS="$P_BESANCON CMD/lens_ml_table.py CMD/BolometricCorrection.py $EEM"; S_OUTS=CMD/components/lens_ml.dat ;;
+        ms_hypothesis)   # no stamp: built when missing, never replaced unless FORCE=1
+            S_FN=do_ms_hypothesis; S_OUTS=CMD/components/ms_hypothesis.dat; S_STAMP="" ;;
         rubin_visits)
             S_FN=do_rubin_visits; S_OPTS="db=$P_OPSIM"
             S_INS="$P_OPSIM Baseline/readbaselineBulge.py analysis/gbtds_geometry.py Baseline/gbtds_layout config/parameters.h"
@@ -314,6 +318,10 @@ do_catalogue() {
 do_lens_ml() {
     need_py
     "$PY" CMD/lens_ml_table.py --input "$P_BESANCON" --dwarfs "$CATALOGUE_DWARFS" --out "$ROOT/CMD/components/lens_ml.dat"
+}
+do_ms_hypothesis() {   # the main-sequence mass -> magnitude table of the dark-lens test (analysis/f5)
+    need_py
+    "$PY" CMD/lens_ml_table.py --hypothesis --input "$P_BESANCON" --out "$ROOT/CMD/components/ms_hypothesis.dat"
 }
 do_rubin_visits()  { need_py; (cd Baseline && "$PY" readbaselineBulge.py --db "$P_OPSIM" --no-plots); }
 do_roman_visits()  { need_py; "$PY" Baseline/generateRomanBaseline.py --mission-start "$ROMAN_MISSION_START"; }
@@ -432,11 +440,12 @@ check_products() {
     local s st pop
     item prod "$(mist_state LSST Rubin)" "MIST Rubin tables" "CMD/Rubin (75 files)"
     item prod "$(mist_state Roman Roman)" "MIST Roman tables" "CMD/Roman (75 files)"
-    for s in catalogue lens_ml rubin_visits roman_visits fovmap extinction sync build; do
+    for s in catalogue lens_ml ms_hypothesis rubin_visits roman_visits fovmap extinction sync build; do
         st=$(state_of "$s")
         item prod "$st" "$s" "$(case $s in
             catalogue) echo "CMD/components/{thin_disk,bulge,thick_disk,halo}.dat" ;;
             lens_ml) echo CMD/components/lens_ml.dat ;;
+            ms_hypothesis) echo CMD/components/ms_hypothesis.dat ;;
             rubin_visits) echo Baseline/BulgeBaseline.dat ;;
             roman_visits) echo Baseline/RomanBaseline.dat ;;
             fovmap) echo Baseline/lsstcam_fov/fov_map.txt ;;
@@ -589,7 +598,7 @@ write_provenance() {
         echo "opsim_db      $P_OPSIM  $(stat_sm "$P_OPSIM")  (size bytes, mtime; not hashed)"
         echo "# md5 of the data products this run reads:"
         for f in CMD/components/thin_disk.dat CMD/components/bulge.dat CMD/components/thick_disk.dat CMD/components/halo.dat \
-                 CMD/components/lens_ml.dat CMD/components/provenance.txt Baseline/BulgeBaseline.dat Baseline/RomanBaseline.dat \
+                 CMD/components/lens_ml.dat CMD/components/ms_hypothesis.dat CMD/components/provenance.txt Baseline/BulgeBaseline.dat Baseline/RomanBaseline.dat \
                  Baseline/lsstcam_fov/fov_map.txt files/ext/ext_tables.dat files/sigma_roman.txt config/data_products.h \
                  files/ephemeris/satellite1.txt external/VBMicrolensing/data/SunEphemeris.txt external/VBMicrolensing/data/ESPL.tbl; do
             echo "md5 $(md5f "$f")  $f"
@@ -837,6 +846,8 @@ stage_analyze() {
         pops="$pops $pop"
     done
     local A=$P_RUN/analysis
+    P_MSH=$ROOT/CMD/components/ms_hypothesis.dat
+    [[ -z $P_OGLE || -f $P_OGLE ]] || die "OGLE_TABLE3 file not found: $OGLE_TABLE3"
     if (( do_y )); then
         say "analyze: yields"
         local csvs=""
@@ -868,20 +879,41 @@ stage_analyze() {
             AN_OUTS="$det" analysis "detJ extract $pop" "$o/detJ_extract.log" "$d/test$tag.dat" make_detj "$d/test$tag.dat" "$det"
             [[ -f $det ]] || continue
             local In="$det $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log"
+            # Every script that takes --convention runs twice: every star (the default, the headline)
+            # and per object (--convention per-object, outputs and logs suffixed _per_object).
+            local cv sfx cvf
             # shellcheck disable=SC2086
+            for cv in every-star per-object; do
+            sfx=""; cvf=""; [[ $cv == per-object ]] && { sfx=_per_object; cvf="--convention per-object"; }
             {
             # f1 counts the non-detected draws too (its N_events column), so it reads the FULL table
-            analysis "f1 $pop"      "$o/f1.log"      "$d/test$tag.dat $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log" "$PY" analysis/f1_results_table.py "$d/test$tag.dat" --fields-only -o "$o/f1.csv" $P $W
-            analysis "f2_tE $pop"   "$o/f2_tE.log"   "$In" "$PY" analysis/f2_gap_filling.py "$det" --param tE -o "$o/f2_gap_filling.png" $P $W
-            analysis "f2_piE $pop"  "$o/f2_piE.log"  "$In" "$PY" analysis/f2_gap_filling.py "$det" --param piE -o "$o/f2_gap_filling_piE.png" $P $W
-            analysis "f3 $pop"      "$o/f3.log"      "$In" "$PY" analysis/f3_characterization_map.py "$det" -o "$o/f3_characterization_map.png" $P $W
-            analysis "f4 $pop"      "$o/f4.log"      "$In" "$PY" analysis/f4_fisher_precision.py "$det" -o "$o/f4_fisher_precision.png" $P $W
-            analysis "f4_all $pop"  "$o/f4_all.log"  "$In" "$PY" analysis/f4_fisher_precision.py "$det" --scope all -o "$o/f4_fisher_precision_all.png" $P $W
-            analysis "h5 $pop"      "$o/h5.log"      "$In" "$PY" analysis/h5_astrometric_shift.py "$det" -o "$o/h5_astrometric_shift.png" $P $W
+            analysis "f1 $pop$sfx"      "$o/f1$sfx.log"      "$d/test$tag.dat $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log" "$PY" analysis/f1_results_table.py "$d/test$tag.dat" --fields-only -o "$o/f1$sfx.csv" $cvf $P $W
+            analysis "f2_tE $pop$sfx"   "$o/f2_tE$sfx.log"   "$In" "$PY" analysis/f2_gap_filling.py "$det" --param tE -o "$o/f2_gap_filling$sfx.png" $cvf $P $W
+            analysis "f2_piE $pop$sfx"  "$o/f2_piE$sfx.log"  "$In" "$PY" analysis/f2_gap_filling.py "$det" --param piE -o "$o/f2_gap_filling_piE$sfx.png" $cvf $P $W
+            analysis "f3 $pop$sfx"      "$o/f3$sfx.log"      "$In" "$PY" analysis/f3_characterization_map.py "$det" -o "$o/f3_characterization_map$sfx.png" $cvf $P $W
+            analysis "f4 $pop$sfx"      "$o/f4$sfx.log"      "$In" "$PY" analysis/f4_fisher_precision.py "$det" -o "$o/f4_fisher_precision$sfx.png" $cvf $P $W
+            analysis "f4_all $pop$sfx"  "$o/f4_all$sfx.log"  "$In" "$PY" analysis/f4_fisher_precision.py "$det" --scope all -o "$o/f4_fisher_precision_all$sfx.png" $cvf $P $W
+            analysis "h5 $pop$sfx"      "$o/h5$sfx.log"      "$In" "$PY" analysis/h5_astrometric_shift.py "$det" -o "$o/h5_astrometric_shift$sfx.png" $cvf $P $W
             if [[ $PAIR_SATELLITE == 1 ]]; then
-            analysis "h3 $pop"      "$o/h3.log"      "$d/h3_pair.dat $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log" "$PY" analysis/h3_satellite_parallax.py "$d/h3_pair.dat" --out-prefix "$o/h3" $W
+            analysis "h3 $pop$sfx"      "$o/h3$sfx.log"      "$d/h3_pair.dat $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log" "$PY" analysis/h3_satellite_parallax.py "$d/h3_pair.dat" --out-prefix "$o/h3$sfx" $cvf $W
             fi
             }
+            done
+            # f5 reads the FULL table (it selects the Rubin-, Roman- and joint-detected rows itself) and prints both conventions
+            if [[ -f $P_MSH ]]; then
+            analysis "f5 $pop" "$o/f5.log" "$d/test$tag.dat $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log $P_MSH" "$PY" analysis/f5_blend_selection.py "$d/test$tag.dat" --ms "$P_MSH" -o "$o/f5_blend_selection.md" $W
+            else
+                FAILED_ANALYSES="$FAILED_ANALYSES
+   f5 $pop: $P_MSH not found (run the prep stage)"
+            fi
+            # w2 compares the bulge population's blend fractions with OGLE-IV's Table 3
+            if [[ $pop == bulge ]]; then
+                if [[ -n $P_OGLE ]]; then
+                analysis "w2 $pop" "$o/w2.log" "$d/test$tag.dat $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log $P_OGLE" "$PY" analysis/w2_ogle4_blend_check.py "$d/test$tag.dat" --ogle "$P_OGLE" -o "$o/w2_ogle4_blend_check.png" $P $W
+                else
+                    say "  note   w2 (OGLE-IV blend check) skipped: OGLE_TABLE3 is not set in $CONFIG_ARG"
+                fi
+            fi
             runs="$runs --run $pop=$d"
         done
         if [[ -n $runs ]]; then
@@ -891,6 +923,10 @@ stage_analyze() {
             analysis "p6" "$A/figures/p6.log" "$xin" "$PY" analysis/memrun.py analysis/p6_synergy_resolution.py $runs --detections-only -o "$A/figures/p6"
             # shellcheck disable=SC2086
             analysis "p7" "$A/figures/p7.log" "$xin" "$PY" analysis/memrun.py analysis/p7_forecast_figures.py $runs -o "$A/figures/p7"
+            # shellcheck disable=SC2086
+            analysis "p6 per-object" "$A/figures/p6_per_object.log" "$xin" "$PY" analysis/memrun.py analysis/p6_synergy_resolution.py $runs --detections-only --convention per-object -o "$A/figures/p6_per_object"
+            # shellcheck disable=SC2086
+            analysis "p7 per-object" "$A/figures/p7_per_object.log" "$xin" "$PY" analysis/memrun.py analysis/p7_forecast_figures.py $runs --convention per-object -o "$A/figures/p7_per_object"
         fi
     fi
     if [[ -n $FAILED_ANALYSES ]]; then

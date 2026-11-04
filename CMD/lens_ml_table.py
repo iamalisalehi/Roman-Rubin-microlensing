@@ -41,8 +41,9 @@ number of the component's dwarfs in the bin. Comment lines ('#') above the table
 
   --hypothesis      instead of the lens table, write ms_hypothesis.dat (default components_staging/
                     ms_hypothesis.dat; pass --out to place it): the main-sequence relation for the dark-lens test,
-                    which needs masses above 1 Msun (neutron stars, black holes). One row per row of the Pecaut &
-                    Mamajek sequence with 0.08 <= Msun, up to its top (O3V), at the sequence's own mass: Mbol and
+                    which needs masses above 1 Msun (neutron stars, black holes). At most one row per row of the
+                    Pecaut & Mamajek sequence with 0.08 <= Msun, up to its top (O3V), at the sequence's own mass;
+                    rows out of brightness order are dropped and listed in the header. Each row has Mbol and
                     Teff from the table, logg from the builder's formula, the MIST bolometric corrections (AB) at the
                     thin disc's median [M/H], [a/Fe] (one relation for all Galactic components), clamped onto the BC
                     grid. Above the top mass a consumer clamps to the last row (conservative: a real star of that

@@ -10,9 +10,12 @@ Roman (detR), by the joint fit (detJ), and characterised (joint, Abrams et al. c
 
   - the share with f_S >= 0.6 in Rubin and in Roman;
   - the shares of the follow-up classes (romanlib.blend_class);
-  - the share with P(dark) > 0.75 in each partition (joint, Rubin alone, Roman alone), and the share
-    for which no verdict exists (no mass error, or no fitted blend fraction);
-  - when the table has lensLum: the same joint P(dark) share for luminous and for dark lenses.
+  - for the characterised events only (a mass error exists only for them; n/a elsewhere): the share
+    with P(dark) > 0.75 in each partition (joint, Rubin alone, Roman alone), and the share for which
+    no verdict exists (no mass error, or no fitted blend fraction);
+  - when the table has lensLum, again for characterised events: the joint P(dark) > 0.75 share among
+    luminous lenses (the false-dark rate) and among dark lenses, each over the lenses of that kind
+    that have a verdict.
 
 Every number is given in both counting conventions, every-star first (the headline), with the
 Kish N_eff of the weights; the dark-lens logic lives in romanlib.dark_lens_probability.
@@ -41,7 +44,8 @@ def build(df, ms, weights):
             "detected, Roman (detR)": R.detected(df, "roman"),
             "detected, joint (detJ)": R.detected(df, "joint"),
             "characterised (joint)": R.detected(df, "joint") & R.characterized(df, "joint")}
-    pd_ = {p: R.dark_lens_probability(df, p, ms) for p in PARTS}
+    char = sets["characterised (joint)"]
+    pd_ = {p: R.dark_lens_probability(df[char], p, ms).reindex(df.index) for p in PARTS}
     cls = R.blend_class(df)
     out = {}
     for name, sel in sets.items():
@@ -54,22 +58,27 @@ def build(df, ms, weights):
             r = [("n events (unweighted)", None), ("f_S(Rubin) >= 0.6", m(s["fb0"] >= R.BLEND_CLEAN_FS)),
                  ("f_S(Roman) >= 0.6", m(s["fb1"] >= R.BLEND_CLEAN_FS))]
             r += [(f"class {k}", m(c == k)) for k in R.BLEND_CLASSES]
+            is_char = name.startswith("characterised")
             for p in PARTS:
                 v = pd_[p][sel]
-                r.append((f"P(dark) > {R.DARK_P_MIN}, {p}", m(v > R.DARK_P_MIN)))
-                r.append((f"no verdict, {p}", m(v.isna())))
+                r.append((f"P(dark) > {R.DARK_P_MIN}, {p}", m(v > R.DARK_P_MIN) if is_char else None))
+                r.append((f"no verdict, {p}", m(v.isna()) if is_char else None))
             if "lensLum" in s.columns:
                 v = pd_["joint"][sel]
                 for lab, k in (("luminous lenses", 1), ("dark lenses", 0)):
-                    sub = s["lensLum"] == k
-                    if sub.any():
-                        r.append((f"P(dark) > {R.DARK_P_MIN}, joint, among {lab}"
+                    sub = (s["lensLum"] == k) & v.notna()
+                    tag = "characterised " + lab + " with a verdict"
+                    if not is_char:
+                        r.append((f"P(dark) > {R.DARK_P_MIN}, joint, among {tag}"
+                                  + (" (false-dark rate)" if k == 1 else ""), None))
+                    elif sub.any():
+                        r.append((f"P(dark) > {R.DARK_P_MIN}, joint, among {tag}"
                                   + (" (false-dark rate)" if k == 1 else ""),
                                   share((v[sub] > R.DARK_P_MIN).reset_index(drop=True), w[sub.to_numpy()])))
-                    if k == 1:
-                        good = sub & (s["relMl_J"] > 0) & (s["relMl_J"] < 0.3)
+                    if k == 1 and is_char:
+                        good = sub & (s["relMl_J"] < 0.3)
                         if good.any():
-                            r.append((f"P(dark) > {R.DARK_P_MIN}, joint, among luminous lenses with relMl_J < 0.3"
+                            r.append((f"P(dark) > {R.DARK_P_MIN}, joint, among {tag} and relMl_J < 0.3"
                                       " (false-dark rate)",
                                       share((v[good] > R.DARK_P_MIN).reset_index(drop=True), w[good.to_numpy()])))
             rows.append((conv, r, int(sel.sum())))
@@ -83,7 +92,10 @@ def render(res, label):
         (_, ra, n), (_, rb, _) = rows
         L += [f"### {name}  (n = {n})", "", "| quantity | every-star | N_eff | per-object | N_eff |", "|---|---|---|---|---|"]
         for (lab, a), (_, b) in zip(ra[1:], rb[1:]):
-            L.append(f"| {lab} | {a[0]:.4f} | {a[1]:,.0f} | {b[0]:.4f} | {b[1]:,.0f} |")
+            if a is None or b is None:
+                L.append(f"| {lab} | n/a | n/a | n/a | n/a |")
+            else:
+                L.append(f"| {lab} | {a[0]:.4f} | {a[1]:,.0f} | {b[0]:.4f} | {b[1]:,.0f} |")
         L.append("")
     return L
 

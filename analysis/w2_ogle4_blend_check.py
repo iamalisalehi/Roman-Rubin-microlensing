@@ -8,8 +8,10 @@ Table 3 of Mroz et al. (2019, ApJS 244, 29): 5,790 OGLE-IV events in the low-cad
 by the byte-by-byte description in the file's own header.
 
 Simulated sample: Rubin-detected events (detL == 1) with source I-band magnitude
-I_s = magb_i - 2.5 log10(blend_i) < 21, u0 < 1, and Galactic latitude within the OGLE sample's
-range. OGLE sample: I_s < 21, u0 < 1 (best fit), raw (unweighted) counts, f_s > 1 in the top bin.
+I_s = magb_i - 2.5 log10(blend_i) - (i_AB - I_Vega) <= 21, u0 <= 1, and Galactic latitude within the
+OGLE sample's range. The simulated i magnitude is AB (LSST i) and OGLE's Is_best is Vega, so the
+simulation is converted with romanlib.I_AB_MINUS_VEGA (0.4 mag) before the cut and the magnitude
+bins. OGLE sample: I_s <= 21, u0 <= 1 (best fit), raw (unweighted) counts, f_s > 1 in the top bin.
 The f_S distribution (bins < 0.2, 0.2-0.6, 0.6-0.9, >= 0.9) is printed overall and in source
 magnitude bins 17-19, 19-20, 20-21, for the simulation in both counting conventions (every-star
 first, the headline; N and Kish N_eff) beside OGLE.
@@ -35,7 +37,7 @@ CONVS = ("every-star", "per-object")
 FS_EDGES = (0.2, 0.6, 0.9)
 FS_LABELS = ("< 0.2", "0.2 - 0.6", "0.6 - 0.9", ">= 0.9")
 MAG_BINS = ((17.0, 19.0), (19.0, 20.0), (20.0, 21.0))
-I_S_MAX = 21.0
+I_S_MAX = 21.0          # published cuts, inclusive: I_s <= 21, u0 <= 1
 U0_MAX = 1.0
 
 
@@ -75,7 +77,7 @@ def weighted_cdf(fs, w, grid):
 
 
 def subsets(mag):
-    yield "overall (I_s < 21)", np.ones(len(mag), dtype=bool)
+    yield "overall (I_s <= 21)", np.ones(len(mag), dtype=bool)
     for lo, hi in MAG_BINS:
         yield f"I_s {lo:g} - {hi:g}", (mag >= lo) & (mag < hi)
 
@@ -138,13 +140,24 @@ def main():
     ap.add_argument("--log", action="append", default=[], help="run log(s), when the map file lost rows")
     ap.add_argument("--unweighted", action="store_true", help="deliberately use the raw simulated sample")
     ap.add_argument("--ogle", required=True, help="Mroz et al. 2019 Table 3 (ogle4_table3.dat)")
+    ap.add_argument("--provenance", default=None, help="the run's run_provenance.txt (default: found beside MAP or EVENTS)")
     ap.add_argument("--chunksize", type=int, default=500_000)
     ap.add_argument("-o", "--out", default=None, help="write the CDF figure here (PNG; a PDF beside it)")
     a = ap.parse_args()
 
+    pv = (R.find_provenance(a.provenance, near=a.map or a.events)
+          or R.find_provenance(None, near=a.events))
+    if pv is None:
+        sys.exit(f"{a.events}: no run_provenance.txt found, so the lens population cannot be checked; "
+                 "pass --provenance PATH")
+    pop = R.population(R.load_provenance(pv))
+    if not pop.startswith("bulge"):
+        sys.exit(f"{a.events}: population is {pop!r}; the OGLE-IV events are bulge lenses, so this check "
+                 "needs a bulge-population run")
+
     ogle_all = read_ogle_table3(a.ogle)
     lat_lo, lat_hi = float(ogle_all["glat"].min()), float(ogle_all["glat"].max())
-    ogle = ogle_all[(ogle_all["Is_best"] < I_S_MAX) & (ogle_all["u0_best"] < U0_MAX)].reset_index(drop=True)
+    ogle = ogle_all[(ogle_all["Is_best"] <= I_S_MAX) & (ogle_all["u0_best"] <= U0_MAX)].reset_index(drop=True)
 
     df = R.load_events(a.events, keep=lambda c: c["detL"] == 1, chunksize=a.chunksize).reset_index(drop=True)
     if df.empty:
@@ -155,9 +168,9 @@ def main():
         weights[conv] = np.asarray(w, dtype=float)
         labels.append(lab)
     n_det = len(df)
-    sim_all = pd.DataFrame({"Is": df["magb_i"] - 2.5 * np.log10(df["blend_i"]), "fs": df["blend_i"],
+    sim_all = pd.DataFrame({"Is": df["magb_i"] - 2.5 * np.log10(df["blend_i"]) - R.I_AB_MINUS_VEGA, "fs": df["blend_i"],
                             "u0": df["u0"], "lat": df["lat"]})
-    ok = ((sim_all["Is"] < I_S_MAX) & (sim_all["u0"] < U0_MAX)
+    ok = ((sim_all["Is"] <= I_S_MAX) & (sim_all["u0"] <= U0_MAX)
           & (sim_all["lat"] >= lat_lo) & (sim_all["lat"] <= lat_hi)).to_numpy()
     sim = sim_all[ok].reset_index(drop=True)
     weights = {c: w[ok] for c, w in weights.items()}
@@ -166,9 +179,11 @@ def main():
 
     head = ["# OGLE-IV blend-fraction check", "",
             f"Simulation: {a.events}. Weights: " + "; ".join(f"{c}: {l}" for c, l in zip(CONVS, labels)) + ".",
-            f"Simulated Rubin-detected events {n_det:,}; after cuts (I_s < {I_S_MAX:g}, u0 < {U0_MAX:g}, "
+            f"Simulated Rubin-detected events {n_det:,}; after cuts (I_s <= {I_S_MAX:g}, u0 <= {U0_MAX:g}, "
             f"{lat_lo:.2f} <= b <= {lat_hi:.2f} deg) {len(sim):,}.",
-            f"OGLE-IV Table 3: {len(ogle_all):,} events; after cuts (I_s < {I_S_MAX:g}, u0 < {U0_MAX:g}) "
+            f"Population: {pop}. Simulated I_s is Vega: LSST i (AB) minus {R.I_AB_MINUS_VEGA:g} mag "
+            "(romanlib.I_AB_MINUS_VEGA); OGLE's Is_best is Vega.",
+            f"OGLE-IV Table 3: {len(ogle_all):,} events; after cuts (I_s <= {I_S_MAX:g}, u0 <= {U0_MAX:g}) "
             f"{len(ogle):,}; raw (unweighted) counts; f_s > 1 counted in the top bin.", "",
             "Caveats: the simulated blend disc uses Rubin's i seeing (FWHM 0.95 arcsec), not OGLE's (~1.2-1.4 arcsec), so",
             "the simulation should be less blended at fixed source magnitude; the detection pipelines differ;",

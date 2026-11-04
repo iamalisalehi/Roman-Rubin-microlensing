@@ -80,6 +80,13 @@ weighted. The analysis scripts require a sightline map (`--map`) or an explicit 
 quote every weighted number with its Kish effective sample size. A Fisher entry of `-1.0` means
 "not measured" and is never averaged.
 
+A source star is kept whenever its peak is visible (every star, the default); `--blend-thinning`
+restores the per-resolved-object rule, keeping a draw with probability equal to its blend fraction.
+Either way the event table records that keep probability as `pKeep`, so every analysis script reports
+either convention (`--convention every-star|per-object`, every star the default). The table also carries
+the blend-fraction errors `sigfb0_J`, `sigfb0_L`, `sigfb1_J`, `sigfb1_R` and the lens extinctions
+`Alens_*` (one per band).
+
 ## Acknowledgements
 
 The simulator builds on earlier microlensing simulation code by Prof. Sedighe Sajadian, whom I thank

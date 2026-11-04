@@ -589,6 +589,10 @@ def keep_probability(df, sightlines, mode, fixed_rubin_depths=False, hint=None):
     every-star table without pKeep cannot be rebuilt and raises. fixed_rubin_depths is the
     approximation of acceptance_probability for maps without per-sightline depths. `hint` is what
     the error tells the caller to do instead (default: pass --convention <the run's mode>).
+
+    Two Rubin bands meet in a run, on purpose: pKeep and the legacy (per-object) selection stay on
+    Rubin's r band (blend[2]) even if RUBIN_REF_BANDS is changed, while fb0, sigfb0_* and the dark-lens
+    test's Rubin flux follow RUBIN_REF_BANDS.
     """
     hint = hint or f"or count as the run did: pass --convention {mode}"
     if "pKeep" in df.columns:
@@ -901,17 +905,22 @@ def kish_neff(w):
 BLEND_CLEAN_FS = 0.6      # f_S at or above which a survey's source is "clean" (W&M's threshold)
 DARK_P_MIN = 0.75         # "likely dark" when P(dark) exceeds this
 BLEND_CLASSES = ("clean-both", "resolved-by-roman", "blended-roman-only", "blended-both",
-                 "rubin-blended-no-roman")
+                 "rubin-blended-no-roman", "clean-rubin-no-roman")
+
+
+# i_AB - I_Vega for a typical reddened bulge giant; the CMD magnitudes are AB, OGLE's are Vega.
+# Approximate (about 0.4 mag); the results depend on it weakly.
+I_AB_MINUS_VEGA = 0.4
 
 
 def blend_class(df):
-    """Follow-up label of each event, from Rubin's f_S (fb0) and Roman's (fb1). Exhaustive.
+    """Follow-up label of each event, from Rubin's f_S (fb0) and Roman's (fb1). Exhaustive and exclusive.
 
-    "rubin-blended-no-roman": fb0 < 0.6 and Roman has no data on the event (ndw_R < kMinTeleEpochs,
-    the Fisher's own inclusion rule), whatever fb1 is. Otherwise, with f_S at or above 0.6 called
-    clean: "clean-both", "resolved-by-roman" (Rubin blended, Roman clean), "blended-roman-only"
-    (Rubin clean, Roman blended), "blended-both". A Rubin-clean event without Roman data is
-    classed by its fb1 like any other (fb1 is the simulator's own value, defined for every event).
+    Roman has data when ndw_R >= kMinTeleEpochs (the Fisher's own inclusion rule). Without Roman data
+    the simulated fb1 is not a measurement, so it is not used: "rubin-blended-no-roman" (fb0 < 0.6)
+    and "clean-rubin-no-roman" (fb0 >= 0.6). With Roman data, f_S at or above 0.6 called clean:
+    "clean-both", "resolved-by-roman" (Rubin blended, Roman clean), "blended-roman-only" (Rubin
+    clean, Roman blended), "blended-both".
     """
     fb0 = df["fb0"].to_numpy(float)
     fb1 = df["fb1"].to_numpy(float)
@@ -921,8 +930,8 @@ def blend_class(df):
     c0 = fb0 >= BLEND_CLEAN_FS
     c1 = fb1 >= BLEND_CLEAN_FS
     has = df["ndw_R"].to_numpy(float) >= P.kMinTeleEpochs
-    lab = np.select([~c0 & ~has, c0 & c1, ~c0 & c1, c0 & ~c1],
-                    [BLEND_CLASSES[4], BLEND_CLASSES[0], BLEND_CLASSES[1], BLEND_CLASSES[2]],
+    lab = np.select([~c0 & ~has, c0 & ~has, c0 & c1, ~c0 & c1, c0 & ~c1],
+                    [BLEND_CLASSES[4], BLEND_CLASSES[5], BLEND_CLASSES[0], BLEND_CLASSES[1], BLEND_CLASSES[2]],
                     default=BLEND_CLASSES[3])
     return pd.Series(lab, index=df.index, name="blend_class")
 
@@ -943,6 +952,24 @@ def load_ms_hypothesis(path):
     return t
 
 
+def _truncnorm01(mu, sg, u):
+    """Inverse-CDF draw from N(mu, sg) truncated to [0, 1]; `u` uniform in [0, 1), shape of the result.
+
+    Where sg is too small for the CDF to resolve (or the window carries no probability) the draw is
+    mu clipped to [0, 1], the sg -> 0 limit.
+    """
+    from scipy.special import ndtr, ndtri
+    mu, sg, u = np.broadcast_arrays(np.asarray(mu, float), np.asarray(sg, float), np.asarray(u, float))
+    live = sg > 1e-12
+    s = np.where(live, sg, 1.0)
+    lo = ndtr((0.0 - mu) / s)
+    hi = ndtr((1.0 - mu) / s)
+    live &= (hi - lo) > 1e-12
+    q = np.clip(lo + u * (hi - lo), 1e-300, 1.0 - 1e-16)
+    x = np.where(live, mu + s * ndtri(q), mu)
+    return np.clip(x, 0.0, 1.0)
+
+
 def dark_lens_probability(df, partition, ms, n_samples=2000, seed=12345, ref_bands=None):
     """P(dark) per event: the fraction of posterior samples in which the blend cannot hide the lens.
 
@@ -951,8 +978,10 @@ def dark_lens_probability(df, partition, ms, n_samples=2000, seed=12345, ref_ban
     with sigfb1_R and relMl_R. `ref_bands` are indices into FILTERS (default P.RUBIN_REF_BANDS);
     Rubin's baseline mbs0 and the lens flux are both summed over those bands together.
 
-    Per sample: ln M ~ N(ln Ml, relMl); f_S ~ N(fb, sigfb) clipped to [0, 1], independently per band
-    (the joint fit's f_S correlation is not carried); blend flux = 10^(-0.4 mbs) (1 - f_S); a
+    Per sample: ln M ~ N(ln Ml, relMl); f_S ~ N(fb, sigfb) TRUNCATED to [0, 1] (the posterior under
+    the physical prior; clipping would pile the mass of a poorly measured f_S on f_S = 1, zero blend
+    light, and call every lens dark), independently per band (the joint fit's f_S correlation is
+    not carried); a sigfb that is effectively zero gives f_S = fb; blend flux = 10^(-0.4 mbs) (1 - f_S); a
     main-sequence star of mass M at D_L has flux 10^(-0.4 (Mab(M) + 5 log10(D_L 100) + Alens)), Mab
     linear in ln M, the top row above the table, and a sample below the table's lowest mass is NOT
     excluded (a brown dwarf can hide anywhere). A sample is excluded when that flux exceeds the blend
@@ -1000,7 +1029,7 @@ def dark_lens_probability(df, partition, ms, n_samples=2000, seed=12345, ref_ban
             t = act[i]
             if not t.any():
                 continue
-            fs = np.clip(fb[i, None] + np.where(t, sg[i], 0.0)[:, None] * rng.standard_normal(lnM.shape), 0, 1)
+            fs = _truncnorm01(fb[i, None], np.where(t, sg[i], 0.0)[:, None], rng.random(lnM.shape))
             blend = 10.0 ** (-0.4 * mbs[i, None]) * (1.0 - fs)
             lens = 0.0
             for mc, ac in cols:

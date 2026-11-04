@@ -104,6 +104,20 @@ def main():
     check(np.isfinite(p) and 0.0 <= p <= 1.0, f"relMl_R = 5, sigfb1 = 10: P(dark) = {p:.3f} finite in [0, 1]")
     check(np.isnan(pdark(frame(relMl_R=0.1), "roman")), "sigfb1_R = -1 (no tested band): NaN")
 
+    # 4b. an unmeasured f_S must not make every lens dark (truncated, not clipped, f_S).
+    # A 0.5 Msun lens whose blend is 100x its own main-sequence light; sigma(f_S) = 10 in each band.
+    mass_h = float(ms["mass"].iloc[8])
+    fl_r, _ = ms_flux(ms, 8, 4.0, {}, ["r"])
+    fl_f, _ = ms_flux(ms, 8, 4.0, {}, ["F146"])
+    for part, s0, s1 in (("roman", -1.0, 10.0), ("rubin", 10.0, -1.0), ("joint", 10.0, 10.0)):
+        d = frame(Ml=mass_h, Dl=4.0, fb0=0.5, fb1=0.5, relMl_J=1e-6, relMl_L=1e-6, relMl_R=1e-6,
+                  mbs0=-2.5 * np.log10(100 * fl_r / 0.5), mbs1=-2.5 * np.log10(100 * fl_f / 0.5),
+                  sigfb0_J=s0, sigfb0_L=s0, sigfb1_J=s1, sigfb1_R=s1)
+        p = pdark(d, part, ref_bands=[2])
+        check(p < 0.1, f"{part}: blend 100x the lens light, f_S unmeasured (sigma 10): P(dark) = {p:.3f} < 0.1")
+    check(R._truncnorm01(0.5, 0.0, 0.3) == 0.5 and 0 <= R._truncnorm01(1.0, 1e-300, 0.9) <= 1,
+          "truncated f_S: sigma -> 0 gives f_S = fb, no NaN")
+
     # 5. Rubin band sums the reference bands
     alens = {"r": 0.4, "i": 1.1}
     f2, m2 = ms_flux(ms, 20, 6.0, alens, ["r", "i"])
@@ -138,14 +152,18 @@ def main():
     check(got == (0.0, 1.0, 0.0, 1.0), f"joint: any-band exclusion, untested band ignored: {got} == (0, 1, 0, 1)")
 
     # 7. blend_class: one row per class
-    df = pd.DataFrame([(0.9, 0.9, 80), (0.3, 0.9, 80), (0.9, 0.3, 80), (0.3, 0.3, 80), (0.3, -1.0, 0)],
+    df = pd.DataFrame([(0.9, 0.9, 80), (0.3, 0.9, 80), (0.9, 0.3, 80), (0.3, 0.3, 80), (0.3, 0.9, 0),
+                       (0.9, 0.3, 0)],
                       columns=["fb0", "fb1", "ndw_R"])
-    want = ["clean-both", "resolved-by-roman", "blended-roman-only", "blended-both", "rubin-blended-no-roman"]
+    want = ["clean-both", "resolved-by-roman", "blended-roman-only", "blended-both", "rubin-blended-no-roman",
+            "clean-rubin-no-roman"]
     got = list(R.blend_class(df))
     check(got == want, f"blend_class one row per class: {got}")
     edge = R.blend_class(pd.DataFrame({"fb0": [0.6, 0.3], "fb1": [0.6, 0.9], "ndw_R": [3, 2]}))
     check(list(edge) == ["clean-both", "rubin-blended-no-roman"],
           "blend_class: f_S = 0.6 is clean; ndw_R = 2 (< kMinTeleEpochs) is no Roman data")
+    nr = R.blend_class(pd.DataFrame({"fb0": [0.9, 0.9], "fb1": [0.9, 0.1], "ndw_R": [0, 1]}))
+    check(list(nr) == ["clean-rubin-no-roman"] * 2, "blend_class: Rubin clean without Roman data ignores fb1")
     check(R.BLEND_CLEAN_FS == 0.6 and R.DARK_P_MIN == 0.75, "constants 0.6 and 0.75")
 
     os.unlink(path)

@@ -85,8 +85,13 @@ KEEP_CHUNKS=1
 
 # ---- step 6: analysis ------------------------------------------------------------------------------
 # yields  = absolute yields per population (y1) and yield vs abundance F (y3)
-# figures = per population f1 f2 f3 f4 h5 (h3), then p6 and p7 across the populations
+# figures = per population f1 f2 f3 f4 h5 (h3) f5 (and w2 on bulge), then p6 and p7 across the populations;
+#           every script that takes --convention runs twice: every star (the headline) and per object
+#           (outputs and logs with the suffix _per_object)
 ANALYSES="yields figures"
+# Table 3 of Mroz et al. 2019 (ApJS 244, 29), the OGLE-IV events, for the blend-fraction check w2 on the
+# `bulge` population (analysis/w2_ogle4_blend_check.py). Empty = w2 is skipped, with a note in the output.
+OGLE_TABLE3=
 
 # ---- Python ---------------------------------------------------------------------------------------
 # The interpreter every script runs under. `setup` creates the venv if this path ends in /bin/python.

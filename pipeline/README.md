@@ -73,8 +73,9 @@ pipeline/pipeline.sh my_run.sh all                 # everything, on this machine
   headers are not found (`GSL=auto`, the default) or `GSL=build`, it also downloads GSL 2.8 from gnu.org and builds a
   static copy in `deps/gsl/` (~5 min, no root); the Makefile uses `deps/gsl/` whenever it exists.
 - **fetch**: downloads the above. Never the Besancon file (it prints where the form parameters are).
-- **prep**: star lists `CMD/components/{thin_disk,bulge,thick_disk,halo}.dat` and `lens_ml.dat` (from the Besancon
-  file, `CATALOGUE_DWARFS`, `CATALOGUE_FILL`), `Baseline/BulgeBaseline.dat` (Rubin visits from the OpSim db),
+- **prep**: star lists `CMD/components/{thin_disk,bulge,thick_disk,halo}.dat` `lens_ml.dat` (from the Besancon
+  file, `CATALOGUE_DWARFS`, `CATALOGUE_FILL`), `ms_hypothesis.dat` (the main-sequence table of the dark-lens test,
+  `CMD/lens_ml_table.py --hypothesis`; built only when missing, replaced only with `FORCE=1`), `Baseline/BulgeBaseline.dat` (Rubin visits from the OpSim db),
   `Baseline/RomanBaseline.dat` (`ROMAN_MISSION_START`), the extinction table, `config/data_products.h` (row counts
   and mean masses, measured from the files), and finally `make roman`. The binary has the row counts compiled
   in, so a changed data file always means a rebuild; that is why prep does the steps in this order.
@@ -104,7 +105,13 @@ pipeline/pipeline.sh my_run.sh all                 # everything, on this machine
   detection-only extract (`test<tag>_detJ.dat`: header kept, rows with `detJ == 1`, the column found from the
   header; the numbers equal those from the full table, only the printed N_eff counts detections), f2 (tE and
   piE), f3, f4 (footprint and `--scope all`), h5, and h3 (if `PAIR_SATELLITE=1`); then across populations p6
-  (`--detections-only`) and p7. Each script's output goes to a `.log` next to its results in
+  (`--detections-only`) and p7. Every one of these takes `--convention` and runs twice: counting every star whose
+  peak is visible (the default, the headline: `f1.csv`, `f2_gap_filling.png`, ...) and per object (`--convention
+  per-object`: the same names with `_per_object`, e.g. `f1_per_object.csv`, `p6_per_object/`), so every number can be
+  read in either convention. Also per population f5 (`f5_blend_selection.md`: blending shares, follow-up classes and
+  dark-lens pass rates, both conventions in one table; reads the full table and `ms_hypothesis.dat`) and, for the
+  population named `bulge`, w2 (`w2_ogle4_blend_check.py`: the simulated blend fractions beside OGLE-IV's Table 3;
+  needs `OGLE_TABLE3` in the config, empty = skipped with a note). Each script's output goes to a `.log` next to its results in
   `RUN_ROOT/analysis/`. A failing script is reported (name and log) and the others still run; the stage then exits
   non-zero.
 - **status**: chunks done / running / pending per population, CPU used, sizes.

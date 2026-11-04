@@ -73,9 +73,7 @@ YEAR_S = 365.25 * 86400.0
 # Mroz et al. 2019 (ApJS 244, 29), OGLE-IV, |l| < 3 deg, southern fields, sources I < 21,
 # u0 < 1: Gamma = G0 exp(cG (3 - |b|)), tau300 = T0 exp(cT (3 - |b|)).
 MROZ_SOUTH = dict(G0=14.3e-6, cG=0.52, T0=1.39e-6, cT=0.41)
-# i_AB - I_Vega for a typical reddened bulge giant; the CMD magnitudes are AB. The cut is
-# I_Vega < 21, i.e. i_AB < 21 + this. Approximate; the rate per star depends on it weakly.
-I_AB_MINUS_VEGA = 0.4
+# The cut is I_Vega < 21, i.e. i_AB < 21 + R.I_AB_MINUS_VEGA (the CMD magnitudes are AB).
 
 
 class Run:
@@ -167,7 +165,7 @@ def ogle_check(run):
     """Rate per source star, I < 21, u0 < 1, |l| < 3, b < 0, against Mroz et al. 2019."""
     df = run.df
     isrc = df["magb_i"] - 2.5 * np.log10(df["blend_i"].clip(lower=1e-12))   # source's own i
-    sel = (isrc < 21.0 + I_AB_MINUS_VEGA) & (df["lon"].abs() < 3.0) & (df["lat"] < 0)
+    sel = (isrc < 21.0 + R.I_AB_MINUS_VEGA) & (df["lon"].abs() < 3.0) & (df["lat"] < 0)
     g = pd.DataFrame({"b": df["lat"][sel].round(1),
                       "gam": df["gamma"][sel] / R.U0M * YEAR_S,
                       "tau": df["opt_1e6"][sel] * 1e-6})

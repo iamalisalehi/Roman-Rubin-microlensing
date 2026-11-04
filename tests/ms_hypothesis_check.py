@@ -5,9 +5,10 @@
 Checks: masses strictly increasing; every band (u g r i z y F146) decreases with mass (reversals up to
 0.05 mag between neighbours are allowed; every reversal is reported); over 0.10-1.00 Msun within 0.5 mag
 of component 0 (the thin disc) of the reference lens table in r and F146. --ref defaults to the empirical
-lens table, /home/ali/Documents/PhD/Offline_project/Roman/CMD/components_staging/bos10_empirical_fillnone/lens_ml.dat
+lens table, CMD/components_staging/bos10_empirical_fillnone/lens_ml.dat of this repository
 (the thin disc on the same Pecaut & Mamajek relation). The difference to the deployed lens-light table
-(--deployed, default CMD/components/lens_ml.dat of the main checkout) is printed for information only.
+(--deployed, default CMD/components/lens_ml.dat; skipped with a printed line when absent) is printed for
+information only.
 Prints the lowest and highest mass; exits non-zero on failure.
 """
 import argparse
@@ -19,7 +20,7 @@ import numpy as np
 REVERSAL_MAX = 0.05     # mag, allowed between neighbouring rows
 LENS_ML_TOL = 0.5       # mag, against lens_ml.dat component 0
 M_LO, M_HI = 0.10, 1.00
-MAIN = "/home/ali/Documents/PhD/Offline_project/Roman/CMD/"
+CMD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "CMD")
 BANDS = ["u", "g", "r", "i", "z", "y", "F146"]
 fails = []
 
@@ -47,8 +48,8 @@ def compare(m, t, lens_ml):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("path")
-    ap.add_argument("--ref", default=MAIN + "components_staging/bos10_empirical_fillnone/lens_ml.dat")
-    ap.add_argument("--deployed", default=MAIN + "components/lens_ml.dat")
+    ap.add_argument("--ref", default=os.path.join(CMD, "components_staging", "bos10_empirical_fillnone", "lens_ml.dat"))
+    ap.add_argument("--deployed", default=os.path.join(CMD, "components", "lens_ml.dat"))
     a = ap.parse_args()
     for p in (a.path, a.ref):
         if not os.path.isfile(p):
@@ -79,6 +80,8 @@ def main():
     if os.path.isfile(a.deployed):
         for name, d, mm in compare(m, t, a.deployed):
             print(f"  INFO deployed lens-light table (besancon dwarfs), not asserted: worst {name} {d:+.3f} mag at {mm:.3f} Msun")
+    else:
+        print(f"deployed table not found: skipped ({a.deployed})")
     print(f"lowest mass {m[0]:.4f} Msun, highest {m[-1]:.4f} Msun, {len(m)} rows")
     print("PASS" if not fails else "FAIL")
     return 1 if fails else 0

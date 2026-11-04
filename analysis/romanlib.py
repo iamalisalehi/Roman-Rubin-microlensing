@@ -893,6 +893,124 @@ def kish_neff(w):
     return float(w.sum()**2 / np.square(w).sum()) if w.size else 0.0
 
 
+# ---- Follow-up labels and the dark-lens probability ----
+#
+# Wyrzykowski & Mandel (2020, Sec. 2.1): all of an event's blend light is attributed to the lens, an
+# upper limit on its light; if a main-sequence star of the lens's mass and distance would outshine
+# the blend, the lens cannot be one. P(dark) is the fraction of posterior samples in which it would.
+BLEND_CLEAN_FS = 0.6      # f_S at or above which a survey's source is "clean" (W&M's threshold)
+DARK_P_MIN = 0.75         # "likely dark" when P(dark) exceeds this
+BLEND_CLASSES = ("clean-both", "resolved-by-roman", "blended-roman-only", "blended-both",
+                 "rubin-blended-no-roman")
+
+
+def blend_class(df):
+    """Follow-up label of each event, from Rubin's f_S (fb0) and Roman's (fb1). Exhaustive.
+
+    "rubin-blended-no-roman": fb0 < 0.6 and Roman has no data on the event (ndw_R < kMinTeleEpochs,
+    the Fisher's own inclusion rule), whatever fb1 is. Otherwise, with f_S at or above 0.6 called
+    clean: "clean-both", "resolved-by-roman" (Rubin blended, Roman clean), "blended-roman-only"
+    (Rubin clean, Roman blended), "blended-both". A Rubin-clean event without Roman data is
+    classed by its fb1 like any other (fb1 is the simulator's own value, defined for every event).
+    """
+    fb0 = df["fb0"].to_numpy(float)
+    fb1 = df["fb1"].to_numpy(float)
+    if not np.isfinite(fb0).all() or not np.isfinite(fb1).all():
+        raise ValueError("blend_class: fb0 or fb1 is not finite on some rows; select the rows with "
+                         "a blend fraction first")
+    c0 = fb0 >= BLEND_CLEAN_FS
+    c1 = fb1 >= BLEND_CLEAN_FS
+    has = df["ndw_R"].to_numpy(float) >= P.kMinTeleEpochs
+    lab = np.select([~c0 & ~has, c0 & c1, ~c0 & c1, c0 & ~c1],
+                    [BLEND_CLASSES[4], BLEND_CLASSES[0], BLEND_CLASSES[1], BLEND_CLASSES[2]],
+                    default=BLEND_CLASSES[3])
+    return pd.Series(lab, index=df.index, name="blend_class")
+
+
+def load_ms_hypothesis(path):
+    """The main-sequence mass -> absolute AB magnitude table (CMD/lens_ml_table.py --hypothesis).
+
+    Columns `mass` [Msun] and `Mab_<band>` for u g r i z y F146. Raises if the layout is not that or
+    the masses are not increasing.
+    """
+    names = ["mass"] + [f"Mab_{b}" for b in FILTERS]
+    a = np.loadtxt(path, comments="#", ndmin=2)
+    if a.shape[1] != len(names):
+        raise ValueError(f"{path}: {a.shape[1]} columns, expected {len(names)} ({' '.join(names)})")
+    t = pd.DataFrame(a, columns=names)
+    if not (np.diff(t["mass"]) > 0).all():
+        raise ValueError(f"{path}: masses are not strictly increasing")
+    return t
+
+
+def dark_lens_probability(df, partition, ms, n_samples=2000, seed=12345, ref_bands=None):
+    """P(dark) per event: the fraction of posterior samples in which the blend cannot hide the lens.
+
+    partition "joint" tests Rubin's reference band(s) (sigfb0_J > 0) and F146 (sigfb1_J > 0) with the
+    joint mass error relMl_J; "rubin" the reference band(s) with sigfb0_L and relMl_L; "roman" F146
+    with sigfb1_R and relMl_R. `ref_bands` are indices into FILTERS (default P.RUBIN_REF_BANDS);
+    Rubin's baseline mbs0 and the lens flux are both summed over those bands together.
+
+    Per sample: ln M ~ N(ln Ml, relMl); f_S ~ N(fb, sigfb) clipped to [0, 1], independently per band
+    (the joint fit's f_S correlation is not carried); blend flux = 10^(-0.4 mbs) (1 - f_S); a
+    main-sequence star of mass M at D_L has flux 10^(-0.4 (Mab(M) + 5 log10(D_L 100) + Alens)), Mab
+    linear in ln M, the top row above the table, and a sample below the table's lowest mass is NOT
+    excluded (a brown dwarf can hide anywhere). A sample is excluded when that flux exceeds the blend
+    flux in ANY tested band. D_L is held at its true value (an approximation: the forecast has no
+    distance error, and the mass error is the dominant one); the mass centre is the true Ml.
+
+    Float in [0, 1]; NaN (no verdict) when relMl <= 0 (the -1 sentinel), no band is tested, or a
+    tested band's inputs are not finite. Vectorised over events in chunks; deterministic for a seed.
+    """
+    spec = {"joint": ("relMl_J", "sigfb0_J", "sigfb1_J"), "rubin": ("relMl_L", "sigfb0_L", None),
+            "roman": ("relMl_R", None, "sigfb1_R")}
+    if partition not in spec:
+        raise ValueError(f"partition {partition!r}; expected one of {sorted(spec)}")
+    relcol, s0col, s1col = spec[partition]
+    rubin = list(P.RUBIN_REF_BANDS if ref_bands is None else ref_bands)
+    col = lambda c: df[c].to_numpy(float)
+    n = len(df)
+    rel = col(relcol)
+    lnM0 = np.log(col("Ml"))
+    mu = 5.0 * np.log10(col("Dl") * 100.0)
+    lnm = np.log(ms["mass"].to_numpy(float))
+    # per tested band: (fb, sigma, baseline mag, [(table column, lens-extinction column)])
+    bands = []
+    if s0col:
+        bands.append((col("fb0"), col(s0col), col("mbs0"),
+                      [(f"Mab_{FILTERS[b]}", f"Alens_{FILTERS[b]}") for b in rubin]))
+    if s1col:
+        bands.append((col("fb1"), col(s1col), col("mbs1"), [("Mab_F146", "Alens_F146")]))
+    active = [b[1] > 0 for b in bands]
+    ok = (rel > 0) & np.isfinite(rel) & np.isfinite(lnM0) & np.isfinite(mu) & np.any(active, axis=0)
+    for (fb, sg, mbs, cols), act in zip(bands, active):
+        good = np.isfinite(fb) & np.isfinite(sg) & np.isfinite(mbs)
+        for _, ac in cols:
+            good &= np.isfinite(col(ac))
+        ok &= ~act | good
+    out = np.full(n, np.nan)
+    rng = np.random.default_rng(seed)
+    idx = np.flatnonzero(ok)
+    chunk = max(1, 4_000_000 // n_samples)
+    for lo in range(0, idx.size, chunk):
+        i = idx[lo:lo + chunk]
+        lnM = lnM0[i, None] + rel[i, None] * rng.standard_normal((i.size, n_samples))
+        excl = np.zeros(lnM.shape, bool)
+        for (fb, sg, mbs, cols), act in zip(bands, active):
+            t = act[i]
+            if not t.any():
+                continue
+            fs = np.clip(fb[i, None] + np.where(t, sg[i], 0.0)[:, None] * rng.standard_normal(lnM.shape), 0, 1)
+            blend = 10.0 ** (-0.4 * mbs[i, None]) * (1.0 - fs)
+            lens = 0.0
+            for mc, ac in cols:
+                M = np.interp(lnM, lnm, ms[mc].to_numpy(float))
+                lens = lens + 10.0 ** (-0.4 * (M + mu[i, None] + col(ac)[i, None]))
+            excl |= t[:, None] & (lnM >= lnm[0]) & (lens > blend)
+        out[i] = excl.mean(axis=1)
+    return pd.Series(out, index=df.index, name=f"pdark_{partition}")
+
+
 def is_stratified(prov):
     """True if the run used --stride-roman, i.e. the sightlines stand for unequal sky areas.
 

@@ -179,7 +179,10 @@ int openOutputs(const RunConfig& cfg, RunOutputs& o) {
             // Ml, Dl, Ds and Vt are appended so older files still parse by position. The pooled
             // event-rate weight needs sqrt(Ml)*Vt*Z(Ds) per event, and pi_rel = 1/Dl - 1/Ds
             // cannot be solved for Dl and Ds from the other columns.
-              << "nepL_pk nepR_pk w_area Ml Dl Ds Vt\n";
+            // pKeep is the last column, as in the event table: the probability the per-object
+            // selection (--blend-thinning) keeps this draw, so the pair file can be counted per
+            // object (w * pKeep, or w / pKeep from a per-object run) like the event table.
+              << "nepL_pk nepR_pk w_area Ml Dl Ds Vt pKeep\n";
         }
     }
 

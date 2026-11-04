@@ -217,9 +217,7 @@ class Run:
             w, _ = R.attach_weight(df, None if unweighted else self.map, self.logs,
                                    unweighted=unweighted, convention=self.convention)
         except ValueError as e:
-            sys.exit(f"{path}: cannot count its rows as {self.convention} ({e}). The paired file "
-                     "carries no pKeep, so it can only be weighted in the convention the run "
-                     "drew: pass --convention with the run's own source selection.")
+            sys.exit(f"{path}: cannot count its rows as {self.convention}: {e}")
         df["W"] = w
         return df
 

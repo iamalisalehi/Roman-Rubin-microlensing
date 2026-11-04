@@ -49,10 +49,13 @@ def summarise(g):
 
     Counts are raw counts (they describe the simulated sample). Fractions and medians are
     event-rate weighted, because they are statements about the sky, and each carries `N_eff`
-    (the Kish effective sample size).
+    (the Kish effective sample size). Detected rows carry the --convention weight W; undetected
+    draws are the same draw in either convention, so a fraction's denominator over all draws sums
+    the native weight Wn, and N_eff is that of W, the weights the statistics use.
     """
     detL, detR = R.detected(g, "rubin"), R.detected(g, "roman")
     w = g["W"].to_numpy()
+    wn = g["Wn"].to_numpy()
     out = {
         "N_events": len(g),
         "N_eff": R.kish_neff(w),
@@ -68,7 +71,8 @@ def summarise(g):
     gap = g[(g["t0zone"] == 1) & (g["ndw_R"] > 0)]
     out["N_gap_peaking"] = len(gap)
     out["frac_gap_seen_by_rubin"] = (R.weighted_fraction(R.detected(gap, "rubin"),
-                                                         gap["W"].to_numpy())
+                                                         gap["W"].to_numpy(),
+                                                         denominator=gap["Wn"].to_numpy())
                                      if len(gap) else np.nan)
     out["frac_gap_seen_by_rubin_unw"] = (float(R.detected(gap, "rubin").mean())
                                          if len(gap) else np.nan)
@@ -91,8 +95,8 @@ def summarise(g):
     out["N_char_joint"] = int(cj.sum())
     out["N_char_roman"] = int(cr.sum())
     out["dN_char"] = int(cj.sum() - cr.sum())
-    out["frac_char_joint"] = R.weighted_fraction(cj, w)
-    out["frac_char_roman"] = R.weighted_fraction(cr, w)
+    out["frac_char_joint"] = R.weighted_fraction(cj, w, denominator=wn)
+    out["frac_char_roman"] = R.weighted_fraction(cr, w, denominator=wn)
 
     # ---- how often Rubin alone cannot be inverted at all ----
     det = g[R.detected(g, "joint")]
@@ -125,8 +129,8 @@ def main():
     # Stream the table and drop rows of barren sightlines (no nsim, weight 0, no detection) as
     # they are read; reading it whole can exhaust memory on a small machine.
     df = R.load_events(a.events, keep=R.keep_weightable(a.map, a.log), chunksize=a.chunksize)
-    w, wlabel = R.attach_weight(df, a.map, a.log, a.unweighted, convention=a.convention)
-    df["W"] = w
+    w, wn, wlabel = R.attach_weights(df, a.map, a.log, a.unweighted, convention=a.convention)
+    df["W"], df["Wn"] = w, wn
     print(f"weighting: {wlabel}")
     edges = [float(x) for x in a.te_edges.split(",")]
     labels = [f"{edges[i]:g}-{edges[i+1]:g} d" for i in range(len(edges) - 1)]

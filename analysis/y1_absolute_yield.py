@@ -107,14 +107,17 @@ class Run:
         y = np.asarray(R.yield_weight(df, self.sl, self.tobs_days, nsim_override=override,
                                       bar_norm=bar_norm), dtype=np.float64)
         df["gamma"] = np.asarray(R.draw_rate(df, bar_norm=bar_norm), dtype=np.float64)
-        df["P"] = R.keep_probability(df, self.sl, self.mode, fixed_rubin_depths)
-        det = (df["detJ"] == 1).to_numpy()
-        if fixed_rubin_depths:
-            # The fixed-depth acceptance is an approximation that can give P = 0 to a detected
-            # draw; such a draw gets weight 0 and the yields table warns about it (p_zero).
-            det = det & (df["P"].to_numpy() > 0)
-        df["y_all"] = R.count_weight(y, df["P"], self.mode, "every-star", detected=det)
-        df["y_obj"] = R.count_weight(y, df["P"], self.mode, "per-object", detected=det)
+        df["P"] = R.keep_probability(
+            df, self.sl, self.mode, fixed_rubin_depths,
+            hint="or pass --fixed-rubin-depths (approximate Rubin depths) for a map without them")
+        det = ((df["detL"] == 1) | (df["detR"] == 1) | (df["detJ"] == 1)).to_numpy()
+        # The fixed-depth acceptance is an approximation that can give P = 0 to a detected draw;
+        # such a draw gets weight 0 in both conventions and the yields table warns (p_zero).
+        impossible = det & (df["P"].to_numpy() <= 0) if fixed_rubin_depths else np.zeros(len(df), bool)
+        df["y_all"] = R.count_weight(y, df["P"], self.mode, "every-star", detected=det & ~impossible)
+        df["y_obj"] = R.count_weight(y, df["P"], self.mode, "per-object", detected=det & ~impossible)
+        df.loc[impossible, ["y_all", "y_obj"]] = 0.0
+        df["y_run"] = y                                   # the run's own convention, as drawn
         # An int32 sightline code rather than a (lon, lat) tuple per row, to save memory;
         # self.keys[code] is the tuple.
         codes, self.keys = R.sightline_index(df)
@@ -179,8 +182,16 @@ def ogle_check(run):
 
 
 def legacy_neven(run):
+    """(map's summed Neven, this code's joint-detected yield at F = 1 in the convention the map counts).
+
+    The map counts what the run kept: per object for a legacy run, every star for a new one, which
+    is the run's own weight y_run. The two differ by the map's known defects (see the module
+    docstring), so the ratio is a consistency number, not an identity.
+    """
     sl = run.sl
-    return float(np.nansum(10.0 ** sl["log10_Neven"] * sl["w_area"]))
+    neven = float(np.nansum(10.0 ** sl["log10_Neven"] * sl["w_area"]))
+    mine = float(run.df["y_run"].to_numpy()[(run.df["detJ"] == 1).to_numpy()].sum())
+    return neven, mine
 
 
 # ---------------------------------------------------------------------------------------------
@@ -291,10 +302,12 @@ def main():
             lines.append("")
             print(og.to_string(), flush=True)
 
-        leg = legacy_neven(run)
+        leg, mine = legacy_neven(run)
         lines += [f"### Check 3: the legacy map-file Neven, summed (F = 1, {run.mode}: the map counts "
                   f"in the run's own convention)", "",
-                  f"- sum Neven x w_area = {leg:,.4g} events", ""]
+                  f"- map: sum Neven x w_area = {leg:,.4g} events",
+                  f"- this analysis, joint-detected, {run.mode} (y1's own sum): {mine:,.4g} events",
+                  f"- ratio this analysis / map = {mine / leg:.3g}" if leg > 0 else "- map Neven is 0", ""]
 
         for scope, sub in (("whole scan", run.df), ("Roman footprint only", run.df[run.df.foot])):
             t = yields(sub)

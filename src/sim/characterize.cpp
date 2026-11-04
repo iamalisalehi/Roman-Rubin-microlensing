@@ -140,7 +140,8 @@ void writeSatellitePair(SimContext& ctx, const SightlineState& st, const Charact
               << co.condA[SJOINT] << " " << ch.pair.condA_ns << " "
               << co.condB[SJOINT] << " " << ch.pair.condB_ns << " "
               << pk.nepLpk << " " << pk.nepRpk << " " << st.wArea << " "
-              << l.Ml << " " << l.Dl << " " << s.Ds << " " << l.Vt << "\n";
+              << l.Ml << " " << l.Dl << " " << s.Ds << " " << l.Vt << " "
+              << s.pKeep << "\n";
         fpair.close();
     }
 }

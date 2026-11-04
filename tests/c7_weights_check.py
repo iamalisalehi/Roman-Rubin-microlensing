@@ -1,6 +1,11 @@
 """Check the two event-counting conventions in analysis/romanlib.py (every star / per object).
 
-    .roman/bin/python tests/c7_weights_check.py
+    .roman/bin/python tests/c7_weights_check.py --old-run RUNDIR_LEGACY --new-run RUNDIR_EVERY_STAR \\
+        --leg-run RUNDIR_BLEND_THINNING
+
+RUNDIR_LEGACY: a run made before the source_selection provenance line (test5.dat and
+files/MONTLMC/files/MapLMC5.dat, no depth5_* columns). RUNDIR_EVERY_STAR and RUNDIR_BLEND_THINNING:
+stub runs of this code (default, and --blend-thinning), same layout, with pKeep in test5.dat.
 
 Checks: on the legacy run samples_bulge_S3c, attach_weight(convention="per-object") equals bc5ca0e's
 attach_weight bit for bit; on stub runs of the new code (every-star run, and a --blend-thinning run)
@@ -8,6 +13,7 @@ each convention is the documented product of event_weight and pKeep; pKeep agree
 rebuild acceptance_probability (1e-5 relative, same zero pattern); a missing provenance file and a
 map without Rubin depths raise errors that say what to pass instead. Exits non-zero on failure.
 """
+import argparse
 import importlib.util
 import os
 import shutil
@@ -22,9 +28,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "analysis"))
 import romanlib as R          # noqa: E402
 
-OLD_RUN = "/home/ali/Documents/PhD/Offline_project/Roman/runs/samples_bulge_S3c"
-SCRATCH = "/home/ali/.claude/jobs/d695a888/tmp/c7"
-NEW_RUN, LEG_RUN = f"{SCRATCH}/t3_new_bulge", f"{SCRATCH}/t3_leg_bulge"
+OLD_RUN = NEW_RUN = LEG_RUN = None      # set from the command line in __main__
 fails = []
 
 
@@ -97,16 +101,19 @@ def main():
             wo, _ = R.attach_weight(df, mp, convention="per-object")
             if mode == "every-star":
                 check(np.array_equal(wa.to_numpy(), w), f"{mode} run: every-star == event_weight")
-                check(np.array_equal(wo.to_numpy(), w * pk), f"{mode} run: per-object == event_weight * pKeep")
+                det = ((df["detL"] == 1) | (df["detR"] == 1) | (df["detJ"] == 1)).to_numpy()
+                check(np.array_equal(wo.to_numpy()[det], (w * pk)[det])
+                      and np.array_equal(wo.to_numpy()[~det], w[~det]),
+                      f"{mode} run: per-object == event_weight * pKeep on detected rows, native elsewhere")
             else:
                 check(np.array_equal(wo.to_numpy(), w), f"{mode} run: per-object == event_weight")
-                pos = (w > 0) & (pk > 0)
-                det = (df["detJ"] == 1).to_numpy()
-                check(bool((pk[det] > 0).all()) and
-                      np.array_equal(wa.to_numpy()[pos], w[pos] / pk[pos]) and
-                      bool((wa.to_numpy()[~pos] == 0).all()) and bool((~pos & (w > 0)).any()),
-                      f"{mode} run: every-star == event_weight / pKeep; 0 for never-kept draws "
-                      f"(no detections among them: {int((~pos & (w > 0)).sum())} rows)")
+                det = ((df["detL"] == 1) | (df["detR"] == 1) | (df["detJ"] == 1)).to_numpy()
+                never = (w > 0) & (pk <= 0)
+                check(bool((pk[det] > 0).all()) and bool(never.any())
+                      and np.array_equal(wa.to_numpy()[det], w[det] / pk[det])
+                      and np.array_equal(wa.to_numpy()[~det], w[~det]),
+                      f"{mode} run: every-star == event_weight / pKeep on detected rows, native "
+                      f"event_weight on undetected ({int(never.sum())} never-kept rows among them)")
             # pKeep against the legacy rebuild
             leg = R.acceptance_probability(df, sl)
             check(np.array_equal(pk > 0, leg > 0),
@@ -132,7 +139,10 @@ def main():
         check(ok, f"count_weight: w > 0 with p_keep <= 0 -> ValueError {why}")
         got = R.count_weight(np.array([1.0, 2.0]), np.array([0.5, 0.0]), "per-object", "every-star",
                              detected=np.array([True, False]))
-        check(got.tolist() == [2.0, 0.0], "count_weight: undetected never-kept draw -> 0")
+        check(got.tolist() == [2.0, 2.0], "count_weight: undetected never-kept draw keeps native w")
+        got = R.count_weight(np.array([1.0, 2.0]), np.array([0.5, 0.25]), "every-star", "per-object",
+                             detected=np.array([True, False]))
+        check(got.tolist() == [0.5, 2.0], "count_weight: every-star run, undetected row keeps native w")
         ok, why = raises(lambda: R.count_weight(np.array([1.0, 2.0]), np.array([0.5, 0.0]),
                                                 "per-object", "every-star",
                                                 detected=np.array([True, True])), ValueError, "pKeep")
@@ -146,6 +156,15 @@ def main():
             fh.write("# source_selection    sideways   # x\n")
         ok, why = raises(lambda: R.selection_mode(pr), ValueError, "sideways")
         check(ok, f"selection_mode: unknown value -> ValueError {why}")
+
+        # 3b. native weights and the fraction denominator
+        wc, wn, _ = R.attach_weights(df, mp, convention="per-object")
+        check(np.array_equal(wn.to_numpy(), R.event_weight(df, sl).to_numpy()),
+              "attach_weights: native weights are event_weight")
+        m = (df["detJ"] == 1).to_numpy()
+        check(abs(R.weighted_fraction(m, wc.to_numpy(), denominator=wn.to_numpy())
+                  - wc.to_numpy()[m].sum() / wn.sum()) < 1e-15,
+              "weighted_fraction(denominator=) sums the native weights")
 
         # 4. no provenance file: raise, say what to pass
         d = os.path.join(tmp, "noprov")
@@ -173,4 +192,9 @@ def main():
 
 
 if __name__ == "__main__":
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    for opt in ("old-run", "new-run", "leg-run"):
+        ap.add_argument(f"--{opt}", required=True, help="run directory (see the module docstring)")
+    args = ap.parse_args()
+    OLD_RUN, NEW_RUN, LEG_RUN = args.old_run, args.new_run, args.leg_run
     sys.exit(main())

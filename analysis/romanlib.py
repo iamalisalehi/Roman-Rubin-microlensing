@@ -581,30 +581,32 @@ def selection_mode(prov_path):
     return mode
 
 
-def keep_probability(df, sightlines, mode, fixed_rubin_depths=False):
+def keep_probability(df, sightlines, mode, fixed_rubin_depths=False, hint=None):
     """Per-row probability that a per-object run keeps the draw (the table's pKeep column).
 
     Tables written by the current simulator have pKeep in both modes. Without it, a per-object run's
     value is rebuilt by acceptance_probability (agreeing to the table's 6 printed digits); an
     every-star table without pKeep cannot be rebuilt and raises. fixed_rubin_depths is the
-    approximation of acceptance_probability for maps without per-sightline depths.
+    approximation of acceptance_probability for maps without per-sightline depths. `hint` is what
+    the error tells the caller to do instead (default: pass --convention <the run's mode>).
     """
+    hint = hint or f"or count as the run did: pass --convention {mode}"
     if "pKeep" in df.columns:
         return df["pKeep"].to_numpy(np.float64)
     if mode != "per-object":
         raise ValueError(
             "this every-star table has no pKeep column, so the per-object convention cannot be "
-            "rebuilt; load the table with pKeep (do not restrict usecols to leave it out)")
+            f"rebuilt: load the table with pKeep (an older file has none), {hint}")
     need = ["u0", "lon", "lat"] + [f"{k}_{f}" for k in ("magb", "blend") for f in FILTERS]
     gone = [c for c in need if c not in df.columns]
     if gone:
-        raise ValueError(f"the table lacks {gone}, which the per-object keep probability is rebuilt "
-                         f"from; load them, or pass --convention per-object")
+        raise ValueError(f"the table has no pKeep and lacks {gone}, which the keep probability is "
+                         f"rebuilt from: load them (an older file has no pKeep), {hint}")
     try:
         return acceptance_probability(df, sightlines, fixed_rubin_depths)
     except ValueError as e:
-        raise ValueError(f"{e}. The every-star convention of a per-object run needs this keep "
-                         f"probability; pass --convention per-object to count as the run did") from e
+        raise ValueError(f"{e}. The keep probability is needed to count every star in a per-object "
+                         f"run; {hint}") from e
 
 
 def count_weight(w, p_keep, mode, convention, detected=None):
@@ -613,12 +615,12 @@ def count_weight(w, p_keep, mode, convention, detected=None):
     run mode      every-star    per-object
     every-star    w             w * p_keep
     per-object    w / p_keep    w
-    A per-object run kept each draw with probability p_keep, so 1/p_keep restores the dropped
-    sources. A draw with p_keep = 0 (its peak is below the depth, or the band is saturated) was
-    never kept: it has no light curve and is not detected in either convention, so the weights are
-    meant for sums over detected rows. `detected` (boolean per row) says which rows are: an
-    undetected row with w > 0 and p_keep <= 0 gets weight 0, a detected one raises (the rebuild
-    disagrees with the simulator). Without `detected`, any such row raises.
+    The table holds every draw in both modes; the keep decision only changes which draws can be
+    detected, so the convention acts on DETECTED rows: `detected` (boolean per row) selects them,
+    and every other row keeps its native w (an undetected draw is the same draw in both
+    conventions, so a denominator over all draws uses the native weight). A detected row with
+    p_keep <= 0 cannot have been kept: it raises in the per-object -> every-star direction.
+    Without `detected` every row is converted: pass a frame of detected rows only.
     """
     if mode not in SELECTIONS:
         raise ValueError(f"run mode {mode!r}; expected one of {SELECTIONS}")
@@ -628,17 +630,14 @@ def count_weight(w, p_keep, mode, convention, detected=None):
     if convention == mode:
         return w.copy()
     p = np.asarray(p_keep, dtype=np.float64)
+    sel = np.ones(w.shape, dtype=bool) if detected is None else np.asarray(detected, dtype=bool)
     if mode == "every-star":
-        return w * p
-    bad = (w > 0) & ~(p > 0)
-    if detected is not None:
-        bad &= np.asarray(detected, dtype=bool)
+        return np.where(sel, w * p, w)
+    bad = sel & (w > 0) & ~(p > 0)
     if bad.any():
-        raise ValueError(f"{int(bad.sum())} row(s) with weight > 0 have a keep probability of 0"
-                         + ("" if detected is not None else " (no `detected` flag given to tell "
-                            "undetectable draws from detected ones)")
-                         + ": 1/pKeep is undefined. Use the per-object convention, or re-run")
-    return np.where((w > 0) & (p > 0), w / np.where(p > 0, p, 1.0), 0.0)
+        raise ValueError(f"{int(bad.sum())} detected row(s) with weight > 0 have a keep probability "
+                         f"of 0: 1/pKeep is undefined. Use the per-object convention, or re-run")
+    return np.where(sel & (p > 0), w / np.where(p > 0, p, 1.0), w)
 
 
 def add_convention_option(ap):
@@ -665,13 +664,13 @@ def keep_columns(table_path, map_path, convention):
         header = fh.readline().lstrip("#").split()
     if "pKeep" in header:
         return ["pKeep"]
-    return [c for c in ["u0", "lon", "lat", "detJ"] + [f"{k}_{f}" for k in ("magb", "blend")
+    return [c for c in ["u0", "lon", "lat", "detL", "detR", "detJ"] + [f"{k}_{f}" for k in ("magb", "blend")
                                                         for f in FILTERS] if c in header]
 
 
-def attach_weight(df, map_path=None, log_paths=(), unweighted=False, convention="every-star",
-                  mode=None):
-    """Return (weights, label) for a pooled statistic over `df`.
+def attach_weights(df, map_path=None, log_paths=(), unweighted=False, convention="every-star",
+                   mode=None, hint=None):
+    """Return (weights, native_weights, label) for a pooled statistic over `df`.
 
     The plumbing every figure script needs: read the sightline table, patch in `nsim` for
     sightlines a killed run's map file lost, and build the per-event weight.
@@ -679,8 +678,11 @@ def attach_weight(df, map_path=None, log_paths=(), unweighted=False, convention=
     `convention` is how a source is counted: "every-star" (each star whose peak is visible; the
     headline) or "per-object" (Sajadian & Makler criterion ii: a star counts with probability equal
     to its blend fraction). `mode` is the run's own selection, read from the run_provenance.txt
-    beside the map file unless given. See count_weight; when the conversion divides by pKeep, draws
-    that were never kept and are not detected (detJ) get weight 0.
+    beside the map file unless given. See count_weight: `weights` is converted on detected rows
+    (any of detL, detR, detJ equal to 1; with none of those columns every row is taken as
+    detected) and native elsewhere. A fraction whose denominator includes undetected draws takes
+    its numerator from `weights` over the detected rows and its denominator from `native_weights`
+    over all rows (weighted_fraction(mask, weights, denominator=native_weights)).
 
     `unweighted=True` returns ones and says so in the label. A script must never fall back to
     unweighted silently: the unweighted sample over-represents long-tE events roughly tenfold.
@@ -688,7 +690,8 @@ def attach_weight(df, map_path=None, log_paths=(), unweighted=False, convention=
     if convention not in CONVENTIONS:
         raise ValueError(f"convention {convention!r}; expected one of {CONVENTIONS}")
     if unweighted:
-        return pd.Series(1.0, index=df.index), "unweighted"
+        ones = pd.Series(1.0, index=df.index)
+        return ones, ones, "unweighted"
     if not map_path:
         raise ValueError(
             "pooled statistics need the event-rate weight. Pass the map file "
@@ -698,12 +701,21 @@ def attach_weight(df, map_path=None, log_paths=(), unweighted=False, convention=
         mode = selection_mode(os.path.join(os.path.dirname(os.path.abspath(map_path)),
                                            "run_provenance.txt"))
     sl = load_sightlines(map_path)
-    w = event_weight(df, sl, nsim_override=nsim_from_logs(log_paths))
+    native = event_weight(df, sl, nsim_override=nsim_from_logs(log_paths))
+    w = native
     if convention != mode:
-        det = (df["detJ"] == 1).to_numpy() if "detJ" in df.columns else None
-        w = pd.Series(count_weight(w.to_numpy(), keep_probability(df, sl, mode), mode, convention,
-                                   detected=det), index=df.index)
-    return w, f"event-rate weighted, {convention}, N_eff = {kish_neff(w):,.0f}"
+        cols = [c for c in ("detL", "detR", "detJ") if c in df.columns]
+        det = (df[cols] == 1).any(axis=1).to_numpy() if cols else None
+        w = pd.Series(count_weight(native.to_numpy(), keep_probability(df, sl, mode, hint=hint),
+                                   mode, convention, detected=det), index=df.index)
+    return w, native, f"event-rate weighted, {convention}, N_eff = {kish_neff(w):,.0f}"
+
+
+def attach_weight(df, map_path=None, log_paths=(), unweighted=False, convention="every-star",
+                  mode=None):
+    """(weights, label) of attach_weights, for statistics over detected events only."""
+    w, _, label = attach_weights(df, map_path, log_paths, unweighted, convention, mode)
+    return w, label
 
 
 # ---- Absolute yields ----
@@ -859,11 +871,15 @@ def weighted_median(values, weights):
     return weighted_quantile(values, weights, 0.5)
 
 
-def weighted_fraction(mask, weights):
-    """Weighted fraction of `mask` being true, over the whole weighted sample."""
+def weighted_fraction(mask, weights, denominator=None):
+    """Weighted fraction of `mask` being true, over the whole weighted sample.
+
+    `denominator` gives the weights the total is summed over when they differ from the numerator's
+    (a count over detected draws as a fraction of all draws: attach_weights' native weights).
+    """
     m = np.asarray(mask.fillna(False) if hasattr(mask, "fillna") else mask, dtype=bool)
     w = np.asarray(weights, dtype=float)
-    tot = w.sum()
+    tot = (w if denominator is None else np.asarray(denominator, dtype=float)).sum()
     return float(w[m].sum() / tot) if tot > 0 else np.nan
 
 

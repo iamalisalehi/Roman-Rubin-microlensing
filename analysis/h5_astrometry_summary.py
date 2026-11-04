@@ -171,7 +171,10 @@ def main():
     d["shift_max"] = np.where(u0 <= r2, tetE / np.sqrt(8.0), tetE * u0 / (u0 * u0 + 2.0))
     cov = d[d.ndwR > 0].copy()
 
-    w, wlabel = R.attach_weight(cov, a.map, a.log, a.unweighted, convention=a.convention)
+    try:
+        w, wlabel = R.attach_weight(cov, a.map, a.log, a.unweighted, convention=a.convention)
+    except ValueError as e:
+        sys.exit(f"{a.extract}: {e}")
     w = w.to_numpy()
     print(f"weighting: {wlabel}")
 

@@ -52,7 +52,11 @@ COLS_LEGACY = ("lon lat tE u0 piE tetE du_sat "
 # Ml, Dl, Ds and Vt carry the event-rate weight, W ~ sqrt(Ml)*Vt*Z(Ds). They cannot be
 # reconstructed from the other columns (pi_rel = 1/Dl - 1/Ds is one equation in two unknowns),
 # so a file without them is readable but not weightable.
-COLS = COLS_LEGACY + ["Ml", "Dl", "Ds", "Vt"]
+COLS_NO_PKEEP = COLS_LEGACY + ["Ml", "Dl", "Ds", "Vt"]
+
+# pKeep (the probability the per-object selection keeps the draw) is the last column of files made
+# since the counting conventions: without it only the run's own convention can be weighted.
+COLS = COLS_NO_PKEEP + ["pKeep"]
 
 # Superseded 15-column layout, recognised only so it can be refused.
 COLS_OLD_15 = 15
@@ -71,6 +75,8 @@ def load(path):
             "built from 3a88180 or later.")
     if n == len(COLS):
         names, weightable = COLS, True
+    elif n == len(COLS_NO_PKEEP):
+        names, weightable = COLS_NO_PKEEP, True
     elif n == len(COLS_LEGACY):
         names, weightable = COLS_LEGACY, False
     else:
@@ -111,8 +117,11 @@ def main():
             "raw-sample numbers.")
 
     # Weights are attached to the full frame before subsetting so every selection carries its own.
-    w, wlabel = R.attach_weight(df, a.map, a.log, a.unweighted or not weightable,
-                             convention=a.convention)
+    try:
+        w, wlabel = R.attach_weight(df, a.map, a.log, a.unweighted or not weightable,
+                                    convention=a.convention)
+    except ValueError as e:
+        sys.exit(f"{a.pairs}: {e}")
     df = df.assign(W=w)
     print(f"   weighting: {wlabel}")
 

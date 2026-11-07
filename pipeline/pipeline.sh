@@ -75,6 +75,7 @@ source "$CONFIG"
 : "${SLURM_OPTS_FINISH:=$SLURM_OPTS}"
 : "${SUBMIT:=1}"
 : "${KEEP_CHUNKS:=1}"
+: "${COMPRESS_TABLES:=1}"
 : "${ANALYSES:=yields figures}"
 # OGLE_TABLE3 empty = skip the w2 check; unset = the default path, which fetch fills from OGLE_URL.
 : "${OGLE_TABLE3=files/ogle/mroz2019_table3.dat}"
@@ -111,7 +112,7 @@ validate_config() {
     if is_uint "$STRIDE" && is_uint "$STRIDE_ROMAN" && (( STRIDE_ROMAN >= 1 )) && (( STRIDE % STRIDE_ROMAN != 0 )); then
         err "STRIDE_ROMAN ($STRIDE_ROMAN) must divide STRIDE ($STRIDE)"
     fi
-    for v in PAIR_SATELLITE STUB SUBMIT KEEP_CHUNKS; do
+    for v in PAIR_SATELLITE STUB SUBMIT KEEP_CHUNKS COMPRESS_TABLES; do
         [[ ${!v} == 0 || ${!v} == 1 ]] || err "$v must be 0 or 1 (got '${!v}')"
     done
     case $GSL in auto|system|build) ;; *) err "GSL must be auto, system or build (got '$GSL')" ;; esac
@@ -833,6 +834,34 @@ stage_chunk() {
 # ------------------------------------------------------------------------------------------------
 # merge, analyze, status
 # ------------------------------------------------------------------------------------------------
+# The merged event table of a population: test<tag>.dat or, once compressed, test<tag>.dat.gz (old run roots
+# keep the plain one). Prints the plain name when neither exists.
+merged_table() {   # merged_table DIR TAG
+    if [[ -f $1/test$2.dat ]]; then echo "$1/test$2.dat"
+    elif [[ -f $1/test$2.dat.gz ]]; then echo "$1/test$2.dat.gz"
+    else echo "$1/test$2.dat"; fi
+}
+
+# gzip -6 the merged event table (COMPRESS_TABLES=1). The plain file is deleted only after gzip -t passes and the
+# decompressed line count equals the plain one's. Safe to repeat: no plain file = nothing to do; a plain file
+# beside an older .gz (a re-merge) replaces it. Chunk tables are never touched.
+compress_merged() {   # compress_merged POPDIR
+    [[ $COMPRESS_TABLES == 1 ]] || return 0
+    local f gz n1 n2
+    for f in "$1"/test*.dat; do
+        [[ -f $f && $f != *_detJ.dat ]] || continue
+        gz=$f.gz
+        gzip -6 -c "$f" > "$gz.tmp" || { rm -f "$gz.tmp"; warn "compress: gzip failed on $f"; return 1; }
+        n1=$(wc -l < "$f"); n2=$(gzip -dc "$gz.tmp" | wc -l)
+        if gzip -t "$gz.tmp" && [[ $n1 == "$n2" ]]; then
+            mv "$gz.tmp" "$gz" && rm -f "$f"
+            say "  compressed ${f##*/}: $n1 lines, $(wc -c < "$gz") B"
+        else
+            rm -f "$gz.tmp"; warn "compress: check failed on $f (kept the plain file)"; return 1
+        fi
+    done
+}
+
 stage_merge() {
     need_py
     mkdir -p "$RUN_STAMPS"
@@ -840,11 +869,11 @@ stage_merge() {
     for pop in $POPULATIONS; do
         d=$P_RUN/$pop
         [[ -f $d/plan.txt ]] || { say "merge: $pop: no plan.txt (sim has not run)"; rc=1; continue; }
-        if [[ -f $d/MERGED && ! -d $d/chunks ]]; then say "  skip   merge $pop (merged; chunks removed)"; continue; fi
+        if [[ -f $d/MERGED && ! -d $d/chunks ]]; then say "  skip   merge $pop (merged; chunks removed)"; compress_merged "$d" || rc=1; continue; fi
         ins=""; nch=$(plan_get "$d/plan.txt" n_chunks)
         for (( k = 0; k < nch; k++ )); do ins="$ins $(chunk_dir "$pop" "$k")/DONE"; done
         if [[ $FORCE != 1 ]] && [[ -f $d/MERGED ]] && [[ $(step_state "$RUN_STAMPS/merge_$pop.stamp" "chunks=$nch" "$ins" "$d/MERGED") == current ]]; then
-            say "  skip   merge $pop (up to date)"; continue
+            say "  skip   merge $pop (up to date)"; compress_merged "$d" || rc=1; continue
         fi
         # shellcheck disable=SC2086
         if ! all_exist $ins; then
@@ -855,6 +884,7 @@ stage_merge() {
               "$PY" pipeline/merge_chunks.py "$d"; then
             sed 's/^/         /' "$P_RUN/logs/merge_$pop.log"
             if [[ $KEEP_CHUNKS == 0 ]]; then rm -rf "$d/chunks"; say "  removed $d/chunks (KEEP_CHUNKS=0)"; fi
+            compress_merged "$d" || rc=1
         else rc=1; fi
     done
     return $rc
@@ -864,9 +894,9 @@ prov_get() { sed -n "s/^# *$2  *\([^ #]*\).*/\1/p" "$1" | head -1; }
 
 # Detection-only copy of a population's table: header kept, rows with detJ == 1; the column is found
 # from the header, not by a fixed index.
-make_detj() {   # make_detj TABLE OUT
-    awk 'NR==1 { print; h=$0; sub(/^#[ \t]*/, "", h); n=split(h, c, /[ \t]+/); for (i=1;i<=n;i++) if (c[i]=="detJ") j=i; if (!j) { print "no detJ column in the header" > "/dev/stderr"; exit 2 } next }
-         /^#/ { print; next } $j == 1' "$1" > "$2.tmp" && mv "$2.tmp" "$2"
+make_detj() {   # make_detj TABLE OUT   (TABLE may be .gz)
+    { if [[ $1 == *.gz ]]; then gzip -dc "$1"; else cat "$1"; fi; } | awk 'NR==1 { print; h=$0; sub(/^#[ \t]*/, "", h); n=split(h, c, /[ \t]+/); for (i=1;i<=n;i++) if (c[i]=="detJ") j=i; if (!j) { print "no detJ column in the header" > "/dev/stderr"; exit 2 } next }
+         /^#/ { print; next } $j == 1' > "$2.tmp" && mv "$2.tmp" "$2"
 }
 
 FAILED_ANALYSES=""
@@ -883,7 +913,7 @@ analysis() {
 stage_analyze() {
     need_py
     mkdir -p "$RUN_STAMPS"
-    local a pop d tag out do_y=0 do_f=0 pops=""
+    local T a pop d tag out do_y=0 do_f=0 pops=""
     for a in $ANALYSES; do [[ $a == yields ]] && do_y=1; [[ $a == figures ]] && do_f=1; done
     for pop in $POPULATIONS; do
         [[ -f $P_RUN/$pop/MERGED ]] || die "$pop has not been merged: run the merge stage first"
@@ -900,7 +930,8 @@ stage_analyze() {
         local csvs=""
         for pop in $pops; do
             d=$P_RUN/$pop; out=$A/yields/$pop; mkdir -p "$out"; tag=$(prov_get "$d/files/MONTLMC/files/run_provenance.txt" population_tag)
-            AN_OUTS="$out/y1_yields.csv" analysis "y1 $pop" "$out/y1.log" "$d/test$tag.dat $d/files/MONTLMC/files/MapLMC$tag.dat" \
+            T=$(merged_table "$d" "$tag")
+            AN_OUTS="$out/y1_yields.csv" analysis "y1 $pop" "$out/y1.log" "$T $d/files/MONTLMC/files/MapLMC$tag.dat" \
                 "$PY" analysis/memrun.py analysis/y1_absolute_yield.py --run "$pop=$d" -o "$out"
             [[ -f $out/y1_yields.csv ]] && csvs="$csvs $out/y1_yields.csv"
         done
@@ -920,10 +951,11 @@ stage_analyze() {
             d=$P_RUN/$pop; tag=$(prov_get "$d/files/MONTLMC/files/run_provenance.txt" population_tag)
             [[ -n $tag ]] || { FAILED_ANALYSES="$FAILED_ANALYSES
    $pop: no population_tag in run_provenance.txt"; continue; }
+            T=$(merged_table "$d" "$tag")
             det=$d/test${tag}_detJ.dat; o=$A/figures/$pop; mkdir -p "$o"
             W="--map $d/files/MONTLMC/files/MapLMC$tag.dat --log $d/run.log"
             P="--provenance $d/files/MONTLMC/files/run_provenance.txt"
-            AN_OUTS="$det" analysis "detJ extract $pop" "$o/detJ_extract.log" "$d/test$tag.dat" make_detj "$d/test$tag.dat" "$det"
+            AN_OUTS="$det" analysis "detJ extract $pop" "$o/detJ_extract.log" "$T" make_detj "$T" "$det"
             [[ -f $det ]] || continue
             local In="$det $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log"
             # Every script that takes --convention runs twice: every star (the default, the headline)
@@ -934,7 +966,7 @@ stage_analyze() {
             sfx=""; cvf=""; [[ $cv == per-object ]] && { sfx=_per_object; cvf="--convention per-object"; }
             {
             # f1 counts the non-detected draws too (its N_events column), so it reads the FULL table
-            analysis "f1 $pop$sfx"      "$o/f1$sfx.log"      "$d/test$tag.dat $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log" "$PY" analysis/f1_results_table.py "$d/test$tag.dat" --fields-only -o "$o/f1$sfx.csv" $cvf $P $W
+            analysis "f1 $pop$sfx"      "$o/f1$sfx.log"      "$T $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log" "$PY" analysis/f1_results_table.py "$T" --fields-only -o "$o/f1$sfx.csv" $cvf $P $W
             analysis "f2_tE $pop$sfx"   "$o/f2_tE$sfx.log"   "$In" "$PY" analysis/f2_gap_filling.py "$det" --param tE -o "$o/f2_gap_filling$sfx.png" $cvf $P $W
             analysis "f2_piE $pop$sfx"  "$o/f2_piE$sfx.log"  "$In" "$PY" analysis/f2_gap_filling.py "$det" --param piE -o "$o/f2_gap_filling_piE$sfx.png" $cvf $P $W
             analysis "f3 $pop$sfx"      "$o/f3$sfx.log"      "$In" "$PY" analysis/f3_characterization_map.py "$det" -o "$o/f3_characterization_map$sfx.png" $cvf $P $W
@@ -948,7 +980,7 @@ stage_analyze() {
             done
             # f5 reads the FULL table (it selects the Rubin-, Roman- and joint-detected rows itself) and prints both conventions
             if [[ -f $P_MSH ]]; then
-            analysis "f5 $pop" "$o/f5.log" "$d/test$tag.dat $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log $P_MSH" "$PY" analysis/f5_blend_selection.py "$d/test$tag.dat" --ms "$P_MSH" -o "$o/f5_blend_selection.md" $W
+            analysis "f5 $pop" "$o/f5.log" "$T $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log $P_MSH" "$PY" analysis/f5_blend_selection.py "$T" --ms "$P_MSH" -o "$o/f5_blend_selection.md" $W
             else
                 FAILED_ANALYSES="$FAILED_ANALYSES
    f5 $pop: $P_MSH not found (run the prep stage)"
@@ -956,7 +988,7 @@ stage_analyze() {
             # w2 compares the bulge population's blend fractions with OGLE-IV's Table 3
             if [[ $pop == bulge ]]; then
                 if [[ -n $P_OGLE ]]; then
-                analysis "w2 $pop" "$o/w2.log" "$d/test$tag.dat $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log $P_OGLE" "$PY" analysis/w2_ogle4_blend_check.py "$d/test$tag.dat" --ogle "$P_OGLE" -o "$o/w2_ogle4_blend_check.png" $P $W
+                analysis "w2 $pop" "$o/w2.log" "$T $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log $P_OGLE" "$PY" analysis/w2_ogle4_blend_check.py "$T" --ogle "$P_OGLE" -o "$o/w2_ogle4_blend_check.png" $P $W
                 else
                     say "  note   w2 (OGLE-IV blend check) skipped: no OGLE-IV table (OGLE_TABLE3 empty, or not fetched)"
                 fi

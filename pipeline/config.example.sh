@@ -85,6 +85,10 @@ SLURM_OPTS_FINISH="--account=CHANGE_ME --partition=CHANGE_ME --time=08:00:00 --m
 SUBMIT=1
 # 1 = keep RUN_ROOT/<pop>/chunks after merging (the merged tables then exist twice on disk); 0 = delete them.
 KEEP_CHUNKS=1
+# 1 = after the merge, gzip -6 each merged test<tag>.dat to test<tag>.dat.gz (about 3x smaller; the plain file is
+# deleted only after gzip -t and a line-count match). The analysis reads either name. 0 = leave them plain.
+# Compress an existing run by hand with:  gzip -6 RUN/<pop>/test*.dat
+COMPRESS_TABLES=1
 
 # ---- step 6: analysis ------------------------------------------------------------------------------
 # yields  = absolute yields per population (y1) and yield vs abundance F (y3)

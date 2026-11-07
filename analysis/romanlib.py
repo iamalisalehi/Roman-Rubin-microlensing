@@ -18,6 +18,7 @@ Two indexing systems that look alike:
 
 from __future__ import annotations
 
+import gzip
 import io
 import os
 import re
@@ -120,6 +121,21 @@ def sightline_groups(codes):
             yield int(codes[pos[0]]), pos
 
 
+def resolve_table(path):
+    """`path` if it exists, else its `.gz` twin (or the plain twin of a `.gz` name), else `path`."""
+    path = os.fspath(path)
+    if os.path.exists(path):
+        return path
+    alt = path[:-3] if path.endswith(".gz") else path + ".gz"
+    return alt if os.path.exists(alt) else path
+
+
+def open_text(path):
+    """Open a text table for reading, gunzipping a `*.gz` name."""
+    path = os.fspath(path)
+    return gzip.open(path, "rt") if path.endswith(".gz") else open(path)
+
+
 def load_events(path, keep=None, chunksize=None, usecols=None, narrow=False,
                 keep64=("lon", "lat")):
     """Read the per-event table (test5.dat) written by the `filg_in <<` block.
@@ -143,7 +159,8 @@ def load_events(path, keep=None, chunksize=None, usecols=None, narrow=False,
         Columns in `keep64` stay float64 because they are matched, not computed with: lon/lat key
         the sightline lookup, and float64(float32(-0.319)) differs from the map file's -0.319.
     """
-    with open(path) as fh:
+    path = resolve_table(path)
+    with open_text(path) as fh:
         header = fh.readline()
     if not header.startswith("#"):
         raise ValueError(
@@ -152,7 +169,7 @@ def load_events(path, keep=None, chunksize=None, usecols=None, narrow=False,
         )
     cols = header.lstrip("#").split()
 
-    reader_kw = dict(sep=r"\s+", comment="#", header=None, names=cols)
+    reader_kw = dict(sep=r"\s+", comment="#", header=None, names=cols, compression="infer")
     if usecols is not None:
         missing = [c for c in usecols if c not in cols]
         if missing:
@@ -664,7 +681,7 @@ def keep_columns(table_path, map_path, convention):
                                        "run_provenance.txt"))
     if convention == mode:
         return []
-    with open(table_path) as fh:
+    with open_text(resolve_table(table_path)) as fh:
         header = fh.readline().lstrip("#").split()
     if "pKeep" in header:
         return ["pKeep"]

@@ -77,8 +77,8 @@ class Run:
 
         tag = self.prov.get("population_tag")
         if tag is None:
-            cands = [f for f in os.listdir(directory)
-                     if f.startswith("test") and f.endswith(".dat")]
+            cands = sorted({f[:-3] if f.endswith(".gz") else f for f in os.listdir(directory)
+                            if f.startswith("test") and f.endswith((".dat", ".dat.gz"))})
             if len(cands) != 1:
                 sys.exit(f"{directory}: cannot tell which table to read ({cands})")
             tag = cands[0][len("test"):-len(".dat")]

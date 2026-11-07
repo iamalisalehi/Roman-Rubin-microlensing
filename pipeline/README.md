@@ -102,7 +102,11 @@ pipeline/pipeline.sh my_run.sh all                 # everything, on this machine
   chunked run. `run.log` is the chunk logs in order (each chunk keeps its own `RUN TOTALS` block).
   `run_provenance.txt` is chunk 0's, with `start_index 0`, `end_index N` and `merged_chunks K` set and the
   end-of-run sightline counts and areas summed over the chunks (they equal the unchunked values).
-  `KEEP_CHUNKS=0` deletes the chunks afterwards.
+  `KEEP_CHUNKS=0` deletes the chunks afterwards. With `COMPRESS_TABLES=1` (default) the merged `test<tag>.dat` is then
+  gzip-compressed to `test<tag>.dat.gz` (checked with `gzip -t` and a line count before the plain file is deleted;
+  re-running merge never leaves both). Chunk tables stay plain. The analysis scripts and `romanlib.load_events` read
+  either name, so a script given `test5.dat` finds `test5.dat.gz`; to compress an existing run use
+  `gzip -6 RUN/<pop>/test*.dat`.
 - **analyze** (`ANALYSES`): `yields` = y1 per population and y3 on their concatenation (y3's `eta` column needs a
   population named `bulge`; without one it is NaN, and a `besancon` run does not count as `bulge`); `figures` = per
   population f1 (`--fields-only`, on the full table: it also counts the non-detected draws), then, on a
@@ -171,7 +175,7 @@ config (`RUN_ROOT/slurm/config.sh`), so editing your config afterwards does not 
 - Disk: star lists 0.6 GB; per-event tables are large (~770 bytes per drawn star, up to 50,000 rows per sightline):
   about 21 GB (bulge), 15 GB (ns), 12 GB (bh) at production flags, each +-30% (the few outside-footprint sightlines
   that reach the draw cap dominate), ~10% more at `STRIDE_ROMAN=2`; they exist twice (chunks and merged) unless
-  `KEEP_CHUNKS=0`. The tables compress ~3x (zstd), but the analysis reads them uncompressed.
+  `KEEP_CHUNKS=0`. The merged tables compress ~3x (gzip -6, `COMPRESS_TABLES=1`), and the analysis reads the `.gz` directly.
 - `analyze`: y1 holds a population's draws in memory (~2.4 GB per 6 GB of table, so ~8 GB for bulge, ~1 h at
   laptop speed); p6/p7 hold two populations. Give `SLURM_OPTS_FINISH` ~24 GB and several hours.
 

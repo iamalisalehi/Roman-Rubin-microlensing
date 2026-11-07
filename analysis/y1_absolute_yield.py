@@ -93,7 +93,8 @@ class Run:
         print(f"[{name}] reading {self.table} ({self.population}, {self.mode} run)", flush=True)
         # narrow: float32 storage, since production tables have up to ~12M rows; the per-draw
         # quantities computed below are held in float64.
-        with open(self.table) as fh:
+        self.table = R.resolve_table(self.table)
+        with R.open_text(self.table) as fh:
             has_pkeep = "pKeep" in fh.readline().split()
         self.df = R.load_events(self.table, usecols=COLS + (["pKeep"] if has_pkeep else []),
                                 chunksize=chunksize,

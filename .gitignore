@@ -3,6 +3,8 @@
 
 # Data and build products
 **/*.dat
+**/*.gz
+**/*.zst
 **/*.txt
 **/*.csv
 **/*.fits

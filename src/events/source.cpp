@@ -77,7 +77,8 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
        }
 
         if (struc == GalacticComponent::THIN_DISK) { //thin disk
-            num = int(RandR(0.0, N1 - 1.0));
+            num = int(RandR(0.0, double(N1)));
+            if (num >= N1) num = N1 - 1;
             for (int i = 0; i < M; ++i) {
                 Mab[i] = cm.Mab_thin[num][i];
             }
@@ -92,7 +93,8 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
         }
 
         if (struc == GalacticComponent::BULGE) {// bulge
-            num = int(RandR(0.0, N2 - 1.0));
+            num = int(RandR(0.0, double(N2)));
+            if (num >= N2) num = N2 - 1;
             for (int i = 0; i < M; ++i) {
                 Mab[i] = cm.Mab_bulge[num][i];
             }
@@ -107,7 +109,8 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
         }
 
         if (struc == GalacticComponent::THICK_DISK) { //thick disk
-            num = int(RandR(0.0, N3 - 1.0));
+            num = int(RandR(0.0, double(N3)));
+            if (num >= N3) num = N3 - 1;
             for (int i = 0; i < M; ++i) {
                 Mab[i] = cm.Mab_thick[num][i];
             }
@@ -122,7 +125,8 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
         }
 
         if (struc == GalacticComponent::HALO) {// stellar halo
-            num = int(RandR(0.0, N4 - 1.0));
+            num = int(RandR(0.0, double(N4)));
+            if (num >= N4) num = N4 - 1;
             for (int i = 0; i < M; ++i) {
                 Mab[i] = cm.Mab_halo[num][i];
             }

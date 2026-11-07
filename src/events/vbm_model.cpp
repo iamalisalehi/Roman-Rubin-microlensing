@@ -299,7 +299,10 @@ void vbmEvaluate(const ModelEvent& ev, bool atL2, bool astrometry, const double*
     // piE_vec, x2 a quarter turn from it, counterclockwise on (North, East)), and reads (y1, y2) =
     // (-tn, -u1) with u1 = u0 + parallax. On (e_l, e_b) the quarter turn counterclockwise on (N, E) is
     // clockwise (the matrix toNE has determinant -1), so a positive library u0 puts the source on the side of
-    // the lens opposite to the simulator's u0 (-sin xi, cos xi): VBM_U0_SIGN.
+    // the lens opposite to the simulator's u0 (-sin xi, cos xi): VBM_U0_SIGN.  u0side (+1 or -1) is the
+    // side the event draws.
+    CHECK(ev.u0side == 1.0 or ev.u0side == -1.0);
+    const double u0lib = VBM_U0_SIGN * ev.u0side * ev.u0;
     double pv[2];
     parallaxVectorNE(ev.piE, ev.xi, pv);
     const double piN = pv[0], piE = pv[1];
@@ -311,11 +314,11 @@ void vbmEvaluate(const ModelEvent& ev, bool atL2, bool astrometry, const double*
     const double rho = std::min(ev.rho, ESPL_RHO_MAX);
     double pr[10];
     if (finite) {
-        const double q[10] = {VBM_U0_SIGN * ev.u0, std::log(ev.tE), ev.t0 + SIM_DAY0_JD2450000, std::log(rho),
+        const double q[10] = {u0lib, std::log(ev.tE), ev.t0 + SIM_DAY0_JD2450000, std::log(rho),
                               piN, piE, muN, muE, ev.piS, ev.tetE};
         std::copy(q, q + 10, pr);
     } else {
-        const double q[9] = {VBM_U0_SIGN * ev.u0, std::log(ev.tE), ev.t0 + SIM_DAY0_JD2450000, piN, piE,
+        const double q[9] = {u0lib, std::log(ev.tE), ev.t0 + SIM_DAY0_JD2450000, piN, piE,
                              muN, muE, ev.piS, ev.tetE};
         std::copy(q, q + 9, pr);
     }

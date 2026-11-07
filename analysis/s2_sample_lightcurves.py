@@ -435,7 +435,8 @@ def draw_event(stem, out_dir, prov, noplx="geocentric", layout="5x2"):
     win = (max(tpk - 3.0 * tE, t_lo), min(tpk + 3.0 * tE, t_hi))
     zoom = (max(tpk - 2.0 * tE, t_lo), min(tpk + 2.0 * tE, t_hi))
     checks.append(f"observed peak (Earth) at t - t0 = {tpk - t0:+.2f} d, u_min = "
-                  f"{m0['u'].min():.4f}; parameter u0 = {p['u0']:.4f}")
+                  f"{m0['u'].min():.4f}; parameter u0 = {p['u0']:.4f} "
+                  f"(side {int(p.get('u0side', 1.0)):+d}; dumps without it are +1)")
     # Rubin and Roman see different magnifications (satellite parallax). The A panels draw the
     # Earth-frame curves; the L2 curve is added only if distinguishable.
     dA = float(np.max(np.abs(m1["A"] - m0["A"]) / m0["A"]))

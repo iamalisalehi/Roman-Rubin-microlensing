@@ -81,7 +81,9 @@ const char* eventTableHeader()
         // Alens_<band>: the dust in front of the lens [mag] in u g r i z y F146 (A_V at D_L along the sightline times
         // A_lambda/A_V of the lens's component), written for every lens, dark or luminous; the apparent magnitude of a
         // main-sequence star of the lens's mass is Mab(M) + 5 log10(D_L / 10 pc) + Alens.
-        "Alens_u Alens_g Alens_r Alens_i Alens_z Alens_y Alens_F146";
+        "Alens_u Alens_g Alens_r Alens_i Alens_z Alens_y Alens_F146 "
+        // u0side: +1 or -1, the side of the lens the source passes (u0 is the positive distance of closest approach).
+        "u0side";
 }
 
 int openOutputs(const RunConfig& cfg, RunOutputs& o) {

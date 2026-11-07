@@ -50,7 +50,8 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
         co.condB[SJOINT], co.condB[SRUBIN], co.condB[SROMAN],
         sched.dtToSeasonEdge(pk.t0obs), sched.zone(pk.t0obs),
         lc.nres5_L, lc.nres20_L, lc.nresPSF_L, lc.nres5_R, lc.nres20_R, lc.nresPSF_R,
-        lc.dsepMax_L, lc.dsepMax_R
+        lc.dsepMax_L, lc.dsepMax_R,
+        l.u0side
     });
 
     // du_sat: observer separation in Einstein radii at t0, the distance between the source-lens vectors Roman
@@ -156,6 +157,7 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
     // the dust in front of the lens per band [mag], u g r i z y F146
     for (int i = 0; i < M; ++i)
         filg_in << " " << l.Alens[i];
+    filg_in << " " << l.u0side;    // the side of the lens the source passes, +1 or -1
     filg_in << "\n";
     filg_in.close();
 
@@ -209,6 +211,7 @@ void commitSampleDump(SimContext& ctx, const LightCurveStats& lc, const Characte
                << "tEhel "        << l.tEhel      << "\n"      // heliocentric
                << "t0 "           << l.t0         << "\n"
                << "u0 "           << l.u0         << "\n"
+               << "u0side "       << l.u0side     << "\n"
                << "xi "           << s.xi         << "\n"
                << "piE "          << l.piE        << "\n"
                << "piEN "         << piNE[0]      << "\n"

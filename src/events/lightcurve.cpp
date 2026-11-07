@@ -9,7 +9,7 @@ namespace {
 // (a point or a uniform disc) is the run's (vbmSourceModel).
 ModelEvent eventOf(const source & s, const lens & l)
 {
-    return ModelEvent{l.u0, l.tE, l.t0, l.piE, s.xi, l.tetE, s.mus1, s.mus2, 1.0 / s.Ds, s.rho, vbmSourceModel()};
+    return ModelEvent{l.u0, l.tE, l.t0, l.piE, s.xi, l.tetE, s.mus1, s.mus2, 1.0 / s.Ds, s.rho, vbmSourceModel(), l.u0side};
 }
 
 // Whether observer `tele` (0 = Rubin on Earth, 1 = Roman) sits at Roman's L2 orbit. as.satScale is a
@@ -88,7 +88,7 @@ void evaluateModel(const source & s, const lens & l, const astromet & as, int te
 // shift and in the opposite direction).
 //
 // The "no parallax" values are the geocentric straight line the light curve is parametrised by,
-//     u_np = u0 (-sin xi, cos xi) + tau (cos xi, sin xi),   tau = (t - t0) / tE,
+//     u_np = u0side u0 (-sin xi, cos xi) + tau (cos xi, sin xi),   tau = (t - t0) / tE,
 // whose length is sqrt(u0^2 + tau^2). In the geocentric frame it is the tangent to the true track at t0
 // (the Earth at rest there), the natural model without parallax; the observer's departure from it, the
 // Earth's orbit curving away from its velocity at t0, is the annual parallax, and Roman's offset from the
@@ -115,7 +115,8 @@ void evaluateTrack(const source & s, const lens & l, const astromet & as, int te
         p.uy = m.uy;
 
         const double tau = (t[i] - l.t0) / l.tE;
-        const double vx = -l.u0 * sx + tau * cx, vy = l.u0 * cx + tau * sx;
+        const double us = l.u0side * l.u0;
+        const double vx = -us * sx + tau * cx, vy = us * cx + tau * sx;
         double uNp = std::sqrt(l.u0 * l.u0 + tau * tau);
         if (uNp == 0.0) uNp = 1.0e-50;
         p.uNoPlx = uNp;

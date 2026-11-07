@@ -209,7 +209,7 @@ void finishSightline(SimContext& ctx, SightlineState& st) {
     for (const auto& r : st.records) {
         flagL = r.flagL;
         l.tE = r.tE;   l.RE = r.RE;   l.piE = r.piE;  l.tetE = r.tetE;
-        l.Vt = r.Vt;   l.u0 = r.u0;   l.Ml  = r.Ml;
+        l.Vt = r.Vt;   l.u0 = r.u0;   l.u0side = r.u0side;   l.Ml  = r.Ml;
         s.opt = r.opt; l.Dl = r.Dl;   s.Ds  = r.Ds;   l.vl = r.vl; s.vs = r.vs;
         mbase = r.mbase; fblend = r.fblend; gg = r.gg; tempStruc = r.struc;
         s.FWHM = r.FWHM; vsave = r.vsave; l.DeltaT = r.DeltaT; l.murel = r.murel;

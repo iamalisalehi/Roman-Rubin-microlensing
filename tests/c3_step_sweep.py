@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """Finite-difference step-size convergence analysis for the Fisher matrix.
 
-Input: the CSV written by `./fishertest --sweep` (see tests/fisher_fixture.cpp, runSweep()).
+Input: the CSV written by `./fishertest --sweep` (see tests/fisher_fixture.cpp, runSweep()), for the
+point-source model (its nine parameters, on the table's events), or by `./fishertest --sweep --source-model
+espl` for the finite source: the tenth parameter, ln rho, on events whose data see the disc. Run the script on
+each CSV separately; a parameter the CSV has no rows for (ln rho in the point-source one) is skipped.
+For the finite-source CSV pass `--params lnrho`: the nine others are gated on the point-source CSV, and on
+events with u0 of a few source radii their steps (u0's is absolute, 1.5e-5) are comparable to the cells of
+the library's disc table (0.01 rho in u), so their sigmas move by percent over a decade of step there.
 Each row is one (event, survey partition, photometric parameter, step scale) combination and
 the sigma FisherM/ErrorCal recovered for that parameter with that step.
 
@@ -17,6 +23,9 @@ Two controls are built into the sweep:
   * fb0 / fb1 (blend fraction): FisherM clamps their step so fb + h stays inside [0, 1]. At the
     largest sweep scales the clamp binds and the curve flattens artificially; that is the clamp,
     not a plateau.
+  * ln rho: the uniform disc's magnification comes from a table that is bilinear in ln rho (rows 0.092
+    apart) and in u/rho (cells of 0.01), so the derivative is piecewise constant: flat for steps well
+    inside a cell, jumping once a step carries an epoch across a cell boundary, not noisy.
 
 Usage:
     .roman/bin/python tests/c3_step_sweep.py [c3_sweep.csv] [-o c3_step_sweep.png]
@@ -54,7 +63,9 @@ WARN_PCT = 0.1      # what a genuinely converged parameter looks like
 STEP_TOL = 0.005
 MIN_PLATEAU_PTS = 3
 
-PARAM_ORDER = ["u0", "tE", "fb0", "piE", "xi", "t0", "mbs0", "fb1", "mbs1"]
+PARAM_ORDER = ["u0", "tE", "fb0", "piE", "xi", "t0", "mbs0", "fb1", "mbs1", "lnrho"]
+OPTIONAL_PARAMS = {"lnrho"}      # only in a finite-source (espl) sweep
+CHOSEN = list(PARAM_ORDER)       # the parameters reported, plotted and gated on (--params)
 SURVEY_ORDER = ["joint", "rubin", "roman"]
 SURVEY_STYLE = {"joint": "-", "rubin": "--", "roman": ":"}
 
@@ -157,8 +168,10 @@ def report(summary):
     print(hdr2)
     print("-" * len(hdr))
     failures = []
-    for par in PARAM_ORDER:
+    for par in CHOSEN:
         g = summary[summary["param"] == par]
+        if g.empty and par in OPTIONAL_PARAMS and len(CHOSEN) == len(PARAM_ORDER):
+            continue                        # not part of this sweep
         if g.empty:
             print(f"{par:>6} {'--':>10} {'no usable curves':>18}")
             failures.append(par)
@@ -195,12 +208,16 @@ def report(summary):
 
 
 def plot(df, out):
-    fig, axes = plt.subplots(3, 3, figsize=(13, 10), sharex=True)
+    params = [p for p in CHOSEN if p in set(df["param"]) or p not in OPTIONAL_PARAMS]
+    nrows = (len(params) + 2) // 3
+    fig, axes = plt.subplots(nrows, 3, figsize=(13, 10 * nrows / 3), sharex=True, squeeze=False)
     events = sorted(df["event"].unique())
     cmap = plt.get_cmap("viridis", max(len(events), 2))
     colors = {e: cmap(i) for i, e in enumerate(events)}
 
-    by_panel = {p: ax for p, ax in zip(PARAM_ORDER, axes.ravel())}
+    by_panel = {p: ax for p, ax in zip(params, axes.ravel())}
+    for ax in axes.ravel()[len(params):]:
+        ax.set_visible(False)
     for ev, surv, par, sc, rat, _sig in curves(df):
         ax = by_panel.get(par)
         if ax is None:
@@ -219,8 +236,11 @@ def plot(df, out):
         ax.set_title(par, fontsize=11)
         ax.set_ylabel(r"$\sigma\,/\,\sigma_{\rm plateau}$", fontsize=9)
         ax.tick_params(labelsize=8)
-    for ax in axes[-1]:
-        ax.set_xlabel(r"finite-difference step, relative to the production step", fontsize=9)
+    for col in range(3):                    # the bottom visible panel of each column carries the axis label
+        shown = [axes[r][col] for r in range(nrows) if axes[r][col].get_visible()]
+        if shown:
+            shown[-1].set_xlabel(r"finite-difference step, relative to the production step", fontsize=9)
+            shown[-1].tick_params(labelbottom=True)
 
     handles = [plt.Line2D([], [], color=colors[e], lw=1.5, label=e) for e in events]
     handles += [plt.Line2D([], [], color="0.3", ls=SURVEY_STYLE[s], lw=1.5, label=s)
@@ -243,7 +263,11 @@ def main():
     ap.add_argument("-o", "--out", default="c3_step_sweep.png")
     ap.add_argument("--per-curve", action="store_true",
                     help="print every (param, survey, event) curve, not just the worst")
+    ap.add_argument("--params", nargs="+", choices=PARAM_ORDER, metavar="PARAM",
+                    help="report, plot and gate on only these parameters (default: all of " + " ".join(PARAM_ORDER) + ")")
     a = ap.parse_args()
+    if a.params:
+        CHOSEN[:] = [p for p in PARAM_ORDER if p in a.params]
 
     df = load(a.csv)
     summary = summarize(df)

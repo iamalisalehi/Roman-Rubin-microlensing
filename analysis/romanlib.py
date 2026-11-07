@@ -247,6 +247,22 @@ def sigma(df, param, survey, noise="W"):
     param  : "tE" | "piE"    (photometric, gated on okA)
              "tetE"          (astrometric, gated on okB)
              "Ml"            (derived from tetE and piE, gated on its own positivity)
+             "lnrho"         (the DATA-ONLY sigma of ln rho, the source radius in Einstein radii: what the survey's
+                              photometry alone says, the prior P.RHO_PRIOR_SIGLN left out; gated on okA)
+             "tetE_ph"       (FRACTIONAL error of the photometric thetaE = theta*/rho, sqrt(sigma_post(ln rho)^2 +
+                              sigma(ln theta*)^2), the posterior sigma with the prior; gated on okA)
+             "muL"           (FRACTIONAL error of the lens's heliocentric proper motion |mu_L|: astrometry gives
+                              mus and thetaE, the light curve tE and the direction xi, with the parallax; columns
+                              relMuL_<q>, gated on its own positivity, as "Ml")
+             "vL"            (1-sigma error [km/s] of the lens's velocity on the sky, v_L = D_L mu_L, along its
+                              worst-measured direction: sqrt of the largest eigenvalue of its 2x2 covariance; columns
+                              sigVL_<q>. FRAME-INDEPENDENT, so it holds for the heliocentric or the Galactic-rest-frame
+                              velocity alike. vLperp is the HELIOCENTRIC truth |v_L| = D_L |mu_L|; since sigVL is a
+                              per-axis bound, sigVL / vLperp is only a heliocentric relative error)
+             --source-model espl only (NaN under pspl). "lnrho" is written for every characterised partition (ln rho is a
+             parameter of all of them, with a Gaussian prior of width P.RHO_PRIOR_SIGLN); NaN where the data hold no
+             information on it. "tetE_ph" exists only where rho is MEASURED, the data-only sigma(ln rho) <=
+             P.SIGLNRHO_MAX (see rho_measured); elsewhere thetaE comes from astrometry alone.
     survey : "joint" | "rubin" | "roman"
     noise  : astrometric noise variant for "tetE" and "Ml": "W" white (the main
              columns), "N" nominal, "P" pessimistic (columns sigtetE_N<q>, relMl_P<q>, gated on
@@ -268,6 +284,14 @@ def sigma(df, param, survey, noise="W"):
         col, gate = f"sigtetE_{v_}{q}", f"okB_{v_}{q}"
     elif param == "Ml":
         col, gate = f"relMl_{v_}{q}", None
+    elif param == "muL":
+        col, gate = f"relMuL_{q}", None
+    elif param == "vL":
+        col, gate = f"sigVL_{q}", None
+    elif param == "lnrho":
+        col, gate = f"siglnrho_{q}", f"okA_{q}"
+    elif param == "tetE_ph":
+        col, gate = f"rel_tetEph_{q}", f"okA_{q}"
     else:
         raise KeyError(f"unknown param {param!r}")
 
@@ -276,6 +300,33 @@ def sigma(df, param, survey, noise="W"):
     if gate is not None:
         ok &= (df[gate] == 1)
     return v.where(ok)
+
+
+def rho_measured(df, survey):
+    """Boolean: did this survey's photometry MEASURE the source radius, so that the photometric thetaE = theta*/rho
+    entered the event's thetaE, mass, distance and lens motion?
+
+    True where the partition was characterised and the DATA-ONLY sigma(ln rho) (the siglnrho column, prior left out)
+    is at most P.SIGLNRHO_MAX. ln rho is fitted in every partition of an espl run, with a Gaussian prior of width
+    P.RHO_PRIOR_SIGLN, so a False here is not a missing fit but a source radius the data do not pin down: its
+    uncertainty is then only marginalised over. A point-source run (--source-model pspl) has none.
+    """
+    q = SURVEYS[survey]
+    s = df[f"siglnrho_{q}"].astype(float)
+    return (df[f"okA_{q}"] == 1) & (s > 0.0) & (s <= P.SIGLNRHO_MAX)
+
+
+def finite_source_dchi(df, survey):
+    """dchiFS of the survey's partition, NaN where it was not computed (the -1 sentinel: a point-source run, an
+    event never characterised, a telescope left out for too few epochs).
+
+    dchiFS is the chi-squared by which the partition's epochs separate the uniform disc from a point source at
+    the true parameters: a diagnostic of how strongly the disc is seen. It gates nothing (ln rho is fitted in every
+    partition; rho counts as measured by sigma(ln rho), see rho_measured). Unlike rel_tetEph it is defined for
+    events whose rho is not measured, so it is the variable to bin the finite-source effect in.
+    """
+    v = df[f"dchiFS_{SURVEYS[survey]}"].astype(float)
+    return v.where(v >= 0.0)
 
 
 def characterized(df, survey):
@@ -326,7 +377,26 @@ def area_weight(df, prov=None):
     return pd.Series(1.0, index=df.index)
 
 
-def event_weight(df, sightlines, nsim_override=None):
+def run_bar_norm(sightlines, bar_norm=None):
+    """The bar factor to weight a run with: `bar_norm` if given, else read from its map table.
+
+    Runs made before 2026-11-03 multiplied the bar by galaxy_model.LEGACY_BAR_NORM (0.45); later runs
+    do not. The weight's star count and lens-distance normaliser must use the run's own bulge.
+    """
+    import galaxy_model as G
+    if bar_norm is not None:
+        return G.check_bar_norm(bar_norm)
+    if sightlines is None or "lon" not in sightlines or "log10_Rostart" not in sightlines:
+        raise ValueError("the event weight needs the run's bar normalisation: pass the map table "
+                         "(load_sightlines) or bar_norm explicitly")
+    bar_norm = G.bar_norm_for_map(sightlines)
+    if bar_norm != G.CURRENT_BAR_NORM:
+        print(f"  note: this run's bulge carries the old extra factor {bar_norm} (made before 2026-11-03); "
+              f"weighting it with that bulge")
+    return bar_norm
+
+
+def event_weight(df, sightlines, nsim_override=None, bar_norm=None):
     """Per-event importance weight for a pooled statistic.
 
     A pooled fraction or median is a statement about the sky only if the events are distributed
@@ -363,6 +433,8 @@ def event_weight(df, sightlines, nsim_override=None):
     sightlines  : map table from load_sightlines(), for `nsim` and the (lon, lat) join
     nsim_override : optional {(lon, lat) rounded to 3 dp: nsim}, for sightlines missing from a
                     damaged map file. The run log prints `nsim` for every sightline.
+    bar_norm    : the run's bar factor (galaxy_model.BAR_NORMS); None reads it from `sightlines`
+                  (galaxy_model.bar_norm_for_map), so runs from before and after 2026-11-03 both weigh right.
 
     Returns a float Series aligned to df. Raises if any event's sightline has no `nsim`.
     """
@@ -370,6 +442,7 @@ def event_weight(df, sightlines, nsim_override=None):
 
     if "w_area" not in df.columns:
         raise ValueError("event table has no w_area column (older simulator version), so no pooled weight")
+    bar_norm = run_bar_norm(sightlines, bar_norm)
 
     codes, keys = sightline_index(df)
     nsim = {}
@@ -421,7 +494,7 @@ def event_weight(df, sightlines, nsim_override=None):
     Ds = df["Ds"].to_numpy()
     for c, pos in sightline_groups(codes):
         k = keys[c]
-        prof = G.density_profile(*k)
+        prof = G.density_profile(*k, bar_norm=bar_norm)
         n_draws[pos] = nsim[k]
         nstart[pos] = prof.Nstart
         Z[pos] = G.lens_distance_norm(prof, Ds[pos])
@@ -479,25 +552,174 @@ def nsim_from_logs(paths):
     return out
 
 
-def attach_weight(df, map_path=None, log_paths=(), unweighted=False):
-    """Return (weights, label) for a pooled statistic over `df`.
+# ---- Counting conventions ----
+#
+# A run keeps a drawn source either whenever its peak is visible ("every-star") or, with
+# --blend-thinning (and in every run made before that option existed), with probability pKeep, the
+# chance that one star of its blend is "realised" (Sajadian & Makler, criterion ii: "per-object").
+# event_weight / yield_weight count draws as drawn, so they are the every-star weight of an
+# every-star run and the per-object weight of a per-object run. count_weight converts to the other.
+SELECTIONS = ("every-star", "per-object")
+CONVENTIONS = SELECTIONS
+
+
+def selection_mode(prov_path):
+    """The run's source-selection mode, from the `source_selection` line of run_provenance.txt.
+
+    A provenance file without the line is a run made before the option existed: "per-object".
+    A missing file raises: the mode decides the weight, so it is never guessed.
+    """
+    if not os.path.exists(prov_path):
+        raise FileNotFoundError(
+            f"{prov_path}: no run_provenance.txt beside the map file, so the run's source-selection "
+            f"mode is unknown. Pass the mode explicitly (attach_weight(..., mode=...)), or put the "
+            f"run's provenance file next to the map; the script option --convention only chooses "
+            f"the counting convention, not the run's mode.")
+    mode = load_provenance(prov_path).get("source_selection", "per-object")
+    if mode not in SELECTIONS:
+        raise ValueError(f"{prov_path}: source_selection {mode!r}; expected one of {SELECTIONS}")
+    return mode
+
+
+def keep_probability(df, sightlines, mode, fixed_rubin_depths=False, hint=None):
+    """Per-row probability that a per-object run keeps the draw (the table's pKeep column).
+
+    Tables written by the current simulator have pKeep in both modes. Without it, a per-object run's
+    value is rebuilt by acceptance_probability (agreeing to the table's 6 printed digits); an
+    every-star table without pKeep cannot be rebuilt and raises. fixed_rubin_depths is the
+    approximation of acceptance_probability for maps without per-sightline depths. `hint` is what
+    the error tells the caller to do instead (default: pass --convention <the run's mode>).
+
+    Two Rubin bands meet in a run, on purpose: pKeep and the legacy (per-object) selection stay on
+    Rubin's r band (blend[2]) even if RUBIN_REF_BANDS is changed, while fb0, sigfb0_* and the dark-lens
+    test's Rubin flux follow RUBIN_REF_BANDS.
+    """
+    hint = hint or f"or count as the run did: pass --convention {mode}"
+    if "pKeep" in df.columns:
+        return df["pKeep"].to_numpy(np.float64)
+    if mode != "per-object":
+        raise ValueError(
+            "this every-star table has no pKeep column, so the per-object convention cannot be "
+            f"rebuilt: load the table with pKeep (an older file has none), {hint}")
+    need = ["u0", "lon", "lat"] + [f"{k}_{f}" for k in ("magb", "blend") for f in FILTERS]
+    gone = [c for c in need if c not in df.columns]
+    if gone:
+        raise ValueError(f"the table has no pKeep and lacks {gone}, which the keep probability is "
+                         f"rebuilt from: load them (an older file has no pKeep), {hint}")
+    try:
+        return acceptance_probability(df, sightlines, fixed_rubin_depths)
+    except ValueError as e:
+        raise ValueError(f"{e}. The keep probability is needed to count every star in a per-object "
+                         f"run; {hint}") from e
+
+
+def count_weight(w, p_keep, mode, convention, detected=None):
+    """Weight w (event_weight or yield_weight, as the run drew it) in the requested convention.
+
+    run mode      every-star    per-object
+    every-star    w             w * p_keep
+    per-object    w / p_keep    w
+    The table holds every draw in both modes; the keep decision only changes which draws can be
+    detected, so the convention acts on DETECTED rows: `detected` (boolean per row) selects them,
+    and every other row keeps its native w (an undetected draw is the same draw in both
+    conventions, so a denominator over all draws uses the native weight). A detected row with
+    p_keep <= 0 cannot have been kept: it raises in the per-object -> every-star direction.
+    Without `detected` every row is converted: pass a frame of detected rows only.
+    """
+    if mode not in SELECTIONS:
+        raise ValueError(f"run mode {mode!r}; expected one of {SELECTIONS}")
+    if convention not in CONVENTIONS:
+        raise ValueError(f"convention {convention!r}; expected one of {CONVENTIONS}")
+    w = np.asarray(w, dtype=np.float64)
+    if convention == mode:
+        return w.copy()
+    p = np.asarray(p_keep, dtype=np.float64)
+    sel = np.ones(w.shape, dtype=bool) if detected is None else np.asarray(detected, dtype=bool)
+    if mode == "every-star":
+        return np.where(sel, w * p, w)
+    bad = sel & (w > 0) & ~(p > 0)
+    if bad.any():
+        raise ValueError(f"{int(bad.sum())} detected row(s) with weight > 0 have a keep probability "
+                         f"of 0: 1/pKeep is undefined. Use the per-object convention, or re-run")
+    return np.where(sel & (p > 0), w / np.where(p > 0, p, 1.0), w)
+
+
+def add_convention_option(ap):
+    """Add the --convention option every weighted script offers (default every-star)."""
+    ap.add_argument("--convention", choices=CONVENTIONS, default="every-star",
+                    help="how a source star is counted: every-star (each star whose peak is visible; "
+                         "the default) or per-object (Sajadian & Makler criterion ii: with "
+                         "probability equal to its blend fraction). Legacy runs give every-star "
+                         "numbers by 1/pKeep, which needs the Rubin depths in the map file")
+    return ap
+
+
+def keep_columns(table_path, map_path, convention):
+    """Extra event-table columns `attach_weight` needs when `usecols` restricts the load.
+
+    None when the convention is the run's own; the pKeep column when the table has it; else the
+    columns the per-object keep probability is rebuilt from.
+    """
+    mode = selection_mode(os.path.join(os.path.dirname(os.path.abspath(map_path)),
+                                       "run_provenance.txt"))
+    if convention == mode:
+        return []
+    with open(table_path) as fh:
+        header = fh.readline().lstrip("#").split()
+    if "pKeep" in header:
+        return ["pKeep"]
+    return [c for c in ["u0", "lon", "lat", "detL", "detR", "detJ"] + [f"{k}_{f}" for k in ("magb", "blend")
+                                                        for f in FILTERS] if c in header]
+
+
+def attach_weights(df, map_path=None, log_paths=(), unweighted=False, convention="every-star",
+                   mode=None, hint=None):
+    """Return (weights, native_weights, label) for a pooled statistic over `df`.
 
     The plumbing every figure script needs: read the sightline table, patch in `nsim` for
     sightlines a killed run's map file lost, and build the per-event weight.
 
+    `convention` is how a source is counted: "every-star" (each star whose peak is visible; the
+    headline) or "per-object" (Sajadian & Makler criterion ii: a star counts with probability equal
+    to its blend fraction). `mode` is the run's own selection, read from the run_provenance.txt
+    beside the map file unless given. See count_weight: `weights` is converted on detected rows
+    (any of detL, detR, detJ equal to 1; with none of those columns every row is taken as
+    detected) and native elsewhere. A fraction whose denominator includes undetected draws takes
+    its numerator from `weights` over the detected rows and its denominator from `native_weights`
+    over all rows (weighted_fraction(mask, weights, denominator=native_weights)).
+
     `unweighted=True` returns ones and says so in the label. A script must never fall back to
     unweighted silently: the unweighted sample over-represents long-tE events roughly tenfold.
     """
+    if convention not in CONVENTIONS:
+        raise ValueError(f"convention {convention!r}; expected one of {CONVENTIONS}")
     if unweighted:
-        return pd.Series(1.0, index=df.index), "unweighted"
+        ones = pd.Series(1.0, index=df.index)
+        return ones, ones, "unweighted"
     if not map_path:
         raise ValueError(
             "pooled statistics need the event-rate weight. Pass the map file "
             "(--map), adding --log for a run whose map file lost rows, or pass --unweighted "
             "to say deliberately that this figure is of the raw sample.")
+    if mode is None:
+        mode = selection_mode(os.path.join(os.path.dirname(os.path.abspath(map_path)),
+                                           "run_provenance.txt"))
     sl = load_sightlines(map_path)
-    w = event_weight(df, sl, nsim_override=nsim_from_logs(log_paths))
-    return w, f"event-rate weighted, N_eff = {kish_neff(w):,.0f}"
+    native = event_weight(df, sl, nsim_override=nsim_from_logs(log_paths))
+    w = native
+    if convention != mode:
+        cols = [c for c in ("detL", "detR", "detJ") if c in df.columns]
+        det = (df[cols] == 1).any(axis=1).to_numpy() if cols else None
+        w = pd.Series(count_weight(native.to_numpy(), keep_probability(df, sl, mode, hint=hint),
+                                   mode, convention, detected=det), index=df.index)
+    return w, native, f"event-rate weighted, {convention}, N_eff = {kish_neff(w):,.0f}"
+
+
+def attach_weight(df, map_path=None, log_paths=(), unweighted=False, convention="every-star",
+                  mode=None):
+    """(weights, label) of attach_weights, for statistics over detected events only."""
+    w, _, label = attach_weights(df, map_path, log_paths, unweighted, convention, mode)
+    return w, label
 
 
 # ---- Absolute yields ----
@@ -536,18 +758,20 @@ SATU = P.satu
 FILTERS = ["u", "g", "r", "i", "z", "y", "F146"]
 
 
-def draw_rate(df):
+def draw_rate(df, sightlines=None, bar_norm=None):
     """gamma_i: the rate (s^-1 per source star, F = 1) that draw i stands for.
 
     Independent of event_weight() (Z is recomputed here per sightline), so the optical-depth
     check in y1_absolute_yield.py tests the constants rather than re-deriving them.
+    The run's bar factor: `bar_norm`, or read from its map table `sightlines` (run_bar_norm).
     """
     import galaxy_model as G
+    bar_norm = run_bar_norm(sightlines, bar_norm)
     Z = np.empty(len(df))
     Ds = df["Ds"].to_numpy()
     codes, keys = sightline_index(df)
     for c, pos in sightline_groups(codes):
-        Z[pos] = G.lens_distance_norm(G.density_profile(*keys[c]), Ds[pos])
+        Z[pos] = G.lens_distance_norm(G.density_profile(*keys[c], bar_norm=bar_norm), Ds[pos])
     return (RATE_UNIT * Z * np.sqrt(df["Ml"].to_numpy()) * df["Vt"].to_numpy()
             / mean_lens_mass(df))
 
@@ -618,14 +842,16 @@ def acceptance_probability(df, sightlines, fixed_rubin_depths=False):
     return 1.0 - (1.0 - pL) * (1.0 - pR)
 
 
-def yield_weight(df, sightlines, tobs_days, nsim_override=None):
-    """Per-row expected number of events in the window, for F = 1, per resolved object.
+def yield_weight(df, sightlines, tobs_days, nsim_override=None, bar_norm=None):
+    """Per-row expected number of events in the window, for F = 1.
 
     y_i = T * [w_area Nstar / nsim] * gamma_i. Summing y_i over detected rows gives the
     detected yield with every lens drawn from the population and F = 1; multiply by F.
-    Divide each y_i by acceptance_probability() to count events on every star instead.
+    nsim counts every draw, so y_i is on every star in an every-star run and per resolved object in
+    a per-object (legacy) run; count_weight(y, p_keep, mode, convention) converts to the other.
+    bar_norm: as in event_weight (None reads it from `sightlines`).
     """
-    w = event_weight(df, sightlines, nsim_override=nsim_override).to_numpy()
+    w = event_weight(df, sightlines, nsim_override=nsim_override, bar_norm=bar_norm).to_numpy()
     # event_weight = w_area Nstart/nsim sqrt(M) Vt Z; the rest of gamma is RATE_UNIT / <M>.
     T = (tobs_days - 2.0 * T0_MARGIN_DAYS) * 86400.0
     y = T * RATE_UNIT * w / mean_lens_mass(df)
@@ -649,11 +875,15 @@ def weighted_median(values, weights):
     return weighted_quantile(values, weights, 0.5)
 
 
-def weighted_fraction(mask, weights):
-    """Weighted fraction of `mask` being true, over the whole weighted sample."""
+def weighted_fraction(mask, weights, denominator=None):
+    """Weighted fraction of `mask` being true, over the whole weighted sample.
+
+    `denominator` gives the weights the total is summed over when they differ from the numerator's
+    (a count over detected draws as a fraction of all draws: attach_weights' native weights).
+    """
     m = np.asarray(mask.fillna(False) if hasattr(mask, "fillna") else mask, dtype=bool)
     w = np.asarray(weights, dtype=float)
-    tot = w.sum()
+    tot = (w if denominator is None else np.asarray(denominator, dtype=float)).sum()
     return float(w[m].sum() / tot) if tot > 0 else np.nan
 
 
@@ -665,6 +895,149 @@ def kish_neff(w):
     """
     w = np.asarray(w, dtype=float)
     return float(w.sum()**2 / np.square(w).sum()) if w.size else 0.0
+
+
+# ---- Follow-up labels and the dark-lens probability ----
+#
+# Wyrzykowski & Mandel (2020, Sec. 2.1): all of an event's blend light is attributed to the lens, an
+# upper limit on its light; if a main-sequence star of the lens's mass and distance would outshine
+# the blend, the lens cannot be one. P(dark) is the fraction of posterior samples in which it would.
+BLEND_CLEAN_FS = 0.6      # f_S at or above which a survey's source is "clean" (W&M's threshold)
+DARK_P_MIN = 0.75         # "likely dark" when P(dark) exceeds this
+BLEND_CLASSES = ("clean-both", "resolved-by-roman", "blended-roman-only", "blended-both",
+                 "rubin-blended-no-roman", "clean-rubin-no-roman")
+
+
+# i_AB - I_Vega for a typical reddened bulge giant; the CMD magnitudes are AB, OGLE's are Vega.
+# Approximate (about 0.4 mag); the results depend on it weakly.
+I_AB_MINUS_VEGA = 0.4
+
+
+def blend_class(df):
+    """Follow-up label of each event, from Rubin's f_S (fb0) and Roman's (fb1). Exhaustive and exclusive.
+
+    Roman has data when ndw_R >= kMinTeleEpochs (the Fisher's own inclusion rule). Without Roman data
+    the simulated fb1 is not a measurement, so it is not used: "rubin-blended-no-roman" (fb0 < 0.6)
+    and "clean-rubin-no-roman" (fb0 >= 0.6). With Roman data, f_S at or above 0.6 called clean:
+    "clean-both", "resolved-by-roman" (Rubin blended, Roman clean), "blended-roman-only" (Rubin
+    clean, Roman blended), "blended-both".
+    """
+    fb0 = df["fb0"].to_numpy(float)
+    fb1 = df["fb1"].to_numpy(float)
+    if not np.isfinite(fb0).all() or not np.isfinite(fb1).all():
+        raise ValueError("blend_class: fb0 or fb1 is not finite on some rows; select the rows with "
+                         "a blend fraction first")
+    c0 = fb0 >= BLEND_CLEAN_FS
+    c1 = fb1 >= BLEND_CLEAN_FS
+    has = df["ndw_R"].to_numpy(float) >= P.kMinTeleEpochs
+    lab = np.select([~c0 & ~has, c0 & ~has, c0 & c1, ~c0 & c1, c0 & ~c1],
+                    [BLEND_CLASSES[4], BLEND_CLASSES[5], BLEND_CLASSES[0], BLEND_CLASSES[1], BLEND_CLASSES[2]],
+                    default=BLEND_CLASSES[3])
+    return pd.Series(lab, index=df.index, name="blend_class")
+
+
+def load_ms_hypothesis(path):
+    """The main-sequence mass -> absolute AB magnitude table (CMD/lens_ml_table.py --hypothesis).
+
+    Columns `mass` [Msun] and `Mab_<band>` for u g r i z y F146. Raises if the layout is not that or
+    the masses are not increasing.
+    """
+    names = ["mass"] + [f"Mab_{b}" for b in FILTERS]
+    a = np.loadtxt(path, comments="#", ndmin=2)
+    if a.shape[1] != len(names):
+        raise ValueError(f"{path}: {a.shape[1]} columns, expected {len(names)} ({' '.join(names)})")
+    t = pd.DataFrame(a, columns=names)
+    if not (np.diff(t["mass"]) > 0).all():
+        raise ValueError(f"{path}: masses are not strictly increasing")
+    return t
+
+
+def _truncnorm01(mu, sg, u):
+    """Inverse-CDF draw from N(mu, sg) truncated to [0, 1]; `u` uniform in [0, 1), shape of the result.
+
+    Where sg is too small for the CDF to resolve (or the window carries no probability) the draw is
+    mu clipped to [0, 1], the sg -> 0 limit.
+    """
+    from scipy.special import ndtr, ndtri
+    mu, sg, u = np.broadcast_arrays(np.asarray(mu, float), np.asarray(sg, float), np.asarray(u, float))
+    live = sg > 1e-12
+    s = np.where(live, sg, 1.0)
+    lo = ndtr((0.0 - mu) / s)
+    hi = ndtr((1.0 - mu) / s)
+    live &= (hi - lo) > 1e-12
+    q = np.clip(lo + u * (hi - lo), 1e-300, 1.0 - 1e-16)
+    x = np.where(live, mu + s * ndtri(q), mu)
+    return np.clip(x, 0.0, 1.0)
+
+
+def dark_lens_probability(df, partition, ms, n_samples=2000, seed=12345, ref_bands=None):
+    """P(dark) per event: the fraction of posterior samples in which the blend cannot hide the lens.
+
+    partition "joint" tests Rubin's reference band(s) (sigfb0_J > 0) and F146 (sigfb1_J > 0) with the
+    joint mass error relMl_J; "rubin" the reference band(s) with sigfb0_L and relMl_L; "roman" F146
+    with sigfb1_R and relMl_R. `ref_bands` are indices into FILTERS (default P.RUBIN_REF_BANDS);
+    Rubin's baseline mbs0 and the lens flux are both summed over those bands together.
+
+    Per sample: ln M ~ N(ln Ml, relMl); f_S ~ N(fb, sigfb) TRUNCATED to [0, 1] (the posterior under
+    the physical prior; clipping would pile the mass of a poorly measured f_S on f_S = 1, zero blend
+    light, and call every lens dark), independently per band (the joint fit's f_S correlation is
+    not carried); a sigfb that is effectively zero gives f_S = fb; blend flux = 10^(-0.4 mbs) (1 - f_S); a
+    main-sequence star of mass M at D_L has flux 10^(-0.4 (Mab(M) + 5 log10(D_L 100) + Alens)), Mab
+    linear in ln M, the top row above the table, and a sample below the table's lowest mass is NOT
+    excluded (a brown dwarf can hide anywhere). A sample is excluded when that flux exceeds the blend
+    flux in ANY tested band. D_L is held at its true value (an approximation: the forecast has no
+    distance error, and the mass error is the dominant one); the mass centre is the true Ml.
+
+    Float in [0, 1]; NaN (no verdict) when relMl <= 0 (the -1 sentinel), no band is tested, or a
+    tested band's inputs are not finite. Vectorised over events in chunks; deterministic for a seed.
+    """
+    spec = {"joint": ("relMl_J", "sigfb0_J", "sigfb1_J"), "rubin": ("relMl_L", "sigfb0_L", None),
+            "roman": ("relMl_R", None, "sigfb1_R")}
+    if partition not in spec:
+        raise ValueError(f"partition {partition!r}; expected one of {sorted(spec)}")
+    relcol, s0col, s1col = spec[partition]
+    rubin = list(P.RUBIN_REF_BANDS if ref_bands is None else ref_bands)
+    col = lambda c: df[c].to_numpy(float)
+    n = len(df)
+    rel = col(relcol)
+    lnM0 = np.log(col("Ml"))
+    mu = 5.0 * np.log10(col("Dl") * 100.0)
+    lnm = np.log(ms["mass"].to_numpy(float))
+    # per tested band: (fb, sigma, baseline mag, [(table column, lens-extinction column)])
+    bands = []
+    if s0col:
+        bands.append((col("fb0"), col(s0col), col("mbs0"),
+                      [(f"Mab_{FILTERS[b]}", f"Alens_{FILTERS[b]}") for b in rubin]))
+    if s1col:
+        bands.append((col("fb1"), col(s1col), col("mbs1"), [("Mab_F146", "Alens_F146")]))
+    active = [b[1] > 0 for b in bands]
+    ok = (rel > 0) & np.isfinite(rel) & np.isfinite(lnM0) & np.isfinite(mu) & np.any(active, axis=0)
+    for (fb, sg, mbs, cols), act in zip(bands, active):
+        good = np.isfinite(fb) & np.isfinite(sg) & np.isfinite(mbs)
+        for _, ac in cols:
+            good &= np.isfinite(col(ac))
+        ok &= ~act | good
+    out = np.full(n, np.nan)
+    rng = np.random.default_rng(seed)
+    idx = np.flatnonzero(ok)
+    chunk = max(1, 4_000_000 // n_samples)
+    for lo in range(0, idx.size, chunk):
+        i = idx[lo:lo + chunk]
+        lnM = lnM0[i, None] + rel[i, None] * rng.standard_normal((i.size, n_samples))
+        excl = np.zeros(lnM.shape, bool)
+        for (fb, sg, mbs, cols), act in zip(bands, active):
+            t = act[i]
+            if not t.any():
+                continue
+            fs = _truncnorm01(fb[i, None], np.where(t, sg[i], 0.0)[:, None], rng.random(lnM.shape))
+            blend = 10.0 ** (-0.4 * mbs[i, None]) * (1.0 - fs)
+            lens = 0.0
+            for mc, ac in cols:
+                M = np.interp(lnM, lnm, ms[mc].to_numpy(float))
+                lens = lens + 10.0 ** (-0.4 * (M + mu[i, None] + col(ac)[i, None]))
+            excl |= t[:, None] & (lnM >= lnm[0]) & (lens > blend)
+        out[i] = excl.mean(axis=1)
+    return pd.Series(out, index=df.index, name=f"pdark_{partition}")
 
 
 def is_stratified(prov):
@@ -696,30 +1069,88 @@ PROVENANCE_SEARCH = ("run_provenance.txt",
                      "files/MONTLMC/files/run_provenance.txt")
 
 
-# Roman's per-exposure astrometric error, mirrored from src/surveys/noise.cpp errRomanA. The anchors
-# are F146 Vega magnitudes (Lam et al. 2026); the simulator's magnitudes are AB, converted by
-# m_Vega = m_AB - 1.0324. Runs that convert say so in their provenance ("# roman_noise"); runs
-# without that line used the AB magnitude as if Vega, and analyses of them must do the same.
+# Roman's per-exposure, per-coordinate astrometric error [mas], three models over the project's life.
+# The run's run_provenance.txt says which one it used (roman_ast_model); use roman_ast_error_for_run.
+#   "ksnr"      (2026-10-10 on; line "# astrometric_noise"): sqrt((k/SNR)^2 + floor^2), SNR from the
+#               same exposure's F146 photometric error -- src/surveys/noise.cpp errRomanA.
+#   "line_vega" (2026-10-02 to 2026-10-10; "# roman_noise ast: errRomanA(m_AB - ..."): a straight line in
+#               log sigma between Lam et al. 2026's F146 Vega anchors, magnitudes converted AB -> Vega.
+#   "line_ab"   (before 2026-10-02): the same line evaluated at the AB magnitude as if Vega.
+# The line models' constants are a frozen record (they are no longer in config/parameters.h).
 F146_AB_MINUS_VEGA = 1.0324
 ROMAN_AST = dict(floor=1.1, mflr=20.62, mbkg=23.5, sbkg=10.0, slope_src=0.33285, slope_bkg=0.4)
 
 
+def roman_ast_model(prov_path):
+    """Which Roman astrometric error model the run that wrote `prov_path` used (see above)."""
+    text = open(prov_path).read() if prov_path and os.path.exists(prov_path) else ""
+    if "# astrometric_noise" in text:
+        return "ksnr"
+    if "# roman_noise" in text:
+        return "line_vega"
+    return "line_ab"
+
+
 def roman_ast_vega_offset(prov_path):
-    """AB - Vega offset the run that wrote `prov_path` applied before errRomanA (0 if it did not convert)."""
-    if prov_path and os.path.exists(prov_path):
-        if "# roman_noise" in open(prov_path).read():
-            return F146_AB_MINUS_VEGA
-    return 0.0
+    """AB - Vega offset a LINE-model run applied before errRomanA (0 if it did not convert)."""
+    model = roman_ast_model(prov_path)
+    if model == "ksnr":
+        raise ValueError(f"{prov_path}: this run used the k/SNR astrometric model; "
+                         "call roman_ast_error_for_run")
+    return F146_AB_MINUS_VEGA if model == "line_vega" else 0.0
 
 
 def roman_ast_error(mag_ab, ab_minus_vega=F146_AB_MINUS_VEGA):
-    """errRomanA, vectorised: per-exposure, per-coordinate astrometric error [mas] at F146 AB."""
+    """The LINE model (runs before 2026-10-10), vectorised, at F146 AB [mas]."""
     a = ROMAN_AST
     m = np.asarray(mag_ab, dtype=float) - ab_minus_vega
     out = np.where(m > a["mbkg"], a["sbkg"] * 10.0 ** (a["slope_bkg"] * (m - a["mbkg"])),
                    np.where(m > a["mflr"], a["floor"] * 10.0 ** (a["slope_src"] * (m - a["mflr"])),
                             a["floor"]))
     return np.maximum(out, a["floor"])
+
+
+_ROMAN_PHOT = None
+
+
+def roman_phot_error(mag_ab):
+    """errRomanM, vectorised: F146 per-exposure photometric error [mag], from files/sigma_roman.txt
+    anchored to ROMAN_DEPTH5_AB exactly as src/run/inputs.cpp readRomanErrorTable does. Reads the
+    table and constants of THIS checkout, so it describes a run only if neither changed since."""
+    global _ROMAN_PHOT
+    if _ROMAN_PHOT is None:
+        t = np.loadtxt(os.path.join(P.root, "files", "sigma_roman.txt"))
+        mag, err = t[:, 0].copy(), t[:, 1].copy()
+        e5 = 1.0857 / 5.0
+        i = int(np.argmax(err >= e5))
+        if i == 0:
+            raise ValueError("sigma_roman.txt never reaches 5 sigma")
+        f = (np.log(e5) - np.log(err[i - 1])) / (np.log(err[i]) - np.log(err[i - 1]))
+        mag += P.ROMAN_DEPTH5_AB - (mag[i - 1] + f * (mag[i] - mag[i - 1]))
+        phot2 = np.maximum(err ** 2 - P.ROMAN_PHOT_FLOOR ** 2, 0.0)
+        _ROMAN_PHOT = (mag, np.log(np.sqrt(phot2 + P.ROMAN_PHOT_FLOOR ** 2)))
+    mag, logerr = _ROMAN_PHOT
+    m = np.asarray(mag_ab, dtype=float)
+    # log-linear interpolation; brighter than the table: its first value; fainter: the last segment
+    slope = (logerr[-1] - logerr[-2]) / (mag[-1] - mag[-2])
+    out = np.interp(m, mag, logerr)
+    out = np.where(m > mag[-1], logerr[-1] + slope * (m - mag[-1]), out)
+    return np.exp(out)
+
+
+def roman_ast_error_ksnr(mag_ab):
+    """errRomanA (2026-10-10 on), vectorised: sqrt((k/SNR)^2 + floor^2) at F146 AB [mas]."""
+    err = roman_phot_error(mag_ab)
+    rand = np.sqrt(np.maximum(err ** 2 - P.ROMAN_PHOT_FLOOR ** 2, 0.0))
+    return np.hypot(P.ROMAN_AST_K * rand / 1.0857, P.ROMAN_AST_FLOOR)
+
+
+def roman_ast_error_for_run(mag_ab, prov_path):
+    """Roman's per-exposure astrometric error [mas] at F146 AB, by the model the run used."""
+    model = roman_ast_model(prov_path)
+    if model == "ksnr":
+        return roman_ast_error_ksnr(mag_ab)
+    return roman_ast_error(mag_ab, F146_AB_MINUS_VEGA if model == "line_vega" else 0.0)
 
 
 def find_provenance(explicit=None, near=None):
@@ -750,6 +1181,42 @@ def population(prov):
     return prov.get("population", "bulge (implied)")
 
 
+# What older runs' provenance did not say: the light-curve model of every run before the VBMicrolensing one.
+LIGHTCURVE_LEGACY = ("legacy in-house point-source model: circular-orbit parallax tilted by a fixed angle, "
+                     "heliocentric tE and xi")
+
+
+def lightcurve_model(prov):
+    """The light-curve model that produced a run, from its provenance (a dict from load_provenance).
+
+    Runs from the VBMicrolensing model on carry a `lightcurve_model` line (geocentric parallax from the JPL
+    ephemeris, Roman at L2 from its table, and the source: PSPL or ESPL, see source_model); the event table
+    then also has the columns tEhel (the heliocentric Einstein time; tE is the geocentric one), piEN and
+    piEE. Provenance without the line is a run of the legacy model, for which tE is the heliocentric time
+    and the table has none of those columns.
+    """
+    if not prov:
+        return "unknown"
+    return prov.get("lightcurve_model", LIGHTCURVE_LEGACY)
+
+
+def source_model(prov):
+    """The source of the light-curve model that produced a run: "ESPL" (a uniform disc of the star's radius,
+    finite-source point lens) or "PSPL" (a point), from the `lightcurve_model` line of its provenance.
+
+    Every run before the finite source was added is a point-source run, so provenance without the line, or
+    with a line that does not name ESPL, is "PSPL". "unknown" when there is no provenance at all.
+    """
+    if not prov:
+        return "unknown"
+    return "ESPL" if "ESPL" in prov.get("lightcurve_model", "") else "PSPL"
+
+
+def has_geocentric_tE(prov):
+    """True for a run whose tE and xi are geocentric (the VBMicrolensing model), False for a legacy run."""
+    return bool(prov) and "lightcurve_model" in prov
+
+
 def assert_same_population(provs, what="this figure"):
     """Refuse to pool runs from different lens populations.
 
@@ -773,6 +1240,8 @@ def describe(path_events, path_prov=None):
     if path_prov and os.path.exists(path_prov):
         prov = load_provenance(path_prov)
         parts.append(f"population={population(prov)}")
+        parts.append("lightcurve_model=" + ("vbm" if has_geocentric_tE(prov) else "legacy"))
+        parts.append("source_model=" + source_model(prov))
         for k in ("git_commit", "stride", "events_target", "sightlines_aggregated"):
             if k in prov:
                 parts.append(f"{k}={prov[k]}")

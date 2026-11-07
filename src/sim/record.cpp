@@ -2,6 +2,7 @@
 #include "sim/record.h"
 #include "sim/characterize.h"
 #include "events/lightcurve.h"
+#include "events/vbm_model.h"
 #include "run/sample_dump.h"
 #include "fisher/fisher.h"
 
@@ -52,19 +53,19 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
         lc.dsepMax_L, lc.dsepMax_R
     });
 
-    // du_sat: observer separation in Einstein radii at t0, piE * D_perp / AU. D_perp is the separation
+    // du_sat: observer separation in Einstein radii at t0, the distance between the source-lens vectors Roman
+    // and the Earth see at that instant: piE * D_perp / AU, where D_perp is the separation of the two
     // projected perpendicular to the line of sight (~0.87-0.99 of the L2 offset over the year), so
-    // L2_OFFSET_AU * piE is only a ceiling; lightcurve() is asked for both observers so the projection
+    // L2_OFFSET_AU * piE is only a ceiling; the model is asked for both observers so the projection
     // is not re-derived here. nepL_pk / nepR_pk: epochs of each survey within +-2 tE of t0; satellite
-    // parallax needs contemporaneous coverage. Calling lightcurve() here is safe: FisherM has run, and
-    // the state it touches is not read by the row below and is recomputed by the next draw.
+    // parallax needs contemporaneous coverage. Asking for the model here is safe: it changes nothing. Only ux, uy
+    // are read, so the positions are not asked for.
     pk.duSat = 0.0;
     {
-        lightcurve(s, l, as, l.t0, 0);
-        const double r1 = as.ue_n1, r2 = as.ue_n2;
-        lightcurve(s, l, as, l.t0, 1);
-        const double dn1 = as.ue_n1 - r1, dn2 = as.ue_n2 - r2;
-        pk.duSat = l.piE * std::sqrt(dn1 * dn1 + dn2 * dn2);
+        TrackPoint atRubin, atRoman;
+        evaluateTrack(s, l, as, 0, &l.t0, 1, false, &atRubin);
+        evaluateTrack(s, l, as, 1, &l.t0, 1, false, &atRoman);
+        pk.duSat = std::hypot(atRoman.ux - atRubin.ux, atRoman.uy - atRubin.uy);
     }
     pk.nepLpk = 0, pk.nepRpk = 0;
     {
@@ -75,6 +76,9 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
             else                      pk.nepLpk += 1;
         }
     }
+
+    double piNE[2];
+    parallaxVectorNE(l.piE, s.xi, piNE);
 
     filg_in.open(testf, std::ios::app);
     filg_in << st.icon           << " " << ch.fisher         << " " << l.tE                      << " "
@@ -125,7 +129,34 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
             << co.okBV[AV_N][SJOINT] << " " << co.okBV[AV_N][SROMAN] << " "
             << co.okBV[AV_P][SJOINT] << " " << co.okBV[AV_P][SROMAN] << " "
             << int(l.luminous) << " " << s.fLens[0] << " " << s.fLens[1] << " "
-            << pk.t0obs << " " << pk.uminObs << "\n";
+            << pk.t0obs << " " << pk.uminObs << " "
+            << std::hypot(s.blendOff[0][0], s.blendOff[0][1]) << " "
+            << std::hypot(s.blendOff[1][0], s.blendOff[1][1]) << " "
+            // finite-source size: radius [Rsun], angular radius [mas], and rho = theta* / thetaE
+            << s.Rstar << " " << s.thetaStar << " " << s.rho << " "
+            // the heliocentric Einstein time (tE above is the geocentric one) and the geocentric parallax
+            // vector on (North, East)
+            << l.tEhel << " " << piNE[0] << " " << piNE[1] << " "
+            // the finite source as a fitted parameter: dchiFS, the sigma(ln rho) the data alone give (the prior left
+            // out) and the fractional error of the photometric thetaE = theta* / rho (posterior sigma(ln rho) with
+            // theta*), joint / Rubin / Roman; -1 where not computed, not fitted or, for rel_tetEph, rho not measured
+            << co.dchiFS[SJOINT] << " " << co.dchiFS[SRUBIN] << " " << co.dchiFS[SROMAN] << " "
+            << co.sigLnRhoData[SJOINT] << " " << co.sigLnRhoData[SRUBIN] << " " << co.sigLnRhoData[SROMAN] << " "
+            << co.relTetEph[SJOINT] << " " << co.relTetEph[SRUBIN] << " " << co.relTetEph[SROMAN] << " "
+            // the lens's proper motion and velocity on the sky: fractional error of |mu_L| and the error of v_L along
+            // its worst-measured direction [km/s] (sqrt of the largest eigenvalue of its covariance) per partition
+            // (-1 = not measured), and the true heliocentric |v_L| = D_L |mu_L| [km/s]
+            << co.relMuL[SJOINT] << " " << co.relMuL[SRUBIN] << " " << co.relMuL[SROMAN] << " "
+            << co.sigVL[SJOINT] << " " << co.sigVL[SRUBIN] << " " << co.sigVL[SROMAN] << " "
+            << l.mul * l.Dl * AU / (1000.0 * 24.0 * 3600.0) << " "
+            // the probability the per-object selection (--blend-thinning) keeps this draw
+            << s.pKeep << " "
+            // the Fisher error of the blend fractions: Rubin's f_S (joint, Rubin-only), Roman's (joint, Roman-only); -1 = not measured
+            << co.Era[SJOINT][2] << " " << co.Era[SRUBIN][2] << " " << co.Era[SJOINT][7] << " " << co.Era[SROMAN][7];
+    // the dust in front of the lens per band [mag], u g r i z y F146
+    for (int i = 0; i < M; ++i)
+        filg_in << " " << l.Alens[i];
+    filg_in << "\n";
     filg_in.close();
 
     commitSampleDump(ctx, lc, ch, pk);
@@ -142,6 +173,8 @@ void commitSampleDump(SimContext& ctx, const LightCurveStats& lc, const Characte
     SampleSpec& dumpSpec = ctx.outs.dumpSpec;
     std::vector<DumpEpoch>& dumpBuf = ctx.outs.dumpBuf;
     long& dumpSeq = ctx.outs.dumpSeq;
+    double piNE[2] = {0.0, 0.0};
+    if (dumpSpec.on) parallaxVectorNE(l.piE, s.xi, piNE);
 
     // Commit this draw's buffered light curve if it fills a requested sample class. Done here, not
     // in the time loop, because the classes are defined by detL/detR/detJ and the Fisher sigmas.
@@ -165,22 +198,28 @@ void commitSampleDump(SimContext& ctx, const LightCurveStats& lc, const Characte
             pr << std::setprecision(10)
                << "# Sample event for class '" << c.name << "'.\n"
                << "# One key per line. Angles in deg, times in days, masses in Msun,\n"
-               << "# distances in kpc, angular scales in mas. A sigma of -1 means the\n"
+               << "# distances in kpc, angular scales in mas, Rstar in Rsun. A sigma of -1 means the\n"
                << "# parameter was NOT measured by that survey (inactive or no epochs),\n"
                << "# never that it was measured to be -1.\n"
                << "class "        << c.name        << "\n"
                << "population "   << gPop->name    << "\n"
                << "lon "          << s.lon        << "\n"
                << "lat "          << s.lat        << "\n"
-               << "tE "           << l.tE         << "\n"
+               << "tE "           << l.tE         << "\n"      // geocentric
+               << "tEhel "        << l.tEhel      << "\n"      // heliocentric
                << "t0 "           << l.t0         << "\n"
                << "u0 "           << l.u0         << "\n"
                << "xi "           << s.xi         << "\n"
                << "piE "          << l.piE        << "\n"
+               << "piEN "         << piNE[0]      << "\n"
+               << "piEE "         << piNE[1]      << "\n"
                << "tetE "         << l.tetE       << "\n"
                << "Ml "           << l.Ml         << "\n"
                << "Dl "           << l.Dl         << "\n"
                << "Ds "           << s.Ds         << "\n"
+               << "Rstar "        << s.Rstar      << "\n"
+               << "thetaStar "    << s.thetaStar  << "\n"
+               << "rho "          << s.rho        << "\n"
                << "Vt "           << l.Vt         << "\n"
                << "murel_yr "     << l.murel * year << "\n"
                << "mus1 "         << s.mus1       << "\n"

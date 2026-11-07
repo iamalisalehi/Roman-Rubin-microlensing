@@ -10,7 +10,6 @@ Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const Ef
     source& s = ctx.s;
     lens& l = ctx.l;
     astromet& as = ctx.as;
-    lsst& ls = ctx.ls;
     covarian& co = ctx.co;
     covarian& coNS = ctx.coNS;
     const std::string& fnLDt = ctx.outs.fnLDt;
@@ -26,17 +25,21 @@ Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const Ef
         co.flagi = 0;
         co.condA[q] = -1.0; co.condB[q] = -1.0;
         co.relMl[q] = -1.0;
+        co.relMuL[q] = -1.0; co.sigVL[q] = -1.0; co.covMuL[q].fill(0.0); co.covVL[q].fill(0.0);
+        co.dchiFS[q] = -1.0; co.rhoFit[q] = 0; co.rhoMeas[q] = 0; co.rhoFallback[q] = 0; co.sigLnRhoData[q] = -1.0;
+        co.relTetEph[q] = -1.0; co.relTetEc[q] = -1.0;
         for (int k = 0; k < Nx; ++k) co.Era[q][k] = -1.0;
         for (int k = 0; k < Ny; ++k) co.Erb[q][k] = -1.0;
         for (int v = 0; v < NAVAR; ++v) {
             co.okBV[v][q] = 0; co.condBV[v][q] = -1.0; co.relMlV[v][q] = -1.0;
             for (int k = 0; k < Ny; ++k) co.ErbV[v][q][k] = -1.0;
+            co.covTetPiV[v][q] = 0.0;
         }
     }
 
     if (lc.flagf == 0 or lc.ndw <= 2) {
         errg    = errlsstM(s.magb[2], 2, double(RUBIN_R_DEPTH5_FALLBACK)); //r-band
-        s.errA = errlsstA(ls, s.magb[2]); //r-band
+        s.errA = errlsstA(errg, FWHM[2]); //r-band, a median r visit
         s.errM = std::fabs(std::pow(10.0, - 0.4 * errg) - 1.0); //r-band
         ch.vMean = s.mus;   // the delta-chi-squared statistics keep their zero defaults
     }
@@ -62,6 +65,7 @@ Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const Ef
                 // conditioning test is okA.
                 st.nerr += co.okA[SJOINT] ? 1.0 : 0.0;
                 ErrorCal(co, l, s);
+                CHECK(co.lmCheck < 1.0e-9);   //the lens-motion model reproduces the draw's mul and v_L
 
                 std::ofstream fil0_append(fnLDt, std::ios::app);
                 fil0_append << std::fixed << std::setprecision(5)
@@ -75,8 +79,8 @@ Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const Ef
             // No-satellite forecast: the same event (same draw, epochs and photometry) re-evaluated with
             // the observer moved to Earth. A controlled comparison of this kind is needed because two
             // runs differing only in L2_OFFSET_AU fork the RNG stream and select different detected
-            // populations (shifting the median sigma_tE by ~15%). satScale carries L2_OFFSET_AU into
-            // lightcurve(); the Fisher matrix uses model derivatives at the true parameters, not
+            // populations (shifting the median sigma_tE by ~15%). satScale puts Roman at L2 or at the Earth in
+            // the model (evaluateModel); the Fisher matrix uses model derivatives at the true parameters, not
             // realised noise, so re-evaluating is legitimate.
             if (cfg.pairSat) {
                 const double keepScale = as.satScale;
@@ -136,7 +140,8 @@ void writeSatellitePair(SimContext& ctx, const SightlineState& st, const Charact
               << co.condA[SJOINT] << " " << ch.pair.condA_ns << " "
               << co.condB[SJOINT] << " " << ch.pair.condB_ns << " "
               << pk.nepLpk << " " << pk.nepRpk << " " << st.wArea << " "
-              << l.Ml << " " << l.Dl << " " << s.Ds << " " << l.Vt << "\n";
+              << l.Ml << " " << l.Dl << " " << s.Ds << " " << l.Vt << " "
+              << s.pKeep << "\n";
         fpair.close();
     }
 }

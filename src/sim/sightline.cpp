@@ -6,6 +6,7 @@
 #include "surveys/schedule.h"
 #include "surveys/footprints.h"
 #include "events/lightcurve.h"
+#include "events/vbm_model.h"
 #include "fisher/fisher.h"
 
 SightlineStart setupSightline(SimContext& ctx, SightlineState& st, const Sightline& sightline) {
@@ -40,6 +41,7 @@ SightlineStart setupSightline(SimContext& ctx, SightlineState& st, const Sightli
     // Each sightline has its own random stream (sightlineSeed in include/util/random.h), so a
     // resumed run reproduces an uninterrupted one.
     rng.seed(sightlineSeed(cfg.seedBase, st.iScan));
+    rngBlend.seed(sightlineSeed(cfg.seedBase ^ BLEND_STREAM_SALT, st.iScan));
     cout << ">>>>>>>>>>> NEW STEP " << st.nde << " <<<<<<<<\t nri:  " << st.nri << endl;
     cout << "longtitude: " << s.lon << "\t latitude: " << s.lat << endl;
 
@@ -98,6 +100,9 @@ SightlineStart setupSightline(SimContext& ctx, SightlineState& st, const Sightli
 
     s.TET = (360.0 - s.lon) / RAa;///radian
     s.FI  = s.lat / RAa;
+    // Point the light-curve model at this sightline: the parallax of an event is the Earth's orbit as seen
+    // from here, and the model's frames follow the axes (e_l, e_b) at this (l, b).
+    vbmSetSightline(s.lon, s.lat);
 
     Disk_model(s, 1);
     st.sightlineIdx = nearestSightline(ex, s.lon, s.lat);

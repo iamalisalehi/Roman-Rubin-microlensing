@@ -52,17 +52,24 @@ def main():
     ap.add_argument("--log", action="append", default=[],
                     help="run log(s), to supply nsim for sightlines a damaged map file lost")
     ap.add_argument("--chunksize", type=int, default=500_000)
+    R.add_convention_option(ap)
     a = ap.parse_args()
 
     df = R.load_events(a.events, keep=lambda c: c["detJ"] == 1, chunksize=a.chunksize)
     sl = R.load_sightlines(a.map)
     over = R.nsim_from_logs(a.log)
 
-    worst, n_checked = G.check_against_map(sl)
+    worst, n_checked, bar_norm = G.check_against_map(sl)
     print(f"density port vs map file: worst {worst:.3f} dex over {n_checked} sightlines "
-          f"(map writes 1 decimal, so 0.05 is the resolution)")
+          f"(map writes 1 decimal, so 0.05 is the resolution); bar_norm {bar_norm}")
 
-    w = R.event_weight(df, sl, nsim_override=over)
+    w = R.event_weight(df, sl, nsim_override=over, bar_norm=bar_norm)
+    mode = R.selection_mode(os.path.join(os.path.dirname(os.path.abspath(a.map)), "run_provenance.txt"))
+    if a.convention != mode:
+        w = pd.Series(R.count_weight(w.to_numpy(), R.keep_probability(df, sl, mode), mode,
+                                     a.convention, detected=(df["detJ"] == 1).to_numpy()),
+                      index=df.index)
+    print(f"counting convention: {a.convention} (run: {mode})")
     df = df.assign(W=w)
 
     # ---- F4: fraction measured better than 10%, footprint sample ----

@@ -27,7 +27,6 @@ COMPONENTS = [  # (provenance name, file, N constant, MEANMASS constant, analysi
 PROVENANCE = "CMD/components/provenance.txt"
 BULGE_BASELINE = "Baseline/BulgeBaseline.dat"
 ROMAN_BASELINE = "Baseline/RomanBaseline.dat"
-SIGMA_A = "files/sigmaA_LSST.txt"
 SIGMA_ROMAN = "files/sigma_roman.txt"
 HEADER_PATH = "config/data_products.h"
 
@@ -100,7 +99,6 @@ def measure(root):
     v = {}
     v["Nl"] = count_rows(need(root, BULGE_BASELINE))
     v["NlRoman"] = count_rows(need(root, ROMAN_BASELINE))
-    v["Na"], v["LSST_AST_TABLE_FLOOR"] = sigma_table(need(root, SIGMA_A))
     v["NaRoman"], _ = sigma_table(need(root, SIGMA_ROMAN))
     mm = mean_masses(need(root, PROVENANCE))
     for name, rel, nconst, mconst, _ in COMPONENTS:
@@ -116,17 +114,12 @@ TEMPLATE = r'''#ifndef DATA_PRODUCTS_H
 // re-run the script (python3 tools/sync_data_products.py) after regenerating any data file.
 // `python3 tools/sync_data_products.py --check` (or `make check-data`) says whether this file is stale.
 //
-// Numbers that DESCRIBE THE DATA FILES on disk: row counts, catalogue mean masses and the bright-star
-// floor of an error table. These are measurements of the data, not choices; the read guards in
-// src/run/inputs.cpp fire on a row-count mismatch. Model and survey choices live in config/parameters.h.
+// Numbers that DESCRIBE THE DATA FILES on disk: row counts and catalogue mean masses. These are
+// measurements of the data, not choices; the read guards in src/run/inputs.cpp fire on a row-count
+// mismatch. Model and survey choices live in config/parameters.h.
 
-// ---- Error tables: files/sigmaA_LSST.txt ({Na} rows), files/sigma_roman.txt ({NaRoman} rows) ----
-constexpr int Na = {Na};     //rows in "sigmaA_LSST.txt"
+// ---- Error table: files/sigma_roman.txt ({NaRoman} rows) ----
 constexpr int NaRoman = {NaRoman};  // rows in sigma_roman.txt
-
-// Bright-star floor of files/sigmaA_LSST.txt (its smallest error value), as shipped. config/parameters.h
-// (section 4, LSST_AST_RENORM) divides the per-visit floor by it; see the note there.
-constexpr double LSST_AST_TABLE_FLOOR = {LSST_AST_TABLE_FLOOR}; //mas
 
 // ---- CMD/components/*.dat row counts (data rows, header line excluded) ----
 // CMD_BESANCON: ThinDisk, Bulge, ThickDisk, Halo. The lists are the
@@ -171,7 +164,7 @@ def render(v):
 
 def parse_existing(text):
     old = {}
-    for m in re.finditer(r"\b(Na|NaRoman|N[1-4]|Nl|NlRoman|MEANMASS_[A-Z]+|LSST_AST_TABLE_FLOOR)\s*=\s*([0-9.eE+-]+)\s*[,;]", text):
+    for m in re.finditer(r"\b(NaRoman|N[1-4]|Nl|NlRoman|MEANMASS_[A-Z]+)\s*=\s*([0-9.eE+-]+)\s*[,;]", text):
         old[m.group(1)] = m.group(2)
     return old
 

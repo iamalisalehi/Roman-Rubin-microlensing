@@ -38,15 +38,19 @@ static std::vector<double> make_grid_log(double min, double max)
 struct source {
     int nums, cl;
 
-    double mass, logT, typ, age, ros;
+    double mass, logT, typ, age;
+    // Finite-source size: the physical radius [Rsun], the angular radius theta* = Rstar / Ds [mas, as
+    // l.tetE], and rho = theta* / thetaE [], the source radius in Einstein radii (func_lens).
+    double Rstar, thetaStar, rho;
     double mus1, mus2, mus;
     double xv, yv, zv;
     double Av; //, Avv;
     double SV_n1, LV_n1, VSun_n1;
     double SV_n2, LV_n2, VSun_n2;
-    double pos1b, pos2b, pos1c, pos2c, def1a, def2a, def1c, def2c;
     double errM, errA, FWHM;
-    double ut, ut0, Astar, xi, ux, uy;
+    // Direction of the source-minus-lens relative motion on (e_l, e_b) [rad]: the heliocentric one from vrel,
+    // then, from func_lens on, the GEOCENTRIC one the light curve is parametrised by (see l.tE).
+    double xi;
     double Ds, TET, FI, lat, lon, vs;
     double Nstart, Rostart, Romaxs, Romins, nstart, nstarti;
     double od_thin, od_thick, od_bulge, od_halo, opt;
@@ -55,6 +59,9 @@ struct source {
     // Share of each telescope's baseline flux that is the LENS's own light: 0 for dark lenses; for a
     // luminous lens it is already inside the blend (fb counts the source only).
     std::array<double, 2> fLens{};
+    // Light centroid of the unresolved neighbours relative to the source's unlensed position, per
+    // telescope [tt][x, y], in mas (func_source). Their light pulls the measured centroid toward this point.
+    std::array<std::array<double, 2>, 2> blendOff{};
 
     std::vector<double> nssim; // size Num
     std::vector<double> nsdet; // size Num
@@ -75,6 +82,11 @@ struct source {
     std::vector<double> Mab;   // size M+1
     std::vector<double> Map;   // size M+1
 
+    // Probability the per-object selection (--blend-thinning) keeps this draw:
+    // 1 - (1 - blend[2]*[Rubin sees the peak]) * (1 - blend[6]*[Roman sees the peak]) [].
+    // Set on every draw by preselectEvent; 0 when neither survey sees the peak.
+    double pKeep = 0.0;
+
     GalacticComponent struc;
     // Constructor
     source()
@@ -88,10 +100,18 @@ struct source {
 struct lens {
     int numl;
     bool luminous = false;          // a living (main-sequence) star, whose light is blended
+    // Dust in front of the lens, per band [mag] (u g r i z y F146): A_V at Dl along the sightline times A_lambda/A_V of
+    // the lens's component, >= 0. Set for every lens, dark or luminous; a luminous lens's light uses these numbers.
+    std::array<double, M> Alens{};
 
     double Ml, Dl, vl, Vt, xls, u0, A0, mi1, mi2;
-    double rhomaxl, tE, RE, t0, murel, DeltaT;
-    double piE, pirel, tetE, pos1, pos2, mul1, mul2, mul;
+    double rhomaxl, RE, t0, murel, DeltaT;
+    // Einstein crossing time [days]: tE is the GEOCENTRIC one the light curve, the efficiency bins and the
+    // Fisher matrices use (thetaE over the geocentric lens-source proper motion, parametrising the straight
+    // line of the Earth at rest at t0); tEhel = thetaE / |mu_hel| is the one the heliocentric draw gives
+    // (RE / Vt). murel, mul*, mus* and Vt stay heliocentric.
+    double tE, tEhel;
+    double piE, pirel, tetE, mul1, mul2, mul;
     double betal, betas, deltal, deltas, deltao;
 
     std::array<double, 2> Nhalo, Nself; // small fixed arrays
@@ -153,11 +173,8 @@ struct lens {
 };
 
 struct astromet{
-   double Ve_n1, Ve_n2;
-   double ue_n1, ue_n2;
-
-   // Multiplies L2_OFFSET_AU in lightcurve(): 1 = Roman at L2 (physical), 0 = Roman at the centre of
-   // the Earth. A command-line switch for the satellite-parallax comparison.
+   // Where Roman is, for the model (evaluateModel, evaluateTrack): 1 = at its L2 orbit (physical), 0 =
+   // at the centre of the Earth. A switch, exactly 0 or 1, for the satellite-parallax comparison.
    double satScale = 1.0;
 };
 

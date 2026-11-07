@@ -2,6 +2,7 @@
 #include "common.h"
 #include "types.h"
 #include "run/config.h"
+#include "events/vbm_model.h"
 #include "run/inputs.h"
 #include "run/sightlines.h"
 #include "run/outputs.h"
@@ -29,6 +30,7 @@ int main(int argc, char** argv) {
 
     // ---- Stage 1: command line ----
     if (!parseCommandLine(argc, argv, cfg, exitCode)) return exitCode;
+    vbmSetSourceModel(cfg.sourceModel);    // the light-curve model's source: a point or a uniform disc
 
     // ---- Stage 2: the GBTDS detector layout, and the grid steps it bounds ----
     const GbtdsLayout gl = loadGbtdsLayout();
@@ -48,8 +50,12 @@ int main(int argc, char** argv) {
     // Second Fisher forecast for --pair-satellite: the same event with the satellite offset
     // zeroed. Allocated once, since covarian owns several vectors.
     auto coNS = std::make_unique<covarian>();
+    for (covarian* c : {co.get(), coNS.get()}) {      // the N and P variants' day-shared error
+        c->astSigc[AV_N] = cfg.astSigcN;
+        c->astSigc[AV_P] = cfg.astSigcP;
+    }
 
-    // satScale multiplies L2_OFFSET_AU inside lightcurve(); 0 puts Roman at the centre of the Earth.
+    // satScale selects Roman's orbit in the model (evaluateModel): 1 = at L2, 0 = at the centre of the Earth.
     as->satScale = cfg.noSatPar ? 0.0 : 1.0;
 
     // ---- Stage 3: read the input files ----

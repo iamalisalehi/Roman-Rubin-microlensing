@@ -18,8 +18,8 @@
 // real detector size, and the scan region is built from the field outline. Exits on bad input.
 GbtdsLayout loadGbtdsLayout();
 
+int readLightCurveModel();                // the light-curve library's tables and Roman's ephemeris (first: the cheapest to fail)
 int readRubinVisits(lsst& ls);            // BulgeBaseline.dat
-int readRubinAstromTable(lsst& ls);       // sigmaA_LSST.txt
 int readRomanErrorTable(roman& ro);       // sigma_Roman.txt, rescaled to ROMAN_DEPTH5_AB
 int readRomanVisits(roman& ro);           // RomanBaseline.dat
 int buildRomanSeasons(const roman& ro, RomanSchedule& sched);   // season geometry + refuse-to-run guard

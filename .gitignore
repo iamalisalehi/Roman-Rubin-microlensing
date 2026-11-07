@@ -28,6 +28,9 @@ bin/
 /roman
 /fishertest
 /extinctiontest
+/noisetest
+/vbmtest
+/modeltest
 .git_stamp
 *.log
 *.tmp
@@ -63,3 +66,6 @@ CLAUDE.md
 !files/sigmaA_LSST.txt
 !files/sigma_roman.txt
 !CMD/empirical/EEM_dwarf_UBVIJHK_colors_Teff.txt
+!external/VBMicrolensing/data/SunEphemeris.txt
+!files/ephemeris/satellite1.txt
+!files/ephemeris/target.txt

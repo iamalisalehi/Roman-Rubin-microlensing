@@ -65,10 +65,12 @@ PAIR_COLS = ("lon lat tE u0 piE tetE du_sat okA_sat okA_nosat okB_sat okB_nosat 
 class Run:
     """One population's run: its table, its paired-satellite file, its weights."""
 
-    def __init__(self, name, directory, chunksize, unweighted=False, detections_only=False):
+    def __init__(self, name, directory, chunksize, unweighted=False, detections_only=False,
+                 convention="every-star"):
         self.name = name
         self.dir = directory
         self.detections_only = detections_only
+        self.convention = convention
         prov_path = os.path.join(directory, "files/MONTLMC/files/run_provenance.txt")
         self.prov = R.load_provenance(prov_path) if os.path.exists(prov_path) else {}
         self.population = R.assert_same_population([self.prov], what=f"run '{name}'")
@@ -97,11 +99,13 @@ class Run:
         # Stream, dropping barren sightlines' rows as they are read: usecols alone leaves
         # ~1.7 GB per population on a 5M-row table. The dropped rows have no nsim, hence weight
         # 0, and carry no detection (see romanlib.keep_weightable).
-        self.df = R.load_events(self.table, usecols=COLS, chunksize=chunksize,
+        extra = [] if unweighted else [c for c in R.keep_columns(self.table, self.map, convention) if c not in COLS]
+        self.df = R.load_events(self.table, usecols=COLS + extra, chunksize=chunksize,
                                 keep=None if unweighted else R.keep_weightable(self.map, self.logs))
         self.n_barren = self._drop_unweightable(unweighted)
         w, self.wlabel = R.attach_weight(self.df, None if unweighted else self.map,
-                                         self.logs, unweighted=unweighted)
+                                         self.logs, unweighted=unweighted,
+                                         convention=convention)
         self.df["W"] = w
         self.neff = R.kish_neff(w)
 
@@ -209,8 +213,11 @@ class Run:
             df["W"] = 1.0
             return df
         df, _ = self._drop_from(df, unweighted, what=path)
-        w, _ = R.attach_weight(df, None if unweighted else self.map, self.logs,
-                               unweighted=unweighted)
+        try:
+            w, _ = R.attach_weight(df, None if unweighted else self.map, self.logs,
+                                   unweighted=unweighted, convention=self.convention)
+        except ValueError as e:
+            sys.exit(f"{path}: cannot count its rows as {self.convention}: {e}")
         df["W"] = w
         return df
 
@@ -650,6 +657,7 @@ def main():
     ap.add_argument("--unweighted", action="store_true",
                     help="use the raw sample. Says you MEANT an unweighted number; there is "
                          "no silent fallback.")
+    R.add_convention_option(ap)
     a = ap.parse_args()
 
     ps.use_paper_style()
@@ -661,7 +669,8 @@ def main():
         if "=" not in spec:
             sys.exit(f"--run wants NAME=DIR, got '{spec}'")
         name, directory = spec.split("=", 1)
-        runs.append(Run(name, directory, a.chunksize, a.unweighted, a.detections_only))
+        runs.append(Run(name, directory, a.chunksize, a.unweighted, a.detections_only,
+                        a.convention))
 
     summary(runs)
 

@@ -22,6 +22,12 @@ int RandPois(double mean) {
     return pois(rng);
 }
 
+// Uniform on [0, 1) from the neighbour-position stream.
+double RandBlendUnit() {
+    std::uniform_real_distribution<double> dist(0.0, 1.0);
+    return dist(rngBlend);
+}
+
 // Uniform on [down, up).
 double RandR(double down, double up) {
     std::uniform_real_distribution<double> dist(down, up);

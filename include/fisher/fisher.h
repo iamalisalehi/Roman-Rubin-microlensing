@@ -6,6 +6,7 @@
 #include "common.h"
 #include "types.h"
 #include "fisher/linalg.h"
+#include "events/vbm_model.h"
 
 // ---------------------------------------------------------------------------------------------
 // Which subset of a single event's light curve a Fisher matrix was accumulated from.
@@ -30,8 +31,12 @@ inline int surveyOfTele(int tele) { return (tele == 0) ? SRUBIN : SROMAN; }
 // in a Roman gap has no Roman data, so the joint fit falls back to Rubin's parameter set rather
 // than going singular. kMinTeleEpochs (minimum epochs for a telescope to enter the photometric
 // matrices) is in config/parameters.h.
+//
+// ln rho (9) is in the set when the partition has data and the source is a disc (rhoFree; RHO_PRIOR_SIGLN in
+// config/parameters.h), which FisherM records per partition in covarian::rhoFit. Whether the data MEASURE it is
+// covarian::rhoMeas (SIGLNRHO_MAX).
 
-inline std::vector<int> activePhotParams(int surv, int nRubinEpochs, int nRomanEpochs)
+inline std::vector<int> activePhotParams(int surv, int nRubinEpochs, int nRomanEpochs, bool rhoFree)
 {
     const std::vector<int> shared = {0, 1, 3, 4, 5};  //u0, tE, piE, xi, t0
     const std::vector<int> rubinFlux = {2, 6};        //fb0, mbs0
@@ -42,6 +47,7 @@ inline std::vector<int> activePhotParams(int surv, int nRubinEpochs, int nRomanE
     const bool wantRoman = (surv == SROMAN) || (surv == SJOINT && nRomanEpochs > 0);
     if (wantRubin) out.insert(out.end(), rubinFlux.begin(), rubinFlux.end());
     if (wantRoman) out.insert(out.end(), romanFlux.begin(), romanFlux.end());
+    if (rhoFree)   out.push_back(9);                  //ln rho
     std::sort(out.begin(), out.end());
     return out;
 }
@@ -51,7 +57,6 @@ struct covarian {
     int    flagi;
     
     double deter;
-    double sigmul1, sigmul2, f1, f2;
     double magw;
     double derm1f, derm2f, dera1f, derb1f, dera2f, derb2f, diff;
 
@@ -76,6 +81,9 @@ struct covarian {
     std::array<std::array<int, NSURV>, NAVAR>    okBV{};
     std::array<std::array<double, NSURV>, NAVAR> condBV{};
     std::array<std::array<double, NSURV>, NAVAR> relMlV{};
+    // cov(thetaE, piE) of each variant's astrometric inverse [mas, per unit piE], the covariance the mass and
+    // distance errors need when the astrometric piE is the route (ErrorCal, lnCovTetPi). 0 where okBV = 0.
+    std::array<std::array<double, NSURV>, NAVAR> covTetPiV{};
     std::array<std::array<std::array<double, Ny * Ny>, NSURV>, NAVAR> FBV{};  // the matrices
 
     // Per-survey epoch counts and characterizability flags. A partition with no epochs, or fewer
@@ -93,16 +101,72 @@ struct covarian {
     std::array<double, NSURV> condB;
 
     // Fractional 1-sigma on the lens mass, per survey. Ml = tetE / (kappa * piE) is not fitted, so
-    // the fractional errors of tetE (astrometric matrix: sub-mas centroid motion, Roman) and piE
-    // (photometric matrix: parallax over a long baseline, Rubin) add in quadrature.
+    // the fractional errors of tetE (astrometric matrix: sub-mas centroid motion, Roman; and, when the
+    // finite source is seen, photometric: theta* / rho) and piE (photometric matrix: parallax over a long
+    // baseline, Rubin) add in quadrature, less twice their covariance c = cov(ln tetE, ln piE): -wp cov(ln rho,
+    // ln piE) with the photometric piE, (1 - wp) cov(tetE, piE) / (tetE piE) with the astrometric one (wp the
+    // photometric weight in the combined tetE; ErrorCal, lnCovTetPi). relMlV[v] is the same for noise variant v.
     // -1.0 = not measurable in this partition, never a measured value.
     std::array<double, NSURV> relMl;
+
+    // The lens's motion on the sky, per partition (ErrorCal; the model is lensMotion in events/vbm_model.h, the
+    // propagation lensMotionCovariance / lensMotionPropagate below):
+    //   relMuL   sigma(|mu_L|) / |mu_L|, mu_L the lens's heliocentric proper motion;
+    //   sigVL    sqrt(lambda_max(covVL)) [km/s]: the 1-sigma error of the lens's velocity on the sky, v_L = D_L mu_L,
+    //            along its worst-measured direction (the direction xi is the weak parameter, so the error ellipse is
+    //            elongated). Independent of the reference frame: the Sun's velocity added to go to the Galactic rest
+    //            frame shifts v_L, not its covariance. A per-axis bound, not the error of |v_L|;
+    //   covMuL, covVL   the 2x2 covariances (row major) of mu_L [mas/day] and v_L [km/s] on (e_l, e_b).
+    // -1 = not measured: the partition has no photometric or no astrometric matrix, or no piE or thetaE by any
+    // route (relMl < 0); the covariances are then 0. lmCheck is the largest relative departure of the closed-form
+    // lensMotion at the true parameters from the draw's own (mul1, mul2) and v_L, set by ErrorCal; -1 before it.
+    std::array<double, NSURV> relMuL;
+    std::array<double, NSURV> sigVL;
+    std::array<std::array<double, 4>, NSURV> covMuL{}, covVL{};
+    double lmCheck = -1.0;
+
+    // The finite source (--source-model espl; see RHO_PRIOR_SIGLN in config/parameters.h). Per partition:
+    //   dchiFS      the chi-squared by which that partition's epochs separate the uniform disc from a point
+    //               source at the true parameters, a diagnostic of how strongly the disc is seen; -1 = not computed
+    //               (point source, or no epochs).
+    //   rhoFit      1 = ln rho is a parameter of the partition's photometric matrix (a disc, and the partition has
+    //               data, unless rhoFixed); Era[q][9] is its posterior sigma, the prior included. 0 = rho held at
+    //               its true value (point source, no data, rhoFixed, or the 10-parameter inversion failed:
+    //               rhoFallback), Era[q][9] = -1.
+    //   sigLnRhoData  the sigma(ln rho) the partition's DATA alone give, 1 / sqrt(1 / Era[q][9]^2 - 1 / prior^2) (the
+    //               prior touches only F[9][9], so this is exact); -1 = not fitted, or no information in the data.
+    //   rhoMeas     1 = the data measure rho: rhoFit and sigLnRhoData <= sigLnRhoMax. Only then the photometric
+    //               thetaE = theta* / rho is used.
+    //   relTetEph   fractional 1-sigma on thetaE = theta* / rho, sqrt(Era[q][9]^2 + THETASTAR_SIGLN^2); -1 where rho
+    //               is not measured.
+    //   relTetEc    the fractional 1-sigma on thetaE from the astrometric and photometric routes together,
+    //               inverse-variance combined; the one route that exists if only one does; -1 = neither.
+    //   corrRhoPiE  correlation of ln rho with the photometric piE in the partition's inverse matrix: how
+    //               far the combination of the two thetaE and piE errors as uncorrelated (ErrorCal) is off.
+    //               NaN where rho is not measured. A diagnostic, not an output.
+    // rhoFixed, rhoPriorSigLn and sigLnRhoMax are the production settings unless a test overrides them: rhoFixed
+    // holds rho at its true value everywhere (ln rho never a parameter); rhoPriorSigLn infinite drops the prior;
+    // sigLnRhoMax infinite makes rho measured wherever it is fitted and the data give it any information.
+    std::array<double, NSURV> dchiFS;
+    std::array<int, NSURV>    rhoFit;
+    std::array<int, NSURV>    rhoMeas;
+    std::array<int, NSURV>    rhoFallback;   //1 = ln rho was a parameter but its matrix did not invert (see FisherM)
+    std::array<double, NSURV> sigLnRhoData;
+    std::array<double, NSURV> relTetEph;
+    std::array<double, NSURV> relTetEc;
+    std::array<double, NSURV> corrRhoPiE;
+    bool   rhoFixed = false;
+    double rhoPriorSigLn = RHO_PRIOR_SIGLN;
+    double sigLnRhoMax = SIGLNRHO_MAX;
 
     // Multiplicative override on each photometric parameter's finite-difference step; 1.0 is the
     // production value. A runtime knob so the step-size sweep can run many values in one process.
     std::array<double, Nx> deltaScale;
     // Same for the astrometric steps Delta2[].
     std::array<double, Ny> deltaScaleB{1.0, 1.0, 1.0, 1.0};
+    // Day-shared astrometric error of each noise variant [mas per coordinate]: AST_SIGC unless
+    // --ast-sigc overrides N and P (main.cpp).
+    std::array<double, NAVAR> astSigc = AST_SIGC;
 
     gsl_matrix_uptr summA; //size Nx (diagnostic only, joint)
     gsl_matrix_uptr summB; //size Ny (diagnostic only, joint)
@@ -129,6 +193,16 @@ struct covarian {
             condA[q] = -1.0;
             condB[q] = -1.0;
             relMl[q] = -1.0;
+            relMuL[q] = -1.0;
+            sigVL[q] = -1.0;
+            dchiFS[q] = -1.0;
+            rhoFit[q] = 0;
+            rhoMeas[q] = 0;
+            rhoFallback[q] = 0;
+            sigLnRhoData[q] = -1.0;
+            relTetEph[q] = -1.0;
+            relTetEc[q] = -1.0;
+            corrRhoPiE[q] = std::numeric_limits<double>::quiet_NaN();
         }
         for (int k = 0; k < Nx; ++k) {
             deltaScale[k] = 1.0;
@@ -205,6 +279,30 @@ inline int synergyClass(const covarian& co)
     if (!co.okA[SRUBIN] &&  co.okA[SROMAN]) return SYN_ROMAN_ONLY;
     return SYN_JOINT_ONLY;
 }
+
+// The active photometric parameters of partition `surv` of an event whose matrices are in `co`.
+inline std::vector<int> activePhotParams(const covarian& co, int surv)
+{
+    return activePhotParams(surv, co.nepochA[SRUBIN], co.nepochA[SROMAN], co.rhoFit[surv] != 0);
+}
+
+// The parameters of the lens-motion model lensMotion, in the order its covariance is given.
+enum LensMotionPar { LM_TE = 0, LM_XI, LM_PIE, LM_TETE, LM_MUS1, LM_MUS2, NLM };
+
+// The covariance of those six parameters in partition q, from the photometric matrix inverA[q] (tE, xi, piE,
+// ln rho) and the astrometric one inverB[q] (thetaE, mus1, mus2, piE), which are independent: the astrometric
+// matrix holds the photometric parameters fixed and vice versa, so the blocks do not talk. piE and thetaE are
+// taken by the routes relMl takes. False (S = 0) where relMl[q] < 0 or a matrix is missing.
+bool   lensMotionCovariance(const covarian& co, const lens& l, int q, double S[NLM][NLM]);
+// Linear propagation of S through lensMotion at the point p (central differences): the 2x2 covariances of mu_L
+// [mas/day] and v_L [km/s].
+void   lensMotionPropagate(const MotionContext& c, const double p[NLM], const double S[NLM][NLM],
+                           double Smu[2][2], double Sv[2][2]);
+
+// How often, over the run so far, ln rho was a parameter of a partition whose matrix failed to invert with it (the
+// partition is then forecast with rho held at its true value) and how often the nine-parameter matrix failed too.
+long   rhoFallbackCount();
+long   rhoFallbackLostCount();
 
 void   ErrorCal(covarian & co, lens &l, source &s);
 void   FisherM(source & s, lens & l, astromet & as,  covarian & co, int);

@@ -8,7 +8,7 @@ detected or not, estimates what an efficiency-corrected survey measurement does.
 event reweighted by 1/eff(tE): a mean Einstein timescale of 22 d in the central bins (within ~3
 deg of the Galactic centre), rising to 32 d at l ~ +8 deg and l ~ -6 deg.
 
-    .roman/bin/python analysis/w1_intrinsic_te.py test5.dat
+    .roman/bin/python analysis/w1_intrinsic_te.py test5.dat --map files/MONTLMC/files/MapLMC5.dat
 
 The comparison is of a population mean, not of a measurement: OGLE reweights its own detections
 by its own efficiency and works at u0 < 1, while this pipeline draws u0 < 3 and has its own mass
@@ -55,8 +55,11 @@ def show(label, tE, w):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("events")
+    ap.add_argument("--map", required=True,
+                    help="the run's MapLMC5.dat: says which bulge normalisation the run used")
     ap.add_argument("--chunksize", type=int, default=1_000_000)
     a = ap.parse_args()
+    bar_norm = R.run_bar_norm(R.load_sightlines(a.map))
 
     df = R.load_events(a.events, usecols=COLS, chunksize=a.chunksize)
     print(f"{len(df):,} draws, {int((df['detJ'] == 1).sum()):,} joint-detected")
@@ -72,7 +75,7 @@ def main():
     rng = np.random.default_rng(0)
     for k, pos in pd.Series(np.arange(len(df))).groupby(key).groups.items():
         pos = np.asarray(pos)
-        prof = G.density_profile(*k)
+        prof = G.density_profile(*k, bar_norm=bar_norm)
         ds = Ds[pos]
         # Z(Ds) is smooth in Ds; interpolating on 200 points avoids an (events x 9500) matrix per
         # sightline. The interpolation error is checked below.

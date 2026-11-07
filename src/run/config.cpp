@@ -27,6 +27,13 @@ void printUsage(const char* prog) {
         << "                 on the 2026-09-05 v2 run. Resuming at the map count would\n"
         << "                 re-simulate that gap and append duplicate rows to test5.dat.\n"
         << "                 If the run resumed an earlier one, add its --start-index too.\n"
+        << "  --blend-thinning\n"
+        << "                 select sources per resolved object: a source whose peak is\n"
+        << "                 visible is kept only with probability equal to its blend\n"
+        << "                 fraction (r for Rubin, F146 for Roman), the convention before\n"
+        << "                 the every-star selection. Default: every source whose peak is\n"
+        << "                 visible is kept, whatever its blend. The per-object keep\n"
+        << "                 probability is the pKeep column in both modes.\n"
         << "  --pair-satellite\n"
         << "                 characterise each detected event twice, with Roman at L2 and\n"
         << "                 with the offset zeroed, writing both forecasts to h3_pair.dat.\n"
@@ -43,6 +50,10 @@ void printUsage(const char* prog) {
         << "                 dchi_R and either survey clearing the bar alone forces the sum\n"
         << "                 over it. Every yield is conditioned on this number; it is\n"
         << "                 recorded in run_provenance.txt.\n"
+        << "  --ast-sigc N,P day-shared astrometric error of the N and P noise variants, in mas\n"
+        << "                 per coordinate (default " << AST_SIGC_N << "," << AST_SIGC_P << "); needs 0 <= N <= P.\n"
+        << "                 For a scan of the theta_E forecast against it. Recorded in\n"
+        << "                 run_provenance.txt.\n"
         << "  --stride-roman N  sightline grid step inside Roman's footprint, same units\n"
         << "                 (default: same as --stride, i.e. an unstratified scan). Must\n"
         << "                 divide --stride. Sightlines outside the footprint keep the\n"
@@ -67,6 +78,15 @@ void printUsage(const char* prog) {
         << "  --no-satellite-parallax   put Roman at the centre of the Earth, removing the\n"
         << "                 Earth-L2 spatial baseline while leaving the timing alone. The\n"
         << "                 'off' run of the satellite-parallax experiment\n"
+        << "  --source-model M  the source in the light-curve model: 'espl' (default), a uniform\n"
+        << "                 disc of the star's own radius (finite source, point lens), or 'pspl',\n"
+        << "                 a point. They differ only while the source passes within a few of\n"
+        << "                 its radii of the lens (u0 <~ 3 rho, rho = source radius / thetaE,\n"
+        << "                 ~1e-3 for a dwarf, ~1e-2 for a giant), which ~0.5% (dwarf sources) to\n"
+        << "                 ~3% (giants) of the events do, and for the few events with a larger\n"
+        << "                 source (rho >~ 0.03) at larger u0. espl costs ~2% more than pspl\n"
+        << "                 (instructions per sightline, measured with 300 events), so pspl is\n"
+        << "                 only a small saving. Recorded in run_provenance.txt.\n"
         << "  --dump-samples F  write full light curves and astrometric tracks for a few\n"
         << "                 illustrative events, as described by spec file F. Off by\n"
         << "                 default. Consumes no RNG, so the set of simulated events is\n"
@@ -89,6 +109,16 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
         if      (arg == "--stride") { cfg.stride = std::atoi(need("--stride")); strideGiven = true; }
         else if (arg == "--stride-roman") cfg.strideRoman = std::atoi(need("--stride-roman"));
         else if (arg == "--dchi-det") cfg.dchiDet = std::atof(need("--dchi-det"));
+        else if (arg == "--ast-sigc") {
+            const std::string v = need("--ast-sigc");
+            const auto comma = v.find(',');
+            if (comma == std::string::npos) {
+                std::cerr << "ERROR: --ast-sigc takes two values, N,P (mas per day), e.g. 0.3,1.1\n";
+                exitCode = 1; return false;
+            }
+            cfg.astSigcN = std::atof(v.substr(0, comma).c_str());
+            cfg.astSigcP = std::atof(v.substr(comma + 1).c_str());
+        }
         else if (arg == "--events")  cfg.iconTarget  = std::atoi(need("--events"));
         else if (arg == "--lenses")  cfg.nlensTarget = std::atoi(need("--lenses"));
         else if (arg == "--nerr")    cfg.nerrTarget  = std::atof(need("--nerr"));
@@ -100,6 +130,17 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
         else if (arg == "--dry-run") cfg.dryRun      = true;
         else if (arg == "--no-satellite-parallax") cfg.noSatPar = true;
         else if (arg == "--pair-satellite") cfg.pairSat = true;
+        else if (arg == "--blend-thinning") cfg.blendThinning = true;
+        else if (arg == "--source-model") {
+            const std::string v = need("--source-model");
+            if      (v == "espl") cfg.sourceModel = SourceModel::ESPL;
+            else if (v == "pspl") cfg.sourceModel = SourceModel::PSPL;
+            else {
+                std::cerr << "ERROR: unknown --source-model '" << v << "'. Known: espl (uniform disc, the "
+                          << "default), pspl (point source).\n";
+                exitCode = 2; return false;
+            }
+        }
         else if (arg == "--dump-samples") cfg.dumpSpec = need("--dump-samples");
         else if (arg == "--population") {
             const std::string want = need("--population");
@@ -137,6 +178,11 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
         std::cerr << "ERROR: --dchi-det (" << cfg.dchiDet << ") must be finite and positive. "
                   << "It is a delta-chi2 detection bar; a non-positive bar would declare every "
                   << "event detected.\n";
+        exitCode = 1; return false;
+    }
+    if (not (cfg.astSigcN >= 0.0 and cfg.astSigcN <= cfg.astSigcP) or not std::isfinite(cfg.astSigcP)) {
+        std::cerr << "ERROR: --ast-sigc (" << cfg.astSigcN << "," << cfg.astSigcP << ") needs "
+                  << "0 <= N <= P, finite: P is the pessimistic member of the bracket.\n";
         exitCode = 1; return false;
     }
     if (cfg.stride < 1) {

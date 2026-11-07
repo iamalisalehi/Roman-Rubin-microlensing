@@ -9,10 +9,13 @@ For each sightline it
 1. draws source and lens stars from a Besançon Galaxy-model catalogue (or from Kroupa-IMF, remnant,
    black-hole or neutron-star lens populations), with 3D dust extinction at each star's distance;
 2. builds per-band light curves on the two surveys' cadences: Rubin from an OpSim baseline database,
-   Roman from the GBTDS season and field layout;
+   Roman from the GBTDS season and field layout. The model is VBMicrolensing's point lens with the annual
+   parallax of each observer (Roman at L2), for a source that is a uniform disc of the star's own radius
+   (`--source-model espl`, the default) or a point (`pspl`, about 2% cheaper);
 3. applies a detection test, then forecasts parameter precision with a Fisher-matrix analysis,
-   photometric (u0, tE, piE, blending, ...) and astrometric (thetaE, source proper motion, piE),
-   reported **separately for Roman alone, Rubin alone and the joint data set**.
+   photometric (u0, tE, piE, blending, ..., and the source radius, where the data see the finite source,
+   which gives thetaE a photometric route beside astrometry) and astrometric (thetaE, source proper
+   motion, piE), reported **separately for Roman alone, Rubin alone and the joint data set**.
 
 ## Requirements
 
@@ -46,6 +49,8 @@ To build and test only the C++ core:
 make                                  # builds ./roman (run it from the repository root)
 make fishertest && ./fishertest       # Fisher-matrix regression test, no data files needed
 make extinctiontest && ./extinctiontest
+make vbmtest && ./vbmtest             # VBMicrolensing against independent references
+make modeltest && ./modeltest         # the light-curve model: sky frames, parallax, point and finite source
 ```
 
 ## Repository layout
@@ -63,6 +68,7 @@ make extinctiontest && ./extinctiontest
 | `samples/` | Specifications of illustrative events whose full light curves `./roman` writes out |
 | `tests/` | C++ regression and unit tests; data-quality checks for the generated inputs |
 | `files/` | Small static inputs (noise curves); run outputs are written under `files/MONTLMC/files/` |
+| `external/` | Third-party code compiled into the simulator, unmodified: [VBMicrolensing](external/VBMicrolensing/README.md) |
 | `Whitepaper/` | LaTeX source of the write-up |
 
 Data products are generated, not committed.
@@ -74,6 +80,13 @@ weighted. The analysis scripts require a sightline map (`--map`) or an explicit 
 quote every weighted number with its Kish effective sample size. A Fisher entry of `-1.0` means
 "not measured" and is never averaged.
 
+A source star is kept whenever its peak is visible (every star, the default); `--blend-thinning`
+restores the per-resolved-object rule, keeping a draw with probability equal to its blend fraction.
+Either way the event table records that keep probability as `pKeep`, so every analysis script reports
+either convention (`--convention every-star|per-object`, every star the default). The table also carries
+the blend-fraction errors `sigfb0_J`, `sigfb0_L`, `sigfb1_J`, `sigfb1_R` and the lens extinctions
+`Alens_*` (one per band).
+
 ## Acknowledgements
 
 The simulator builds on earlier microlensing simulation code by Prof. Sedighe Sajadian, whom I thank
@@ -81,4 +94,5 @@ for her guidance and for the foundation it provided.
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE).
+MIT. See [`LICENSE`](LICENSE). The exception is `external/VBMicrolensing/`, which is VBMicrolensing
+(Bozza et al.) under the GNU LGPL v3; see [its directory](external/VBMicrolensing/README.md).

@@ -3,6 +3,7 @@
 #define ROMAN_RUN_CONFIG_H
 
 #include "common.h"
+#include "events/vbm_model.h"
 
 // Run configuration. Every field is a cost or coverage lever, so each is a runtime flag
 // rather than a constant: a smoke test and a production run differ only in these numbers.
@@ -15,6 +16,11 @@ struct RunConfig {
     // detected (detL, detR, detJ). A fixed bar, not scaled by the epoch count; see
     // DCHI_DET_DEFAULT in config/parameters.h. Recorded in run_provenance.txt.
     double dchiDet     = DCHI_DET_DEFAULT;
+
+    // Day-shared astrometric error of the N and P noise variants [mas]; --ast-sigc N,P overrides the
+    // AST_SIGC defaults, e.g. for a scan of theta_E precision against it. Recorded in run_provenance.txt.
+    double astSigcN    = AST_SIGC_N;
+    double astSigcP    = AST_SIGC_P;
 
     // Sightline grid inside Roman's footprint, in the same units. Roman covers ~2.6% of the
     // scan region, so a uniform grid spends most of its time where the joint fit is just
@@ -49,6 +55,10 @@ struct RunConfig {
     long   endIndex    = -1;
     unsigned long long seedBase = seed;
 
+    // The source of the light-curve model: a uniform disc of the star's own radius (ESPL, the default) or a
+    // point (PSPL, cheaper). Recorded in run_provenance.txt.
+    SourceModel sourceModel = SourceModel::ESPL;
+
     // Put Roman at the centre of the Earth, removing the Earth-L2 spatial baseline while
     // leaving the timing untouched. With this flag the output is identical to a run without
     // the satellite-parallax term.
@@ -57,6 +67,12 @@ struct RunConfig {
     // zeroed, and write both forecasts to a side file. Two separate runs cannot isolate the
     // effect, because moving the observer changes which events are detected.
     bool   pairSat     = false;
+
+    // Source selection. false (default, "every star"): a drawn source is kept whenever its peak is
+    // visible to Rubin or to Roman, whatever its blend. true ("per object", --blend-thinning): the
+    // previous convention, a visible source is also kept only with probability equal to its blend
+    // fraction, i.e. one candidate per resolved object (Sajadian & Makler 2022).
+    bool   blendThinning = false;
 
     // Path to a sample-event dump spec, or empty for no dump. The dump consumes no RNG, so a
     // run with it is event-for-event the same as one without.

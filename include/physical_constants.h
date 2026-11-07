@@ -11,6 +11,10 @@ constexpr double pi  = M_PI;
 constexpr double velocity = 299792458.0;//velosity of light
 constexpr double Msun = 1.98892 * std::pow(10., 30); //in [kg].
 constexpr double Rsun = 6.957 * std::pow(10.0, 8.0); ///solar radius [meter]
+// Nominal solar bolometric magnitude and effective temperature (IAU 2015 Resolutions B2 and B3);
+// the zero points the CMD star lists were built on (CMD/BolometricCorrection.py).
+constexpr double MbolSun = 4.74;   // [mag]
+constexpr double TeffSun = 5772.0; // [K]
 constexpr double KP = 3.08568025 * std::pow(10., 19); // in meter.
 constexpr double G = 6.67384 * std::pow(10., -11.0);// in [m^3/s^2*kg].
 constexpr double AU = 1.4960 * std::pow(10.0, 11.0);
@@ -18,7 +22,5 @@ constexpr double year = 365.2425;//days
 constexpr double eps = double(0.000000000000005463263454624313654);
 constexpr double ARCSEC_TO_MAS    = 1000.0;
 constexpr double AU_KM        = 1.496e8;
-constexpr double omegae = double(2.0 * M_PI / year); //radian per day
-constexpr double vearth = omegae;                    //radian per day
 
 #endif // PHYSICAL_CONSTANTS_H

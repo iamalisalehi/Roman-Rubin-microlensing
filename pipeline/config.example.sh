@@ -50,11 +50,18 @@ MAXDRAWS=
 # 1 = characterise every detection twice (Roman at L2 and at Earth) -> h3_pair.dat, the satellite-parallax figure.
 PAIR_SATELLITE=1
 SEED=42
+# sim refuses to start while tracked files have uncommitted changes, because the run is labelled by its
+# commit. 1 = run anyway (the binary and pipeline_provenance.txt then say <commit>-dirty).
+ALLOW_DIRTY=0
 # 1 = scan only the 0.1x0.1 deg stub patch (a smoke test; minutes instead of days). Needs STRIDE=1 and
 # STRIDE_ROMAN=1 (36 sightlines); at the production strides the patch has no sightline in some Roman
 # coverage class and ./roman refuses. Smoke-test values: EVENTS=10 LENSES=2 MAXDRAWS=3000 CHUNK_SIZE=10.
 STUB=0
 # Any further ./roman flags, passed to every population (e.g. "--dchi-det 300").
+# The light curve's source is a uniform disc of the star's radius by default (--source-model espl, finite source);
+# "--source-model pspl" makes it a point, the cheaper choice for a laptop run: it saves ~2% of the CPU time
+# (324.1 vs 330.3 G instructions on a production-like sightline, 300 events), and changes the results only for events
+# passing within a few source radii of the lens and for the few with a large source.
 EXTRA_FLAGS=""
 
 # ---- step 5: how the simulation is split and where it runs ----------------------------------------
@@ -81,8 +88,13 @@ KEEP_CHUNKS=1
 
 # ---- step 6: analysis ------------------------------------------------------------------------------
 # yields  = absolute yields per population (y1) and yield vs abundance F (y3)
-# figures = per population f1 f2 f3 f4 h5 (h3), then p6 and p7 across the populations
+# figures = per population f1 f2 f3 f4 h5 (h3) f5 (and w2 on bulge), then p6 and p7 across the populations;
+#           every script that takes --convention runs twice: every star (the headline) and per object
+#           (outputs and logs with the suffix _per_object)
 ANALYSES="yields figures"
+# Table 3 of Mroz et al. 2019 (ApJS 244, 29), the OGLE-IV events, for the blend-fraction check w2 on the
+# `bulge` population (analysis/w2_ogle4_blend_check.py). Empty = w2 is skipped, with a note in the output.
+OGLE_TABLE3=
 
 # ---- Python ---------------------------------------------------------------------------------------
 # The interpreter every script runs under. `setup` creates the venv if this path ends in /bin/python.

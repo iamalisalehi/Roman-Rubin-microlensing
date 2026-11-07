@@ -41,7 +41,47 @@ const char* eventTableHeader()
         "lensLum fLens_L fLens_R "
         // The observed (Earth-frame, parallax-bent) peak time and impact parameter.
         // t0zone, dt_edge and nep_pk_* are measured from t0obs, not from t0.
-        "t0obs umin_obs";
+        "t0obs umin_obs "
+        // Distance of the unresolved neighbours' light centroid from the source [mas], Rubin's
+        // reference band and F146 (0 = no neighbour in the disc).
+        "blendOff_L blendOff_R "
+        // Finite-source size: the source radius [Rsun], its angular radius theta* [mas], and
+        // rho = theta* / thetaE, the source radius in Einstein radii.
+        "Rstar thetaStar rho "
+        // The Einstein time of the heliocentric draw [days] (tE above is the geocentric one, the one the light
+        // curve and the Fisher matrices use), and the geocentric parallax vector on (North, East): parallel to
+        // the lens-minus-source relative proper motion, of length piE.
+        "tEhel piEN piEE "
+        // The finite source as a fitted parameter (--source-model espl): the delta-chi2 of the disc against a point
+        // source at the true parameters (a diagnostic of how strongly the disc is seen), the sigma(ln rho) the
+        // partition's DATA alone give (the prior RHO_PRIOR_SIGLN left out), and the fractional error of the photometric
+        // thetaE = theta* / rho, for the joint, Rubin and Roman partitions. dchiFS is -1 where not computed (point
+        // source, nothing characterised, no epochs); sigma(ln rho) is -1 where the partition was not characterised,
+        // under a point source, or where the data hold no information on it; rel_tetEph is -1 wherever rho is not
+        // measured (data-only sigma(ln rho) above SIGLNRHO_MAX) and is then sqrt(posterior sigma(ln rho)^2 +
+        // sigma(ln theta*)^2).
+        "dchiFS_J dchiFS_L dchiFS_R siglnrho_J siglnrho_L siglnrho_R rel_tetEph_J rel_tetEph_L rel_tetEph_R "
+        // The lens's motion on the sky (ErrorCal, lensMotion in events/vbm_model.h): the fractional error of its
+        // heliocentric proper motion, sigma(|mu_L|) / |mu_L| (rel_mul is the joint one, the same number as relMuL_J),
+        // and the 1-sigma error of the lens's velocity on the sky, v_L = D_L mu_L, along its worst-measured direction,
+        // sqrt(lambda_max) of its 2x2 covariance [km/s] (frame-independent: a per-axis bound, not the error of |v_L|),
+        // for the joint, Rubin and Roman partitions; -1 = not measured (no photometric or astrometric matrix, or no
+        // piE or thetaE by any route). vLperp is the true HELIOCENTRIC |v_L| = D_L |mu_L| [km/s]; sigVL / vLperp is
+        // only a heliocentric relative error.
+        "relMuL_J relMuL_L relMuL_R sigVL_J sigVL_L sigVL_R vLperp "
+        // pKeep: the probability that the per-object selection (--blend-thinning; Sajadian & Makler's one candidate
+        // per resolved object) keeps this draw, 1 - (1 - f_r [Rubin sees the peak]) (1 - f_F146 [Roman sees the
+        // peak]) with f the source's flux fraction in r and in F146. It is written in both selection modes: weighting
+        // an every-star event by pKeep gives the per-object count, dividing a per-object event by it the every-star one.
+        "pKeep "
+        // The Fisher error of the blend fraction f_S (co.Era[q][2] for Rubin's, [7] for Roman's): sigfb0 is Rubin's f_S from
+        // the joint (_J) and the Rubin-only (_L) matrix, sigfb1 Roman's from the joint and the Roman-only (_R) matrix;
+        // -1 = not characterised (no matrix, or the parameter is not in the fit, e.g. Roman's f_S without Roman data).
+        "sigfb0_J sigfb0_L sigfb1_J sigfb1_R "
+        // Alens_<band>: the dust in front of the lens [mag] in u g r i z y F146 (A_V at D_L along the sightline times
+        // A_lambda/A_V of the lens's component), written for every lens, dark or luminous; the apparent magnitude of a
+        // main-sequence star of the lens's mass is Mab(M) + 5 log10(D_L / 10 pc) + Alens.
+        "Alens_u Alens_g Alens_r Alens_i Alens_z Alens_y Alens_F146";
 }
 
 int openOutputs(const RunConfig& cfg, RunOutputs& o) {
@@ -139,7 +179,10 @@ int openOutputs(const RunConfig& cfg, RunOutputs& o) {
             // Ml, Dl, Ds and Vt are appended so older files still parse by position. The pooled
             // event-rate weight needs sqrt(Ml)*Vt*Z(Ds) per event, and pi_rel = 1/Dl - 1/Ds
             // cannot be solved for Dl and Ds from the other columns.
-              << "nepL_pk nepR_pk w_area Ml Dl Ds Vt\n";
+            // pKeep is the last column, as in the event table: the probability the per-object
+            // selection (--blend-thinning) keeps this draw, so the pair file can be counted per
+            // object (w * pKeep, or w / pKeep from a per-object run) like the event table.
+              << "nepL_pk nepR_pk w_area Ml Dl Ds Vt pKeep\n";
         }
     }
 
@@ -198,6 +241,16 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
     const double areaPerSightline = gridStep * gridStep; // deg^2; unstratified runs only
 
     {
+        // The light curve's source, for the lightcurve_model line (Tol is the accuracy of the disc's magnification).
+        std::ostringstream sourceText;
+        if (cfg.sourceModel == SourceModel::ESPL) sourceText << "ESPL (uniform disc, Tol " << VBM_TOL << ")";
+        else                                      sourceText << "PSPL";
+        std::ostringstream fitText;
+        if (cfg.sourceModel == SourceModel::ESPL)
+            fitText << "ln rho fitted in every partition with data, Gaussian prior sigma(ln rho) " << RHO_PRIOR_SIGLN
+                    << "; rho measured (photometric thetaE used) where the data-only sigma(ln rho) <= " << SIGLNRHO_MAX
+                    << "; dA/d ln rho analytic quadrupole beyond u/rho " << RHO_DERIV_QUAD_U;
+        else                                      fitText << "not fitted (point source)";
         std::ostringstream prov;
         prov << "# Roman+Rubin microlensing forecast -- run provenance\n"
              << "# git_commit          " << GIT_COMMIT << "\n"
@@ -257,10 +310,25 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "# Nl                  " << Nl << "\n"
              << "# NlRoman             " << NlRoman << "\n"
              << "# FoV_rubin_deg       " << FoV << "\n"
-             << "# roman_noise         ast: errRomanA(m_AB - " << F146_AB_MINUS_VEGA
-             << ") [Vega anchors]; phot: Penny+2019 curve anchored to 5-sigma "
+             << "# roman_noise         phot: Penny+2019 curve anchored to 5-sigma "
              << ROMAN_DEPTH5_AB << " AB (66 s); depth " << thre[6] << ", saturation "
              << satu[6] << " AB\n"
+             << "# rubin_noise         phot: Ivezic+2019 eq. 4-5, each visit's m5; floor "
+             << LSST_PHOT_FLOOR << " mag in quadrature\n"
+             << "# astrometric_noise   k/SNR (+) floor, SNR from the epoch's photometric error; Roman k "
+             << ROMAN_AST_K << " mas, floor " << ROMAN_AST_FLOOR << " mas; Rubin kappa "
+             << LSST_AST_KAPPA << " x visit FWHM_geom, floor " << LSST_AST_FLOOR << " mas; blend offset "
+             << (AST_BLEND_OFFSET_FREE ? "fitted (marginalised)" : "known") << "\n"
+             << "# lightcurve_model    VBMicrolensing 5.6.1 " << sourceText.str()
+             << ", geocentric parallax (JPL ephemeris), Roman at L2 table\n"
+             // The prior on ln rho, the bar for rho to count as measured, and the theta* uncertainty of the photometric thetaE.
+             << "# finite_source_fit   " << fitText.str()
+             << "   # sigma(ln theta*) " << THETASTAR_SIGLN << ", assumed measured from the source's colour\n"
+             << "# astrometric_variants W: one frame, white; N: frame per roll + " << cfg.astSigcN
+             << " mas/day; P: frame per roll + " << cfg.astSigcP << " mas/day\n"
+             // Runs whose provenance lacks this line also multiplied the bar by 0.45 (analysis/galaxy_model.py).
+             << "# bulge_norm          Robin+2012 S+E bars x BAR_MASS_RESCALE " << BAR_MASS_RESCALE
+             << " only   # Han & Gould 2003 column toward Baade's window\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex.nTables << " x "
              << ex.nDist << ", k " << ex.k << " --" << ex.built << "\n"
 
@@ -274,6 +342,11 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
                                                                     : cfg.dumpSpec) << "\n"
              << "# pair_satellite      " << (cfg.pairSat ? 1 : 0)
              << "   # every detection characterised at L2 AND at Earth\n"
+             // Every aggregate built from detections in the C++ output (MapLMC, EfLMC*, LpLMC, the end-of-run
+             // summary) counts what the selection keeps: in an every-star run, every source whose peak is visible.
+             << "# source_selection    " << (cfg.blendThinning ? "per-object" : "every-star")
+             << "   # every-star: each source with a visible peak is kept; per-object: kept with probability = its "
+                "blend fraction (pKeep column). Detection aggregates (MapLMC, EfLMC, LpLMC, summary) count what is kept\n"
              << "# dchi_det            " << cfg.dchiDet
              << "   # fixed detection bar; every yield is conditioned on it\n";
         if (!cfg.dryRun) {   // a dry run must not overwrite the last run's provenance

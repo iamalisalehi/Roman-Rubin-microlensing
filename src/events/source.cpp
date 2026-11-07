@@ -33,7 +33,25 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
         }
     }
 
+    // Positions of the unresolved neighbours (k >= 2; the source sits at the origin), drawn from their own
+    // stream (rngBlend) so the main draws are untouched. Neighbour k is in band i's disc when
+    // nsbl[i] >= k; it is placed uniformly in area inside the smallest disc that holds it and outside the
+    // largest smaller disc that does not, so the bands' neighbour sets stay nested. Sx/Sy/NF accumulate
+    // each band's neighbour light and its first moment, giving the neighbours' light centroid.
+    std::array<double, M> discR{}, Sx{}, Sy{}, NF{};
+    for (int i = 0; i < M; ++i) discR[i] = FWHM[i] * BLEND_RADIUS_FWHM_FRAC * ARCSEC_TO_MAS;   //[mas]
+
     for (int k = 1; k <= int(maxnb + 0.000000034756346); ++k) {
+        double nx = 0.0, ny = 0.0;
+        if (k >= 2) {
+            double rHi = 1.0e30, rLo = 0.0;
+            for (int i = 0; i < M; ++i) if (s.nsbl[i] >= k and discR[i] < rHi) rHi = discR[i];
+            for (int i = 0; i < M; ++i) if (s.nsbl[i] <  k and discR[i] < rHi and discR[i] > rLo) rLo = discR[i];
+            const double r   = std::sqrt(rLo * rLo + RandBlendUnit() * (rHi * rHi - rLo * rLo));
+            const double phi = 2.0 * M_PI * RandBlendUnit();
+            nx = r * std::cos(phi);
+            ny = r * std::sin(phi);
+        }
         do {
             nums = int(RandR(SRC_IDX_MIN, Num - SRC_IDX_END_MARGIN));
             rho  = RandR(s.Romins, s.Romaxs);
@@ -67,6 +85,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
                 s.mass = cm.mass_thin[num];
                 s.age  = cm.age_thin[num];
                 s.logT = cm.logT_thin[num];
+                s.Rstar = cm.Rstar_thin[num];
                 s.cl   = cm.cl_thin[num];
                 s.typ  = cm.typ_thin[num];
             }
@@ -81,6 +100,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
                 s.mass = cm.mass_bulge[num];
                 s.age  = cm.age_bulge[num];
                 s.logT = cm.logT_bulge[num];
+                s.Rstar = cm.Rstar_bulge[num];
                 s.cl   = cm.cl_bulge[num];
                 s.typ  = cm.typ_bulge[num];
             }
@@ -95,6 +115,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
                 s.mass = cm.mass_thick[num];
                 s.age  = cm.age_thick[num];
                 s.logT = cm.logT_thick[num];
+                s.Rstar = cm.Rstar_thick[num];
                 s.cl   = cm.cl_thick[num];
                 s.typ  = cm.typ_thick[num];
             }
@@ -109,6 +130,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
                 s.mass = cm.mass_halo[num];
                 s.age  = cm.age_halo[num];
                 s.logT = cm.logT_halo[num];
+                s.Rstar = cm.Rstar_halo[num];
                 s.cl   = cm.cl_halo[num];
                 s.typ  = cm.typ_halo[num];
             }
@@ -125,7 +147,9 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
             Map[i] = Mab[i] + 5.0 * std::log10(Ds * 100.0) + Ai[i];
 
             if(s.nsbl[i] >= k) {
-                s.Fluxb[i] += std::pow(10.0, -0.4 * Map[i]);
+                const double fk = std::pow(10.0, -0.4 * Map[i]);
+                s.Fluxb[i] += fk;
+                if (k >= 2) { Sx[i] += fk * nx;  Sy[i] += fk * ny;  NF[i] += fk; }
             }
         }
 
@@ -142,6 +166,15 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
             }
         }
     } //loop over the stars
+
+    // The neighbours' light centroid per telescope: Rubin's reference band(s), Roman's F146.
+    {
+        double sx = 0.0, sy = 0.0, nf = 0.0;
+        for (int band : RUBIN_REF_BANDS) { sx += Sx[band]; sy += Sy[band]; nf += NF[band]; }
+        s.blendOff[0] = (nf > 0.0) ? std::array<double, 2>{sx / nf, sy / nf} : std::array<double, 2>{0.0, 0.0};
+        s.blendOff[1] = (NF[6] > 0.0) ? std::array<double, 2>{Sx[6] / NF[6], Sy[6] / NF[6]}
+                                      : std::array<double, 2>{0.0, 0.0};
+    }
 
     for (int i = 0; i < M; ++i) {
         s.magb[i]  = -2.5 * std::log10(s.Fluxb[i]);

@@ -13,11 +13,21 @@
 //         flat stand-in for errlsstM / errRomanM.
 //
 // Usage: make fishertest && ./fishertest   (modes: --scale S, --sweep, --eigen [S],
-//        --astro-variants, --sweep-astro)
+//        --astro-variants, --sweep-astro, --finite-source, --lens-motion, --blend)
+//
+// The light-curve model's source is a point (pspl, the default here: the baseline every change to the
+// Fisher matrices is diffed against) or a uniform disc (espl); --source-model pspl|espl picks it, in any
+// mode. Every event of the table has the same source radius, kRho; --finite-source is the mode that puts the
+// source on the lens, compares the two models and fits the source radius (ln rho) where the data see it. Under
+// espl, --sweep runs the finite-source events (kFiniteEvents) and adds ln rho to the parameters swept.
 
+#include <random>
+#include <gsl/gsl_eigen.h>
+#include <gsl/gsl_integration.h>
 #include "common.h"
 #include "types.h"
 #include "events/lightcurve.h"
+#include "events/vbm_model.h"
 #include "surveys/visits.h"
 #include "surveys/schedule.h"
 #include "fisher/fisher.h"
@@ -25,11 +35,12 @@
 namespace {
 
 // ---------------------------------------------------------------------------------------------
-// Sight line. Fixed to the same test field the production runs have been using, so that the
-// parallax geometry (deltao, FI) matches what the real code would compute there.
+// Sight line. The centre of the GBTDS fields. The fixture never runs the sightline setup, so main()
+// points the light-curve model at it (vbmSetSightline): the Earth's orbit seen from here is the
+// parallax of every event, and (kLon, kLat) fixes the axes (e_l, e_b) the event's xi is measured on.
 // ---------------------------------------------------------------------------------------------
-constexpr double kLon = 0.5;   // Galactic longitude [deg]
-constexpr double kLat = -1.0;  // Galactic latitude  [deg]
+constexpr double kLon = 1.0;   // Galactic longitude [deg]
+constexpr double kLat = -1.5;  // Galactic latitude  [deg]
 
 // ---------------------------------------------------------------------------------------------
 // Cadence model. Simplified stand-ins for the two surveys' observing patterns -- enough to
@@ -82,6 +93,27 @@ const FixtureEvent kEvents[] = {
     {"verylong",      900.0, 1800.37, 0.30, 0.05},
 };
 
+// The finite-source events of --sweep under a disc: a tE 25 d event with piE 0.15 peaking inside a Roman
+// season, the source of radius rho passing the lens at u0 = z rho, with z and rho such that the data measure ln rho:
+// a dwarf, a mid-sized star and a giant, near and outside the disc. The sweep drops the prior on ln rho, so that
+// sigma(ln rho) is the data's, and keeps it wherever the matrix inverts (sigLnRhoMax infinite): the step, not the
+// adoption, is what it checks. The radii are away from the
+// rows of the library's disc table (log-spaced; 1e-3 and 1e-2 lie on one, where a central difference in ln rho
+// straddles a row and averages the two cells beside it). Inside the disc the table's cells in u/rho (0.01) set
+// the resolution of the u0 derivative, which the u0 step (absolute) cannot follow for a dwarf. kEvents' own
+// source (kRho, 250 radii from the lens) never fits ln rho.
+struct FiniteEvent { FixtureEvent ev; double rho; };
+const FiniteEvent kFiniteEvents[] = {
+    {{"fs_dwarf_z2",    25.0, 1636.37, 2.0 * 1.5e-3, 0.15}, 1.5e-3},
+    {{"fs_mid_z0.8",    25.0, 1636.37, 0.8 * 1.5e-2, 0.15}, 1.5e-2},
+    {{"fs_mid_z1.5",    25.0, 1636.37, 1.5 * 1.5e-2, 0.15}, 1.5e-2},
+    {{"fs_mid_z2",      25.0, 1636.37, 2.0 * 1.5e-2, 0.15}, 1.5e-2},
+    {{"fs_mid_z4",      25.0, 1636.37, 4.0 * 1.5e-2, 0.15}, 1.5e-2},
+    {{"fs_giant_z1.5",  25.0, 1636.37, 1.5 * 5.0e-2, 0.15}, 5.0e-2},
+    {{"fs_giant_z2",    25.0, 1636.37, 2.0 * 5.0e-2, 0.15}, 5.0e-2},
+    {{"fs_giant_z3",    25.0, 1636.37, 3.0 * 5.0e-2, 0.15}, 5.0e-2},
+};
+
 // Parameters held fixed across all events, so that differences in the printed sigmas are
 // attributable to tE / t0 / piE and the cadence, not to incidental source-star differences.
 constexpr double kXi        = 0.70;   // trajectory angle [radian]; kept away from 0 and pi/2,
@@ -98,25 +130,22 @@ constexpr double kMus1      = +0.008; // source proper motion [mas/day] (~2.9 ma
 constexpr double kMus2      = -0.005;
 constexpr double kMul1      = +0.003; // lens proper motion [mas/day]
 constexpr double kMul2      = +0.002;
+constexpr double kRho       = 1.2e-3; // source radius in Einstein radii: a 1 Rsun dwarf at 8 kpc, theta* = 5.8e-4
+                                      // mas, against thetaE = 0.5 mas. Read by the disc model only; the events
+                                      // pass the source at u0 = 0.3, 250 radii away, where it changes nothing
 
-// Fill in the geometry and stellar quantities that lightcurve() and ErrorCal() read.
+// Fill in the geometry and stellar quantities that the model (evaluateTrack, evaluateModel) and
+// ErrorCal() read.
 void setupStatic(source& s, lens& l)
 {
     s.lon = kLon;
     s.lat = kLat;
-    s.TET = (360.0 - s.lon) / RAa;  // same convention as src/sim/sightline.cpp
-    s.FI  = s.lat / RAa;
-
-    // Reproduce src/galaxy/kinematics.cpp (vrel)'s deltao convention for this sight line.
-    double tetd = s.TET;
-    if (s.TET > pi) tetd = s.TET - 2.0 * pi;
-    l.deltao = pi - std::fabs(tetd);
-    if (tetd < 0.0) l.deltao = -1.0 * l.deltao;
 
     s.Ds  = kDs;
     l.Dl  = kDl;
     s.xi  = kXi;
     l.tetE = kTetE;
+    s.rho = kRho;
 
     s.mbs[0] = kMbsRubin;  s.fb[0] = kFbRubin;
     s.mbs[1] = kMbsRoman;  s.fb[1] = kFbRoman;
@@ -129,7 +158,7 @@ void setupStatic(source& s, lens& l)
                       + (s.mus2 - l.mul2) * (s.mus2 - l.mul2));
 }
 
-// True (noiseless) model magnitude for telescope tt at the current lightcurve() state.
+// True (noiseless) model magnitude for telescope tt at magnification Astar.
 double modelMag(const source& s, int tt, double Astar)
 {
     return s.mbs[tt] - 2.5 * std::log10(Astar * s.fb[tt] + 1.0 - s.fb[tt]);
@@ -141,14 +170,14 @@ double modelMag(const source& s, int tt, double Astar)
 void appendEpoch(source& s, lens& l, astromet& as, double tim, int tele, int& ndw, int season = -1)
 {
     // Roman observes from L2, so its observer displacement differs from Rubin's.
-    lightcurve(s, l, as, tim, tele);
-    s.Astar = (s.ut * s.ut + 2.0) / std::sqrt(s.ut * s.ut * (s.ut * s.ut + 4.0));
+    TrackPoint p;
+    evaluateTrack(s, l, as, tele, &tim, 1, true, &p);
 
     l.timn[ndw] = tim;
-    l.magn[ndw] = modelMag(s, tele, s.Astar);
+    l.magn[ndw] = modelMag(s, tele, p.A);
     l.errm[ndw] = (tele == 0) ? kErrMagRubin : kErrMagRoman;
-    l.soux[ndw] = s.pos1c;
-    l.souy[ndw] = s.pos2c;
+    l.soux[ndw] = p.pos1c;
+    l.souy[ndw] = p.pos2c;
     l.erra[ndw] = (tele == 0) ? kErrAstRubin : kErrAstRoman;
     l.tele[ndw] = tele;
     // Season and roll of a Roman exposure; seasons alternate spring / autumn from the first.
@@ -218,15 +247,21 @@ bool checkAdditivity(const covarian& co, const char* evName, int dim, bool photo
     double worst = 0.0;
     for (int j = 0; j < dim; ++j) {
         for (int k = 0; k < dim; ++k) {
+            // The photometric matrices carry the prior on ln rho once each (F[9][9]); the data parts are what add.
+            const auto prior = [&](int q) {
+                return (photometric and j == 9 and k == 9 and co.rhoFit[q] and std::isfinite(co.rhoPriorSigLn))
+                    ? 1.0 / (co.rhoPriorSigLn * co.rhoPriorSigLn) : 0.0;
+            };
             const double joint = photometric
-                ? gsl_matrix_get(co.inputA[SJOINT].get(), j, k)
+                ? gsl_matrix_get(co.inputA[SJOINT].get(), j, k) - prior(SJOINT)
                 : gsl_matrix_get(co.inputB[SJOINT].get(), j, k);
             const double parts = photometric
-                ? gsl_matrix_get(co.inputA[SRUBIN].get(), j, k)
-                    + gsl_matrix_get(co.inputA[SROMAN].get(), j, k)
+                ? gsl_matrix_get(co.inputA[SRUBIN].get(), j, k) - prior(SRUBIN)
+                    + gsl_matrix_get(co.inputA[SROMAN].get(), j, k) - prior(SROMAN)
                 : gsl_matrix_get(co.inputB[SRUBIN].get(), j, k)
                     + gsl_matrix_get(co.inputB[SROMAN].get(), j, k);
-            const double scale = std::fabs(joint) + std::fabs(parts) + 1e-300;
+            // (The prior is added and taken off again, so an F[9][9] far below it is only known to its round-off.)
+            const double scale = std::fabs(joint) + std::fabs(parts) + prior(SJOINT) + prior(SRUBIN) + prior(SROMAN) + 1e-300;
             const double rel   = std::fabs(joint - parts) / scale;
             if (rel > worst) worst = rel;
             if (rel > 1e-9) ok = false;
@@ -287,7 +322,7 @@ bool checkT0Marginalization(const covarian& co, const char* evName, bool verbose
 
         // {u0, tE, fb, piE, xi} = indices 0-4, intersected with this partition's active subset.
         std::vector<int> sub;
-        for (int k : activePhotParams(q, co.nepochA[SRUBIN], co.nepochA[SROMAN])) if (k <= 4) sub.push_back(k);
+        for (int k : activePhotParams(co, q)) if (k <= 4) sub.push_back(k);
         const int nsub = static_cast<int>(sub.size());
 
         gsl_matrix      *F5 = gsl_matrix_alloc(nsub, nsub);
@@ -345,7 +380,7 @@ bool checkInverseRoundTrip(const covarian& co, const char* evName, int dim, bool
         // Only the active submatrix was inverted, so only it can round-trip to the identity.
         static const std::vector<int> kAllAst = {0, 1, 2, 3};
         const std::vector<int> actP = photometric
-            ? activePhotParams(q, co.nepochA[SRUBIN], co.nepochA[SROMAN]) : std::vector<int>();
+            ? activePhotParams(co, q) : std::vector<int>();
         const std::vector<int>& act = photometric ? actP : kAllAst;
         (void)dim;
         const int n = static_cast<int>(act.size());
@@ -386,8 +421,12 @@ bool checkInverseRoundTrip(const covarian& co, const char* evName, int dim, bool
     return ok;
 }
 
-const char* kPhotNames[] = {"u0", "tE", "fb0", "piE", "xi", "t0", "mbs0", "fb1", "mbs1"};
+const char* kPhotNames[] = {"u0", "tE", "fb0", "piE", "xi", "t0", "mbs0", "fb1", "mbs1", "lnrho"};
 const char* kAstNames[]  = {"tetE", "mus1", "mus2", "piE"};
+
+// How many photometric parameters the tables show. ln rho (the last) exists only for a finite source, so a
+// point-source run shows the nine it has: its tables are those of a model without the tenth.
+int nPhotShown() { return (vbmSourceModel() == SourceModel::ESPL) ? Nx : Nx - 1; }
 
 void printRow(const char* label, int nep, int ok, double cond,
               const std::vector<double>& era, const std::vector<double>& erb)
@@ -397,7 +436,7 @@ void printRow(const char* label, int nep, int ok, double cond,
               << std::setw(5) << ok
               << std::scientific << std::setprecision(2) << std::setw(11) << cond;
     std::cout << std::scientific << std::setprecision(3);
-    for (int k = 0; k < Nx; ++k) std::cout << std::setw(12) << era[k];
+    for (int k = 0; k < nPhotShown(); ++k) std::cout << std::setw(12) << era[k];
     std::cout << std::setw(12) << erb[0] << "\n";
 }
 
@@ -428,10 +467,22 @@ int runSweep()
 
     std::cout << "event,tE,survey,param,param_idx,scale,sigma,cond,ok\n";
 
-    for (const auto& ev : kEvents) {
-        for (int pidx = 0; pidx < Nx; ++pidx) {
+    // The table's events, each with the source of setupStatic; under a disc, the finite-source ones, which
+    // fit ln rho (index 9, the last parameter, absent from a point-source sweep).
+    std::vector<std::pair<FixtureEvent, double>> events;
+    if (vbmSourceModel() == SourceModel::ESPL) for (const auto& f : kFiniteEvents) events.push_back({f.ev, f.rho});
+    else                                       for (const auto& e : kEvents) events.push_back({e, kRho});
+
+    co->sigLnRhoMax = std::numeric_limits<double>::infinity();
+    co->rhoPriorSigLn = std::numeric_limits<double>::infinity();
+    for (const auto& [ev, rho] : events) {
+        for (int pidx = 0; pidx < nPhotShown(); ++pidx) {
             for (double sc : kScales) {
+                // u0 is stepped by an absolute amount: a step reaching the lens would put the source on its
+                // other side (u0 < 0), which the model does not take.
+                if (pidx == 0 and FD_STEP_U0 * kFDStepScale * sc >= ev.u0) continue;
                 setupStatic(*s, *l);
+                s->rho = rho;
                 l->tE  = ev.tE;  l->t0 = ev.t0;
                 l->u0  = ev.u0;  l->piE = ev.piE;
 
@@ -489,7 +540,7 @@ int runEigen(double scale)
 
         FisherM(*s, *l, *as, *co, ndw);
 
-        const auto act = activePhotParams(SJOINT, co->nepochA[SRUBIN], co->nepochA[SROMAN]);
+        const auto act = activePhotParams(*co, SJOINT);
         const int dim = int(act.size());
         gsl_matrix* F = co->inputA[SJOINT].get();
 
@@ -772,7 +823,9 @@ bool checkSeasonClustering()
 // Prints, per event and partition, sigma(tetE), the astrometric sigma(piE) and relMl under each
 // variant, and ASSERTS sigma_W <= sigma_N <= sigma_P on tetE. N adds roll offsets and noise
 // correlated within a day to W, and P adds season offsets and a larger sigma_c; neither extra
-// parameters nor positively correlated noise can add information, so a violation is a bug.
+// parameters nor positively correlated noise can add information, so a violation is a bug. Also asserted:
+// relMlV of every variant against the lens-mass error formed here from an independent inversion of the variant's
+// matrix (route, thetaE-piE or ln rho-piE covariance; see lnCovTetPi), and relMlV[W] == relMl.
 // ---------------------------------------------------------------------------------------------
 
 // One stray epoch from a telescope must not make the joint photometric matrix singular. Take an
@@ -856,9 +909,9 @@ int runAstroVariants()
     auto as = std::make_unique<astromet>();
     auto co = std::make_unique<covarian>();
     const char* vn[NAVAR] = {"W", "N", "P"};
-    int bad = 0;
+    int bad = 0, nMassChecked = 0, nMassAst = 0;
     std::cout << "# Step 3c astrometric noise variants: W white | N roll offsets + "
-              << AST_SIGC_N << " mas/day | P season offsets + " << AST_SIGC_P << " mas/day\n"
+              << AST_SIGC_N << " mas/day | P roll offsets + " << AST_SIGC_P << " mas/day\n"
               << "# event,tE,partition,variant,ok,sig_tetE,sig_piE_ast,relMl,ratio_tetE_to_W\n";
     for (const auto& ev : kEvents) {
         setupStatic(*s, *l);
@@ -880,6 +933,46 @@ int runAstroVariants()
                           << co->relMlV[v][q] << ',' << std::fixed << std::setprecision(3)
                           << ((w0 > 0.0 && co->ErbV[v][q][0] > 0.0) ? co->ErbV[v][q][0] / w0 : -1.0)
                           << std::defaultfloat << '\n';
+            // Independent check of the lens-mass error of every variant: invert FBV[v][q] here (GSL LU, not the
+            // production invertNormalized), take rt (the astrometric thetaE of this variant combined with the
+            // photometric one by inverse variance) and the better piE route, form c by the rule (photometric piE:
+            // -wp cov(ln rho, ln piE); astrometric piE: (1 - wp) cov(thetaE, piE) / (thetaE piE)), and compare
+            // sqrt(rt^2 + rpi^2 - 2c) with relMlV. Variant W is the main result: relMlV[AV_W] == relMl exactly.
+            if (co->relMlV[AV_W][q] != co->relMl[q]) {
+                std::cout << "#   FAIL " << ev.name << " " << qn << ": relMlV[W] " << co->relMlV[AV_W][q]
+                          << " != relMl " << co->relMl[q] << "\n";
+                ++bad;
+            }
+            for (int v = 0; v < NAVAR; ++v) {
+                if (!co->okBV[v][q]) continue;
+                gsl_matrix* M = gsl_matrix_alloc(Ny, Ny);
+                gsl_matrix* Minv = gsl_matrix_alloc(Ny, Ny);
+                gsl_permutation* perm = gsl_permutation_alloc(Ny);
+                for (int j = 0; j < Ny; ++j)
+                    for (int m = 0; m < Ny; ++m) gsl_matrix_set(M, j, m, co->FBV[v][q][j * Ny + m]);
+                int sgn = 0;
+                gsl_linalg_LU_decomp(M, perm, &sgn);
+                gsl_linalg_LU_invert(M, perm, Minv);
+                const double sT = std::sqrt(gsl_matrix_get(Minv, 0, 0)), sP = std::sqrt(gsl_matrix_get(Minv, 3, 3));
+                const double cTP = gsl_matrix_get(Minv, 0, 3);
+                gsl_matrix_free(M); gsl_matrix_free(Minv); gsl_permutation_free(perm);
+                const double ra = sT / l->tetE, rph = co->relTetEph[q];
+                const double rt = (rph >= 0.0) ? ra * rph / std::hypot(ra, rph) : ra;
+                const double wp = (rph >= 0.0) ? rt * rt / (rph * rph) : 0.0;
+                const double rp1 = (co->Era[q][3] >= 0.0) ? co->Era[q][3] / l->piE : -1.0, rp2 = sP / l->piE;
+                const bool   phot = (rp1 >= 0.0 and rp1 < rp2);
+                const double rpi = phot ? rp1 : rp2;
+                const double c = phot ? -wp * gsl_matrix_get(co->inverA[q].get(), 9, 3) / l->piE * double(co->rhoMeas[q])
+                                      : (1.0 - wp) * cTP / (l->tetE * l->piE);
+                const double want = std::sqrt(rt * rt + rpi * rpi - 2.0 * c);
+                if (!(std::fabs(co->relMlV[v][q] / want - 1.0) <= 1e-6)) {
+                    std::cout << "#   FAIL " << ev.name << " " << qn << " " << vn[v] << ": relMlV " << co->relMlV[v][q]
+                              << " vs independent " << want << (phot ? " (phot piE)" : " (ast piE)") << "\n";
+                    ++bad;
+                }
+                ++nMassChecked;
+                if (!phot) ++nMassAst;
+            }
             for (int v = 1; v < NAVAR; ++v) {
                 const double a0 = co->ErbV[v - 1][q][0], a1 = co->ErbV[v][q][0];
                 if (co->okBV[v - 1][q] && co->okBV[v][q] && a1 < a0 * (1.0 - 1e-9)) {
@@ -890,12 +983,807 @@ int runAstroVariants()
             }
         }
     }
+    std::cout << "# relMlV checked against an independent inversion: " << nMassChecked << " cases, " << nMassAst
+              << " on the astrometric piE route\n";
     std::cout << (bad ? "# FAIL -- variant ordering violated\n" : "# PASS -- sigma_W <= sigma_N <= sigma_P everywhere\n");
     return bad ? 1 : 0;
 }
 
+// ---------------------------------------------------------------------------------------------
+// The finite source. One event (tE 25 d, peaking inside a Roman season, piE 0.15) with a source of radius
+// rho passing the lens at u0 = z rho: a dwarf (rho 1e-3, theta* = 5e-4 mas), a mid-sized star (1e-2) and a
+// giant (5e-2, 43 Rsun at 8 kpc against thetaE 0.5 mas, a luminous bulge giant; 1e-2 is 8.6 Rsun), at z from
+// the lens inside the disc out to where the disc has no effect. Each is forecast three ways, every one on its
+// own noiseless data:
+//   point  the point-source model,
+//   fixed  the uniform disc with rho held at its true value, ln rho not a parameter (rhoFixed),
+//   prod   the uniform disc as production forecasts it: ln rho a parameter of every partition, with the prior
+//          RHO_PRIOR_SIGLN; rho is measured where the DATA-only sigma(ln rho) is at most SIGLNRHO_MAX,
+//   free   the same without the prior (rhoPriorSigLn infinite), where its matrix inverts.
+// Printed per partition: the peak magnification of the disc, dchiFS, the data-only and posterior sigma(ln rho) of
+// production, whether rho is measured ("meas"), sigma(ln rho) of the prior-free fit, the fractional error of the
+// astrometric (rel_a), photometric (rel_ph) and combined (rel_c) thetaE, the correlation of ln rho and piE, and
+// the ratios sigma(fixed)/sigma(point), sigma(prod)/sigma(point) and sigma(free)/sigma(point) of u0, tE and piE.
+// '-' = not measured.
+// Asserted: (1) for u0 >= 30 rho every production sigma of u0, tE, piE is within 1% of the fixed-rho one; (2) where
+// the prior-free matrix is well conditioned (sigma(ln rho) < 10) the data-only sigma of production equals it to
+// 1e-6 (the Schur identity); (3) the posterior sigma(ln rho) is at most the prior's; (4) the joint data-only
+// sigma(ln rho) is no worse than a single survey's; (5) F_joint = F_Rubin + F_Roman on the data part; fitting ln
+// rho only loosens the other sigmas; a partition that does not measure rho reports no photometric thetaE and its
+// combined thetaE is the astrometric one; the combined thetaE is no worse than either route; the point source's
+// magnification is the disc model's own track through magnifOf; no partition falls back to rho fixed.
+struct FsRun {
+    double peak = 0.0;
+    double sig[NSURV][3];                         // u0, tE, piE; -1 = not measured
+    double tetE[NSURV], dchi[NSURV], slrData[NSURV], slrPost[NSURV], relPh[NSURV], relC[NSURV], corr[NSURV];
+    int    fit[NSURV], meas[NSURV];
+    bool   additive = true;
+};
+
+namespace {
+
+enum class FsMode { Point, Fixed, Prod, Free };
+
+FsRun fsForecast(FsMode mode, double rho, double z, source& s, lens& l, astromet& as, covarian& co)
+{
+    static const int kP[] = {0, 1, 3};     // u0, tE, piE
+    vbmSetSourceModel(mode == FsMode::Point ? SourceModel::PSPL : SourceModel::ESPL);
+    setupStatic(s, l);
+    s.rho = rho;
+    l.tE = 25.0;  l.t0 = 1636.37;  l.u0 = z * rho;  l.piE = 0.15;
+    int nL = 0, nR = 0;
+    const int ndw = buildLightCurve(s, l, as, nL, nR);
+    l.tE = 25.0;  l.t0 = 1636.37;  l.u0 = z * rho;  l.piE = 0.15;
+    s.xi = kXi;  s.fb[0] = kFbRubin;  s.fb[1] = kFbRoman;
+    s.mbs[0] = kMbsRubin;  s.mbs[1] = kMbsRoman;
+    TrackPoint p;
+    evaluateTrack(s, l, as, 0, &l.t0, 1, true, &p);
+    FsRun r;
+    r.peak = p.A;
+    const double kInf = std::numeric_limits<double>::infinity();
+    co.rhoFixed      = (mode == FsMode::Fixed);
+    co.rhoPriorSigLn = (mode == FsMode::Free) ? kInf : RHO_PRIOR_SIGLN;
+    co.sigLnRhoMax   = (mode == FsMode::Free) ? kInf : SIGLNRHO_MAX;
+    FisherM(s, l, as, co, ndw);
+    ErrorCal(co, l, s);
+    r.additive = checkAdditivity(co, "finite-source", Nx, true);
+    for (int q = 0; q < NSURV; ++q) {
+        for (int a = 0; a < 3; ++a) r.sig[q][a] = co.okA[q] ? co.Era[q][kP[a]] : -1.0;
+        r.tetE[q] = co.okB[q] ? co.Erb[q][0] : -1.0;
+        r.dchi[q] = co.dchiFS[q];
+        r.fit[q]  = co.rhoFit[q];
+        r.meas[q] = co.rhoMeas[q];
+        r.slrData[q] = co.sigLnRhoData[q];
+        r.slrPost[q] = (co.okA[q] and co.rhoFit[q]) ? co.Era[q][9] : -1.0;
+        r.relPh[q] = co.relTetEph[q];
+        r.relC[q]  = co.relTetEc[q];
+        r.corr[q]  = co.corrRhoPiE[q];
+    }
+    co.rhoFixed = false;  co.rhoPriorSigLn = RHO_PRIOR_SIGLN;  co.sigLnRhoMax = SIGLNRHO_MAX;
+    return r;
+}
+
+// The disc model's track is the point source's: at every epoch of the event, both observers, the model with
+// the source radius set to zero (a point source) has the same u and the magnification magnifOf(u).
+bool checkPointIsTrack(double rho, double z, source& s, lens& l, astromet& as)
+{
+    vbmSetSourceModel(SourceModel::ESPL);
+    setupStatic(s, l);
+    s.rho = rho;
+    l.tE = 25.0;  l.t0 = 1636.37;  l.u0 = z * rho;  l.piE = 0.15;
+    int nL = 0, nR = 0;
+    const int ndw = buildLightCurve(s, l, as, nL, nR);
+    l.tE = 25.0;  l.t0 = 1636.37;  l.u0 = z * rho;  l.piE = 0.15;
+    s.xi = kXi;
+    bool ok = true;
+    for (int tt = 0; tt < 2; ++tt) {
+        std::vector<double> t;
+        for (int i = 0; i < ndw; ++i) if (l.tele[i] == tt) t.push_back(l.timn[i]);
+        if (t.empty()) continue;
+        std::vector<ModelPoint> disc(t.size()), pt(t.size());
+        evaluateModel(s, l, as, tt, t.data(), int(t.size()), false, disc.data());
+        s.rho = 0.0;
+        evaluateModel(s, l, as, tt, t.data(), int(t.size()), false, pt.data());
+        s.rho = rho;
+        for (size_t i = 0; i < t.size(); ++i)
+            if (pt[i].u != disc[i].u or pt[i].A != magnifOf(disc[i].u)) {
+                std::cerr << "FAIL [finite/track] rho " << rho << " z " << z << " telescope " << tt << " epoch " << i
+                          << ": u " << pt[i].u << " vs " << disc[i].u << ", A " << pt[i].A << " vs "
+                          << magnifOf(disc[i].u) << "\n";
+                ok = false;
+                break;
+            }
+    }
+    return ok;
+}
+
+// ---- The derivative of the disc magnification with respect to ln rho, three ways ----
+// Exact uniform disc, independent of the library. The magnification of a disc of radius rho at distance u from a
+// point lens is the mean of the point-lens magnification over the disc, A = (1/pi rho^2) int A_ps dS, and
+// d A / d rho = (2 / rho)(B - A) with B the mean of A_ps over the RIM of the disc, so
+//     d A / d ln rho = 2 (B - A).
+// In polar coordinates about the lens, g(d) = A_ps(d) d = (d^2 + 2) / sqrt(d^2 + 4) integrates in closed form,
+// int_0^x g = x sqrt(x^2 + 4) / 2, which gives the circles inside the disc entirely (d < rho - u); the others are
+// partly inside, by the angle 2 atan2(rho sin psi, u + rho cos psi), psi the rim point's angle about the disc's
+// centre, and d(psi)^2 = u^2 + rho^2 + 2 u rho cos psi. Both integrands are smooth in psi (the rim average
+// has an integrable 1/d at u = rho). GSL adaptive Gauss-Kronrod, 1e-13.
+double gDisc(double d) { return (d * d + 2.0) / std::sqrt(d * d + 4.0); }
+double aPoint(double d) { return gDisc(d) / d; }
+
+struct DiscPar { double u, rho; };
+
+double rimIntegrand(double psi, void* p)
+{
+    const DiscPar& q = *static_cast<DiscPar*>(p);
+    const double d2 = q.u * q.u + q.rho * q.rho + 2.0 * q.u * q.rho * std::cos(psi);
+    return aPoint(std::sqrt(std::max(d2, 1e-300)));
+}
+double partialIntegrand(double psi, void* p)
+{
+    const DiscPar& q = *static_cast<DiscPar*>(p);
+    const double d = std::sqrt(std::max(q.u * q.u + q.rho * q.rho + 2.0 * q.u * q.rho * std::cos(psi), 1e-300));
+    const double ang = std::atan2(q.rho * std::sin(psi), q.u + q.rho * std::cos(psi));
+    return gDisc(d) * 2.0 * ang * (q.u * q.rho * std::sin(psi) / d);
+}
+
+double integrate(double (*f)(double, void*), DiscPar& par)
+{
+    gsl_integration_workspace* w = gsl_integration_workspace_alloc(2000);
+    gsl_function F;  F.function = f;  F.params = &par;
+    double res = 0.0, err = 0.0;
+    gsl_set_error_handler_off();
+    gsl_integration_qags(&F, 0.0, M_PI, 0.0, 1e-13, 2000, w, &res, &err);
+    gsl_integration_workspace_free(w);
+    return res;
+}
+
+double exactDisc(double u, double rho)
+{
+    DiscPar par{u, rho};
+    const double x = std::max(rho - u, 0.0);
+    return (2.0 * M_PI * 0.5 * x * std::sqrt(x * x + 4.0) + integrate(partialIntegrand, par)) / (M_PI * rho * rho);
+}
+double exactDerivative(double u, double rho)
+{
+    DiscPar par{u, rho};
+    const double B = integrate(rimIntegrand, par) / M_PI;
+    return 2.0 * (B - exactDisc(u, rho));
+}
+
+// The library's own finite difference at the production step, from one-epoch evaluations of its disc magnification.
+double vbmDerivative(double u, double rho)
+{
+    ModelEvent ev{};
+    ev.source = SourceModel::ESPL;
+    const double step = FD_STEP_LNRHO * kFDStepScale;
+    ev.rho = rho * std::exp(+step);  const double ap = vbmMagnification(ev, u);
+    ev.rho = rho * std::exp(-step);  const double am = vbmMagnification(ev, u);
+    return (ap - am) / (2.0 * step);
+}
+
+// u at which the library leaves its table for the quadrupole, quad * 10 = VBM_TOL (bisection).
+double vbmSwitch(double rho)
+{
+    double lo = 1e-3 * rho, hi = 1e4;
+    for (int i = 0; i < 200; ++i) {
+        const double mid = std::sqrt(lo * hi);
+        (discQuadrupole(mid, rho) * 10.0 < VBM_TOL ? hi : lo) = mid;
+    }
+    return hi;
+}
+
+int runRhoDerivative()
+{
+    vbmSetSourceModel(SourceModel::ESPL);
+    int failures = 0;
+    static const double kRho[] = {1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0};
+    static const double kZ[]   = {0.5, 0.8, 1.5, 2, 3, 5, 7, 10, 15, 20, 30, 50, 100, 300, 1000};
+    constexpr double kResolved = 1e-9;   // |exact dA/d ln rho| below this is lost in the exact integral's round-off
+    std::cout << "\n# d A / d ln rho at u = (u/rho) rho: exact uniform disc (independent integration), the analytic quadrupole 2 quad,\n"
+              << "# and the library's finite difference at the production step. err = relative to exact; '*' = the library is on its\n"
+              << "# quadrupole branch there. Rows with |exact| < " << kResolved << " are unresolved by the exact integral and not judged.\n"
+              << "# " << std::setw(8) << "rho" << std::setw(8) << "u/rho" << std::setw(13) << "exact" << std::setw(13) << "quad"
+              << std::setw(10) << "err(quad)" << std::setw(13) << "vbm FD" << std::setw(10) << "err(FD)" << "\n";
+    for (double rho : kRho) {
+        double lastBadQuad = 0.0;   // largest u/rho at which the quadrupole is off by more than 1%
+        const double us = vbmSwitch(rho);
+        for (double z : kZ) {
+            const double u = z * rho;
+            const double ex = exactDerivative(u, rho), qd = 2.0 * discQuadrupole(u, rho), fd = vbmDerivative(u, rho);
+            const bool resolved = std::fabs(ex) >= kResolved;
+            const bool analytic = (u >= rhoDerivAnalyticU(rho));   // the branch production takes
+            const double eq = resolved ? std::fabs(qd / ex - 1.0) : 0.0, ef = resolved ? std::fabs(fd / ex - 1.0) : 0.0;
+            if (resolved and eq > 0.01) lastBadQuad = z;
+            std::cout << "  " << std::scientific << std::setprecision(1) << std::setw(8) << rho << std::defaultfloat << std::setprecision(6) << std::setw(8) << z
+                      << std::scientific << std::setprecision(4) << std::setw(13) << ex << std::setw(13) << qd
+                      << std::setprecision(1) << std::setw(10) << eq << std::setprecision(4) << std::setw(13) << fd
+                      << std::setprecision(1) << std::setw(10) << ef << (u > us ? " *" : "") << std::defaultfloat << "\n";
+            // Sources larger than 0.1 Einstein radii (a few in 1e4 draws) are held to 6%: the expansion in rho and the
+            // library's table are both coarser there.
+            const double tolQ = (rho > 0.1) ? 0.06 : 0.01, tolF = (rho > 0.1) ? 0.06 : 0.02;
+            if (resolved and analytic and eq > tolQ) {
+                std::cerr << "FAIL [rho-deriv] rho " << rho << " u/rho " << z << ": quadrupole off by " << eq << "\n";
+                ++failures;
+            }
+            if (resolved and not analytic and ef > tolF) {
+                std::cerr << "FAIL [rho-deriv] rho " << rho << " u/rho " << z << ": library finite difference off by " << ef << "\n";
+                ++failures;
+            }
+        }
+        std::cout << "#   rho " << rho << ": quadrupole within 1% of exact beyond u/rho " << lastBadQuad
+                  << "; the library's switch to its quadrupole is at u/rho " << us / rho
+                  << "; production takes the analytic term from u/rho " << rhoDerivAnalyticU(rho) / rho << "\n";
+        if (rhoDerivAnalyticU(rho) >= us) { std::cerr << "FAIL [rho-deriv] finite differences reach the library's switch at rho " << rho << "\n"; ++failures; }
+    }
+
+    // The spike: a finite difference that straddles the switch.
+    const double rho = 6e-4, us = vbmSwitch(rho);
+    double maxOld = 0.0, maxNew = 0.0, typical = 2.0 * discQuadrupole(us, rho);
+    for (int k = -100; k <= 100; ++k) {
+        const double u = us * (1.0 + k * 2e-9);
+        const double oldD = vbmDerivative(u, rho);
+        const double newD = (u >= rhoDerivAnalyticU(rho)) ? 2.0 * discQuadrupole(u, rho) : vbmDerivative(u, rho);
+        maxOld = std::max(maxOld, std::fabs(oldD));
+        maxNew = std::max(maxNew, std::fabs(newD));
+    }
+    std::cout << "# switch scan, rho " << rho << ", u = " << us << " (1 + k 2e-9), k = -100..100: true dA/dln rho " << typical
+              << ", max |old finite difference| " << maxOld << " (x" << maxOld / typical << "), max |new| " << maxNew
+              << " (x" << maxNew / typical << ")\n";
+    if (!(maxOld > 100.0 * typical)) std::cout << "#   note: the old difference did not spike on this scan\n";
+    if (!(maxNew < 1.5 * typical)) { std::cerr << "FAIL [rho-deriv] the derivative spikes across the library's switch\n"; ++failures; }
+    return failures;
+}
+
+}  // namespace
+
+int runFiniteSource()
+{
+    struct Grid { double rho; std::vector<double> z; };
+    static const Grid kGrid[] = {
+        {1.0e-3, {1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 10.0, 30.0}},
+        {1.0e-2, {0.3, 0.8, 2.0, 3.0, 4.0, 4.5, 5.0, 6.0, 30.0}},
+        {5.0e-2, {0.3, 0.8, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 30.0}},
+    };
+    const SourceModel keep = vbmSourceModel();
+    auto s  = std::make_unique<source>();
+    auto l  = std::make_unique<lens>();
+    auto as = std::make_unique<astromet>();
+    auto co = std::make_unique<covarian>();
+    int failures = 0;
+    const long fallbacks0 = rhoFallbackCount();
+
+    std::cout << "# Finite source, tE 25 d, t0 1636.37 (in a Roman season), piE 0.15. ln rho is a parameter of every partition, with the\n"
+              << "# prior sigma(ln rho) = " << RHO_PRIOR_SIGLN << "; rho is measured (meas) where the data-only sigma(ln rho) <= " << SIGLNRHO_MAX << ".\n"
+              << "# sigma(u0), sigma(tE), sigma(piE): ratio to the point-source forecast, for rho fixed | production | prior-free fit.\n"
+              << "# s_dat, s_post: data-only and posterior sigma(ln rho) of production; s_free: the prior-free fit's. '-' = not measured.\n"
+              << "# rel_a, rel_ph, rel_c: fractional error of thetaE from astrometry, from photometry (theta*/rho,\n"
+              << "# sigma(ln theta*) = " << THETASTAR_SIGLN << "), and combined (production).\n"
+              << "# " << std::left << std::setw(7) << "rho" << std::setw(7) << "u0/rho" << std::setw(7) << "survey" << std::right
+              << std::setw(9) << "Apk,disc" << std::setw(10) << "dchiFS" << std::setw(5) << "meas"
+              << std::setw(10) << "s_dat" << std::setw(10) << "s_post" << std::setw(10) << "s_free" << std::setw(9) << "rel_a"
+              << std::setw(9) << "rel_ph" << std::setw(9) << "rel_c"
+              << std::setw(6) << "corr" << " |" << std::setw(28) << "u0 fix|prod|free" << std::setw(28) << "tE fix|prod|free"
+              << std::setw(28) << "piE fix|prod|free" << "\n";
+
+    auto ratio = [](double a, double b) {
+        std::ostringstream o;
+        if (a > 0.0 and b > 0.0) o << std::fixed << std::setprecision(3) << a / b; else o << "-";
+        return o.str();
+    };
+    auto sci = [](double v, int prec = 2) {
+        std::ostringstream o;
+        if (v > 0.0) o << std::scientific << std::setprecision(prec) << v; else o << "-";
+        return o.str();
+    };
+
+    for (const Grid& g : kGrid) {
+        for (double z : g.z) {
+            if (!checkPointIsTrack(g.rho, z, *s, *l, *as)) ++failures;
+            const FsRun point = fsForecast(FsMode::Point, g.rho, z, *s, *l, *as, *co);
+            const FsRun fixed = fsForecast(FsMode::Fixed, g.rho, z, *s, *l, *as, *co);
+            const FsRun prod  = fsForecast(FsMode::Prod,  g.rho, z, *s, *l, *as, *co);
+            const FsRun freeF = fsForecast(FsMode::Free,  g.rho, z, *s, *l, *as, *co);
+            for (int q = 0; q < NSURV; ++q) {
+                const char* qn = (q == SJOINT) ? "joint" : (q == SRUBIN ? "rubin" : "roman");
+                const double relA = (prod.tetE[q] > 0.0) ? prod.tetE[q] / kTetE : -1.0;
+                std::cout << "  " << std::left << std::setw(7) << g.rho << std::setw(7) << z << std::setw(7) << qn << std::right
+                          << std::setprecision(4) << std::fixed << std::setw(9) << prod.peak
+                          << std::setw(10) << std::setprecision(1) << prod.dchi[q] << std::setw(5) << prod.meas[q]
+                          << std::setw(10) << sci(prod.slrData[q]) << std::setw(10) << sci(prod.slrPost[q])
+                          << std::setw(10) << sci(freeF.slrPost[q]) << std::setw(9) << sci(relA) << std::setw(9) << sci(prod.relPh[q])
+                          << std::setw(9) << sci(prod.relC[q]);
+                if (prod.meas[q]) std::cout << std::setw(6) << std::setprecision(2) << std::fixed << prod.corr[q];
+                else              std::cout << std::setw(6) << "-";
+                std::cout << " |";
+                for (int a = 0; a < 3; ++a)
+                    std::cout << std::setw(9) << ratio(fixed.sig[q][a], point.sig[q][a]) << std::setw(9)
+                              << ratio(prod.sig[q][a], point.sig[q][a]) << std::setw(10) << ratio(freeF.sig[q][a], point.sig[q][a]);
+                std::cout << std::defaultfloat << std::setprecision(6) << "\n";
+
+                // ---- assertions ----
+                const std::string tag = "[finite/" + std::to_string(g.rho) + "," + std::to_string(z) + "," + qn + "] ";
+                if (fixed.fit[q] or fixed.slrPost[q] != -1.0 or fixed.meas[q]) {
+                    std::cerr << "FAIL " << tag << "rho fixed but ln rho is reported\n";
+                    ++failures;
+                }
+                if (!prod.additive or !freeF.additive) ++failures;                                            // (5)
+                if (prod.fit[q]) {
+                    if (!(prod.slrPost[q] > 0.0 and prod.slrPost[q] <= RHO_PRIOR_SIGLN * (1.0 + 1e-12))) {    // (3)
+                        std::cerr << "FAIL " << tag << "posterior sigma(ln rho) " << prod.slrPost[q] << " above the prior\n";
+                        ++failures;
+                    }
+                    if (freeF.fit[q] and freeF.slrPost[q] > 0.0 and freeF.slrPost[q] < 10.0) {                 // (2)
+                        if (!(std::fabs(prod.slrData[q] / freeF.slrPost[q] - 1.0) <= 1e-6)) {
+                            std::cerr << "FAIL " << tag << "data-only sigma(ln rho) " << prod.slrData[q] << " vs prior-free " << freeF.slrPost[q] << "\n";
+                            ++failures;
+                        }
+                    }
+                    if (z >= 30.0)                                                                             // (1)
+                        for (int a = 0; a < 3; ++a)
+                            if (fixed.sig[q][a] > 0.0 and !(std::fabs(prod.sig[q][a] / fixed.sig[q][a] - 1.0) <= 0.01)) {
+                                std::cerr << "FAIL " << tag << "u0 >= 30 rho: production sigma " << a << " " << prod.sig[q][a]
+                                          << " vs rho fixed " << fixed.sig[q][a] << "\n";
+                                ++failures;
+                            }
+                    // Fitting a parameter, even with a prior, cannot tighten the others.
+                    for (int a = 0; a < 3; ++a)
+                        if (fixed.sig[q][a] > 0.0 and prod.sig[q][a] < fixed.sig[q][a] * (1.0 - 1e-9)) {
+                            std::cerr << "FAIL " << tag << "sigma(" << kPhotNames[a == 0 ? 0 : (a == 1 ? 1 : 3)]
+                                      << ") fell when ln rho was fitted: " << fixed.sig[q][a] << " -> " << prod.sig[q][a] << "\n";
+                            ++failures;
+                        }
+                }
+                if (prod.meas[q]) {
+                    if (!(prod.slrData[q] > 0.0 and prod.slrData[q] <= SIGLNRHO_MAX) or !(prod.relPh[q] >= THETASTAR_SIGLN) or
+                        !(std::fabs(prod.corr[q]) <= 1.0)) {
+                        std::cerr << "FAIL " << tag << "sigma_data " << prod.slrData[q] << ", rel_ph " << prod.relPh[q]
+                                  << ", corr " << prod.corr[q] << "\n";
+                        ++failures;
+                    }
+                    const double ra = relA, rp = prod.relPh[q], rc = prod.relC[q];
+                    if (!(rc <= rp * (1.0 + 1e-12)) or (ra > 0.0 and !(rc <= ra * (1.0 + 1e-12)))) {
+                        std::cerr << "FAIL " << tag << "combined thetaE error " << rc << " is worse than a route (" << ra << ", " << rp << ")\n";
+                        ++failures;
+                    }
+                } else {
+                    if (prod.relPh[q] != -1.0 or (relA > 0.0 and std::fabs(prod.relC[q] / relA - 1.0) > 1e-12)) {
+                        std::cerr << "FAIL " << tag << "rho not measured but a photometric thetaE is used: rel_ph " << prod.relPh[q]
+                                  << ", rel_c " << prod.relC[q] << ", rel_a " << relA << "\n";
+                        ++failures;
+                    }
+                }
+            }
+            // (4) the joint data-only sigma(ln rho) is no worse than a single survey's.
+            for (int q = 1; q < NSURV; ++q)
+                if (prod.slrData[SJOINT] > 0.0 and prod.slrData[q] > 0.0 and prod.slrData[SJOINT] > prod.slrData[q] * (1.0 + 1e-9)) {
+                    std::cerr << "FAIL [finite/" << g.rho << "," << z << "] data-only sigma(ln rho) joint " << prod.slrData[SJOINT]
+                              << " > single survey " << prod.slrData[q] << "\n";
+                    ++failures;
+                }
+        }
+    }
+    if (rhoFallbackCount() != fallbacks0) {
+        std::cerr << "FAIL [finite] " << rhoFallbackCount() - fallbacks0 << " partition(s) fell back to rho fixed\n";
+        ++failures;
+    }
+    failures += runRhoDerivative();
+    vbmSetSourceModel(keep);
+    std::cout << (failures ? "# FAIL -- finite-source assertions failed\n" : "# PASS -- all finite-source assertions held\n");
+    return failures ? 1 : 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The lens's motion on the sky and its error (--lens-motion; ErrorCal, lensMotion in events/vbm_model.h). The
+// fixture's lens is not self-consistent as it stands (its piE, tE and xi are set by hand, not drawn from a Dl and
+// the proper motions), so here each event gets the lens its parameters imply: pi_rel = piE thetaE fixes Dl
+// (1 / Dl = pi_rel + 1 / Ds), and mul is built from the geocentric motion tE and xi describe and the Earth's
+// velocity at t0 -- by this test's own inverse of geocentricMotion, which the production function then has to
+// undo: geocentricMotion(Dl, mus, mul) returns the event's tE and xi, and lensMotion returns mul and v_L. Neither
+// touches the light curve, which depends on tE, xi, piE, thetaE and mus only.
+// Per event and partition: the true |mu_L| [mas/day] and |v_L| [km/s], the errors relMuL = sigma(|mu_L|) / |mu_L|
+// and sigVL = sqrt(lambda_max) of the 2x2 covariance of v_L [km/s] (the error along the worst-measured direction)
+// by linear propagation, and a Monte Carlo of the same: kLmDraws parameter vectors
+// from the covariance of the six parameters, pushed through the closed-form function; "mc/lin" is the sample's
+// standard deviation of |mu_L| over the linear one, and sqrt of the largest eigenvalue of the SAMPLE covariance of
+// the v_L draws over sigVL. The linear propagation is exact to first order, so
+// expect ratios of 1 within a few percent where the relative errors are below ~0.1, and departures (the function
+// is nonlinear: |.|, 1/pi_rel, the angle) above it. Then, the joint relMuL next to the previous formula's
+// resu[13] (old) and the old formula with the sign of the tE-xi cross term of the mu_1 term corrected (old+),
+// which show what the sign and the thetaE-mus correlations change.
+// Asserted: the identity above (to 1e-9); relMuL and sigVL are the -1 sentinel exactly where a partition lacks a
+// matrix or relMl; Sigma(thetaE) / thetaE^2 is relTetEc^2; on BOTH piE routes the variance of ln thetaE - ln piE is
+// relMl^2 and, for the joint partition, that of ln thetaE + ln piE times (1 - D_L/D_S)^2 is rel_Dl^2 (resu[10]), to
+// 1e-9 (relMass, lnCovTetPi: c = cov(ln thetaE, ln piE) of the combined thetaE with the route's piE). The same two
+// are also sampled in the Monte Carlo (the columns "ln M", "ln pi_rel", mc/lin at the full and the scaled errors; the
+// scaled ones asserted within 3%); the route and the correlation c / (rt rpi) are printed per row, and at least one
+// row must take the astrometric route with |c / (rt rpi)| above 0.05, so the astrometric term is exercised.
+// ---------------------------------------------------------------------------------------------
+constexpr int kLmDraws = 200000;
+
+int runLensMotion()
+{
+    auto s  = std::make_unique<source>();
+    auto l  = std::make_unique<lens>();
+    auto as = std::make_unique<astromet>();
+    auto co = std::make_unique<covarian>();
+    int failures = 0, nAstCorr = 0;
+    std::mt19937_64 rng(20261012ULL);
+    std::normal_distribution<double> gauss(0.0, 1.0);
+
+    std::vector<std::pair<FixtureEvent, double>> events;   // the event, and its source radius
+    for (const auto& ev : kEvents) events.push_back({ev, kRho});
+    if (vbmSourceModel() == SourceModel::ESPL)
+        for (const auto& fe : kFiniteEvents) events.push_back({fe.ev, fe.rho});
+
+    std::cout << "# Lens motion: |mu_L| [mas/day], |v_L| [km/s] (heliocentric), relMuL = sigma(|mu_L|)/|mu_L|, sigVL = sqrt(lambda_max of cov(v_L)) [km/s], frame-independent.\n"
+              << "# mc/lin: sample sd of " << kLmDraws << " draws from the parameter covariance over the linear propagation, for |mu_L| then, for v_L, sqrt(largest eigenvalue of the sample covariance) over sigVL\n"
+              << "# ln M, ln pi_rel: the sample sd of ln thetaE -/+ ln piE (over the draws with thetaE, piE > 0) over the linear one, at the full and at the scaled errors; c/rt.rpi: the correlation of ln thetaE and ln piE used.\n"
+              << "# (rel_v = sigVL/|v_L|, heliocentric); the last two at the covariance scaled in sigma by 'scale' to bring relMuL, rel_v (sigVL/|v_L|) and every parameter's error (xi in rad; mus against |mu_L|) to at most 2%.\n"
+              << "# 'old', 'old+': the previous joint resu[13] and the same with the mu_1 tE-xi cross term's sign corrected. '-' = not measured.\n";
+    for (const auto& [ev, rho] : events) {
+        setupStatic(*s, *l);
+        s->rho = rho;
+        l->tE = ev.tE;  l->t0 = ev.t0;  l->u0 = ev.u0;  l->piE = ev.piE;
+        int nL = 0, nR = 0;
+        const int ndw = buildLightCurve(*s, *l, *as, nL, nR);
+        l->tE = ev.tE;  l->t0 = ev.t0;  l->u0 = ev.u0;  l->piE = ev.piE;
+        s->xi = kXi;  s->fb[0] = kFbRubin;  s->fb[1] = kFbRoman;
+
+        // The self-consistent lens.
+        const SkyFrame& F = vbmSkyFrame();
+        l->pirel = l->piE * l->tetE;
+        l->Dl = 1.0 / (l->pirel + 1.0 / s->Ds);
+        double vE[2];
+        earthVelocityNE(l->t0, vE);
+        const double gl = -l->tetE / l->tE * std::cos(s->xi), gb = -l->tetE / l->tE * std::sin(s->xi);
+        const double hN = F.toNE[0][0] * gl + F.toNE[0][1] * gb + vE[0] * l->pirel;
+        const double hE = F.toNE[1][0] * gl + F.toNE[1][1] * gb + vE[1] * l->pirel;
+        l->mul1 = s->mus1 + F.toNE[0][0] * hN + F.toNE[1][0] * hE;
+        l->mul2 = s->mus2 + F.toNE[0][1] * hN + F.toNE[1][1] * hE;
+        l->mul  = std::hypot(l->mul1, l->mul2);
+        {
+            const GeocentricMotion g = geocentricMotion(l->t0, l->tetE, l->pirel, s->mus1, s->mus2, l->mul1, l->mul2);
+            if (std::fabs(g.tE / l->tE - 1.0) > 1e-9 or std::fabs(g.xi - s->xi) > 1e-9) {
+                std::cerr << "FAIL [lens-motion/" << ev.name << "] the constructed lens does not give tE, xi back: tE "
+                          << g.tE << " vs " << l->tE << ", xi " << g.xi << " vs " << s->xi << "\n";
+                ++failures;
+            }
+        }
+
+        FisherM(*s, *l, *as, *co, ndw);
+        ErrorCal(*co, *l, *s);
+
+        const MotionContext mc = motionContext(l->t0, 1.0 / s->Ds);
+        const double p0[NLM] = {l->tE, s->xi, l->piE, l->tetE, s->mus1, s->mus2};
+        const LensMotion m0 = lensMotion(mc, p0[0], p0[1], p0[2], p0[3], p0[4], p0[5]);
+        const double mu0 = std::hypot(m0.mu[0], m0.mu[1]), v0 = std::hypot(m0.v[0], m0.v[1]);
+        const double vconv = l->Dl * AU / (1000.0 * 24.0 * 3600.0);
+        if (!(co->lmCheck < 1e-9) or std::fabs(v0 / (l->mul * vconv) - 1.0) > 1e-9 or std::fabs(m0.DL / l->Dl - 1.0) > 1e-9) {
+            std::cerr << "FAIL [lens-motion/" << ev.name << "] closed form does not reproduce the draw: lmCheck "
+                      << co->lmCheck << ", |v_L| " << v0 << " vs " << l->mul * vconv << ", D_L " << m0.DL << " vs " << l->Dl << "\n";
+            ++failures;
+        }
+
+        std::cout << "\n# " << ev.name << "  tE=" << std::fixed << std::setprecision(1) << ev.tE << "  rho=" << std::scientific
+                  << std::setprecision(2) << rho << "  |mu_L|=" << std::setprecision(5) << mu0 << " mas/day  |v_L|="
+                  << std::fixed << std::setprecision(2) << v0 << " km/s  Dl=" << l->Dl << " kpc  lmCheck=" << std::scientific
+                  << std::setprecision(1) << co->lmCheck << "\n";
+        std::cout << std::left << std::setw(10) << "# survey" << std::right << std::setw(4) << "ok"
+                  << std::setw(11) << "relMuL" << std::setw(11) << "mc/lin" << std::setw(11) << "sigVL" << std::setw(11) << "mc/lin"
+                  << std::setw(10) << "rel_v" << std::setw(8) << "scale" << std::setw(9) << "mc/lin" << std::setw(9) << "mc/lin"
+                  << std::setw(8) << "ln rho" << std::setw(8) << "piE" << std::setw(13) << "dlnMl-relMl"
+                  << std::setw(9) << "c/rt.rpi" << std::setw(9) << "lnM" << std::setw(9) << "lnPirel" << std::setw(9) << "lnM" << std::setw(9) << "lnPirel" << "\n";
+        static const char* kName[NSURV] = {"joint", "rubin", "roman"};
+        for (int q = 0; q < NSURV; ++q) {
+            double S[NLM][NLM];
+            const bool have = lensMotionCovariance(*co, *l, q, S);
+            const bool want = co->okA[q] and co->okB[q] and co->relMl[q] >= 0.0;
+            if (have != want or (have != (co->relMuL[q] >= 0.0)) or (have != (co->sigVL[q] >= 0.0)) or
+                (!have and (co->relMuL[q] != -1.0 or co->sigVL[q] != -1.0))) {
+                std::cerr << "FAIL [lens-motion/" << ev.name << "] partition " << q << " sentinel: relMuL " << co->relMuL[q]
+                          << ", sigVL " << co->sigVL[q] << ", relMl " << co->relMl[q] << "\n";
+                ++failures;
+            }
+            if (!have) {
+                std::cout << std::left << std::setw(10) << kName[q] << std::right << std::setw(4) << 0 << "         -          -          -          -\n";
+                continue;
+            }
+            // Linear propagation, independently: relMuL / sigVL from ErrorCal against the same from S here.
+            double Smu[2][2], Sv[2][2];
+            lensMotionPropagate(mc, p0, S, Smu, Sv);
+            const double ux = m0.mu[0] / mu0, uy = m0.mu[1] / mu0;
+            const double linMu = std::sqrt(ux * ux * Smu[0][0] + 2 * ux * uy * Smu[0][1] + uy * uy * Smu[1][1]);
+            const double linV  = std::sqrt(0.5 * (Sv[0][0] + Sv[1][1]) + std::sqrt(0.25 * (Sv[0][0] - Sv[1][1]) * (Sv[0][0] - Sv[1][1]) + Sv[0][1] * Sv[0][1]));
+
+            // thetaE and ln Ml against relTetEc and relMl.
+            const double tt = l->tetE, pp = l->piE;
+            const double rp1 = (co->Era[q][3] >= 0.0) ? co->Era[q][3] / (std::fabs(l->piE) + eps) : -1.0;
+            const double rp2 = (co->Erb[q][3] >= 0.0) ? co->Erb[q][3] / (std::fabs(l->piE) + eps) : -1.0;
+            const bool photPi = (rp1 >= 0.0 and (rp2 < 0.0 or rp1 < rp2));
+            const double vTet = S[LM_TETE][LM_TETE] / (tt * tt);
+            const double vLnMl = vTet + S[LM_PIE][LM_PIE] / (pp * pp) - 2.0 * S[LM_TETE][LM_PIE] / (tt * pp);
+            if (std::fabs(vTet / (co->relTetEc[q] * co->relTetEc[q]) - 1.0) > 1e-9) {
+                std::cerr << "FAIL [lens-motion/" << ev.name << "] partition " << q << ": Sigma(thetaE)/thetaE^2 = " << vTet
+                          << " vs relTetEc^2 = " << co->relTetEc[q] * co->relTetEc[q] << "\n";
+                ++failures;
+            }
+            const double vLnPi = vTet + S[LM_PIE][LM_PIE] / (pp * pp) + 2.0 * S[LM_TETE][LM_PIE] / (tt * pp);
+            const double cRho = S[LM_TETE][LM_PIE] / (tt * pp) / std::sqrt(vTet * S[LM_PIE][LM_PIE] / (pp * pp));   // c / (rt rpi)
+            if (!photPi and std::fabs(cRho) > 0.05) ++nAstCorr;
+            const double dMl = vLnMl / (co->relMl[q] * co->relMl[q]) - 1.0;
+            if (q == SJOINT) {
+                const double rd = (1.0 - l->Dl / s->Ds) * (1.0 - l->Dl / s->Ds) * vLnPi / (co->resu[10] * co->resu[10]) - 1.0;
+                if (!(std::fabs(rd) <= 1e-9)) {
+                    std::cerr << "FAIL [lens-motion/" << ev.name << "] joint: (1 - Dl/Ds)^2 var(ln thetaE + ln piE) = "
+                              << (1.0 - l->Dl / s->Ds) * (1.0 - l->Dl / s->Ds) * vLnPi << " vs rel_Dl^2 = " << co->resu[10] * co->resu[10] << "\n";
+                    ++failures;
+                }
+            }
+            if (!(std::fabs(dMl) <= 1e-9)) {
+                std::cerr << "FAIL [lens-motion/" << ev.name << "] partition " << q << ": var(ln thetaE - ln piE) = " << vLnMl
+                          << " vs relMl^2 = " << co->relMl[q] * co->relMl[q] << "\n";
+                ++failures;
+            }
+            if (std::fabs(linMu / mu0 / co->relMuL[q] - 1.0) > 1e-9 or std::fabs(linV / co->sigVL[q] - 1.0) > 1e-9) {
+                std::cerr << "FAIL [lens-motion/" << ev.name << "] partition " << q << ": ErrorCal's relMuL, sigVL differ from the propagation here\n";
+                ++failures;
+            }
+
+            // Monte Carlo from the covariance f^2 S: the correlation matrix's eigenvectors, scaled by the sigmas.
+            // Returns the sample standard deviations of |mu_L| and |v_L| over the linear ones of the same covariance.
+            double sg[NLM];
+            for (int i = 0; i < NLM; ++i) sg[i] = std::sqrt(S[i][i]);
+            gsl_matrix* C = gsl_matrix_alloc(NLM, NLM);
+            for (int i = 0; i < NLM; ++i)
+                for (int j = 0; j < NLM; ++j) gsl_matrix_set(C, i, j, S[i][j] / (sg[i] * sg[j]));
+            gsl_vector* ev_ = gsl_vector_alloc(NLM);
+            gsl_matrix* V = gsl_matrix_alloc(NLM, NLM);
+            gsl_eigen_symmv_workspace* w = gsl_eigen_symmv_alloc(NLM);
+            gsl_eigen_symmv(C, ev_, V, w);
+            double A[NLM][NLM];                                  // dp = f A z, A = sg * V sqrt(lambda)
+            for (int i = 0; i < NLM; ++i)
+                for (int k = 0; k < NLM; ++k) A[i][k] = sg[i] * gsl_matrix_get(V, i, k) * std::sqrt(std::max(gsl_vector_get(ev_, k), 0.0));
+            gsl_eigen_symmv_free(w);  gsl_vector_free(ev_);  gsl_matrix_free(V);  gsl_matrix_free(C);
+            auto monteCarlo = [&](double f, double& rMu, double& rV, double& rM, double& rP) {
+                double n = 0, mM = 0, sM = 0, mV[2] = {0, 0}, cV[2][2] = {{0, 0}, {0, 0}};    // Welford
+                double nl = 0, mLm = 0, sLm = 0, mLp = 0, sLp = 0;        // ln thetaE -/+ ln piE, over the draws where both are > 0
+                for (int d = 0; d < kLmDraws; ++d) {
+                    double z[NLM], p[NLM];
+                    for (int k = 0; k < NLM; ++k) z[k] = gauss(rng);
+                    for (int i = 0; i < NLM; ++i) {
+                        p[i] = p0[i];
+                        for (int k = 0; k < NLM; ++k) p[i] += f * A[i][k] * z[k];
+                    }
+                    const LensMotion m = lensMotion(mc, p[0], p[1], p[2], p[3], p[4], p[5]);
+                    if (p[LM_TETE] > 0.0 and p[LM_PIE] > 0.0) {
+                        const double lm = std::log(p[LM_TETE]) - std::log(p[LM_PIE]), lp = std::log(p[LM_TETE]) + std::log(p[LM_PIE]);
+                        nl += 1.0;
+                        const double dm = lm - mLm, dp = lp - mLp;
+                        mLm += dm / nl;  sLm += dm * (lm - mLm);
+                        mLp += dp / nl;  sLp += dp * (lp - mLp);
+                    }
+                    const double a = std::hypot(m.mu[0], m.mu[1]);
+                    n += 1.0;
+                    const double dM = a - mM;
+                    mM += dM / n;  sM += dM * (a - mM);
+                    const double d0 = m.v[0] - mV[0], d1 = m.v[1] - mV[1];
+                    mV[0] += d0 / n;  mV[1] += d1 / n;
+                    cV[0][0] += d0 * (m.v[0] - mV[0]);  cV[1][1] += d1 * (m.v[1] - mV[1]);  cV[0][1] += d0 * (m.v[1] - mV[1]);
+                }
+                rMu = std::sqrt(sM / (n - 1.0)) / (f * linMu);
+                const double va = cV[0][0] / (n - 1.0), vd = cV[1][1] / (n - 1.0), vb = cV[0][1] / (n - 1.0);
+                rV  = std::sqrt(0.5 * (va + vd) + std::hypot(0.5 * (va - vd), vb)) / (f * linV);
+                rM  = std::sqrt(sLm / (nl - 1.0)) / (f * std::sqrt(vLnMl));
+                rP  = std::sqrt(sLp / (nl - 1.0)) / (f * std::sqrt(vLnPi));
+            };
+            double rMu1, rV1, rMu2, rV2, rM1, rP1, rM2, rP2;
+            monteCarlo(1.0, rMu1, rV1, rM1, rP1);
+            // The same at a covariance scaled down until every error is at most 2%, if they are not already:
+            // the regime where the linear propagation has to hold, whatever the fixture's errors are.
+            // The condition is on the size of every parameter's error, not only on the two along the vectors: an error
+            // across them (xi, or the proper motions against |mu_L|) is nonlinear in its own right.
+            double worst = std::max(co->relMuL[q], co->sigVL[q] / v0);
+            for (int i = 0; i < NLM; ++i) {
+                const double ref = (i == LM_XI) ? 1.0 : (i == LM_MUS1 or i == LM_MUS2) ? mu0 : std::fabs(p0[i]);
+                worst = std::max(worst, sg[i] / ref);
+            }
+            const double fSmall = std::min(1.0, 0.02 / worst);
+            monteCarlo(fSmall, rMu2, rV2, rM2, rP2);
+            if (std::fabs(rMu2 - 1.0) > 0.03 or std::fabs(rV2 - 1.0) > 0.03 or std::fabs(rM2 - 1.0) > 0.03 or std::fabs(rP2 - 1.0) > 0.03) {
+                std::cerr << "FAIL [lens-motion/" << ev.name << "] partition " << q << ": at errors scaled by " << fSmall
+                          << " the Monte Carlo/linear ratios are " << rMu2 << " (|mu_L|), " << rV2 << " (|v_L|), " << rM2
+                          << " (ln M), " << rP2 << " (ln pi_rel)\n";
+                ++failures;
+            }
+
+            std::cout << std::left << std::setw(10) << kName[q] << std::right << std::setw(4) << 1 << std::scientific << std::setprecision(3)
+                      << std::setw(11) << co->relMuL[q] << std::fixed << std::setprecision(3) << std::setw(11) << rMu1
+                      << std::scientific << std::setprecision(3) << std::setw(11) << co->sigVL[q]
+                      << std::fixed << std::setprecision(3) << std::setw(11) << rV1
+                      << std::setprecision(3) << std::setw(10) << co->sigVL[q] / v0
+                      << std::setprecision(4) << std::setw(8) << fSmall << std::setprecision(3) << std::setw(9) << rMu2 << std::setw(9) << rV2
+                      << std::setw(8) << (co->rhoMeas[q] ? "yes" : "no") << std::setw(8) << (photPi ? "phot" : "ast")
+                      << std::scientific << std::setprecision(2) << std::setw(13) << dMl << std::fixed << std::setprecision(3)
+                      << std::setw(9) << cRho << std::setw(9) << rM1 << std::setw(9) << rP1 << std::setw(9) << rM2 << std::setw(9) << rP2 << "\n";
+        }
+
+        // The previous joint formula, recomputed: its f1, f2 and sigmul from the joint matrices.
+        {
+            const auto& Era = co->Era[SJOINT];
+            const auto& Erb = co->Erb[SJOINT];
+            const double rtE = Era[1] / (std::fabs(l->tE) + eps), rTet = Erb[0] / (std::fabs(l->tetE) + eps);
+            const double corr1 = gsl_matrix_get(co->inverA[SJOINT].get(), 1, 4) / std::fabs(Era[1] * Era[4]);
+            const double tn = std::tan(s->xi), muGeo = l->tetE / l->tE;
+            auto oldRel = [&](double sign1) {
+                const double f1 = rTet * rTet + rtE * rtE + (Era[4] * tn) * (Era[4] * tn) + sign1 * 2.0 * rtE * Era[4] * tn * corr1;
+                const double f2 = rTet * rTet + rtE * rtE + (Era[4] / tn) * (Era[4] / tn) - 2.0 * rtE * Era[4] / tn * corr1;
+                const double s1 = std::sqrt(Erb[1] * Erb[1] + muGeo * muGeo * std::cos(s->xi) * std::cos(s->xi) * std::fabs(f1));
+                const double s2 = std::sqrt(Erb[2] * Erb[2] + muGeo * muGeo * std::sin(s->xi) * std::sin(s->xi) * std::fabs(f2));
+                return std::sqrt(s1 * s1 + s2 * s2) / (std::fabs(l->mul) + eps);
+            };
+            if (co->okA[SJOINT] and co->okB[SJOINT])
+                std::cout << "#   joint relMuL: new " << std::scientific << std::setprecision(3) << co->relMuL[SJOINT]
+                          << "   old " << oldRel(-1.0) << "   old+ " << oldRel(+1.0) << "   (resu[13] = " << co->resu[13] << ")\n";
+            if (co->resu[13] != co->relMuL[SJOINT]) {
+                std::cerr << "FAIL [lens-motion/" << ev.name << "] resu[13] is not the joint relMuL\n";
+                ++failures;
+            }
+        }
+    }
+    std::cout << "\n# rows on the astrometric piE route with |c / (rt rpi)| > 0.05: " << nAstCorr << "\n";
+    if (nAstCorr == 0) {
+        std::cerr << "FAIL [lens-motion] no fixture row takes the astrometric route with a non-negligible c: the astrometric term is untested\n";
+        ++failures;
+    }
+    std::cout << "\n#\n" << (failures ? "# FAIL -- lens-motion assertions failed\n" : "# PASS -- all lens-motion assertions held\n");
+    return failures ? 1 : 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The blend-fraction errors (--blend; the event table's sigfb0_J sigfb0_L sigfb1_J sigfb1_R columns are
+// co.Era[q][2] and co.Era[q][7]). Per fixture event and partition: sigma(fb0) (Rubin's f_S) and sigma(fb1) (Roman's),
+// asserted > 0 where the partition is characterised and the parameter is in activePhotParams, and the -1 sentinel
+// otherwise; and the joint error no larger than either single survey's (sigma_J <= sigma_L for fb0, <= sigma_R for fb1,
+// relative slack 1e-6). Then the accuracy at small f_S, where the new selection sends many more very blended Rubin
+// events to the Fisher matrix: copies of one Rubin-covered event with Rubin's f_S set to 1e-2 ... 1e-5, the
+// finite-difference steps scaled by 0.1, 1 and 10 (as --scale does); sigma(tE) and sigma(fb0) of the joint and of the
+// Rubin matrix must agree across the scales within 1% (the Rubin matrix only for f_S >= 1e-4). The table is printed; the exit status is non-zero on a failure.
+int runBlend()
+{
+    auto s  = std::make_unique<source>();
+    auto l  = std::make_unique<lens>();
+    auto as = std::make_unique<astromet>();
+    auto co = std::make_unique<covarian>();
+    int failures = 0;
+
+    // One forecast at the event ev with Rubin's f_S = fRubin and every step scaled by stepScale.
+    const auto forecast = [&](const FixtureEvent& ev, double fRubin, double stepScale) {
+        for (int q = 0; q < Nx; ++q) co->deltaScale[q] = stepScale;
+        setupStatic(*s, *l);
+        s->fb[0] = fRubin;
+        l->tE = ev.tE; l->t0 = ev.t0; l->u0 = ev.u0; l->piE = ev.piE;
+        int nL = 0, nR = 0;
+        const int ndw = buildLightCurve(*s, *l, *as, nL, nR);
+        l->tE = ev.tE; l->t0 = ev.t0; l->u0 = ev.u0; l->piE = ev.piE;
+        s->xi = kXi; s->fb[0] = fRubin; s->fb[1] = kFbRoman;
+        FisherM(*s, *l, *as, *co, ndw);
+        ErrorCal(*co, *l, *s);
+    };
+
+    static const char* kPart[] = {"joint", "rubin", "roman"};
+    std::cout << "# sigma(fb0), sigma(fb1) per fixture event and partition (-1 = not characterised)\n"
+              << std::left << std::setw(16) << "# event" << std::setw(8) << "survey" << std::right << std::setw(4) << "ok"
+              << std::setw(14) << "sigma(fb0)" << std::setw(14) << "sigma(fb1)" << "\n";
+    std::cout << std::scientific << std::setprecision(5);
+    for (const auto& ev : kEvents) {
+        forecast(ev, kFbRubin, 1.0);
+        for (int q = 0; q < NSURV; ++q) {
+            std::cout << std::left << std::setw(16) << ev.name << std::setw(8) << kPart[q] << std::right << std::setw(4)
+                      << int(co->okA[q]) << std::setw(14) << co->Era[q][2] << std::setw(14) << co->Era[q][7] << "\n";
+            const auto act = activePhotParams(*co, q);
+            for (const int k : {2, 7}) {
+                const bool want = co->okA[q] && std::find(act.begin(), act.end(), k) != act.end();
+                const double v = co->Era[q][k];
+                if (want ? !(v > 0.0) : v != -1.0) {
+                    std::cerr << "FAIL [" << ev.name << "] partition " << kPart[q] << ": sigma(" << kPhotNames[k] << ")=" << v
+                              << (want ? " where it is characterised (want > 0)\n" : " where it is not (want the -1 sentinel)\n");
+                    ++failures;
+                }
+            }
+        }
+        const double slack = 1e-6;
+        if (co->okA[SJOINT] && co->okA[SRUBIN] && co->Era[SJOINT][2] > 0.0 && co->Era[SRUBIN][2] > 0.0
+            && co->Era[SJOINT][2] > co->Era[SRUBIN][2] * (1.0 + slack)) {
+            std::cerr << "FAIL [" << ev.name << "] sigma(fb0) joint " << co->Era[SJOINT][2] << " > Rubin " << co->Era[SRUBIN][2] << "\n";
+            ++failures;
+        }
+        if (co->okA[SJOINT] && co->okA[SROMAN] && co->Era[SJOINT][7] > 0.0 && co->Era[SROMAN][7] > 0.0
+            && co->Era[SJOINT][7] > co->Era[SROMAN][7] * (1.0 + slack)) {
+            std::cerr << "FAIL [" << ev.name << "] sigma(fb1) joint " << co->Era[SJOINT][7] << " > Roman " << co->Era[SROMAN][7] << "\n";
+            ++failures;
+        }
+    }
+
+    // Small f_S in Rubin.
+    const FixtureEvent& ev = kEvents[2];   // mid_inseason: Rubin and Roman both cover it
+    static const double kFs[]     = {1e-2, 1e-3, 1e-4, 1e-5};
+    static const double kScales[] = {0.1, 1.0, 10.0};
+    std::cout << "\n# Rubin f_S small, event " << ev.name << ": sigma(tE) [d] and sigma(fb0) at step scales 0.1 / 1 / 10; spread = (max-min)/min\n"
+              << std::left << std::setw(10) << "# f_S" << std::setw(8) << "survey";
+    for (const char* p : {"tE", "fb0"}) {
+        for (double sc : kScales) { std::ostringstream h; h << p << "@" << sc; std::cout << std::right << std::setw(13) << h.str(); }
+        std::cout << std::setw(11) << (std::string(p) + " spread");
+    }
+    std::cout << "\n";
+    for (const double f : kFs) {
+        double v[2][2][3];   // [partition: joint, rubin][param: tE, fb0][scale]
+        int okq[2][3];
+        for (int is = 0; is < 3; ++is) {
+            forecast(ev, f, kScales[is]);
+            for (int ip = 0; ip < 2; ++ip) {
+                const int q = ip == 0 ? SJOINT : SRUBIN;
+                okq[ip][is] = co->okA[q];
+                v[ip][0][is] = co->Era[q][1];
+                v[ip][1][is] = co->Era[q][2];
+            }
+        }
+        for (int ip = 0; ip < 2; ++ip) {
+            const bool nearSingular = (ip == 1 && f < 5e-5);
+            std::cout << std::left << std::scientific << std::setprecision(0) << std::setw(10) << f
+                      << std::setw(8) << (ip == 0 ? "joint" : "rubin") << std::setprecision(5);
+            for (int ik = 0; ik < 2; ++ik) {
+                double lo = v[ip][ik][0], hi = v[ip][ik][0];
+                for (int is = 0; is < 3; ++is) {
+                    std::cout << std::right << std::setw(13) << v[ip][ik][is];
+                    lo = std::min(lo, v[ip][ik][is]); hi = std::max(hi, v[ip][ik][is]);
+                }
+                const bool good = okq[ip][0] && okq[ip][1] && okq[ip][2] && lo > 0.0;
+                const double spread = good ? (hi - lo) / lo : -1.0;
+                std::cout << std::setw(11) << std::setprecision(3) << spread << std::setprecision(5);
+                // Rubin alone at f_S = 1e-5 is near-singular (sigma(tE) ~ 1/f_S: no information on tE from Rubin alone), so its
+                // step spread is not held to 1%; it is asserted to be far from characterised instead (sigma(tE) / tE > 100).
+                if (nearSingular) {
+                    if (ik == 0 && !(good && lo / ev.tE > 100.0)) {
+                        std::cerr << "FAIL [f_S=" << f << "] rubin sigma(tE)/tE not > 100 at every step scale\n";
+                        ++failures;
+                    }
+                } else if (!good || spread > 0.01) {
+                    std::cerr << "FAIL [f_S=" << f << "] " << (ip == 0 ? "joint" : "rubin") << " sigma(" << (ik ? "fb0" : "tE")
+                              << ") " << (good ? "differs across the step scales by " : "not characterised at every scale; spread ") << spread << "\n";
+                    ++failures;
+                }
+            }
+            std::cout << "\n";
+        }
+    }
+
+    std::cout << "\n#\n" << (failures ? "# FAIL -- blend assertions failed\n" : "# PASS -- all blend assertions held\n");
+    return failures ? 1 : 0;
+}
+
 int main(int argc, char** argv)
 {
+    // --source-model pspl|espl in any mode, taken out of the argument list before the modes read it.
+    SourceModel model = SourceModel::PSPL;
+    {
+        int kept = 1;
+        for (int a = 1; a < argc; ++a) {
+            if (std::string(argv[a]) != "--source-model") { argv[kept++] = argv[a]; continue; }
+            const std::string v = (a + 1 < argc) ? argv[++a] : "";
+            if      (v == "pspl") model = SourceModel::PSPL;
+            else if (v == "espl") model = SourceModel::ESPL;
+            else {
+                std::cerr << "fixture error: --source-model needs pspl or espl, got '" << v << "'\n";
+                return 2;
+            }
+        }
+        argc = kept;
+    }
+    vbmSetSourceModel(model);
+    vbmSetSightline(kLon, kLat);
+    if (argc > 1 && std::string(argv[1]) == "--finite-source") return runFiniteSource();
+    if (argc > 1 && std::string(argv[1]) == "--lens-motion") return runLensMotion();
+    if (argc > 1 && std::string(argv[1]) == "--blend") return runBlend();
     if (argc > 1 && std::string(argv[1]) == "--astro-variants") return runAstroVariants();
     if (argc > 1 && std::string(argv[1]) == "--sweep-astro") return runSweepAstro();
     if (argc > 1 && std::string(argv[1]) == "--sweep") return runSweep();
@@ -930,8 +1818,10 @@ int main(int argc, char** argv)
     if (!checkSeasonClustering())   ++failures;
     if (!checkFewEpochTelescope())  ++failures;
 
+    if (model == SourceModel::ESPL)
+        std::cout << "# SOURCE MODEL espl: a uniform disc of radius rho = " << kRho << " Einstein radii\n";
     std::cout << "# Fisher-matrix fixture -- synthetic events, no data files required\n"
-              << "# Nx=" << Nx << " (photometric)  Ny=" << Ny << " (astrometric)\n"
+              << "# Nx=" << nPhotShown() << " (photometric)  Ny=" << Ny << " (astrometric)\n"
               << "# One block per event, one row per survey partition.\n"
               << "# ok=1 usable inverse, ok=0 not characterizable (sigmas print as -1).\n"
               << "# Asserted: F[joint] == F[rubin] + F[roman] exactly, sigma_joint <= both, and\n"
@@ -947,8 +1837,7 @@ int main(int argc, char** argv)
         int nL = 0, nR = 0;
         const int ndw = buildLightCurve(*s, *l, *as, nL, nR);
 
-        // buildLightCurve left lightcurve() evaluated at the final epoch; restore the true
-        // parameter point, since FisherM perturbs from whatever the structs hold.
+        // Restore the true parameter point, since FisherM perturbs from whatever the structs hold.
         l->tE  = ev.tE;
         l->t0  = ev.t0;
         l->u0  = ev.u0;
@@ -975,7 +1864,7 @@ int main(int argc, char** argv)
                   << "  (rubin=" << nL << ", roman=" << nR << ")\n";
         std::cout << std::left << std::setw(10) << "# survey"
                   << std::right << std::setw(7) << "nep" << std::setw(5) << "ok" << std::setw(11) << "cond";
-        for (int k = 0; k < Nx; ++k) std::cout << std::setw(12) << kPhotNames[k];
+        for (int k = 0; k < nPhotShown(); ++k) std::cout << std::setw(12) << kPhotNames[k];
         std::cout << std::setw(12) << kAstNames[0] << "\n";
 
         printRow("joint", co->nepochA[SJOINT], co->okA[SJOINT], co->condA[SJOINT], co->Era[SJOINT], co->Erb[SJOINT]);
@@ -1021,7 +1910,7 @@ int main(int argc, char** argv)
             // A rejected partition must not carry a condition number (a stale value from the
             // previous event would look real); inactive parameters must not carry a sigma.
             if (co->okA[q]) {
-                const auto act = activePhotParams(q, co->nepochA[SRUBIN], co->nepochA[SROMAN]);
+                const auto act = activePhotParams(*co, q);
                 for (int k = 0; k < Nx; ++k) {
                     const bool isActive = std::find(act.begin(), act.end(), k) != act.end();
                     if (!isActive && co->Era[q][k] >= 0.0) {
@@ -1035,6 +1924,32 @@ int main(int argc, char** argv)
             if (!co->okA[q] && co->condA[q] != -1.0) {
                 std::cerr << "FAIL [" << ev.name << "] rejected photometric partition " << q
                           << " carries a stale condition number " << co->condA[q] << "\n";
+                ++failures;
+            }
+        }
+
+        // The finite source's results: a point source fits no ln rho and computes no dchiFS; a disc fits it in every
+        // characterised partition, with a posterior sigma no larger than the prior's; the data-only sigma obeys the
+        // Schur identity; rho is measured where that is at most sigLnRhoMax, and only there is there a photometric
+        // thetaE or a correlation to read.
+        for (int q = 0; q < NSURV; ++q) {
+            const bool point = (model == SourceModel::PSPL);
+            const bool fit = co->rhoFit[q] != 0, meas = co->rhoMeas[q] != 0;
+            bool bad = false;
+            if (point and (co->dchiFS[q] != -1.0 or fit or meas or co->sigLnRhoData[q] != -1.0)) bad = true;
+            if (not point and co->okA[q] and not fit and not co->rhoFallback[q]) bad = true;
+            if (fit) {
+                const double sp = co->Era[q][9], sd = co->sigLnRhoData[q];
+                if (not (co->okA[q] and sp > 0.0 and sp <= co->rhoPriorSigLn * (1.0 + 1e-12))) bad = true;
+                if (sd > 0.0 and std::fabs(1.0 / (sd * sd) + 1.0 / (co->rhoPriorSigLn * co->rhoPriorSigLn) - 1.0 / (sp * sp)) > 1e-6 / (sp * sp)) bad = true;
+                if (meas != (sd > 0.0 and sd <= co->sigLnRhoMax)) bad = true;
+            } else if (co->Era[q][9] != -1.0 or co->sigLnRhoData[q] != -1.0 or meas) bad = true;
+            if (not meas and (co->relTetEph[q] != -1.0 or not std::isnan(co->corrRhoPiE[q]))) bad = true;
+            if (meas and not (co->relTetEph[q] >= THETASTAR_SIGLN)) bad = true;
+            if (bad) {
+                std::cerr << "FAIL [" << ev.name << "] partition " << q << " finite-source results inconsistent: dchiFS "
+                          << co->dchiFS[q] << ", ln rho " << (fit ? "fitted" : "not fitted") << ", measured " << meas
+                          << ", sigma(ln rho) posterior " << co->Era[q][9] << " data " << co->sigLnRhoData[q] << "\n";
                 ++failures;
             }
         }

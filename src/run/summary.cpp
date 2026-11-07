@@ -51,6 +51,9 @@ void writeRunSummary(const RunConfig& cfg, const RunTotals& totals, const lens& 
         for (int c = 1; c < DET_ANOMALY; ++c) det += NDetClassTot[c];
         NDetClassTot[DET_NONE] = nSimTot - det;
     }
+    if (cfg.sourceModel == SourceModel::ESPL)
+        cout << "ln rho fallbacks: " << rhoFallbackCount() << " partition(s) whose matrix did not invert with ln rho (forecast with rho fixed), "
+             << rhoFallbackLostCount() << " of them lost altogether" << endl;
     cout << "simulated events: " << nSimTot << endl;
     for (int c = 0; c < NDETCLASS; ++c) {
         const long n = NDetClassTot[c];

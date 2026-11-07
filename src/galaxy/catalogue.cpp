@@ -1,6 +1,15 @@
 // Reading the CMD component files and the lens mass-luminosity table.
 #include "galaxy/catalogue.h"
 
+// Stellar radius [Rsun] from the bolometric magnitude and log10 Teff: L/Lsun = 10^(-0.4 (Mbol - MbolSun))
+// and L = 4 pi R^2 sigma Teff^4 give R/Rsun = 10^(-0.2 (Mbol - MbolSun)) (TeffSun / Teff)^2. The same
+// zero points built the star lists, so this agrees with their own logg (g ~ M / R^2).
+static double stellarRadius(double Mbol, double logT)
+{
+    const double tRatio = TeffSun / std::pow(10.0, logT);
+    return std::pow(10.0, -0.2 * (Mbol - MbolSun)) * tRatio * tRatio;
+}
+
 void read_cmd(CMD & cm)
 {
 // mass  logT  Mbol  Age  Pop  Roman_F146  LSST_u  LSST_g  LSST_r  LSST_i  LSST_z  LSST_y  CL  Type
@@ -33,6 +42,7 @@ void read_cmd(CMD & cm)
                     >> cm.typ_thin[j])) {
               throw std::runtime_error("Unexpected end of thin_disk.dat");
           }
+        cm.Rstar_thin[j] = stellarRadius(Mbol, cm.logT_thin[j]);
         // M_r <= 30: the thin disc's luminous brown-dwarf-limit stars reach M_r = 28.86;
         // Typ <= 9.2: white dwarfs are Typ 9.0-9.2 and sit in the list as dark entries.
         CHECK(cm.mass_thin[j]   >= 0.0);
@@ -41,6 +51,7 @@ void read_cmd(CMD & cm)
         CHECK(cm.age_thin[j]    <= 10);
         CHECK(cm.cl_thin[j]     <= 7);
         CHECK(cm.typ_thin[j]    <= 9.2);
+        CHECK(std::isfinite(cm.Rstar_thin[j]) and cm.Rstar_thin[j] > 0.0);
       }
 
     // Make sure there's no extra data.
@@ -71,6 +82,7 @@ void read_cmd(CMD & cm)
                     >> cm.typ_bulge[j])) {
               throw std::runtime_error("Unexpected end of bulge.dat");
           }
+        cm.Rstar_bulge[j] = stellarRadius(Mbol, cm.logT_bulge[j]);
         // CHECKs follow the read (see the thin disk); same bounds.
         CHECK(cm.mass_bulge[j]   >= 0.0);
         CHECK(cm.logT_bulge[j]   >= 0.0);
@@ -78,6 +90,7 @@ void read_cmd(CMD & cm)
         CHECK(cm.age_bulge[j]    <= 10);
         CHECK(cm.cl_bulge[j]     <= 7);
         CHECK(cm.typ_bulge[j]    <= 9.2);
+        CHECK(std::isfinite(cm.Rstar_bulge[j]) and cm.Rstar_bulge[j] > 0.0);
     }
 
     CHECK(!(fp2 >> dummy));
@@ -107,6 +120,7 @@ void read_cmd(CMD & cm)
                     >> cm.typ_thick[j])) {
               throw std::runtime_error("Unexpected end of thick_disk.dat");
           }
+        cm.Rstar_thick[j] = stellarRadius(Mbol, cm.logT_thick[j]);
         // CHECKs follow the read (see the thin disk); same bounds.
         CHECK(cm.mass_thick[j]   >= 0.0);
         CHECK(cm.logT_thick[j]   >= 0.0);
@@ -114,6 +128,7 @@ void read_cmd(CMD & cm)
         CHECK(cm.age_thick[j]    <= 13);
         CHECK(cm.cl_thick[j]     <= 7);
         CHECK(cm.typ_thick[j]    <= 9.2);
+        CHECK(std::isfinite(cm.Rstar_thick[j]) and cm.Rstar_thick[j] > 0.0);
     }
 
     CHECK(!(fp2 >> dummy));
@@ -143,6 +158,7 @@ void read_cmd(CMD & cm)
                     >> cm.typ_halo[j])) {
               throw std::runtime_error("Unexpected end of halo.dat");
           }
+        cm.Rstar_halo[j] = stellarRadius(Mbol, cm.logT_halo[j]);
         // CHECKs follow the read (see the thin disk); same bounds.
         CHECK(cm.mass_halo[j]   >= 0.0);
         CHECK(cm.logT_halo[j]   >= 0.0);
@@ -150,6 +166,7 @@ void read_cmd(CMD & cm)
         CHECK(cm.age_halo[j]    <= 14);
         CHECK(cm.cl_halo[j]     <= 7);
         CHECK(cm.typ_halo[j]    <= 9.2);
+        CHECK(std::isfinite(cm.Rstar_halo[j]) and cm.Rstar_halo[j] > 0.0);
     }
 
     CHECK(!(fp2 >> dummy));

@@ -261,6 +261,7 @@ def main():
                     help="run log(s), for sightlines whose map rows a killed run lost")
     ap.add_argument("--unweighted", action="store_true",
                     help="deliberately report the raw sample, with no event-rate weight")
+    R.add_convention_option(ap)
     args = ap.parse_args()
 
     # Filter inside the chunked reader: joint-detected events are ~1% of the table and loading
@@ -283,7 +284,7 @@ def main():
                       "so read the joint/Rubin pair and ignore the Roman curve")
     surveys = ("joint", "roman", "rubin")
     # Weight after the scope cut: every fraction is over the sample the scope selected.
-    w, wlabel = R.attach_weight(df, args.map, args.log, args.unweighted)
+    w, wlabel = R.attach_weight(df, args.map, args.log, args.unweighted, convention=args.convention)
     w = w.to_numpy()
     print(f"  scope={args.scope}: {len(df)} events; weighting: {wlabel}")
 

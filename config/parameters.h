@@ -16,7 +16,7 @@
 
 #include "physical_constants.h"
 #include "parameter_types.h"
-#include "data_products.h"   // LSST_AST_TABLE_FLOOR (generated from files/sigmaA_LSST.txt)
+#include "data_products.h"   // row counts and catalogue means (generated from the data files)
 
 // ==========================================================================================
 // (1) RUN DEFAULTS
@@ -99,9 +99,9 @@ constexpr double HALO_NORM = 5281.0;                          //total mass 1.2e9
 constexpr double BAR_ANGLE_DEG = 12.89;                       //bar angle [deg]
 constexpr double BAR_MASS_RESCALE = 0.24529; // calibrated so bulge column density toward
                                              // Baade's Window (l=1, b=-3.9) matches the
-                                             // Han & Gould (2003) HST benchmark: 2086 Msun/pc^2
+                                             // Han & Gould (2003) HST benchmark: 2086 Msun/pc^2.
+                                             // The bar's only normalisation: S+E total 9.3e9 Msun.
 constexpr double BAR_CUTOFF_K = 4.0;                          //Gaussian cut-off exp(-K (r2-Rc)^2) beyond Rc
-constexpr double BAR_NORM = 0.45;                             //total mass 1.7e10 Msun
 constexpr double BAR_S_RX0 = 1.46;
 constexpr double BAR_S_RY0 = 0.49;
 constexpr double BAR_S_RZ0 = 0.39;
@@ -142,7 +142,18 @@ constexpr double ROT_B = 0.00712;
 // NOT freely editable: indices 0-5 = LSST ugrizy and 6 = Roman F146 are hard-coded throughout the
 // code, and every per-filter array below must have exactly M entries.
 constexpr int    M = 6 + 1;    //No. of filters: LSST ugrizy + Roman's F146
-constexpr double delta2 = 0.005;//systematic error: 5 mmag bright-end repeatability (Ivezic et al. 2019, requirement 3)
+// Rubin's bright-end photometric floor [mag]: sigma_sys of the LSST error model (Ivezic et al. 2019
+// eq. 4), sigma^2 = sigma_sys^2 + sigma_rand^2. It is the PSF-modelling and calibration error that
+// remains when photon noise is negligible, per visit and white between visits (errlsstM adds it in
+// quadrature to sigma_rand). 4 mmag, one value for all six bands.
+// Sources: Ivezic et al. 2019 sec. 3.2.1 (the calibration is designed to keep sigma_sys < 5 mmag);
+// SRD LPM-17 table 14, PA1 (design 5, minimum 8, stretch 3 mmag in gri; u, z, y may be 50% larger);
+// Rubin Data Preview 1 (arXiv:2603.23786, sec. 5.5), whose bright isolated stars repeat to 4.8, 2.7,
+// 1.7, 1.0, 2.0, 1.1 mmag in ugrizy (3-8 mmag delivered, without chromatic correction); report
+// comment C4 (4 mmag). A single number is a compromise: the SRD lets u, z, y be 50% larger and
+// DP1's u is 4.8 mmag, so u sits at the edge, while DP1's g to y repeat better than 4 mmag.
+// At saturation sigma_rand is 0.6-0.8 mmag, so the bright end sits on the floor (4.06 mmag in r).
+constexpr double LSST_PHOT_FLOOR = 0.004;
 
 // gamma of the LSST photometric error model, sigma_rand^2 = (0.04 - gamma) x + gamma x^2 (Ivezic
 // et al. 2019 eq. 5, Table 2). Rubin only (index 6, F146, is unused).
@@ -205,25 +216,41 @@ inline const std::vector<int> RUBIN_REF_BANDS = {2};
 // ==========================================================================================
 
 constexpr double Tobs = 10.0 * year;//LSST observational time: 10 years
+// The simulation clock. Day 0 is the first Rubin bulge visit of the OpSim baseline, MJD 61141.312002288
+// (2026-04-11); every time in the visit lists and every event time t0 is in days from it. It must equal
+// TIME0_MJD in Baseline/readbaselineBulge.py, which subtracts it from the visit times.
+constexpr double SIM_DAY0_MJD = 61141.312002288;
+// VBMicrolensing counts time as JD - 2450000, and JD = MJD + 2400000.5, so its time is MJD - 49999.5.
+// A simulation day t is t + SIM_DAY0_JD2450000 on its clock (11141.812002288 for day 0).
+constexpr double SIM_DAY0_JD2450000 = SIM_DAY0_MJD - 49999.5;
 // ---------------------------------------------------------------------------------------
-// Rubin/LSST per-visit astrometric error. files/sigmaA_LSST.txt is a mission-averaged curve; FisherM
-// divides l.erra[] by the per-epoch error and sums over ~2,300 epochs, so feeding the table in directly
-// would apply the sqrt(N) averaging twice. The table is therefore renormalised by
-// LSST_AST_FLOOR / LSST_AST_TABLE_FLOOR, which puts its bright end on the published per-visit figure
-// and keeps its magnitude dependence. Cross-check: the table's bright floor is 0.3739576 mas and
-// 10 mas / 0.3739576 = 26.74 ~ sqrt(715), a plausible 10-year all-band visit count; scaled by it, the
-// faint end reads 132 mas at r = 24.44, against a seeing-limited FWHM/SNR ~ 140 mas.
+// Rubin/LSST per-visit astrometric error, per coordinate (errlsstA), in milliarcseconds:
+//     sigma = sqrt( (LSST_AST_KAPPA * FWHM_visit / SNR_visit)^2 + LSST_AST_FLOOR^2 )
+// The first term is the statistical limit of a PSF fit, sigma = kappa FWHM / SNR [5]. FWHM_visit is the
+// visit's geometric PSF FWHM (OpSim seeingFwhmGeom = LSST_FWHM_GEOM_SLOPE * seeingFwhmEff +
+// LSST_FWHM_GEOM_OFFSET [6], from the visit list's seeing column); SNR_visit = 1.0857 / sigma_rand, where
+// sigma_rand is the photon-noise part of the same visit's photometric error (errlsstM, with the visit's
+// own band and depth; the LSST_PHOT_FLOOR calibration term excluded). kappa depends on the PSF shape and on
+// whether the source or the sky dominates the noise: 0.425 / 0.60 for a Gaussian, 0.51 / 0.63 for a
+// long-exposure Kolmogorov seeing profile (source / background limited; [5]'s eqs. 11 and 14 evaluated
+// on his eq. 43 profile). Bulge sources are background limited wherever this term is not buried under
+// the floor, so 0.63.
+// The floor is the per-visit systematic: atmospheric image motion that no analysis of the image can
+// remove [5 sec. 6.4], white between visits. 10 mas is the conservative choice [3]; [4] suggests 3-7.
 //
 // Sources:
 //   [3] Ivezic et al. 2019, ApJ 873, 111 (arXiv:0805.2366): requirements derived from "an assumed
 //       astrometric accuracy of 10 mas per observation per coordinate".
 //   [4] SITCOMTN-159 (Rubin commissioning, Operations Rehearsal 3): single-visit positions carry a
 //       3-7 mas systematic, added in quadrature to the pipeline uncertainty.
-// 10 mas is the conservative choice; [4] suggests the delivered floor may be nearer 3-7 mas.
+//   [5] Lindegren 1978, IAU Coll. 48, p. 197 (Zenodo 10493823): eqs. 6-14, Table 1; Fritz et al. 2010,
+//       MNRAS 401, 1177, eq. 2.
+//   [6] the OpSim relation, also used for FWHM[] in section 3.
 // ---------------------------------------------------------------------------------------
-constexpr double LSST_AST_FLOOR       = 10.0;      //mas per visit per coordinate [3]
-// LSST_AST_TABLE_FLOOR (the table's bright-star floor) lives in the generated config/data_products.h.
-constexpr double LSST_AST_RENORM      = LSST_AST_FLOOR / LSST_AST_TABLE_FLOOR; //26.74
+constexpr double LSST_AST_FLOOR        = 10.0;   //mas per visit per coordinate [3]
+constexpr double LSST_AST_KAPPA        = 0.63;   //sigma * SNR / FWHM, Kolmogorov PSF, background limited [5]
+constexpr double LSST_FWHM_GEOM_SLOPE  = 0.822;  //seeingFwhmGeom = SLOPE * seeingFwhmEff + OFFSET [arcsec] [6]
+constexpr double LSST_FWHM_GEOM_OFFSET = 0.052;
 constexpr double FoV = double(3.5 / 2.0);  //radius of the Rubin field of view [deg]
 // The scan region. A sky point is scanned if a Rubin pointing that ALSO images a Roman field could
 // image it: such a pointing is centred within FoV + rField of a Roman field centre and images points
@@ -254,8 +281,9 @@ inline const char* const GBTDS_SCA_FILES[GBTDS_NLAYOUT] = {
 constexpr double SEASON_GAP_MIN_DAYS = 20.0;
 // Sun-Earth L2, where Roman flies, as a fraction of an AU.
 //
-// L2 is on the Sun-Earth line, ~1.5e6 km beyond the Earth, so to leading order Roman's heliocentric
-// position is Earth's scaled by (1 + L2_OFFSET_AU). This gives the joint fit a spatial baseline: the
+// L2 is on the Sun-Earth line, ~1.5e6 km beyond the Earth, so Roman sits L2_OFFSET_AU from the Earth in
+// the anti-Sun direction (the light-curve model reads that as a daily table, files/ephemeris/satellite1.txt,
+// written by tools/make_roman_l2_ephemeris.py from L2_KM). This gives the joint fit a spatial baseline: the
 // difference in impact parameter the two observatories see is
 //     delta_u ~ L2_OFFSET_AU * piE  ~  1e-3  for a typical bulge event,
 // concentrated in high-magnification, short-tE events. Roman's halo orbit about L2 (amplitude
@@ -269,37 +297,34 @@ constexpr double L2_OFFSET_AU = L2_KM / AU_KM;   // ~0.01003
 // floor is re-added; errRomanM then interpolates log(err) linearly in magnitude.
 constexpr double ROMAN_PHOT_FLOOR = 0.001;   //mag, Penny et al. 2019 Table 2 "Error floor 1.0 mmag"
 // ---------------------------------------------------------------------------------------
-// Roman WFI per-exposure astrometric precision, F146 (a.k.a. W149), in milliarcseconds (errRomanA).
+// Roman WFI per-exposure astrometric precision, F146, per coordinate (errRomanA), in milliarcseconds:
+//     sigma = sqrt( (ROMAN_AST_K / SNR)^2 + ROMAN_AST_FLOOR^2 )
+// SNR = 1.0857 / sigma_rand, sigma_rand the photon-noise part of the same exposure's photometric error
+// (errRomanM, the 1 mmag floor removed in quadrature). The relation sigma = k / SNR is the statistical
+// limit of a PSF fit [5] (eqs. 7-8 of [7]); k = 0.792 pixel was measured by [7] on the stpsf F146 PSF
+// sampled on 0.11" pixels (FWHM 1.044 pixel; kappa = k / FWHM = 0.758, larger than a Gaussian's 0.425
+// because the PSF is undersampled; their zero sub-pixel-offset value, the pessimistic one). With our
+// SNR this reproduces [7]'s tabulated 66-s GBTDS curve (medium background) to 2-3% over F146 AB 19-26,
+// so Roman's photometric and astrometric errors now share one SNR. Neither includes crowding or
+// geometric distortion [2][7].
+// The floor: "single-exposure precision for well-exposed point sources is 0.01 pixel, or about 1.1 mas"
+// [1]; adopted by [2] and [7] (added in quadrature by [7]). A systematic, so it does not improve for
+// brighter stars.
 //
 // Sources:
-//   [1] Sanderson et al. 2019, arXiv:1712.05420 sec 1.1: "single-exposure precision for well-exposed
-//       point sources is 0.01 pixel, or about 1.1 mas", improving ~10x when ~100 exposures are stacked.
-//   [2] "Black hole astrometric binaries in the Roman Galactic Bulge Time Domain Survey",
-//       arXiv:2608.24998, Fig. 5: 1% centroiding => "a floor of 1.1 mas for Roman" for sources
-//       F146_Vega < 20.62; background dominated near F146_Vega < 23.5, sigma_ast ~ 10 mas; pixels
-//       "0.11 arcsec"; each GBTDS exposure "66 seconds" at a "12.1 minute" cadence. Their curve derives
-//       from Pandeia and the Roman astrometry tool of Bellini et al. 2024.
+//   [1] Sanderson et al. 2019, arXiv:1712.05420 sec 1.1, improving ~10x when ~100 exposures are stacked.
+//   [2] Lam et al. 2026, arXiv:2608.24998, sec. 4.2.2 and Fig. 5 (same tool as [7], at the 90th-percentile
+//       background); pixels "0.11 arcsec"; each GBTDS exposure "66 seconds" at a "12.1 minute" cadence.
+//   [7] McKinnon & van der Marel 2026, arXiv:2602.00310, Table 1 (F146: k = 0.792 px) and the tool's
+//       data/roman_IM_66_6_gbtds_mid_5stripe_medium_F146_pos_errs.csv (Zenodo 10.5281/zenodo.18407082).
 //
-// PER EXPOSURE: the 0.1 mas figure in both sources is the daily-binned precision (~100 exposures
-// stacked). l.erra[] is a per-epoch error and one row of RomanBaseline.dat is one 12.1-minute
-// exposure, so 1.1 mas is the right floor here; using 0.1 would overstate Roman's astrometry tenfold.
+// PER EXPOSURE: the 0.1 mas figure in [1] is the daily-binned precision (~100 exposures stacked).
+// l.erra[] is a per-epoch error and one row of RomanBaseline.dat is one 12.1-minute exposure, so the
+// per-exposure numbers are the right ones here.
 // ---------------------------------------------------------------------------------------
-// MAGNITUDE SYSTEM. [2]'s anchors (20.62, 23.5) are F146 Vega magnitudes; the simulator's magnitudes
-// are AB (the MIST bolometric-correction tables in CMD/ are "Roman (AB)"). errRomanA converts first:
-// m_Vega = m_AB - F146_AB_MINUS_VEGA. The offset is synphot's AB magnitude of Vega (CALSPEC
-// alpha_lyr_stis_011) through STScI's F146 effective area (Roman_effarea_v8_SCA01_20240301): 1.0324 mag
-// (EXOZIPPy #313 gets 1.037; it lies between STScI-000825's 2MASS J 0.913 and H 1.391, as F146 spans both).
-constexpr double F146_AB_MINUS_VEGA = 1.0324;
-constexpr double ROMAN_PIX_MAS   = 110.0;  //0.11 arcsec pixels [2]
+constexpr double ROMAN_PIX_MAS   = 110.0;                 //0.11 arcsec pixels [2]
 constexpr double ROMAN_AST_FLOOR = 0.01 * ROMAN_PIX_MAS;  //1.1 mas: 1% centroiding [1][2]
-constexpr double ROMAN_AST_MFLR  = 20.62;  //mag below which the floor dominates [2]
-constexpr double ROMAN_AST_MBKG  = 23.5;   //mag where the background starts to dominate [2]
-constexpr double ROMAN_AST_SBKG  = 10.0;   //mas, sigma_ast at ROMAN_AST_MBKG [2]
-// Slope between the two anchors above, log10(10.0/1.1)/(23.5-20.62) = 0.3329 per mag; not a free
-// choice. Source-dominated photon noise would give 0.2/mag and pure background domination 0.4/mag;
-// the transition is under way across this range. A Pandeia-derived table could replace this
-// interpolation, as errlsstA reads files/sigmaA_LSST.txt.
-constexpr double ROMAN_AST_SLOPE_SRC = 0.33285;
+constexpr double ROMAN_AST_K     = 0.792 * ROMAN_PIX_MAS; //87.12 mas: sigma = k / SNR, F146 [7]
 // ---------------------------------------------------------------------------------------
 // The astrometric noise model, three ways.
 //
@@ -312,24 +337,45 @@ constexpr double ROMAN_AST_SLOPE_SRC = 0.33285;
 // absolute position and sigma(tetE) comes out optimistic. An offset per "frame group" is marginalised
 // in closed form: F_g = sum_blocks F_k - (sum b_k)(sum b_k)^T / sum c_k, per coordinate.
 //
-// WHETHER THE 1.1 mas FLOOR AVERAGES DOWN is unknown: the literature adds it as white noise
-// (justified by the GBTDS's sub-pixel dithers) and quantifies no correlated part. So every event
-// carries three forecasts:
-//   W  white (the literature's assumption): one free offset per telescope; Roman's errors white.
-//   N  nominal: one free offset per Roman ROLL (crowding biases flip with the PSF orientation) and
-//      a per-coordinate error AST_SIGC_N shared by all Roman exposures of the same day (distortion
-//      residuals at "a few x 0.1% of a pixel", Bellini 2024 via Lam et al. 2026).
-//   P  pessimistic: one free offset per Roman SEASON and the WHOLE floor, AST_SIGC_P = 1.1 mas,
-//      shared within each day (it averages only across days).
+// WHETHER ROMAN'S ERRORS AVERAGE DOWN is unknown. The 1.1 mas floor is the exposure-to-exposure
+// scatter of dithered HST data, and the GBTDS dithers by several pixels and sub-pixel steps, so the
+// floor itself is white; no source quantifies an ADDITIONAL error shared by many exposures. An
+// error constant within a frame group costs nothing (its offset is free): what matters is correlation
+// on timescales shorter than an event. Each event carries three forecasts; the per-exposure error
+// (erra, floor included) is the same in all three, and N and P ADD a day-shared term sigma_c to it.
+// The day is the unit: ~120 exposures through one dither sequence under one thermal state.
+//   W  white (the literature's assumption, for comparison with published forecasts): one free
+//      offset per telescope; nothing added.
+//   N  nominal: one free offset per Roman ROLL (the 180-degree roll between spring and autumn flips
+//      the PSF and moves the field to other detectors, so static crowding and PSF biases change) plus
+//      AST_SIGC_N = 0.3 mas per coordinate shared within each day. That is the level at which Roman
+//      meets the OPTIMAL relative-astrometry requirement of the isolated-black-hole community, 0.1 mas
+//      per 10-day average [8]: over 10 days the white floor averages to ~0.03 mas and a day-shared
+//      error to sigma_c / sqrt(10). (A drafted 10 microarcsec over the whole survey [1] corresponds to
+//      ~0.2 mas per day.)
+//   P  pessimistic: the same frames plus AST_SIGC_P = 1.1 mas per day, the level at which Roman meets
+//      only the MINIMAL requirement, 0.3 mas per 10-day average ("what is achievable with HST now") [8].
+// The frames are per roll in both: one per season would throw away the information between seasons
+// (a factor ~4 in sigma(tetE) at 1.1 mas, on a stub) for a drift that is smooth over years and so
+// largely absorbed by the proper motion. --ast-sigc N,P overrides the two sigma_c for a scan.
+//   [8] Lam et al. 2023, Roman CCS white paper "Characterizing the Galactic population of isolated
+//       black holes", arXiv:2306.12514, Table 1 ("Astrometric precision (10 day average)").
 // Rubin's errors are white with one offset in all three. The day blocks enter by Sherman-Morrison:
 // for a block with weights w_i = 1/erra_i^2 and derivatives d_i, F_k = S_wdd - s^2 S_wd S_wd^T /
 // (1 + s^2 S_w), b_k = S_wd / (1 + s^2 S_w), c_k = S_w / (1 + s^2 S_w), s = sigma_c.
 // The main table columns (sigtetE_*, relMl_*, okB_*, condB_*) are W.
 // ---------------------------------------------------------------------------------------
-constexpr double AST_SIGC_N = 0.3;               //mas per coordinate per Roman day
-constexpr double AST_SIGC_P = ROMAN_AST_FLOOR;   //1.1 mas
+constexpr double AST_SIGC_N = 0.3;               //mas per coordinate per Roman day [8]
+constexpr double AST_SIGC_P = ROMAN_AST_FLOOR;   //1.1 mas [8]
 constexpr std::array<double, NAVAR> AST_SIGC = {0.0, AST_SIGC_N, AST_SIGC_P};
-constexpr int    AST_MAX_SEASONS = 16;           //Roman seasons a P-variant offset can be keyed on
+constexpr int    AST_MAX_SEASONS = 16;           //upper bound on a Roman season index (sanity check)
+// THE BLEND OFFSET IS FREE. The unresolved neighbours sit at a light centroid offset from the source
+// (s.blendOff, drawn in func_source), and as the source brightens the measured centroid slides from
+// them toward it: a magnification-locked shift that real fits must model with two extra parameters per
+// telescope (the offset's two coordinates), since the neighbours' positions are not known in advance.
+// true: those parameters are fitted and marginalised in every variant; false: they are treated as known
+// (the forecast then shows only what the blending costs in light, not in position).
+constexpr bool   AST_BLEND_OFFSET_FREE = true;
 
 // ==========================================================================================
 // (6) LENS POPULATIONS AND MASS FUNCTIONS
@@ -448,12 +494,19 @@ constexpr std::array<double, 4> kFDStepScaleB = {1.0, 1.0, 1.0, 1.0e-2};
 // (u0 by 0.15, tE and t0 by 0.25*tE), far up the truncation-error branch; kFDStepScale shrinks them
 // into the convergence plateau (flat to <0.2% over 1e-6..1e-3 of the base steps; 1e-4 sits two
 // decades clear of the round-off wall). Re-run ./fishertest --sweep (tests/c3_step_sweep.py) after
-// changing any of them.
+// changing any of them. FD_STEP_LNRHO is swept by ./fishertest --sweep --source-model espl --params lnrho (on
+// events whose data see the finite source): sigma(ln rho) is flat to 0.05% for steps in ln rho from 2.5e-9 to
+// 2.5e-6 and within 1% from 2.5e-10 to 2.5e-5. Below that round-off takes over (15% at 2.5e-11); above it the step
+// carries epochs across cells of the library's disc table (0.01 in u/rho; rows 0.092 apart in ln rho), whose
+// derivative is piecewise constant, and sigma moves by percent (5% at 2.5e-4). At the production step (2.5e-7)
+// the derivative of the disc magnification agrees with the exact uniform disc's to 1% (the table's resolution),
+// for u/rho = 0.5-6 and rho = 1.5e-3-5e-2.
 constexpr double FD_STEP_U0       = 0.1507586576;      //u0 (absolute)
 constexpr double FD_STEP_TE_FRAC  = 0.254674;          //tE and t0: step = tE * this [days]
 constexpr double FD_STEP_PIE_FRAC = 0.2509463534656;   //piE: step = this * piE
 constexpr double FD_STEP_XI_DEG   = 3.0;               //xi [deg]; converted to radians at the use
 constexpr double FD_STEP_MBS      = 0.05;              //mbs0 / mbs1 [mag]; the model is linear in mbs, so exact
+constexpr double FD_STEP_LNRHO    = 0.0025;            //ln rho (the source radius, see RHO_PRIOR_SIGLN); absolute, in ln rho
 constexpr double kFDStepScale     = 1.0e-4;            //plateau scale applied to every Delta1[] and fb step
 // fb0 / fb1 steps (blend fraction, bounded to [0,1]). The step pair is chosen from the epoch's own
 // telescope's fb so that fb + step never leaves the range: fb < FB_BIN_LO -> {+SMALL, +LARGE};
@@ -466,6 +519,74 @@ constexpr double FB_STEP_LARGE = 0.15;
 // matrices altogether: its flux pair (fb, mbs) cannot be constrained and with one epoch the joint
 // matrix goes singular. The counts passed to activePhotParams are therefore >= kMinTeleEpochs or zero.
 constexpr int kMinTeleEpochs = 3;
+
+// Accuracy of VBMicrolensing's finite-source magnification (its Tol): the ABSOLUTE tolerance on the
+// magnification. For the uniform disc the light curve uses (--source-model espl) it sets where the library
+// leaves its table for the quadrupole expansion in rho (where the correction falls below Tol/10); a limb-darkened
+// disc would integrate annuli of the table to this tolerance. tests/vbm_test.cpp measured a worst relative error
+// of 4.7e-5 for the uniform disc at this setting (against direct integration, over rho = 1e-3..0.1).
+constexpr double VBM_TOL = 1.0e-3;
+
+// ---------------------------------------------------------------------------------------
+// The source radius as a fitted parameter (photometric parameter 9, ln rho; --source-model espl only).
+//
+// With a finite source the light curve depends on rho = theta* / thetaE, so a fit that sees the disc measures
+// rho, and with theta* known from the source's colour and magnitude (THETASTAR_SIGLN) that is a photometric
+// route to the Einstein radius, thetaE = theta* / rho, beside the astrometric one. It matters for the other
+// parameters too: the part of the light curve the disc shapes cannot be credited to u0, tE and piE as well,
+// which a matrix holding rho at its true value does (for an event that crosses the disc, 15-25% in their
+// sigmas).
+//
+// So ln rho is a parameter of EVERY survey partition's photometric matrix that has data (a point source has none).
+// Where the light curve hardly depends on it (the source passes far from the lens, u0 >> rho) a bare linear fit
+// would give it sigma(ln rho) ~ 1e2-1e4 and let that leak into the other sigmas (u0 up to x200, singular matrices),
+// which a real fit never sees: rho is bounded before the fit, theta* from the source's colour (7%) and thetaE from
+// the Galaxy model at the event's tE. That bound is RHO_PRIOR_SIGLN below, a Gaussian prior on ln rho added to the
+// partition's information matrix, once per matrix.
+//
+// Whether rho is MEASURED, so that thetaE = theta* / rho is a route to the lens mass and distance, is decided on
+// what the DATA alone say, SIGLNRHO_MAX below, never on the prior. dchiFS, the chi-squared by which a partition's
+// epochs separate the uniform disc from a point source at the true parameters (sum of ((m_disc - m_point) /
+// sigma_m)^2), is still computed and written as the diagnostic of how strongly the disc is seen; it gates nothing.
+// Under --source-model pspl ln rho is never a parameter and dchiFS is not computed. (The astrometric matrix holds
+// all the photometric parameters fixed, rho with them; see FisherM.)
+
+// One-sigma width of the Gaussian prior on ln rho, added to the information matrix of every partition in which ln
+// rho is a parameter (F[9][9] += 1 / RHO_PRIOR_SIGLN^2; the joint matrix gets one prior, not Rubin's plus Roman's).
+// theta* is known to 7% (THETASTAR_SIGLN) and thetaE of an event of known tE to a factor of ~2 from the Galactic
+// model (the half 16-84% width of ln rho at fixed tE, measured on the simulated events of sightline 795, is 0.7 to
+// 1.0), so ln rho = ln theta* - ln thetaE is known to ~1 before the light curve is looked at. Tested
+// (tests/fisher_fixture.cpp --finite-source): for u0 >= 30 rho every sigma is the point-source one, for u0 <= 2 rho
+// sigma(ln rho) is the data's, and in between the other sigmas are inflated honestly by the unknown rho.
+constexpr double RHO_PRIOR_SIGLN = 1.0;
+
+// The largest DATA-ONLY sigma(ln rho) (the matrix's without the prior) at which a partition has measured the
+// source's size: rho to 30%, a ~3-sigma detection. Only then is the photometric thetaE = theta* / rho used (the
+// combined thetaE, the lens mass, distance and motion take it); a partition that does not measure rho is
+// forecast with thetaE from astrometry alone, its ln rho only marginalised over with the prior. Beyond the bar
+// the finite-source term is degenerate with u0 (for u0 several radii it is ~rho^2/u^2 of the point-source light
+// curve, which a shift of u0 mimics) and the linear approximation in ln rho fails: rho^2 would vary by a factor
+// e^(2 sigma) over the 1-sigma range.
+constexpr double SIGLNRHO_MAX = 0.3;
+
+// The derivative of the disc magnification with respect to ln rho, epoch by epoch, is the finite difference of
+// VBMicrolensing's uniform-disc magnification for u < RHO_DERIV_QUAD_U * rho (the table of the disc, smooth there),
+// and the analytic quadrupole term, dA/d ln rho = 2 * quad(u, rho), beyond. The library switches from its table to
+// "point source + quadrupole" where the quadrupole falls below Tol / 10, and a step in ln rho that straddles that
+// switch turns the small jump between the branches into a derivative ~1e6 times the true one: a fake measurement
+// of rho. Beyond RHO_DERIV_QUAD_U the quadrupole is the disc's derivative to within 1% (tests/fisher_fixture.cpp
+// --finite-source, derivative block, against the exact uniform disc), so the analytic term loses nothing there.
+constexpr double RHO_DERIV_QUAD_U = 10.0;
+
+// One-sigma uncertainty of ln theta*, the angular radius of the source star [], the fraction by which the
+// photometric thetaE = theta* / rho is uncertain on top of sigma(ln rho):
+//     sigma(ln thetaE_phot)^2 = sigma(ln rho)^2 + THETASTAR_SIGLN^2.
+// 7% is what the surface-brightness-colour relations give for a bulge giant or dwarf calibrated on the red
+// clump (Yoo et al. 2004, ApJ 603, 139; Boyajian et al. 2014, MNRAS 447, 846). It assumes theta* is MEASURED
+// from the source's colour, which the model here does not simulate (Roman is F146 only, so no colour is made
+// for the event): every event is credited with the colour it would be observed to have, and the 7% is
+// independent of the lensing fit.
+constexpr double THETASTAR_SIGLN = 0.07;
 
 // ==========================================================================================
 // (8) OUTPUT HISTOGRAM GRIDS
@@ -500,7 +621,6 @@ constexpr double DARK_MAG = 99.0;
 inline constexpr const char* PATH_BULGE_BASELINE = "./Baseline/BulgeBaseline.dat";
 inline constexpr const char* PATH_ROMAN_BASELINE = "./Baseline/RomanBaseline.dat";
 inline constexpr const char* PATH_LSSTCAM_FOV    = "./Baseline/lsstcam_fov/fov_map.txt";
-inline constexpr const char* PATH_SIGMA_A_LSST   = "./files/sigmaA_LSST.txt";
 inline constexpr const char* PATH_SIGMA_ROMAN    = "./files/sigma_roman.txt";
 inline constexpr const char* PATH_EXT_TABLES     = "./files/ext/ext_tables.dat";
 inline constexpr const char* PATH_LENS_ML        = "./CMD/components/lens_ml.dat";
@@ -508,6 +628,17 @@ inline constexpr const char* PATH_CMD_THIN       = "./CMD/components/thin_disk.d
 inline constexpr const char* PATH_CMD_BULGE      = "./CMD/components/bulge.dat";
 inline constexpr const char* PATH_CMD_THICK      = "./CMD/components/thick_disk.dat";
 inline constexpr const char* PATH_CMD_HALO       = "./CMD/components/halo.dat";
+// Vendored VBMicrolensing tables (committed, external/VBMicrolensing/): the tabulated uniform-disc
+// finite-source magnification, and JPL Horizons' geocentric Sun ephemeris (1990-2050, daily) that its
+// annual parallax interpolates.
+inline constexpr const char* PATH_VBM_ESPL_TABLE = "./external/VBMicrolensing/data/ESPL.tbl";
+inline constexpr const char* PATH_VBM_SUN_TABLE  = "./external/VBMicrolensing/data/SunEphemeris.txt";
+// Roman as a VBMicrolensing "satellite": the directory holds satellite1.txt (Roman at Sun-Earth L2, geocentric
+// RA, Dec and distance, daily; written by tools/make_roman_l2_ephemeris.py), and VBMicrolensing wants a
+// target file beside it, a placeholder here because the target is set per sightline in the code. The
+// directory has NO trailing slash, unlike the output directories below: VBMicrolensing appends its own.
+inline constexpr const char* PATH_ROMAN_EPHEM_DIR = "./files/ephemeris";
+inline constexpr const char* PATH_VBM_TARGET_FILE = "./files/ephemeris/target.txt";
 // Output directory (LpLMC / EfLMC / MapLMC / run_provenance) and the Disk_model debug dumps; both end in a slash.
 inline constexpr const char* PATH_OUT_DIR        = "./files/MONTLMC/files/";
 inline constexpr const char* PATH_DENSITY_DIR    = "./files/density/";

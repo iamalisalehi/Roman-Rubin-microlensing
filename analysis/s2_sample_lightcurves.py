@@ -10,7 +10,8 @@ Reads the three files `--dump-samples` writes per event:
 and draws one double-column figure per event: magnification and sky-plane trajectories over the
 decade and at closest approach, then dm per band, the parallax signal, |centroid shift| against
 time, the astrometric ellipse and the sky tracks with proper motion removed, under a parameter
-strip.
+strip. --layout picks the grid: 5x2 (default, the reports) or 3x3 (one row per theme, short
+enough to share a page with its caption).
 
 "Without parallax" removes the microlensing parallax only: the bending of the relative
 lens-source track by the observer's orbit, measured by pi_E. The source's own annual parallax
@@ -50,7 +51,7 @@ sigma of -1.0 is printed as "not measured".
 
 USAGE
     .roman/bin/python analysis/s2_sample_lightcurves.py samples/bh -o OUTDIR \\
-        [--prov RUN_DIR/files/MONTLMC/files/run_provenance.txt] [--only both_003]
+        [--prov RUN_DIR/files/MONTLMC/files/run_provenance.txt] [--only both_003] [--layout 3x3]
 """
 
 import argparse
@@ -271,13 +272,18 @@ def emptiest_corner(ax, xs, ys):
     return min(count, key=count.get)
 
 
-def omitted_note(ax, n, what="points", loc="lower right"):
-    """Say, on the panel, how many points were left out for carrying no information."""
+def omitted_note(ax, n, what="points", loc="lower right", short=False):
+    """Say, on the panel, how many points were left out for carrying no information.
+
+    short: the compact wording, for the narrower panels of the 3x3 layout.
+    """
     if n > 0:
         x, ha = (0.98, "right") if "right" in loc else (0.03, "left")
         y, va = (0.03, "bottom") if "lower" in loc else (0.97, "top")
         what = what if n != 1 else what.rstrip("s")
-        ax.text(x, y, f"{n} {what} with $\\sigma$ > signal/3 not shown",
+        text = (f"{n} not shown: $\\sigma$ > signal/3" if short
+                else f"{n} {what} with $\\sigma$ > signal/3 not shown")
+        ax.text(x, y, text,
                 transform=ax.transAxes, ha=ha, va=va, fontsize=5.5, color=ps.MUTED,
                 zorder=10, bbox=dict(fc=ps.SURFACE, ec="none", alpha=0.85, pad=0.8))
 
@@ -389,7 +395,7 @@ TOBS = P.Tobs          # Rubin's 10-year window; the tracks are dotted outside i
 INFO_FRACTION = 1.0 / 3.0
 
 
-def draw_event(stem, out_dir, prov, noplx="geocentric"):
+def draw_event(stem, out_dir, prov, noplx="geocentric", layout="5x2"):
     p = read_params(stem + "_params.dat")
     ep = read_table(stem + "_epochs.dat", EPOCH_COLS)
     mo = read_table(stem + "_model.dat", MODEL_COLS)
@@ -437,29 +443,56 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     checks.append(f"satellite parallax: max |A_L2 - A_Earth| / A = {dA:.2e}"
                   + ("  -> L2 curve drawn separately" if draw_l2 else ""))
 
-    # Panel letters, row by row. Rows 1-2 extend Figure 2 of Sajadian & Makler (magnification
-    # beside sky-plane trajectories, over the decade and at closest approach); rows 3-5 are
-    # diagnostics.
-    #   (a) A(t), decade        (b) sky trajectories, decade
-    #   (c) A(t), peak          (d) sky trajectories, closest approach
-    #   (e) dm per band, peak   (f) the parallax signal
-    #   (g) |shift| vs time     (h) the astrometric ellipse
-    #   (i) proper motion off   (j) key for the trajectory panels
-    fig = plt.figure(figsize=(ps.WIDTH["double"], 14.2))
-    outer = GridSpec(2, 1, figure=fig, height_ratios=[0.40, 5.6], hspace=0.05,
-                     top=0.995, bottom=0.03)
-    head = GridSpecFromSubplotSpec(2, 1, subplot_spec=outer[0], height_ratios=[3.0, 0.8],
-                                   hspace=0.0)
-    body = GridSpecFromSubplotSpec(5, 2, subplot_spec=outer[1],
-                                   height_ratios=[1.25, 1.25, 1, 1.05, 1.05],
-                                   hspace=0.33, wspace=0.26)
-    strip = fig.add_subplot(head[0])
-    key1 = fig.add_subplot(head[1])
-    ax_a, ax_b = fig.add_subplot(body[0, 0]), fig.add_subplot(body[0, 1])
-    ax_c, ax_d = fig.add_subplot(body[1, 0]), fig.add_subplot(body[1, 1])
-    ax_e, ax_f = fig.add_subplot(body[2, 0]), fig.add_subplot(body[2, 1])
-    ax_g, ax_h = fig.add_subplot(body[3, 0]), fig.add_subplot(body[3, 1])
-    ax_i, key2 = fig.add_subplot(body[4, 0]), fig.add_subplot(body[4, 1])
+    # The nine panels are named by what they hold; their printed letters depend on the layout.
+    #   ax_a A(t), decade          ax_b sky trajectories, decade
+    #   ax_c A(t), peak            ax_d sky trajectories, closest approach
+    #   ax_e dm per band, peak     ax_f the parallax signal
+    #   ax_g |shift| vs time       ax_h the astrometric ellipse
+    #   ax_i proper motion removed
+    # 5x2 (the default; the reports): rows 1-2 extend Figure 2 of Sajadian & Makler (magnification
+    # beside sky-plane trajectories, over the decade and at closest approach), rows 3-5 are
+    # diagnostics, the trajectory key fills the tenth slot; letters (a)-(i) follow ax_a-ax_i.
+    # 3x3 (one page with its caption): one row per theme -- photometry (A decade, A peak, dm),
+    # parallax and astrometry (parallax signal, |shift|, ellipse), the sky (decade, closest
+    # approach, proper motion removed) -- with the trajectory key just above the sky row; letters
+    # run (a)-(i) in reading order.
+    if layout == "3x3":
+        # One grid in inches, spacer rows and columns included, so the gaps hold exactly the
+        # axis labels: rows = strip, key, gap, row 1, gap, row 2, gap, trajectory key, gap, sky.
+        rowh = [0.60, 0.20, 0.12, 1.60, 0.50, 1.60, 0.48, 0.62, 0.06, 1.80]
+        colw = [1.80, 0.62, 1.80, 0.62, 1.80]
+        H = sum(rowh) + 0.50                   # + the bottom row's tick and axis labels
+        fig = plt.figure(figsize=(ps.WIDTH["double"], H))
+        g = GridSpec(len(rowh), len(colw), figure=fig, height_ratios=rowh, width_ratios=colw,
+                     hspace=0.0, wspace=0.0, left=0.075, right=0.99,
+                     top=1.0 - 0.02 / H, bottom=0.48 / H)
+        strip = fig.add_subplot(g[0, :])
+        key1 = fig.add_subplot(g[1, :])
+        ax_a, ax_c, ax_e = (fig.add_subplot(g[3, k]) for k in (0, 2, 4))
+        ax_f, ax_g, ax_h = (fig.add_subplot(g[5, k]) for k in (0, 2, 4))
+        key2 = fig.add_subplot(g[7, :])
+        ax_b, ax_d, ax_i = (fig.add_subplot(g[9, k]) for k in (0, 2, 4))
+        order = "acefghbdi"
+    else:
+        fig = plt.figure(figsize=(ps.WIDTH["double"], 14.2))
+        outer = GridSpec(2, 1, figure=fig, height_ratios=[0.40, 5.6], hspace=0.05,
+                         top=0.995, bottom=0.03)
+        head = GridSpecFromSubplotSpec(2, 1, subplot_spec=outer[0], height_ratios=[3.0, 0.8],
+                                       hspace=0.0)
+        body = GridSpecFromSubplotSpec(5, 2, subplot_spec=outer[1],
+                                       height_ratios=[1.25, 1.25, 1, 1.05, 1.05],
+                                       hspace=0.33, wspace=0.26)
+        strip = fig.add_subplot(head[0])
+        key1 = fig.add_subplot(head[1])
+        ax_a, ax_b = fig.add_subplot(body[0, 0]), fig.add_subplot(body[0, 1])
+        ax_c, ax_d = fig.add_subplot(body[1, 0]), fig.add_subplot(body[1, 1])
+        ax_e, ax_f = fig.add_subplot(body[2, 0]), fig.add_subplot(body[2, 1])
+        ax_g, ax_h = fig.add_subplot(body[3, 0]), fig.add_subplot(body[3, 1])
+        ax_i, key2 = fig.add_subplot(body[4, 0]), fig.add_subplot(body[4, 1])
+        order = "abcdefghi"
+    short = layout == "3x3"
+    # L[name] is the printed letter of panel ax_<name>
+    L = {name: f"({'abcdefghi'[k]})" for k, name in enumerate(order)}
 
     # ---- parameter strip ---------------------------------------------------------------
     strip.axis("off")
@@ -510,14 +543,16 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     h2.insert(6, Line2D([], [], color=TRACK["defl"], lw=0.8, ls=(0, (3, 2)),
                         label="deflection, no microlensing parallax"))
     h2.insert(7, Line2D([], [], color=TRACK["src_d"], lw=0.8, ls=(0, (3, 2)),
-                        label="source deflected, no microlensing parallax (d)"))
+                        label=f"source deflected, no microlensing parallax {L['d']}"))
     h2.append(Line2D([], [], color=ps.SURVEY["roman"], marker="o", ls="", ms=3,
-                     label="Roman positions, binned (d)"))
+                     label=f"Roman positions, binned {L['d']}"))
     h2.append(Line2D([], [], color=TRACK["lens0"], marker="x", ls="", ms=4, mew=1.0,
-                     label="no parallax: loop centres (i)"))
-    key2.legend(handles=h2, ncol=1, loc="center left", frameon=False, fontsize=6.5,
-                handlelength=2.2, handletextpad=0.6, labelcolor=ps.INK,
-                title="trajectory panels (b), (d), (i)", title_fontsize=6.5)
+                     label=f"no parallax: loop centres {L['i']}"))
+    wide = layout == "3x3"                   # the key spans the page above the sky row
+    key2.legend(handles=h2, ncol=3 if wide else 1, loc="center" if wide else "center left",
+                frameon=False, fontsize=6.5, handlelength=2.2, handletextpad=0.6,
+                columnspacing=1.5, labelcolor=ps.INK,
+                title=f"trajectory panels {L['b']}, {L['d']}, {L['i']}", title_fontsize=6.5)
 
     def shade(ax, to_x=lambda t: t):
         for a, b, hi in seasons:
@@ -562,21 +597,22 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
                         ecolor=cols["F146"], elinewidth=0.5, zorder=6)
         top = float(m0["A"][sel].max()) if sel.any() else 1.0 + amp_A
         ax.set_ylim(1.0 - 0.06 * (top - 1.0), top + 0.10 * (top - 1.0))
-        omitted_note(ax, n_out)
+        omitted_note(ax, n_out, short=short)
 
     magnification(ax_a, lambda t: t / YEAR, (t_lo, t_hi))
     shade(ax_a, lambda t: t / YEAR)
     ax_a.set_xlim(t_lo / YEAR, t_hi / YEAR)
-    ax_a.set_xlabel("time since first Rubin bulge visit (yr)")
+    ax_a.set_xlabel("time since first Rubin visit (yr)" if layout == "3x3"
+                    else "time since first Rubin bulge visit (yr)")
     ax_a.set_ylabel("magnification $A$")
-    ps.panel_label(ax_a, "(a)", loc="upper left")
+    ps.panel_label(ax_a, L["a"], loc="upper left")
 
     magnification(ax_c, lambda t: t - tpk, zoom)
     shade(ax_c, lambda t: t - tpk)
     ax_c.set_xlim(zoom[0] - tpk, zoom[1] - tpk)
     ax_c.set_xlabel(r"$t - t_{\rm peak}$ (d)")
     ax_c.set_ylabel("magnification $A$")
-    ps.panel_label(ax_c, "(c)", loc="upper left")
+    ps.panel_label(ax_c, L["c"], loc="upper left")
 
     # ---- (e) dm per band at the peak (chromatic blending) -------------------------------
     n_out = 0
@@ -613,8 +649,8 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     ax_e.set_xlim(zoom[0] - tpk, zoom[1] - tpk)
     ax_e.set_xlabel(r"$t - t_{\rm peak}$ (d)")
     ax_e.set_ylabel(r"$\Delta m = m - m_{\rm base}$ (mag)")
-    ps.panel_label(ax_e, "(e)", loc="upper left")
-    omitted_note(ax_e, n_out)
+    ps.panel_label(ax_e, L["e"], loc="upper left")
+    omitted_note(ax_e, n_out, short=short)
 
     # ---- (f) the parallax signal itself ------------------------------------------------
     # Data minus the no-parallax model, with (model - model_noplx) drawn over it. In the
@@ -655,8 +691,8 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     ax_f.set_xlim(win[0] - tpk, win[1] - tpk)
     ax_f.set_xlabel(r"$t - t_{\rm peak}$ (d)")
     ax_f.set_ylabel(r"$m - m_{\rm no\ parallax}$ (mag)")
-    ps.panel_label(ax_f, "(f)", loc="upper left")
-    omitted_note(ax_f, n_out)
+    ps.panel_label(ax_f, L["f"], loc="upper left")
+    omitted_note(ax_f, n_out, short=short)
 
     # ---- astrometric binning, chosen per event -----------------------------------------
     selm = (m1["t"] >= win[0]) & (m1["t"] <= win[1])
@@ -707,9 +743,9 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     ax_g.set_xlim(win[0] - tpk, win[1] - tpk)
     ax_g.set_xlabel(r"$t - t_{\rm peak}$ (d)")
     ax_g.set_ylabel(r"$|\delta\theta_c|$ (mas)")
-    ps.panel_label(ax_g, "(g)", loc="upper left")
+    ps.panel_label(ax_g, L["g"], loc="upper left")
     ps.legend(ax_g, loc="upper right", fontsize=6)
-    omitted_note(ax_g, n_out, "bins")
+    omitted_note(ax_g, n_out, "bins", short=short)
 
     # ---- (h) the astrometric ellipse ---------------------------------------------------
     ax_h.plot(m1["def1c"][selm], m1["def2c"][selm], color=ps.SURVEY["roman"], lw=1.0,
@@ -737,9 +773,9 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     ax_h.set_aspect("equal", adjustable="box")
     ax_h.set_xlabel(r"$\delta\theta_{c,1}$ (mas)")
     ax_h.set_ylabel(r"$\delta\theta_{c,2}$ (mas)")
-    ps.panel_label(ax_h, "(h)", loc="upper left")
+    ps.panel_label(ax_h, L["h"], loc="upper left")
     ps.legend(ax_h, loc="upper right", fontsize=6)
-    omitted_note(ax_h, n_out, "bins")
+    omitted_note(ax_h, n_out, "bins", short=short)
 
     # ---- (b) the sky-plane trajectories: Figure 2's right-hand panel -------------------
     # Absolute positions over the whole model span, Earth frame. The lens without parallax is its
@@ -787,7 +823,7 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     ax_b.set_aspect("equal", adjustable="box")
     ax_b.set_xlabel("$x$ (mas)")
     ax_b.set_ylabel("$y$ (mas)")
-    ps.panel_label(ax_b, "(b)", loc="upper left")
+    ps.panel_label(ax_b, L["b"], loc="upper left")
 
     # panel (d): closest approach, the deflection loop and Roman's binned positions. The zoom is
     # set by the angular scale of the lensing, not a time window: half-width
@@ -814,11 +850,11 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     ins.set_aspect("equal", adjustable="box")
     ins.set_xlabel("$x$ (mas)")
     ins.set_ylabel("$y$ (mas)")
-    ps.panel_label(ins, "(d)", loc="upper left")
+    ps.panel_label(ins, L["d"], loc="upper left")
     ins.text(0.98, 0.97, "closest approach", transform=ins.transAxes,
              ha="right", va="top", fontsize=6, color=ps.MUTED)
     # Binned positions outside the box are off-panel, not omitted
-    omitted_note(ins, n_out, "Roman bins")
+    omitted_note(ins, n_out, "Roman bins", short=short)
     # the zoomed region, marked on the decade panel
     ax_b.add_patch(plt.Rectangle((ixc - ih, iyc - ih), 2 * ih, 2 * ih, fill=False,
                                  ec=ps.MUTED, lw=0.6, zorder=7))
@@ -844,7 +880,7 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     ally = np.r_[ly, uy, cyd]
     x0, x1 = float(allx.min()), float(allx.max())
     y0, y1 = float(ally.min()), float(ally.max())
-    y0 -= 0.55 * (y1 - y0)                     # room for the legend below the loops
+    y0 -= (0.95 if short else 0.55) * (y1 - y0)   # room for the legend below the loops
     span = 1.06 * max(x1 - x0, y1 - y0)
     xc, yc = 0.5 * (x0 + x1), 0.5 * (y0 + y1)
     ax_i.set_xlim(xc - span / 2, xc + span / 2)
@@ -852,8 +888,9 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
     ax_i.set_aspect("equal", adjustable="box")
     ax_i.set_xlabel(r"$x - \mu_x (t - t_0)$ (mas)")
     ax_i.set_ylabel(r"$y - \mu_y (t - t_0)$ (mas)")
-    ps.panel_label(ax_i, "(i)", loc="upper left")
-    ps.legend(ax_i, loc="lower right", fontsize=6)
+    ps.panel_label(ax_i, L["i"], loc="upper left")
+    ps.legend(ax_i, loc="lower center" if short else "lower right", fontsize=5.5 if short else 6,
+              handlelength=1.4 if short else 2.0)
 
     for ax in (ax_c, ax_e, ax_f, ax_g):
         ax.axvline(0.0, color=ps.GRID, lw=0.8, zorder=0)
@@ -870,7 +907,7 @@ def draw_event(stem, out_dir, prov, noplx="geocentric"):
         f"a point or bin whose 1$\\sigma$ exceeds the signal in its panel is not drawn; each "
         f"panel states how many were left out"))
     os.makedirs(out_dir, exist_ok=True)
-    suffix = "" if noplx == "geocentric" else "_simgauge"
+    suffix = ("" if noplx == "geocentric" else "_simgauge") + ("_3x3" if layout == "3x3" else "")
     paths = ps.save_figure(fig, os.path.join(out_dir, os.path.basename(stem) + suffix))
     return paths, checks
 
@@ -884,6 +921,10 @@ def main():
     ap.add_argument("--noplx", choices=("geocentric", "simulation"), default="geocentric",
                     help="which no-parallax model to draw; see the module docstring. Only "
                          "'geocentric' is fit to publish")
+    ap.add_argument("--layout", choices=("5x2", "3x3"), default="5x2",
+                    help="5x2: two columns, the reports' layout. 3x3: three columns, one row per "
+                         "theme, short enough to share a page with its caption; written as "
+                         "<name>_3x3.{pdf,png}")
     args = ap.parse_args()
 
     ps.use_paper_style()
@@ -896,7 +937,7 @@ def main():
         sys.exit(f"no *_params.dat under {args.samples}")
 
     for stem in stems:
-        paths, checks = draw_event(stem, args.out, prov, args.noplx)
+        paths, checks = draw_event(stem, args.out, prov, args.noplx, args.layout)
         print(f"{os.path.basename(stem)} -> {paths[0]}")
         for c in checks:
             print(f"    {c}")

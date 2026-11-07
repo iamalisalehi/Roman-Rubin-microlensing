@@ -21,11 +21,15 @@ with T the window t0 is drawn over. Replace det_i by any selection (Roman detect
 is measured to 10%) to get that subset's yield. N is linear in F, so it is computed for F = 1
 and scaled.
 
-Two conventions are reported. The simulator keeps a drawn star only with probability equal to
-its blend fraction (the legacy method: Sajadian & Makler, criterion ii), which counts events per
-resolved object. Weighting each draw by 1/P(kept) instead counts events on every star, faint
-blended sources included. Equation (1) as written is the first; the Sajadian papers' yields are
-in that convention, so comparisons with them use it.
+Two conventions are reported, every star first. A run keeps every drawn star whose peak is
+visible (mode every-star), or only with probability equal to its blend fraction pKeep (mode
+per-object: the legacy method, and --blend-thinning; Sajadian & Makler, criterion ii), which counts
+events per resolved object. Equation (1) as written is on the run's own mode: every star in an
+every-star run, per object in a legacy run. The other convention is a re-weighting of the same
+draws (romanlib.count_weight): w * pKeep from an every-star run, w / pKeep from a per-object run
+(the latter with a larger Monte Carlo error; the effective sample size N_eff of the every-star
+count is in the CSV and the tables). The Sajadian papers' yields are per object, so comparisons
+with them use that column.
 
 Checks, printed and written before any yield:
   tau   (pi / 2u0m) * <gamma * tE> over draws must reproduce the optical depth the C++ computes
@@ -34,7 +38,8 @@ Checks, printed and written before any yield:
   OGLE  for the `bulge` population only (F = 1 by definition: every lens is a star or remnant),
         the rate per source star with I < 21, u0 < 1, against Mroz et al. (2019).
   legacy  the map file's own Neven, summed over the scan. It has known defects (it averages
-        eps/tE over detected events, with no sqrt(M) v weight and no F), so it is reported only.
+        eps/tE over detected events, with no sqrt(M) v weight and no F), so it is reported only;
+        it counts in the run's mode (per object for a legacy run, every star for a new one).
 
     .roman/bin/python analysis/y1_absolute_yield.py \\
         --run bh=RUN_DIR_BH --run ns=RUN_DIR_NS \\
@@ -68,16 +73,15 @@ YEAR_S = 365.25 * 86400.0
 # Mroz et al. 2019 (ApJS 244, 29), OGLE-IV, |l| < 3 deg, southern fields, sources I < 21,
 # u0 < 1: Gamma = G0 exp(cG (3 - |b|)), tau300 = T0 exp(cT (3 - |b|)).
 MROZ_SOUTH = dict(G0=14.3e-6, cG=0.52, T0=1.39e-6, cT=0.41)
-# i_AB - I_Vega for a typical reddened bulge giant; the CMD magnitudes are AB. The cut is
-# I_Vega < 21, i.e. i_AB < 21 + this. Approximate; the rate per star depends on it weakly.
-I_AB_MINUS_VEGA = 0.4
+# The cut is I_Vega < 21, i.e. i_AB < 21 + R.I_AB_MINUS_VEGA (the CMD magnitudes are AB).
 
 
 class Run:
     def __init__(self, name, directory, chunksize, fixed_rubin_depths=False):
         self.name, self.dir = name, directory
         prov_path = os.path.join(directory, "files/MONTLMC/files/run_provenance.txt")
-        self.prov = R.load_provenance(prov_path) if os.path.exists(prov_path) else {}
+        self.mode = R.selection_mode(prov_path)        # raises without the file: the mode is never guessed
+        self.prov = R.load_provenance(prov_path)
         self.population = R.population(self.prov)
         self.pop_key = self.population.split()[0]
         tag = self.prov.get("population_tag", "5")
@@ -86,18 +90,32 @@ class Run:
         self.logs = [os.path.join(directory, f) for f in ("run.log", "run2.log")
                      if os.path.exists(os.path.join(directory, f))]
         self.tobs_days = float(self.prov.get("Tobs_days", 3652.43))
-        print(f"[{name}] reading {self.table} ({self.population})", flush=True)
+        print(f"[{name}] reading {self.table} ({self.population}, {self.mode} run)", flush=True)
         # narrow: float32 storage, since production tables have up to ~12M rows; the per-draw
         # quantities computed below are held in float64.
-        self.df = R.load_events(self.table, usecols=COLS, chunksize=chunksize,
+        with open(self.table) as fh:
+            has_pkeep = "pKeep" in fh.readline().split()
+        self.df = R.load_events(self.table, usecols=COLS + (["pKeep"] if has_pkeep else []),
+                                chunksize=chunksize,
                                 keep=R.keep_weightable(self.map, self.logs), narrow=True)
         self.sl = R.load_sightlines(self.map)
         override = R.nsim_from_logs(self.logs)
         df = self.df
-        df["y"] = np.asarray(R.yield_weight(df, self.sl, self.tobs_days, nsim_override=override),
-                             dtype=np.float64)
-        df["gamma"] = np.asarray(R.draw_rate(df), dtype=np.float64)
-        df["P"] = np.asarray(R.acceptance_probability(df, self.sl, fixed_rubin_depths), dtype=np.float64)
+        bar_norm = R.run_bar_norm(self.sl)       # this run's bulge (the factor changed 2026-11-03)
+        y = np.asarray(R.yield_weight(df, self.sl, self.tobs_days, nsim_override=override,
+                                      bar_norm=bar_norm), dtype=np.float64)
+        df["gamma"] = np.asarray(R.draw_rate(df, bar_norm=bar_norm), dtype=np.float64)
+        df["P"] = R.keep_probability(
+            df, self.sl, self.mode, fixed_rubin_depths,
+            hint="or pass --fixed-rubin-depths (approximate Rubin depths) for a map without them")
+        det = ((df["detL"] == 1) | (df["detR"] == 1) | (df["detJ"] == 1)).to_numpy()
+        # The fixed-depth acceptance is an approximation that can give P = 0 to a detected draw;
+        # such a draw gets weight 0 in both conventions and the yields table warns (p_zero).
+        impossible = det & (df["P"].to_numpy() <= 0) if fixed_rubin_depths else np.zeros(len(df), bool)
+        df["y_all"] = R.count_weight(y, df["P"], self.mode, "every-star", detected=det & ~impossible)
+        df["y_obj"] = R.count_weight(y, df["P"], self.mode, "per-object", detected=det & ~impossible)
+        df.loc[impossible, ["y_all", "y_obj"]] = 0.0
+        df["y_run"] = y                                   # the run's own convention, as drawn
         # An int32 sightline code rather than a (lon, lat) tuple per row, to save memory;
         # self.keys[code] is the tuple.
         codes, self.keys = R.sightline_index(df)
@@ -147,7 +165,7 @@ def ogle_check(run):
     """Rate per source star, I < 21, u0 < 1, |l| < 3, b < 0, against Mroz et al. 2019."""
     df = run.df
     isrc = df["magb_i"] - 2.5 * np.log10(df["blend_i"].clip(lower=1e-12))   # source's own i
-    sel = (isrc < 21.0 + I_AB_MINUS_VEGA) & (df["lon"].abs() < 3.0) & (df["lat"] < 0)
+    sel = (isrc < 21.0 + R.I_AB_MINUS_VEGA) & (df["lon"].abs() < 3.0) & (df["lat"] < 0)
     g = pd.DataFrame({"b": df["lat"][sel].round(1),
                       "gam": df["gamma"][sel] / R.U0M * YEAR_S,
                       "tau": df["opt_1e6"][sel] * 1e-6})
@@ -162,8 +180,16 @@ def ogle_check(run):
 
 
 def legacy_neven(run):
+    """(map's summed Neven, this code's joint-detected yield at F = 1 in the convention the map counts).
+
+    The map counts what the run kept: per object for a legacy run, every star for a new one, which
+    is the run's own weight y_run. The two differ by the map's known defects (see the module
+    docstring), so the ratio is a consistency number, not an identity.
+    """
     sl = run.sl
-    return float(np.nansum(10.0 ** sl["log10_Neven"] * sl["w_area"]))
+    neven = float(np.nansum(10.0 ** sl["log10_Neven"] * sl["w_area"]))
+    mine = float(run.df["y_run"].to_numpy()[(run.df["detJ"] == 1).to_numpy()].sum())
+    return neven, mine
 
 
 # ---------------------------------------------------------------------------------------------
@@ -182,17 +208,19 @@ SELECTIONS = [
 
 
 def yields(df, scale=1.0):
-    """Rows of (selection, N per object, err, N all stars, err, N_mc) at F = 1."""
+    """Rows of (selection, N every star, err, N_eff, N per object, err, N_eff, N_mc) at F = 1."""
     out = []
-    y_obj = df["y"].to_numpy() * scale
+    y_obj = df["y_obj"].to_numpy() * scale
+    y_all = df["y_all"].to_numpy() * scale
     P = df["P"].to_numpy()
     for name, f in SELECTIONS:
         s = f(df).to_numpy()
         bad = int((s & (P <= 0)).sum())
-        y_all = np.where(P > 0, y_obj / np.where(P > 0, P, 1.0), 0.0)
         out.append(dict(selection=name, n_mc=int(s.sum()), p_zero=bad,
+                        N_all=y_all[s].sum(), err_all=np.sqrt((y_all[s] ** 2).sum()),
+                        neff_all=R.kish_neff(y_all[s]),
                         N_obj=y_obj[s].sum(), err_obj=np.sqrt((y_obj[s] ** 2).sum()),
-                        N_all=y_all[s].sum(), err_all=np.sqrt((y_all[s] ** 2).sum())))
+                        neff_obj=R.kish_neff(y_obj[s])))
     return pd.DataFrame(out)
 
 
@@ -236,15 +264,18 @@ def main():
     lines = ["# Absolute yields", "",
              "Generated by `analysis/y1_absolute_yield.py`. N = expected events whose peak falls "
              "in the 10-yr window, over the scanned sky; ± is the Monte Carlo error only. "
-             "'per object' = the legacy blend-fraction convention (events per resolved object, "
-             "as in Sajadian & Sahu 2023 / Sajadian & Makler); 'all stars' = every star counted.",
+             "'every star' (the headline) counts each source star whose peak is visible; "
+             "'per object' = the blend-fraction convention (events per resolved object, "
+             "as in Sajadian & Sahu 2023 / Sajadian & Makler). Each run is converted from its own "
+             "selection mode to the other convention by pKeep; N_eff is the Kish effective sample "
+             "size of the every-star count.",
              ""]
     csv_rows = []
     for spec in a.run:
         name, directory = spec.split("=", 1)
         run = Run(name, directory, a.chunksize, a.fixed_rubin_depths)
         commit = run.prov.get("git_commit", "?")
-        lines += [f"## `{name}` -- {run.population}, commit `{commit}`", ""]
+        lines += [f"## `{name}` -- {run.population}, {run.mode} run, commit `{commit}`", ""]
 
         raw = raw_numbers(run)
         lines += ["### Raw Monte Carlo numbers (sample sizes, NOT yields)", ""]
@@ -269,30 +300,35 @@ def main():
             lines.append("")
             print(og.to_string(), flush=True)
 
-        leg = legacy_neven(run)
-        lines += ["### Check 3: the legacy map-file Neven, summed (F = 1, per object)", "",
-                  f"- sum Neven x w_area = {leg:,.4g} events", ""]
+        leg, mine = legacy_neven(run)
+        lines += [f"### Check 3: the legacy map-file Neven, summed (F = 1, {run.mode}: the map counts "
+                  f"in the run's own convention)", "",
+                  f"- map: sum Neven x w_area = {leg:,.4g} events",
+                  f"- this analysis, joint-detected, {run.mode} (y1's own sum): {mine:,.4g} events",
+                  f"- ratio this analysis / map = {mine / leg:.3g}" if leg > 0 else "- map Neven is 0", ""]
 
         for scope, sub in (("whole scan", run.df), ("Roman footprint only", run.df[run.df.foot])):
             t = yields(sub)
             if t.p_zero.sum():
-                print(f"[{name}] WARNING: {t.p_zero.sum()} selected draws with rebuilt "
-                      f"P(kept) = 0 -- the acceptance rebuild disagrees with the C++", flush=True)
+                print(f"[{name}] WARNING: {t.p_zero.sum()} selected draws with "
+                      f"P(kept) = 0 -- the keep probability disagrees with the C++", flush=True)
             Fs = Fgrid.get(run.pop_key, [1.0])
             lines += [f"### Yields, {scope}", "",
                       "| selection | MC draws | " + " | ".join(
-                          f"F={F:g} per object | F={F:g} all stars" for F in Fs) + " |",
-                      "|---|---|" + "---|---|" * len(Fs)]
+                          f"F={F:g} every star | F={F:g} per object" for F in Fs) + " | N_eff every star |",
+                      "|---|---|" + "---|---|" * len(Fs) + "---|"]
             for _, r in t.iterrows():
                 cells = []
                 for F in Fs:
-                    cells += [fmt(F * r.N_obj, F * r.err_obj), fmt(F * r.N_all, F * r.err_all)]
+                    cells += [fmt(F * r.N_all, F * r.err_all), fmt(F * r.N_obj, F * r.err_obj)]
                     csv_rows.append(dict(run=name, population=run.population, commit=commit,
-                                         scope=scope, selection=r.selection, F=F,
-                                         n_mc=r.n_mc, N_per_object=F * r.N_obj,
-                                         err_per_object=F * r.err_obj,
-                                         N_all_stars=F * r.N_all, err_all_stars=F * r.err_all))
-                lines.append(f"| {r.selection} | {r.n_mc:,} | " + " | ".join(cells) + " |")
+                                         run_mode=run.mode, scope=scope, selection=r.selection, F=F,
+                                         n_mc=r.n_mc, N_all_stars=F * r.N_all,
+                                         err_all_stars=F * r.err_all, neff_all_stars=r.neff_all,
+                                         N_per_object=F * r.N_obj, err_per_object=F * r.err_obj,
+                                         neff_per_object=r.neff_obj))
+                lines.append(f"| {r.selection} | {r.n_mc:,} | " + " | ".join(cells)
+                             + f" | {r.neff_all:,.0f} |")
             lines.append("")
 
             if run.pop_key == "bh":
@@ -301,13 +337,14 @@ def main():
                           f"({scope}) -- NOT the population used, for comparing with "
                           f"Sajadian & Sahu 2023", "",
                           "| selection | MC draws | " + " | ".join(
-                              f"F={F:g} per object | F={F:g} all stars" for F in Fs) + " |",
-                          "|---|---|" + "---|---|" * len(Fs)]
+                              f"F={F:g} every star | F={F:g} per object" for F in Fs) + " | N_eff every star |",
+                          "|---|---|" + "---|---|" * len(Fs) + "---|"]
                 for _, r in t2.iterrows():
                     cells = []
                     for F in Fs:
-                        cells += [fmt(F * r.N_obj, F * r.err_obj), fmt(F * r.N_all, F * r.err_all)]
-                    lines.append(f"| {r.selection} | {r.n_mc:,} | " + " | ".join(cells) + " |")
+                        cells += [fmt(F * r.N_all, F * r.err_all), fmt(F * r.N_obj, F * r.err_obj)]
+                    lines.append(f"| {r.selection} | {r.n_mc:,} | " + " | ".join(cells)
+                                 + f" | {r.neff_all:,.0f} |")
                 lines.append("")
         del run
 

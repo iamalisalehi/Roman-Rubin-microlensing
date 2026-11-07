@@ -47,7 +47,7 @@ SURVEYS = [("J", "joint"), ("L", "rubin"), ("R", "roman")]
 
 
 class Run:
-    def __init__(self, name, directory, chunksize):
+    def __init__(self, name, directory, chunksize, convention="every-star"):
         self.name = name
         self.dir = directory
         prov = os.path.join(directory, "files/MONTLMC/files/run_provenance.txt")
@@ -65,9 +65,11 @@ class Run:
         self.map = os.path.join(directory, f"files/MONTLMC/files/MapLMC{tag}.dat")
         self.logs = [os.path.join(directory, f) for f in ("run.log", "run2.log")
                      if os.path.exists(os.path.join(directory, f))]
-        self.df = R.load_events(self.table, usecols=COLS, chunksize=chunksize,
+        extra = [c for c in R.keep_columns(self.table, self.map, convention) if c not in COLS]
+        self.df = R.load_events(self.table, usecols=COLS + extra, chunksize=chunksize,
                                 keep=R.keep_weightable(self.map, self.logs))
-        w, self.wlabel = R.attach_weight(self.df, self.map, self.logs)
+        w, self.wlabel = R.attach_weight(self.df, self.map, self.logs,
+                                         convention=convention)
         self.df["W"] = w
         self.neff = R.kish_neff(w)
         print(f"  {name}: {len(self.df):,} draws, "
@@ -302,6 +304,7 @@ def main():
     ap.add_argument("--run", action="append", required=True, metavar="NAME=DIR")
     ap.add_argument("-o", "--out", default="figures/p7")
     ap.add_argument("--chunksize", type=int, default=500_000)
+    R.add_convention_option(ap)
     a = ap.parse_args()
 
     ps.use_paper_style()
@@ -311,7 +314,7 @@ def main():
     print("loading:")
     for spec in a.run:
         name, directory = spec.split("=", 1)
-        runs.append(Run(name, directory, a.chunksize))
+        runs.append(Run(name, directory, a.chunksize, a.convention))
 
     written = []
     w1, headline = fig_precision(runs, a.out)

@@ -204,7 +204,9 @@ constexpr std::array<double, M> FWHM  = {1.1140, 1.0420, 0.9819, 0.9487, 0.9320,
 // The blending disc has radius FWHM * BLEND_RADIUS_FWHM_FRAC (= the HWHM) in func_source: the expected
 // number of stars in it is lambda, and the source's own blend is 1 + Poisson(lambda).
 constexpr double BLEND_RADIUS_FWHM_FRAC = 0.5;
-constexpr std::array<double, M> lambda_um = {0.367, 0.482, 0.622, 0.755, 0.869, 0.971, 1.464};
+// Wavelength at which each band's extinction is evaluated [um]. F146 is its pivot wavelength,
+// sqrt(int T l dl / int T/l dl) of the SVO curve CMD/empirical/filters/Roman_WFI.F146.txt (band centre: 1.464).
+constexpr std::array<double, M> lambda_um = {0.367, 0.482, 0.622, 0.755, 0.869, 0.971, 1.4378};
 
 // Which LSST filter(s) (indices 0-5 = u,g,r,i,z,y) form the single "Rubin representative band"
 // standing in for the whole LSST light curve in the Fisher matrix, the recorded per-epoch Rubin model

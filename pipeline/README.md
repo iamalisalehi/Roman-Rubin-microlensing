@@ -85,7 +85,9 @@ pipeline/pipeline.sh my_run.sh all                 # everything, on this machine
   The binary is copied once to `RUN_ROOT/bin/roman.<git describe>` so a later `make` cannot change a run in
   progress. A chunk is done when `./roman` exited 0: only then is a `DONE` file written. Re-running `sim` skips
   the done chunks and redoes the rest from scratch. `RUN_ROOT/pipeline_provenance.txt` records the config, the
-  git commit and the md5 of every data product, at the first `sim`.
+  git commit and the md5 of every data product, at the first `sim`. Because the run is labelled by its commit,
+  `sim` refuses to start (and `check` says so) while tracked files have uncommitted changes; `ALLOW_DIRTY=1`
+  runs anyway, labelled `<commit>-dirty`.
 - **merge**: per population, refuses (listing the chunks) if any chunk lacks `DONE` or the ranges do not tile
   `[0, N)`; then concatenates every output file in chunk order into `RUN_ROOT/<pop>/` (dropping the repeated `#`
   header lines) and checks sizes and line counts. Because every sightline re-seeds from (seed, index), the

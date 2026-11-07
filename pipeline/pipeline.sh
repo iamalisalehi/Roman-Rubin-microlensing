@@ -79,6 +79,7 @@ source "$CONFIG"
 : "${OGLE_TABLE3:=}"
 : "${PYTHON:=.roman/bin/python}"
 : "${GSL:=auto}"
+: "${ALLOW_DIRTY:=0}"
 : "${GSL_URL:=https://ftp.gnu.org/gnu/gsl/gsl-2.8.tar.gz}"
 if [[ -z ${JOBS:-} ]]; then JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1); fi
 
@@ -388,6 +389,10 @@ check_tools() {
         if have sbatch; then item req ok sbatch "$(command -v sbatch)"; else item req MISSING sbatch "SCHEDULER=slurm but sbatch is not on PATH (use SUBMIT=0 to only write the scripts)"; fi
     fi
     have git || item req note git "not found: the binary will be named 'nogit' in RUN_ROOT/bin"
+    if tree_dirty; then
+        if [[ $ALLOW_DIRTY == 1 ]]; then item req note "git tree" "uncommitted changes (ALLOW_DIRTY=1): the run will be labelled $(git_desc)"
+        else item req DIRTY "git tree" "uncommitted changes to tracked files: sim refuses them (commit, or set ALLOW_DIRTY=1)"; fi
+    fi
 }
 
 check_python() {
@@ -581,6 +586,11 @@ make_rundir() {   # make_rundir DIR
 }
 
 git_desc() { git -C "$ROOT" describe --always --dirty 2>/dev/null || echo nogit; }
+# True when tracked files differ from HEAD (what makes git_desc end in -dirty). Untracked files do not count.
+tree_dirty() {
+    have git && git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1 || return 1
+    ! git -C "$ROOT" diff --quiet HEAD -- 2>/dev/null
+}
 
 write_provenance() {
     local p=$P_RUN/pipeline_provenance.txt f
@@ -623,6 +633,16 @@ stage_sim() {
         [[ -e $f ]] || missing="$missing $f"
     done
     [[ -z $missing ]] || die "not ready to simulate, missing:$missing -- run the prep stage"
+    # A run is labelled by its commit (binary name, provenance). Uncommitted changes to tracked files
+    # would make that label point at code the run did not use, so they stop the run unless allowed.
+    if tree_dirty; then
+        if [[ $ALLOW_DIRTY == 1 ]]; then
+            warn "uncommitted changes to tracked files (ALLOW_DIRTY=1): this run is labelled $(git_desc)"
+        else
+            die "uncommitted changes to tracked files; commit them first, or set ALLOW_DIRTY=1 in $CONFIG_ARG:
+$(git -C "$ROOT" status --short --untracked-files=no | head -20)"
+        fi
+    fi
     local s
     for s in $PREP_STEPS; do
         [[ $(state_of "$s") == current ]] || warn "prep step '$s' is not up to date; running with what is on disk (rerun prep to refresh)"

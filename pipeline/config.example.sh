@@ -50,6 +50,9 @@ MAXDRAWS=
 # 1 = characterise every detection twice (Roman at L2 and at Earth) -> h3_pair.dat, the satellite-parallax figure.
 PAIR_SATELLITE=1
 SEED=42
+# sim refuses to start while tracked files have uncommitted changes, because the run is labelled by its
+# commit. 1 = run anyway (the binary and pipeline_provenance.txt then say <commit>-dirty).
+ALLOW_DIRTY=0
 # 1 = scan only the 0.1x0.1 deg stub patch (a smoke test; minutes instead of days). Needs STRIDE=1 and
 # STRIDE_ROMAN=1 (36 sightlines); at the production strides the patch has no sightline in some Roman
 # coverage class and ./roman refuses. Smoke-test values: EVENTS=10 LENSES=2 MAXDRAWS=3000 CHUNK_SIZE=10.

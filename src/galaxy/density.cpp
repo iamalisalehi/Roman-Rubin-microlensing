@@ -23,6 +23,23 @@ void optical_depth(source& s)
     s.opt = std::fabs(s.od_thin + s.od_thick + s.od_bulge + s.od_halo);
 }
 
+// Thin-disc density of age bin ii at (Rb, zb) [kpc], Msun/pc^3: Besancon's Einasto difference law, in which the
+// central hole has the same vertical scale as the disc. Both forms are >= 0 everywhere.
+double thinBinDensity(int ii, double Rb, double zb)
+{
+    const double e2 = epci[ii] * epci[ii];
+    double shape;
+    if (ii == 0) {
+        shape = std::exp(-(Rb * Rb + zb * zb / e2) / THIN_YOUNG_L1)
+              - std::exp(-(Rb * Rb / THIN_YOUNG_L2 + zb * zb / (e2 * THIN_YOUNG_L1)));
+    }
+    else {
+        shape = std::exp(-std::sqrt(THIN_CORE + (Rb * Rb + zb * zb / e2) / (THIN_RDD * THIN_RDD)))
+              - std::exp(-std::sqrt(THIN_CORE + Rb * Rb / (THIN_RHH * THIN_RHH) + zb * zb / (e2 * THIN_RDD * THIN_RDD)));
+    }
+    return rho0[ii] * corr[ii] * 0.001 * THIN_NORM * shape / d0[ii];
+}
+
 // Densities of the four components along the sightline (s.TET, s.FI), their totals per deg^2, and
 // the source-selection bounds Romins/Romaxs. For the first few sightlines (numt < 10) the profile
 // is also written to PATH_DENSITY_DIR.
@@ -33,7 +50,7 @@ void Disk_model(source& s, int numt)
     double mBarre; //stars/pc^3
     double Rx0, Ry0, Rz0, Rc, cp, cn, rhoE, rhoS;
     double alfa = BAR_ANGLE_DEG / RAa;
-    double xf, yf, zf, rho;
+    double xf, yf, zf;
 
     s.Romaxs = s.Nstart = s.Rostart = 0.0;
     s.Romins = 10000000000.0;
@@ -41,8 +58,6 @@ void Disk_model(source& s, int numt)
     double fd    = DENS_FD;  //see config/parameters.h, section 2a
     double fb    = DENS_FB;
     double fh    = DENS_FH;
-    double Rdd   = THIN_RDD;
-    double Rhh   = THIN_RHH;
 
     char filename[40];
     FILE *filj;
@@ -62,23 +77,15 @@ void Disk_model(source& s, int numt)
         s.rho_halo[i]  = 0;
         s.rho_thick[i] = 0;
         x  = double(i  * step); //kpc
-        zb = std::sin(s.FI) * x;
+        zb = std::sin(s.FI) * x + Z_SUN;   // height above the Galactic plane
         yb = std::cos(s.FI) * std::sin(s.TET) * x;
         xb = x * std::cos(s.FI) * std::cos(s.TET) - Dsun;
         Rb = std::sqrt(xb * xb + yb * yb);
 
 // Thin disk
-        for (int ii = 0; ii < 8; ++ii) {
-            rdi = Rb * Rb + zb * zb / (epci[ii] * epci[ii]);
-            if (ii == 0) {
-                rho = std::exp(-rdi / THIN_YOUNG_L1) - std::exp(-rdi / THIN_YOUNG_L2);
-            }
-            else if (ii > 0) {
-                rho = std::exp(-std::sqrt(THIN_CORE + rdi / (Rdd * Rdd))) - std::exp(-std::sqrt(THIN_CORE + rdi / (Rhh * Rhh)));
-            }
-            rho *= THIN_NORM;
-            s.rho_thin[i] = std::fabs(s.rho_thin[i] + rho0[ii] * corr[ii] * 0.001 * rho/d0[ii]);
-        } //Msun/pc^3
+        for (int ii = 0; ii < 8; ++ii)
+            s.rho_thin[i] = std::fabs(s.rho_thin[i] + thinBinDensity(ii, Rb, zb));
+        //Msun/pc^3
 
 // Thick disk
         double rho00 = THICK_RHO00;

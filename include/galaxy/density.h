@@ -7,5 +7,6 @@
 
 void   optical_depth(source & s);
 void   Disk_model(source & s, int);
+double thinBinDensity(int ii, double Rb, double zb);  // Msun/pc^3 of age bin ii at (R, z) [kpc]
 
 #endif // ROMAN_GALAXY_DENSITY_H

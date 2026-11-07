@@ -254,7 +254,7 @@ int main() {
         lens l;
         astromet as;
         SourceModel sm = SourceModel::PSPL;
-        ModelEvent m() const { return ModelEvent{l.u0, l.tE, l.t0, l.piE, s.xi, l.tetE, s.mus1, s.mus2, 1.0 / s.Ds, s.rho, sm}; }
+        ModelEvent m() const { return ModelEvent{l.u0, l.tE, l.t0, l.piE, s.xi, l.tetE, s.mus1, s.mus2, 1.0 / s.Ds, s.rho, sm, l.u0side}; }
     };
     // Every event is a point source (s.rho = 0, the point-source model) unless a test says otherwise; the
     // seams read the run's source model, which the first tests leave at the point source.
@@ -304,6 +304,50 @@ int main() {
         bound("(f) ... across the track at |t - t0| <= 30 d vs the straight line: max |difference| [Einstein radii]", across, 1e-9);
         bound("(f) ... along the track vs the straight line, in units of the light-travel bound 2 AU/(c tE): max", along, 1.0);
         expect(worstMirror > 0.3, "(f) ... and it is far from the mirror line (u0 of the other sign): min distance", worstMirror, ">", 0.3);
+    }
+
+    // (f2) The side of the lens the source passes (u0side = -1). With the parallax off, flipping it leaves A and
+    // u(t) unchanged and mirrors the source-lens vector, and the centroid shift, across the direction of motion
+    // (the along-track component is kept, the across-track one changes sign). With the parallax on, A differs.
+    {
+        double dU = 0.0, dA = 0.0, dShift = 0.0, dCent = 0.0, plx = 0.0;
+        for (int i = 0; i < N_SIGHT; ++i) {
+            vbmSetSightline(GAL_L[i], GAL_B[i]);
+            for (double xi : {0.3, 2.9, 5.6}) {
+                const double tt[5] = {1480.0, 1495.0, 1500.0, 1507.0, 1525.0};
+                for (double piE : {1e-9, 1e-6, 0.4}) {
+                    fill(*ev, 0.37, 25.0, 1500.0, piE, xi, 0.6);
+                    ModelEpoch p[5], q[5], ap[5], aq[5];
+                    ev->l.u0side = +1.0;  vbmEvaluate(ev->m(), false, false, tt, 5, p);  vbmEvaluate(ev->m(), false, true, tt, 5, ap);
+                    ev->l.u0side = -1.0;  vbmEvaluate(ev->m(), false, false, tt, 5, q);  vbmEvaluate(ev->m(), false, true, tt, 5, aq);
+                    ev->l.u0side = +1.0;
+                    const double cx = std::cos(xi), sx = std::sin(xi);
+                    for (int k = 0; k < 5; ++k) {
+                        if (piE > 1e-3) { plx = std::fmax(plx, std::fabs(q[k].A / p[k].A - 1.0)); continue; }
+                        // across/along components relative to the direction of motion
+                        auto split = [&](double x, double y, double& al, double& ac) { al = cx * x + sx * y;  ac = -sx * x + cx * y; };
+                        double al1, ac1, al2, ac2;
+                        if (piE < 1e-8) {
+                            dU = std::fmax(dU, std::fabs(q[k].u - p[k].u));
+                            dA = std::fmax(dA, std::fabs(q[k].A / p[k].A - 1.0));
+                            split(p[k].ux, p[k].uy, al1, ac1);  split(q[k].ux, q[k].uy, al2, ac2);
+                            dShift = std::fmax(dShift, std::fmax(std::fabs(al1 - al2), std::fabs(ac1 + ac2)));
+                        } else {
+                            // the centroid shift (image centroid minus the unlensed source), in units of thetaE; the
+                            // astrometric call drifts the parallax vector by ~1e-9 per epoch, hence piE = 1e-6 here
+                            split((ap[k].imgx - ap[k].srcx) / 0.6, (ap[k].imgy - ap[k].srcy) / 0.6, al1, ac1);
+                            split((aq[k].imgx - aq[k].srcx) / 0.6, (aq[k].imgy - aq[k].srcy) / 0.6, al2, ac2);
+                            dCent = std::fmax(dCent, std::fmax(std::fabs(al1 - al2), std::fabs(ac1 + ac2)));
+                        }
+                    }
+                }
+            }
+        }
+        bound("(f2) u0side = -1, no parallax: u(t) unchanged: max |difference|", dU, 1e-9);
+        bound("(f2) ... A unchanged: max relative difference", dA, 1e-9);
+        bound("(f2) ... source-lens vector mirrored across the direction of motion: max |difference|", dShift, 1e-8);
+        bound("(f2) ... centroid shift mirrored across it (piE = 1e-6): max |difference| [thetaE]", dCent, 1e-2);
+        expect(plx > 1e-4, "(f2) with parallax the flipped side changes the light curve: max |A ratio - 1|", plx, ">", 1e-4);
     }
 
     // (g) A is magnifOf(u) bit for bit, in the library's own array, in both seams and for both observers.

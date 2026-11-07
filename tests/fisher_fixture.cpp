@@ -186,6 +186,10 @@ void appendEpoch(source& s, lens& l, astromet& as, double tim, int tele, int& nd
     ++ndw;
 }
 
+// The fixture's own 10-year window, fixed so that the regression table does not move when the simulated
+// window (config's Tobs) is redefined.
+constexpr double kFixtureTobs = 10.0 * year;
+
 // Half-width of the fit window around t0, in days; epochs outside it are dropped. A real fit uses
 // a window scaled to the event duration. The window also avoids FisherM's astrometric
 // CHECK(!(s.pos1c == l.soux[i] && s.pos2c == l.souy[i])), which fires for epochs so far from peak
@@ -195,7 +199,7 @@ double fitHalfWindow(double tE)
 {
     double w = 20.0 * tE;
     if (w < 100.0)  w = 100.0;   // floor: always keep some baseline either side
-    if (w > Tobs)   w = Tobs;
+    if (w > kFixtureTobs)   w = kFixtureTobs;
     return w;
 }
 
@@ -215,7 +219,7 @@ int buildLightCurve(source& s, lens& l, astromet& as, int& nL, int& nR)
     for (int si = 0; si < int(sizeof(kRomanSeasonStarts) / sizeof(double)); ++si) {
         const double start = kRomanSeasonStarts[si];
         for (double t = start; t <= start + kRomanSeasonLength; t += kRomanCadence) {
-            if (t < 0.0 || t > Tobs) continue;
+            if (t < 0.0 || t > kFixtureTobs) continue;
             if (t < tMin || t > tMax) continue;
             appendEpoch(s, l, as, t, 1, ndw, si);
             ++nR;
@@ -226,7 +230,7 @@ int buildLightCurve(source& s, lens& l, astromet& as, int& nL, int& nR)
     for (int y = 0; y < kRubinYears; ++y) {
         const double yearStart = y * year;
         for (double t = yearStart; t <= yearStart + kRubinVisibleDays; t += kRubinCadence) {
-            if (t < 0.0 || t > Tobs) continue;
+            if (t < 0.0 || t > kFixtureTobs) continue;
             if (t < tMin || t > tMax) continue;
             appendEpoch(s, l, as, t, 0, ndw);
             ++nL;

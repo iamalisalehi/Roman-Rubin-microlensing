@@ -66,8 +66,8 @@ EXTRA_FLAGS=""
 
 # ---- step 5: how the simulation is split and where it runs ----------------------------------------
 # Sightlines per chunk. Chunks are independent runs whose concatenation equals the whole run exactly.
-# 20 gives ~100 chunks per population at the default grid (2013 sightlines): a footprint sightline costs
-# 4-6 CPU-min, so a chunk takes ~10 min on average and at most ~2 h, and the ~25 s of input reading per
+# 20 gives ~100 chunks per population at the default grid (2013 sightlines): a sightline on a Roman detector
+# costs ~1-2 CPU-min, the others ~0.2-0.8, so a chunk takes ~5-10 min and at most ~40 min, and the ~25 s of input reading per
 # chunk is a few percent. Use a smaller value to spread work over more workers (cost is uneven over the
 # index range, so have more chunks than workers).
 CHUNK_SIZE=20
@@ -79,12 +79,16 @@ JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
 # ~2 GB and 2-3 h are comfortable at the default flags. No spaces inside an option.
 SLURM_OPTS="--account=CHANGE_ME --partition=CHANGE_ME --time=03:00:00 --mem=2G --cpus-per-task=1"
 # slurm: the same for the final merge + analysis job (holds a whole population's table in memory:
-# the bulge y1 analysis peaks at ~2.5 GB; give it room and an hour or more). Default: SLURM_OPTS.
-SLURM_OPTS_FINISH="--account=CHANGE_ME --partition=CHANGE_ME --time=04:00:00 --mem=12G --cpus-per-task=1"
+# the bulge y1 analysis needs ~8 GB at production flags; give it room and several hours). Default: SLURM_OPTS.
+SLURM_OPTS_FINISH="--account=CHANGE_ME --partition=CHANGE_ME --time=08:00:00 --mem=24G --cpus-per-task=1"
 # slurm: 1 = submit now, 0 = only write RUN_ROOT/slurm/*.sbatch and print how to submit them.
 SUBMIT=1
 # 1 = keep RUN_ROOT/<pop>/chunks after merging (the merged tables then exist twice on disk); 0 = delete them.
 KEEP_CHUNKS=1
+# 1 = after the merge, gzip -6 each merged test<tag>.dat to test<tag>.dat.gz (about 3x smaller; the plain file is
+# deleted only after gzip -t and a line-count match). The analysis reads either name. 0 = leave them plain.
+# Compress an existing run by hand with:  gzip -6 RUN/<pop>/test*.dat
+COMPRESS_TABLES=1
 
 # ---- step 6: analysis ------------------------------------------------------------------------------
 # yields  = absolute yields per population (y1) and yield vs abundance F (y3)
@@ -93,8 +97,10 @@ KEEP_CHUNKS=1
 #           (outputs and logs with the suffix _per_object)
 ANALYSES="yields figures"
 # Table 3 of Mroz et al. 2019 (ApJS 244, 29), the OGLE-IV events, for the blend-fraction check w2 on the
-# `bulge` population (analysis/w2_ogle4_blend_check.py). Empty = w2 is skipped, with a note in the output.
-OGLE_TABLE3=
+# `bulge` population (analysis/w2_ogle4_blend_check.py). `fetch` downloads it from OGLE_URL (1.5 MB) when the file is
+# missing. Empty = w2 is skipped, with a note in the output.
+OGLE_TABLE3=files/ogle/mroz2019_table3.dat
+OGLE_URL=https://www.astrouw.edu.pl/ogle/ogle4/microlensing_maps/table3.dat
 
 # ---- Python ---------------------------------------------------------------------------------------
 # The interpreter every script runs under. `setup` creates the venv if this path ends in /bin/python.

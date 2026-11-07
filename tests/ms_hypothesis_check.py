@@ -1,15 +1,15 @@
 """Check CMD/components/ms_hypothesis.dat (lens_ml_table.py --hypothesis).
 
-    python tests/ms_hypothesis_check.py PATH [--ref LENS_ML] [--deployed LENS_ML]
+    python tests/ms_hypothesis_check.py PATH [--lens-table LENS_ML]
 
-Checks: masses strictly increasing; every band (u g r i z y F146) decreases with mass (reversals up to
-0.05 mag between neighbours are allowed; every reversal is reported); over 0.10-1.00 Msun within 0.5 mag
-of component 0 (the thin disc) of the reference lens table in r and F146. --ref defaults to the empirical
-lens table, CMD/components_staging/bos10_empirical_fillnone/lens_ml.dat of this repository
-(the thin disc on the same Pecaut & Mamajek relation). The difference to the deployed lens-light table
-(--deployed, default CMD/components/lens_ml.dat; skipped with a printed line when absent) is printed for
-information only.
-Prints the lowest and highest mass; exits non-zero on failure.
+The table holds, per Galactic component (column comp, 0-3), the lens table's rows below 1 Msun and the
+Pecaut & Mamajek rows above. Checks: 9 columns (comp mass + 7 bands), all finite; per component masses strictly
+increasing and every band decreasing with mass (reversals up to 0.05 mag between neighbours are allowed and
+reported); below 1 Msun the rows equal --lens-table (default CMD/components/lens_ml.dat) at its bin centres,
+per component, EXACTLY (to the 4 printed decimals); above 1 Msun the rows are the one Pecaut & Mamajek
+sequence (a component may lack the rows its own faintest-so-far magnitudes make non-monotone). Prints
+the step in each band at 1 Msun (last lens-table row to first sequence row), per component, and the lowest and
+highest mass. Exits non-zero on failure.
 """
 import argparse
 import os
@@ -18,8 +18,7 @@ import sys
 import numpy as np
 
 REVERSAL_MAX = 0.05     # mag, allowed between neighbouring rows
-LENS_ML_TOL = 0.5       # mag, against lens_ml.dat component 0
-M_LO, M_HI = 0.10, 1.00
+JOIN = 1.0              # Msun
 CMD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "CMD")
 BANDS = ["u", "g", "r", "i", "z", "y", "F146"]
 fails = []
@@ -31,58 +30,61 @@ def check(ok, msg):
         fails.append(msg)
 
 
-def compare(m, t, lens_ml):
-    """Worst (difference, mass) of the table to component 0 of lens_ml over M_LO-M_HI in r and F146."""
-    L = np.loadtxt(lens_ml, comments="#")
-    L = L[L[:, 0] == 0]
-    mc = 0.5 * (L[:, 1] + L[:, 2])
-    sel = (m >= M_LO) & (m <= M_HI)
-    out = []
-    for name, col, j in (("r", 3, 6), ("F146", 7, 10)):
-        d = t[sel, col] - np.interp(m[sel], mc, L[:, j])
-        k = np.argmax(np.abs(d))
-        out.append((name, d[k], m[sel][k]))
-    return out
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("path")
-    ap.add_argument("--ref", default=os.path.join(CMD, "components_staging", "bos10_empirical_fillnone", "lens_ml.dat"))
-    ap.add_argument("--deployed", default=os.path.join(CMD, "components", "lens_ml.dat"))
+    ap.add_argument("--lens-table", default=os.path.join(CMD, "components", "lens_ml.dat"))
     a = ap.parse_args()
-    for p in (a.path, a.ref):
+    for p in (a.path, a.lens_table):
         if not os.path.isfile(p):
             print(f"FAIL missing file {p}")
             return 1
-    t = np.loadtxt(a.path, comments="#")
-    check(t.ndim == 2 and t.shape[1] == 8, f"{a.path}: 8 columns (mass + 7 bands), {len(t)} rows")
+    t = np.loadtxt(a.path, comments="#", ndmin=2)
+    check(t.shape[1] == 9, f"{a.path}: 9 columns (comp, mass, 7 bands), {len(t)} rows")
     if fails:
         return 1
-    m = t[:, 0]
     check(bool(np.isfinite(t).all()), "every value finite")
-    check(bool((np.diff(m) > 0).all()), "masses strictly increasing")
-    check(m[0] >= 0.08, f"lowest mass {m[0]:.4f} >= 0.08")
-    for j, name in enumerate(BANDS, start=1):
-        rev = np.diff(t[:, j])
-        bad = np.flatnonzero(rev > 0)
-        for i in bad:
-            print(f"  reversal in Mab_{name}: {m[i]:.3f} -> {m[i + 1]:.3f} Msun, +{rev[i]:.3f} mag")
-        worst_rev = rev[bad].max() if bad.size else 0.0
-        check(worst_rev <= REVERSAL_MAX,
-              f"Mab_{name} decreases with mass ({bad.size} reversals, worst {worst_rev:.3f} mag <= {REVERSAL_MAX})")
-    worst = 0.0
-    for name, d, mm in compare(m, t, a.ref):
-        print(f"  worst {name} difference to the reference lens table: {d:+.3f} mag at {mm:.3f} Msun")
-        worst = max(worst, abs(d))
-    check(worst <= LENS_ML_TOL, f"within {LENS_ML_TOL} mag of {os.path.basename(os.path.dirname(a.ref))}/lens_ml.dat "
-                                f"over {M_LO}-{M_HI} Msun (worst {worst:.3f})")
-    if os.path.isfile(a.deployed):
-        for name, d, mm in compare(m, t, a.deployed):
-            print(f"  INFO deployed lens-light table (besancon dwarfs), not asserted: worst {name} {d:+.3f} mag at {mm:.3f} Msun")
-    else:
-        print(f"deployed table not found: skipped ({a.deployed})")
-    print(f"lowest mass {m[0]:.4f} Msun, highest {m[-1]:.4f} Msun, {len(m)} rows")
+    L = np.loadtxt(a.lens_table, comments="#")
+    sub = {}
+    for c in range(4):
+        s = t[t[:, 0] == c]
+        check(len(s) > 0, f"comp {c}: {len(s)} rows")
+        if not len(s):
+            continue
+        m = s[:, 1]
+        sub[c] = s
+        check(bool((np.diff(m) > 0).all()), f"comp {c}: masses strictly increasing ({m[0]:.4f} to {m[-1]:.4f} Msun)")
+        for j, name in enumerate(BANDS, start=2):
+            rev = np.diff(s[:, j])
+            bad = np.flatnonzero(rev > 0)
+            for i in bad:
+                print(f"  comp {c} reversal in Mab_{name}: {m[i]:.3f} -> {m[i + 1]:.3f} Msun, +{rev[i]:.3f} mag"
+                      + ("  (lens table's own)" if m[i + 1] < JOIN else ""))
+            hi = bad[m[bad + 1] > JOIN]
+            worst = rev[hi].max() if hi.size else 0.0
+            check(worst <= REVERSAL_MAX, f"comp {c}: Mab_{name} decreases with mass above {JOIN} Msun "
+                                         f"({hi.size} reversals, worst {worst:.3f})")
+        lc = L[L[:, 0] == c]
+        want = np.column_stack([0.5 * (lc[:, 1] + lc[:, 2]), lc[:, 4:11]])
+        got = s[s[:, 1] < JOIN][:, 1:]
+        same = got.shape == want.shape and np.allclose(got, want, rtol=0, atol=6e-5)
+        check(same, f"comp {c}: rows below {JOIN} Msun equal the lens table's ({len(got)} vs {len(want)} bin centres, "
+                    f"max |diff| {np.abs(got - want).max() if got.shape == want.shape else float('nan'):.5f} mag)")
+        first = s[s[:, 1] > JOIN][0] if (s[:, 1] > JOIN).any() else None
+        if first is not None:
+            step = first[2:] - got[-1, 1:]
+            print(f"  comp {c}: step at {JOIN} Msun ({got[-1, 0]:.2f} -> {first[1]:.3f} Msun), M_AB: "
+                  + " ".join(f"{b} {d:+.3f}" for b, d in zip(BANDS, step)))
+    if len(sub) == 4:
+        hi = [sub[c][sub[c][:, 1] > JOIN][:, 1:] for c in range(4)]
+        seq = {}
+        ok = True
+        for h in hi:
+            for r in h:
+                ok &= bool(np.array_equal(seq.setdefault(round(r[0], 4), r), r))
+        check(ok, f"above {JOIN} Msun every component's rows are the same sequence ({len(seq)} distinct masses; "
+                  f"rows per component {[len(h) for h in hi]})")
+    print(f"lowest mass {t[:, 1].min():.4f} Msun, highest {t[:, 1].max():.4f} Msun, {len(t)} rows")
     print("PASS" if not fails else "FAIL")
     return 1 if fails else 0
 

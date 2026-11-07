@@ -81,7 +81,9 @@ const char* eventTableHeader()
         // Alens_<band>: the dust in front of the lens [mag] in u g r i z y F146 (A_V at D_L along the sightline times
         // A_lambda/A_V of the lens's component), written for every lens, dark or luminous; the apparent magnitude of a
         // main-sequence star of the lens's mass is Mab(M) + 5 log10(D_L / 10 pc) + Alens.
-        "Alens_u Alens_g Alens_r Alens_i Alens_z Alens_y Alens_F146";
+        "Alens_u Alens_g Alens_r Alens_i Alens_z Alens_y Alens_F146 "
+        // u0side: +1 or -1, the side of the lens the source passes (u0 is the positive distance of closest approach).
+        "u0side";
 }
 
 int openOutputs(const RunConfig& cfg, RunOutputs& o) {
@@ -329,6 +331,8 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              // Runs whose provenance lacks this line also multiplied the bar by 0.45 (analysis/galaxy_model.py).
              << "# bulge_norm          Robin+2012 S+E bars x BAR_MASS_RESCALE " << BAR_MASS_RESCALE
              << " only   # Han & Gould 2003 column toward Baade's window\n"
+             // Runs before this line used Robin+2003's thin-disc flattenings and hole form.
+             << "# thin_disc           Besancon 1612: eps 0.0140..0.0678, hole with the disc's vertical scale; Sun 15 pc above the plane\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex.nTables << " x "
              << ex.nDist << ", k " << ex.k << " --" << ex.built << "\n"
 

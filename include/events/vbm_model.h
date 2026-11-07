@@ -135,6 +135,7 @@ struct ModelEvent {
     double piS;          // source parallax [mas]
     double rho;          // source radius in Einstein radii, theta* / thetaE >= 0; read only by ESPL
     SourceModel source;  // ESPL with rho = 0 is the point source
+    double u0side = 1.0; // +1 or -1: the side of the lens the source passes; the signed impact parameter is u0side * u0
 };
 
 // The model at one epoch, on (e_l, e_b).
@@ -154,8 +155,8 @@ struct ModelEpoch {
 // library had to extrapolate an ephemeris, i.e. an epoch is outside vbmEarthSpan (or, for Roman, outside
 // the span of its table).
 //
-// u0 > 0 and the line u0 (-sin xi, cos xi) + tau (cos xi, sin xi) are the legacy straight-line geometry
-// of the source relative to the lens on (e_l, e_b); only the parallax is the library's.
+// u0 > 0 and the line u0side u0 (-sin xi, cos xi) + tau (cos xi, sin xi) are the legacy straight-line geometry
+// (u0side = +1 is the original side) of the source relative to the lens on (e_l, e_b); only the parallax is the library's.
 //
 // The astrometric call perturbs the parallax vector at every epoch (see vbm_model.cpp), which the
 // photometric one does not: the two tracks differ by up to ~2e-10 x (epoch index) Einstein radii, 2e-7 at the

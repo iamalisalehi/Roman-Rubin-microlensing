@@ -57,9 +57,9 @@ int main()
     }
 
     // Survey bands in config/parameters.h order: ugrizy, F146.
-    const double lam[7]   = {0.367, 0.482, 0.622, 0.755, 0.869, 0.971, 1.464};
+    const double lam[7]   = {0.367, 0.482, 0.622, 0.755, 0.869, 0.971, 1.4378};
     const char*  name[7]  = {"u", "g", "r", "i", "z", "y", "F146"};
-    const double want25[7] = {1.694, 1.216, 0.854, 0.627, 0.460, 0.381, 0.197};
+    const double want25[7] = {1.694, 1.216, 0.854, 0.627, 0.460, 0.381, 0.202};
     for (int i = 0; i < 7; ++i) {
         char buf[64]; std::snprintf(buf, sizeof buf, "A/A_V %s, R_V=2.5", name[i]);
         double v = AlAv(lam[i], 2.5);

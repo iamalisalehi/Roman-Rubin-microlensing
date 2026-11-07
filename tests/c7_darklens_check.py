@@ -3,7 +3,8 @@
     .roman/bin/python tests/c7_darklens_check.py [--ms PATH]
 
 Synthetic one-row frames and a fixed seed. --ms (optional) is a real ms_hypothesis.dat; when given it
-is also loaded and checked for shape and monotonicity.
+is also loaded and checked for shape and monotonicity. The per-component layout (comp mass bands) and the
+older layout without comp are both exercised: the component of each event (`struc`) selects its relation.
 Checks: a 10 Msun lens against a faint blend is dark with probability 1; a lens whose blend is 1.5x
 its own main-sequence flux is not (P < 0.75); below the table's lowest mass nothing is excluded; -1
 mass error gives NaN; absurd errors stay finite in [0, 1]; the Rubin flux sums the bands of
@@ -33,19 +34,23 @@ def check(ok, msg):
         fails.append(msg)
 
 
-def synthetic_table():
-    """Monotone toy main sequence, 0.08-60 Msun: M_b = 14 - 0.7 k - 4 log10(M/0.08), k the band index."""
+def synthetic_table(comps=None, shift=0.0):
+    """Monotone toy main sequence, 0.08-60 Msun: M_b = 14 - 0.7 k - 4 log10(M/0.08) + shift*comp, k the band
+    index. comps=None writes the older layout (no comp column); else one block per listed component."""
     m = np.geomspace(0.08, 60.0, 40)
-    cols = [m] + [14.0 - 0.7 * k - 4.0 * np.log10(m / 0.08) for k in range(len(BANDS))]
     f = tempfile.NamedTemporaryFile("w", suffix=".dat", delete=False)
-    f.write("# toy main sequence\n# mass " + " ".join(f"Mab_{b}" for b in BANDS) + "\n")
-    np.savetxt(f, np.column_stack(cols), fmt="%.6f")
+    f.write("# toy main sequence\n# " + ("comp " if comps else "") + "mass " + " ".join(f"Mab_{b}" for b in BANDS) + "\n")
+    for c in (comps or [None]):
+        cols = [m] + [14.0 - 0.7 * k - 4.0 * np.log10(m / 0.08) + (shift * c if c else 0.0) for k in range(len(BANDS))]
+        if c is not None:
+            cols = [np.full_like(m, c)] + cols
+        np.savetxt(f, np.column_stack(cols), fmt="%.6f")
     f.close()
     return f.name
 
 
 def frame(**kw):
-    base = dict(Ml=1.0, Dl=4.0, mbs0=20.0, fb0=0.5, mbs1=20.0, fb1=0.5, ndw_R=50,
+    base = dict(struc=0, Ml=1.0, Dl=4.0, mbs0=20.0, fb0=0.5, mbs1=20.0, fb1=0.5, ndw_R=50,
                 relMl_J=0.1, relMl_L=0.1, relMl_R=0.1,
                 sigfb0_J=-1.0, sigfb0_L=-1.0, sigfb1_J=-1.0, sigfb1_R=-1.0)
     for b in BANDS:
@@ -66,15 +71,40 @@ def main():
     ap.add_argument("--ms", default=None, help="a real ms_hypothesis.dat to load-check")
     args = ap.parse_args()
 
+    # the older layout (no comp column) is one relation for every component; the tests below run on it
     path = synthetic_table()
     ms = R.load_ms_hypothesis(path)
-    check(list(ms.columns) == ["mass"] + [f"Mab_{b}" for b in BANDS] and len(ms) == 40
-          and bool(np.all(np.diff(ms["mass"]) > 0)),
-          "load_ms_hypothesis: columns mass, Mab_<band>; 40 rows increasing")
+    check(list(ms.columns) == ["comp", "mass"] + [f"Mab_{b}" for b in BANDS] and len(ms) == 40
+          and bool((ms["comp"] == -1).all()) and bool(np.all(np.diff(ms["mass"]) > 0)),
+          "load_ms_hypothesis: old layout loads (comp = -1), 40 rows increasing")
     if args.ms:
         real = R.load_ms_hypothesis(args.ms)
-        check(real["mass"].min() < 0.1 and real["mass"].max() > 50 and bool(np.all(np.diff(real["mass"]) > 0)),
-              f"real table: {len(real)} rows, {real['mass'].min()}-{real['mass'].max()} Msun")
+        ok = real["mass"].min() < 0.1 and real["mass"].max() > 50
+        if (real["comp"] >= 0).all():
+            ok &= sorted(real["comp"].unique()) == [0, 1, 2, 3]
+        check(bool(ok), f"real table: {len(real)} rows, {real['mass'].min()}-{real['mass'].max()} Msun")
+
+    # per-component layout: component c is c * 1 mag fainter; each event uses its own relation
+    pc = synthetic_table(comps=[0, 1, 2, 3], shift=1.0)
+    msc = R.load_ms_hypothesis(pc)
+    check(len(msc) == 160 and sorted(msc["comp"].unique()) == [0, 1, 2, 3], "per-component layout: 4 x 40 rows")
+    mass_c = float(msc["mass"].iloc[17])
+    row = lambda c: frame(struc=c, Ml=mass_c, Dl=4.0, mbs1=20.0, fb1=0.5, sigfb1_R=1e-9, relMl_R=1e-6)
+    fl0 = 10 ** (-0.4 * (float(msc[(msc.comp == 0)].iloc[17]["Mab_F146"]) + 5 * np.log10(400.0)))
+    for c in (0, 3):
+        d = frame(struc=c, Ml=mass_c, Dl=4.0, fb1=0.5, sigfb1_R=1e-9, relMl_R=1e-6,
+                  mbs1=-2.5 * np.log10(1.5 * fl0 * 10 ** (-0.4 * c) / 0.5))
+        # blend = 1.5 x comp-c lens flux => not excluded; with the comp-0 flux (brighter than comp 3's) it would be at c=3
+        p = float(R.dark_lens_probability(d, "roman", msc).iloc[0])
+        check(p == 0.0, f"per-component: struc {c}, blend 1.5x its own relation's flux: P(dark) = {p}")
+    d3 = frame(struc=3, Ml=mass_c, Dl=4.0, fb1=0.5, sigfb1_R=1e-9, relMl_R=1e-6,
+               mbs1=-2.5 * np.log10(0.9 * fl0 / 0.5))
+    d0 = d3.assign(struc=0)
+    p3, p0 = (float(R.dark_lens_probability(d, "roman", msc).iloc[0]) for d in (d3, d0))
+    check(p3 == 0.0 and p0 == 1.0, f"same blend (0.9x comp-0 flux): comp 3 (3 mag fainter) P = {p3}, comp 0 P = {p0}")
+    dn = d0.assign(struc=7)
+    check(np.isnan(float(R.dark_lens_probability(dn, "roman", msc).iloc[0])), "struc outside 0-3: NaN")
+    os.unlink(pc)
 
     def pdark(df, part, **kw):
         return float(R.dark_lens_probability(df, part, ms, **kw).iloc[0])

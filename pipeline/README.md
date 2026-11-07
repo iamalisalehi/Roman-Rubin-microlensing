@@ -58,7 +58,9 @@ pipeline/pipeline.sh my_run.sh all                 # everything, on this machine
    (not on the Besancon file or the OpSim db), so copying one is the sensible default. `build` runs `maps.py`:
    `fetch` downloads the DECaPS mean map (7 GB) and Marshall's map into `dustmaps/`, then ~35 minutes of queries.
 4. Fetched for you: MIST v2 bolometric-correction tables (`LSST.txz` 2.9 MB, `Roman.txz` 3.9 MB, from
-   mist.science) into `CMD/Rubin`, `CMD/Roman`; the LSSTCam focal-plane map (`Baseline/lsstcam_fov/fov_map.txt`).
+   mist.science) into `CMD/Rubin`, `CMD/Roman`; the LSSTCam focal-plane map (`Baseline/lsstcam_fov/fov_map.txt`);
+   the OGLE-IV event table of Mroz et al. 2019 (Table 3, 1.5 MB, from the OGLE site; `OGLE_TABLE3`, checked
+   against its known md5) for the w2 check.
    Vendored in git: `files/sigma_roman.txt`, `CMD/empirical/EEM_dwarf_UBVIJHK_colors_Teff.txt`, and what the
    light-curve model reads: `external/VBMicrolensing/` (the library and its Sun-ephemeris and finite-source
    tables) and `files/ephemeris/` (Roman's L2 orbit). Run directories link both.
@@ -100,7 +102,11 @@ pipeline/pipeline.sh my_run.sh all                 # everything, on this machine
   chunked run. `run.log` is the chunk logs in order (each chunk keeps its own `RUN TOTALS` block).
   `run_provenance.txt` is chunk 0's, with `start_index 0`, `end_index N` and `merged_chunks K` set and the
   end-of-run sightline counts and areas summed over the chunks (they equal the unchunked values).
-  `KEEP_CHUNKS=0` deletes the chunks afterwards.
+  `KEEP_CHUNKS=0` deletes the chunks afterwards. With `COMPRESS_TABLES=1` (default) the merged `test<tag>.dat` is then
+  gzip-compressed to `test<tag>.dat.gz` (checked with `gzip -t` and a line count before the plain file is deleted;
+  re-running merge never leaves both). Chunk tables stay plain. The analysis scripts and `romanlib.load_events` read
+  either name, so a script given `test5.dat` finds `test5.dat.gz`; to compress an existing run use
+  `gzip -6 RUN/<pop>/test*.dat`.
 - **analyze** (`ANALYSES`): `yields` = y1 per population and y3 on their concatenation (y3's `eta` column needs a
   population named `bulge`; without one it is NaN, and a `besancon` run does not count as `bulge`); `figures` = per
   population f1 (`--fields-only`, on the full table: it also counts the non-detected draws), then, on a
@@ -113,7 +119,7 @@ pipeline/pipeline.sh my_run.sh all                 # everything, on this machine
   read in either convention. Also per population f5 (`f5_blend_selection.md`: blending shares, follow-up classes and
   dark-lens pass rates, both conventions in one table; reads the full table and `ms_hypothesis.dat`) and, for the
   population named `bulge`, w2 (`w2_ogle4_blend_check.py`: the simulated blend fractions beside OGLE-IV's Table 3;
-  needs `OGLE_TABLE3` in the config, empty = skipped with a note). Each script's output goes to a `.log` next to its results in
+  reads `OGLE_TABLE3`, which `fetch` downloads; empty = skipped with a note). Each script's output goes to a `.log` next to its results in
   `RUN_ROOT/analysis/`. A failing script is reported (name and log) and the others still run; the stage then exits
   non-zero.
 - **status**: chunks done / running / pending per population, CPU used, sizes.
@@ -143,7 +149,7 @@ network, a few GB of RAM and ~30 minutes: run them on the login node or in an in
 ```bash
 #   SCHEDULER=slurm
 #   SLURM_OPTS="--account=myproj --partition=normal --time=03:00:00 --mem=2G --cpus-per-task=1"
-#   SLURM_OPTS_FINISH="--account=myproj --partition=normal --time=04:00:00 --mem=12G"
+#   SLURM_OPTS_FINISH="--account=myproj --partition=normal --time=08:00:00 --mem=24G"
 for s in check setup fetch prep; do pipeline/pipeline.sh my_run.sh $s || break; done
 SUBMIT=0 pipeline/pipeline.sh my_run.sh sim   # only writes RUN_ROOT/slurm/<pop>.sbatch and finish.sbatch
 pipeline/pipeline.sh my_run.sh sim            # submits: one array job per population over the pending chunks,
@@ -159,15 +165,20 @@ config (`RUN_ROOT/slurm/config.sh`), so editing your config afterwards does not 
 
 ## Time, memory, disk (production flags: `--events 300 --lenses 50 --stride 10 --stride-roman 5 --pair-satellite`)
 
-- `./roman`: ~18-19 CPU-hours per population, one thread each, ~0.7 GB RAM each; 2013 sightlines, of which the
-  ~160 on a Roman detector cost 4-6 CPU-min each and the others 0.1-0.3. Each chunk first reads the inputs (~25 s).
-  Wall time = CPU time / `JOBS` (or the number of array tasks the cluster runs at once).
+- `./roman`: ~12-13 CPU-hours per population on a laptop core (2026-11-07, a 34-sightline stratified sample per
+  population), one thread each, ~0.7 GB RAM each; 2013 sightlines, of which the 161 on a Roman detector cost
+  0.9-1.4 CPU-min each (max ~2) and the others 0.2-0.4 (max ~0.8). Each chunk first reads the inputs (~25 s).
+  Wall time = CPU time / `JOBS` (or the number of array tasks the cluster runs at once). `STRIDE_ROMAN=2` (1,152
+  sightlines on a detector): ~30-37 CPU-hours per population.
 - `prep`: star lists ~8 min and 1.7 GB RAM; Rubin visit list ~3 min; the rest is seconds; the first `make` ~1-2 min.
   Downloads: ~7 MB MIST, 0.8 GB OpSim, 7 GB DECaPS only for `EXT_TABLES=build`.
-- Disk: star lists 0.6 GB; per-event tables are large: about 6.0 GB (bulge), 4.1 GB (ns), 3.2 GB (bh) at
-  production flags, and they exist twice (chunks and merged) unless `KEEP_CHUNKS=0`.
-- `analyze`: y1 holds a population's draws in memory (bulge ~2.4 GB, ~33 min); p6/p7 hold two populations. Give
-  `SLURM_OPTS_FINISH` ~12 GB.
+- Disk: star lists 0.6 GB; per-event tables are large (~770 bytes per drawn star, up to 50,000 rows per sightline):
+  about 21 GB (bulge), 15 GB (ns), 12 GB (bh) at production flags, each +-30% (the few outside-footprint sightlines
+  that reach the draw cap dominate), ~10% more at `STRIDE_ROMAN=2`; they exist twice (chunks and merged) unless
+  `KEEP_CHUNKS=0`. The merged tables compress ~3x (gzip -6, `COMPRESS_TABLES=1`), and the analysis reads the `.gz` directly:
+  ~7 / 5 / 4 GB, ~17 GB for the three with their logs (the merge needs the plain table's space once, briefly).
+- `analyze`: y1 holds a population's draws in memory (~2.4 GB per 6 GB of table, so ~8 GB for bulge, ~1 h at
+  laptop speed); p6/p7 hold two populations. Give `SLURM_OPTS_FINISH` ~24 GB and several hours.
 
 ## Where things go
 
@@ -190,8 +201,8 @@ pipeline/logs/, pipeline/.stamps/       prep logs and stamps (ignored by git)
   `RUN_ROOT` whose plan used other flags.
 - **Another OpSim baseline** should start on or before the simulation's day 0, MJD 61141.312 (2026-04-11, pinned in
   `Baseline/readbaselineBulge.py`; Roman's mission is placed on the same clock). `readbaselineBulge.py` keeps the
-  visits within reach of a Roman field and silently drops those outside the clock `[0, Tobs]`
-  (`Tobs` = 10 years = 3652.4 d in `config/parameters.h`); it prints how many (49 for v5.1.0, which starts 160 d before
+  visits within reach of a Roman field and silently drops those outside the survey's 10 years
+  `[0, 3652.4 d]`; it prints how many (49 for v5.1.0, which starts 160 d before
   day 0 and ends 161 d before the clock does, so the last 161 days have no Rubin visits). A baseline that starts
   *after* day 0 is not rejected: Rubin simply has no visits at the start of the clock (an event peaking there is
   seen by Roman alone, or by nothing before Roman's mission starts at day 306). `check` prints what it finds.

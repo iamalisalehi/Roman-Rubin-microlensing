@@ -7,6 +7,7 @@ floor of the LSST astrometric table); they are measured here, never typed by han
     python3 tools/sync_data_products.py            # write config/data_products.h
     python3 tools/sync_data_products.py --check    # write nothing; exit 1 if the file on disk is stale
     python3 tools/sync_data_products.py --root DIR # use another tree (testing)
+    python3 tools/sync_data_products.py --root DIR --out-root DIR2   # read the data from DIR, write/check DIR2's header
 
 Run it from anywhere; paths resolve from this script's location (or --root). Exit codes:
 0 ok / up to date, 1 --check found a stale header, 2 a data file is missing or unparseable.
@@ -95,9 +96,36 @@ def mean_masses(path):
     return out
 
 
+def last_visit_day(path):
+    """The largest `time` [days since the simulation clock's day 0] in the visit list: column 6 of the
+    '#' header line (named `time`), over the data rows."""
+    col, best = None, None
+    with open(path) as f:
+        for line in f:
+            s = line.strip()
+            if not s:
+                continue
+            if s.startswith("#"):
+                names = s[1:].split()
+                if col is None and "time" in names:
+                    col = names.index("time")
+                continue
+            if col is None:
+                raise DataError(f"{path}: no '# ... time ...' header line before the data")
+            t = s.split()
+            if len(t) <= col:
+                raise DataError(f"{path}: row with fewer than {col + 1} columns: {s!r}")
+            if best is None or float(t[col]) > float(best):
+                best = t[col]
+    if best is None:
+        raise DataError(f"{path}: no data rows")
+    return best
+
+
 def measure(root):
     v = {}
     v["Nl"] = count_rows(need(root, BULGE_BASELINE))
+    v["RUBIN_LAST_VISIT_DAY"] = last_visit_day(need(root, BULGE_BASELINE))
     v["NlRoman"] = count_rows(need(root, ROMAN_BASELINE))
     v["NaRoman"], _ = sigma_table(need(root, SIGMA_ROMAN))
     mm = mean_masses(need(root, PROVENANCE))
@@ -143,6 +171,11 @@ constexpr double MEANMASS_HALO  = {MEANMASS_HALO};
 // plus 1.94 deg (the LSSTCam field radius).
 constexpr int Nl = {Nl};
 
+// The last visit in Baseline/BulgeBaseline.dat (largest `time`, days on the simulation clock, day 0 = the first
+// Rubin bulge visit). The OpSim baseline itself runs ~180 d further, but no pointing within reach of the scan
+// region falls there, so the simulated window ends here: Tobs = this + T0_MARGIN_DAYS (config/parameters.h).
+constexpr double RUBIN_LAST_VISIT_DAY = {RUBIN_LAST_VISIT_DAY};
+
 // Data rows in Baseline/RomanBaseline.dat, EXCLUDING the header. Written by
 // Baseline/generateRomanBaseline.py; changes whenever the season pattern, cadence or mission start day
 // changes (the read guard in src/run/inputs.cpp fires on a mismatch).
@@ -164,7 +197,7 @@ def render(v):
 
 def parse_existing(text):
     old = {}
-    for m in re.finditer(r"\b(NaRoman|N[1-4]|Nl|NlRoman|MEANMASS_[A-Z]+)\s*=\s*([0-9.eE+-]+)\s*[,;]", text):
+    for m in re.finditer(r"\b(NaRoman|N[1-4]|Nl|NlRoman|RUBIN_LAST_VISIT_DAY|MEANMASS_[A-Z]+)\s*=\s*([0-9.eE+-]+)\s*[,;]", text):
         old[m.group(1)] = m.group(2)
     return old
 
@@ -174,15 +207,19 @@ def main():
     ap.add_argument("--check", action="store_true", help="do not write; exit 1 if the header is stale")
     ap.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent,
                     help="repository root (default: the parent of tools/)")
+    ap.add_argument("--out-root", type=Path, default=None,
+                    help="tree whose config/data_products.h is written or checked (default: --root); "
+                         "for a worktree without the gitignored data files")
     a = ap.parse_args()
     root = a.root.resolve()
+    out_root = (a.out_root or a.root).resolve()
     try:
         v = measure(root)
     except DataError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
     new = render(v)
-    hp = root / HEADER_PATH
+    hp = out_root / HEADER_PATH
     oldtext = hp.read_text() if hp.is_file() else ""
     old = parse_existing(oldtext)
     changed = []

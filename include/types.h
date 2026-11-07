@@ -105,6 +105,9 @@ struct lens {
     std::array<double, M> Alens{};
 
     double Ml, Dl, vl, Vt, xls, u0, A0, mi1, mi2;
+    // Which side of the lens the source passes: +1 or -1, drawn at random per event. u0 stays the positive
+    // closest-approach distance everywhere it is a magnitude; the model sees u0side * u0.
+    double u0side = 1.0;
     double rhomaxl, RE, t0, murel, DeltaT;
     // Einstein crossing time [days]: tE is the GEOCENTRIC one the light curve, the efficiency bins and the
     // Fisher matrices use (thetaE over the geocentric lens-source proper motion, parametrising the straight
@@ -241,6 +244,7 @@ struct EventRecord {
     // Largest separation reached at an epoch where both images were detectable [mas].
     // -1 means that never happened (sentinel); it must not enter a mean or a histogram.
     double dsepMax_L, dsepMax_R;
+    double u0side = 1.0;        //side of the lens the source passes (+1 or -1); last column of the table
 };
 
 #endif // ROMAN_TYPES_H

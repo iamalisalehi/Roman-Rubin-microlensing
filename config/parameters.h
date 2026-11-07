@@ -48,9 +48,13 @@ constexpr double VSunT = vro_sun*(1.00762 + 0.00712) + 12.24;
 constexpr double VSunZ = 7.25;
 ///============================ Besancon constant ==========================///
 constexpr double Dsun = 8.0;
+// The Sun's height above the Galactic plane [kpc]: Besancon 1612 ("Sun position z_0 : 15.00" pc in its output
+// header). Every density law sees a point at z = Z_SUN + d sin(b).
+constexpr double Z_SUN = 0.015;
 constexpr std::array<double, 8> rho0 = {4.0, 7.9, 6.2, 4.0, 5.8, 4.9, 6.6, 3.96}; //considering WD
 constexpr std::array<double, 8> d0   = {0.073117, 0.0216524, 0.0217405, 0.0217901, 0.0218061, 0.0218118, 0.0218121, 0.0218121};
-constexpr std::array<double, 8> epci = {0.014, 0.0268, 0.0375, 0.0551, 0.0696, 0.0785, 0.0791, 0.0791};
+// Disc flattenings from the header of Besancon model 1612; the 8th bin (disc white dwarfs) repeats the 7th.
+constexpr std::array<double, 8> epci = {0.0140, 0.0217, 0.0309, 0.0464, 0.0594, 0.0673, 0.0678, 0.0678};
 constexpr std::array<double, 8> corr = {1.0, 7.9/4.48419, 6.2/3.52112, 4.0/2.27237, 5.8/3.29525, 4.9/2.78402, 6.6/3.74991, 3.96/2.24994};
 constexpr std::array<double, 4> Rv   = {3.1, 2.5 ,3.1 ,3.1}; //Disk, Bulge, Thick, Halo
 constexpr int    Num  = 9500;
@@ -97,10 +101,11 @@ constexpr double HALO_NORM = 5281.0;                          //total mass 1.2e9
 
 // Bulge / bar: two triaxial components, S (boxy, 1/cosh^2 profile) and E (exponential).
 constexpr double BAR_ANGLE_DEG = 12.89;                       //bar angle [deg]
-constexpr double BAR_MASS_RESCALE = 0.24529; // calibrated so bulge column density toward
-                                             // Baade's Window (l=1, b=-3.9) matches the
-                                             // Han & Gould (2003) HST benchmark: 2086 Msun/pc^2.
-                                             // The bar's only normalisation: S+E total 9.3e9 Msun.
+constexpr double BAR_MASS_RESCALE = 0.23281; // calibrated so bulge column density toward
+                                             // Baade's Window (l=1, b=-3.9), with the Sun at Z_SUN,
+                                             // matches the Han & Gould (2003) HST benchmark: 2086
+                                             // Msun/pc^2 (2,081 here; 0.24529 with the Sun in the plane).
+                                             // The bar's only normalisation.
 constexpr double BAR_CUTOFF_K = 4.0;                          //Gaussian cut-off exp(-K (r2-Rc)^2) beyond Rc
 constexpr double BAR_S_RX0 = 1.46;
 constexpr double BAR_S_RY0 = 0.49;
@@ -122,11 +127,12 @@ constexpr double BAR_E_MASS_DEN = 87.0;                       // normalized
 // ---- (2b) Galactic model: kinematics (vrel, src/galaxy/kinematics.cpp) ----
 // Velocity dispersions [km/s] in the Galactic (R, T, Z) frame, drawn as truncated Gaussians.
 constexpr double VEL_NSIGMA_TRUNC = 3.5;   //truncation of the Gaussian velocity draws [sigma]
-// Thin disc: one row per age bin, chosen by the bin's share of Rho[0..3] = rho0*corr/d0.
-constexpr std::array<double, 4> THIN_AGE     = {0.075, 0.575, 1.5, 2.5};   //Gyr
-constexpr std::array<double, 4> THIN_SIGMA_R = {16.7, 19.8, 27.2, 30.2};
-constexpr std::array<double, 4> THIN_SIGMA_T = {10.8, 12.8, 17.6, 19.5};
-constexpr std::array<double, 4> THIN_SIGMA_Z = {6.0, 8.0, 10.0, 13.2};
+// Thin disc: the Besancon age-velocity relation, one row per catalogue age bin (Robin et al. 2003; Table 1 of
+// Robin et al. 2017, arXiv:1704.06274). The disc white dwarfs (8th density bin) use the last row.
+constexpr std::array<double, 8> THIN_AGE_EDGES = {0.0, 0.15, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0};   //Gyr
+constexpr std::array<double, 7> THIN_SIGMA_R = {16.7, 19.8, 27.2, 30.2, 36.7, 43.1, 43.1};
+constexpr std::array<double, 7> THIN_SIGMA_T = {10.8, 12.8, 17.6, 19.5, 23.7, 27.8, 27.8};
+constexpr std::array<double, 7> THIN_SIGMA_Z = {6.0, 8.0, 10.0, 13.2, 15.8, 17.4, 17.5};
 constexpr double THICK_SIGMA_R = 67.0,  THICK_SIGMA_T = 51.0,  THICK_SIGMA_Z = 42.0;
 constexpr double HALO_SIGMA_R  = 131.0, HALO_SIGMA_T  = 106.0, HALO_SIGMA_Z  = 85.0;
 constexpr double BULGE_SIGMA_R = 113.0, BULGE_SIGMA_T = 115.0, BULGE_SIGMA_Z = 100.0;
@@ -202,7 +208,9 @@ constexpr std::array<double, M> FWHM  = {1.1140, 1.0420, 0.9819, 0.9487, 0.9320,
 // The blending disc has radius FWHM * BLEND_RADIUS_FWHM_FRAC (= the HWHM) in func_source: the expected
 // number of stars in it is lambda, and the source's own blend is 1 + Poisson(lambda).
 constexpr double BLEND_RADIUS_FWHM_FRAC = 0.5;
-constexpr std::array<double, M> lambda_um = {0.367, 0.482, 0.622, 0.755, 0.869, 0.971, 1.464};
+// Wavelength at which each band's extinction is evaluated [um]. F146 is its pivot wavelength,
+// sqrt(int T l dl / int T/l dl) of the SVO Filter Profile Service curve Roman/WFI.F146 (band centre: 1.464).
+constexpr std::array<double, M> lambda_um = {0.367, 0.482, 0.622, 0.755, 0.869, 0.971, 1.4378};
 
 // Which LSST filter(s) (indices 0-5 = u,g,r,i,z,y) form the single "Rubin representative band"
 // standing in for the whole LSST light curve in the Fisher matrix, the recorded per-epoch Rubin model
@@ -215,7 +223,12 @@ inline const std::vector<int> RUBIN_REF_BANDS = {2};
 // (4) RUBIN / LSST SURVEY AND FOOTPRINT
 // ==========================================================================================
 
-constexpr double Tobs = 10.0 * year;//LSST observational time: 10 years
+// Margin of the t0 draw from the ends of the simulated window [days].
+constexpr double T0_MARGIN_DAYS = 2.0;
+// The simulated window [0, Tobs] days ends at Rubin's last visit in the scan region's visit list
+// (RUBIN_LAST_VISIT_DAY, measured from Baseline/BulgeBaseline.dat in data_products.h) plus the margin, so
+// the latest t0 is that visit; the OpSim baseline itself runs ~180 d further but has no visit here.
+constexpr double Tobs = RUBIN_LAST_VISIT_DAY + T0_MARGIN_DAYS;
 // The simulation clock. Day 0 is the first Rubin bulge visit of the OpSim baseline, MJD 61141.312002288
 // (2026-04-11); every time in the visit lists and every event time t0 is in days from it. It must equal
 // TIME0_MJD in Baseline/readbaselineBulge.py, which subtracts it from the visit times.
@@ -398,9 +411,8 @@ inline constexpr LensPopulation POPULATIONS[] = {
 };
 constexpr double u0m   = 3.0;
 // Event-parameter draws (func_lens): u0 is uniform in [U0_MIN_DRAW, u0m]; the peak time t0 is uniform
-// in [T0_MARGIN_DAYS, Tobs - T0_MARGIN_DAYS] days, i.e. at least 2 days inside the survey ends.
+// in [T0_MARGIN_DAYS, Tobs - T0_MARGIN_DAYS] days, i.e. at least 2 days inside the window's ends.
 constexpr double U0_MIN_DRAW = 0.001;
-constexpr double T0_MARGIN_DAYS = 2.0;
 // ---- Kroupa (2001) initial mass function, dN/dM ~ M^-alpha, with the standard breaks ----
 // Continuity coefficients are derived in drawKroupaInitialMass(); only breaks and slopes are named here.
 constexpr double KROUPA_MI_MIN = 0.01;   //below the hydrogen-burning limit: brown dwarfs

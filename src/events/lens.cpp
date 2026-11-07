@@ -116,6 +116,7 @@ void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sight
     }
 
     l.u0     = RandR(U0_MIN_DRAW, u0m);
+    l.u0side = (RandR(0.0, 1.0) < 0.5) ? 1.0 : -1.0;   // the source passes either side of the lens
     l.t0     = RandR(T0_MARGIN_DAYS, Tobs - T0_MARGIN_DAYS);
     l.DeltaT = std::sqrt(4.0 + l.u0 * l.u0) * l.tetE; //[mas]
 

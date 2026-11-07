@@ -34,6 +34,11 @@ constexpr double MEANMASS_HALO  = 0.4224;
 // plus 1.94 deg (the LSSTCam field radius).
 constexpr int Nl = 12915;
 
+// The last visit in Baseline/BulgeBaseline.dat (largest `time`, days on the simulation clock, day 0 = the first
+// Rubin bulge visit). The OpSim baseline itself runs ~180 d further, but no pointing within reach of the scan
+// region falls there, so the simulated window ends here: Tobs = this + T0_MARGIN_DAYS (config/parameters.h).
+constexpr double RUBIN_LAST_VISIT_DAY = 3473.730855;
+
 // Data rows in Baseline/RomanBaseline.dat, EXCLUDING the header. Written by
 // Baseline/generateRomanBaseline.py; changes whenever the season pattern, cadence or mission start day
 // changes (the read guard in src/run/inputs.cpp fires on a mismatch).

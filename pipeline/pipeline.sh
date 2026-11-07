@@ -52,7 +52,7 @@ source "$CONFIG"
 
 : "${BESANCON_CATALOGUE:=CMD/Besancon/bos10}"
 : "${OPSIM_DB:=Baseline/baseline_v5.1.0_10yrs.db}"
-: "${OPSIM_URL:=https://s3df.slac.stanford.edu/data/rubin/sim-data/sims_featureScheduler_runs5.1/baseline/baseline_v5.1.0_10yrs.db}"
+: "${OPSIM_URL=https://s3df.slac.stanford.edu/data/rubin/sim-data/sims_featureScheduler_runs5.1/baseline/baseline_v5.1.0_10yrs.db}"
 : "${MIST_URL_BASE:=https://mist.science/BC_tables/v2}"
 : "${EXT_TABLES:=}"
 : "${CATALOGUE_DWARFS:=besancon}"
@@ -75,8 +75,11 @@ source "$CONFIG"
 : "${SLURM_OPTS_FINISH:=$SLURM_OPTS}"
 : "${SUBMIT:=1}"
 : "${KEEP_CHUNKS:=1}"
+: "${COMPRESS_TABLES:=1}"
 : "${ANALYSES:=yields figures}"
-: "${OGLE_TABLE3:=}"
+# OGLE_TABLE3 empty = skip the w2 check; unset = the default path, which fetch fills from OGLE_URL.
+: "${OGLE_TABLE3=files/ogle/mroz2019_table3.dat}"
+: "${OGLE_URL=https://www.astrouw.edu.pl/ogle/ogle4/microlensing_maps/table3.dat}"
 : "${PYTHON:=.roman/bin/python}"
 : "${GSL:=auto}"
 : "${ALLOW_DIRTY:=0}"
@@ -109,7 +112,7 @@ validate_config() {
     if is_uint "$STRIDE" && is_uint "$STRIDE_ROMAN" && (( STRIDE_ROMAN >= 1 )) && (( STRIDE % STRIDE_ROMAN != 0 )); then
         err "STRIDE_ROMAN ($STRIDE_ROMAN) must divide STRIDE ($STRIDE)"
     fi
-    for v in PAIR_SATELLITE STUB SUBMIT KEEP_CHUNKS; do
+    for v in PAIR_SATELLITE STUB SUBMIT KEEP_CHUNKS COMPRESS_TABLES; do
         [[ ${!v} == 0 || ${!v} == 1 ]] || err "$v must be 0 or 1 (got '${!v}')"
     done
     case $GSL in auto|system|build) ;; *) err "GSL must be auto, system or build (got '$GSL')" ;; esac
@@ -224,8 +227,10 @@ step_def() {
         lens_ml)
             S_FN=do_lens_ml; S_OPTS="dwarfs=$CATALOGUE_DWARFS"
             S_INS="$P_BESANCON CMD/lens_ml_table.py CMD/BolometricCorrection.py $EEM"; S_OUTS=CMD/components/lens_ml.dat ;;
-        ms_hypothesis)   # no stamp: built when missing, never replaced unless FORCE=1
-            S_FN=do_ms_hypothesis; S_OUTS=CMD/components/ms_hypothesis.dat; S_STAMP="" ;;
+        ms_hypothesis)   # rebuilt when the lens table (whose rows it copies below 1 Msun) or the script changes
+            S_FN=do_ms_hypothesis
+            S_INS="$P_BESANCON CMD/lens_ml_table.py CMD/BolometricCorrection.py $EEM CMD/components/lens_ml.dat"
+            S_OUTS=CMD/components/ms_hypothesis.dat ;;
         rubin_visits)
             S_FN=do_rubin_visits; S_OPTS="db=$P_OPSIM"
             S_INS="$P_OPSIM Baseline/readbaselineBulge.py analysis/gbtds_geometry.py Baseline/gbtds_layout config/parameters.h"
@@ -298,6 +303,16 @@ do_opsim() {
     curl -fL --retry 3 -C - -o "$P_OPSIM.part" "$OPSIM_URL" && mv "$P_OPSIM.part" "$P_OPSIM"
 }
 
+# Mroz et al. 2019 (ApJS 244, 29) Table 3 as the OGLE team serves it (downloaded 2026-11-03, 1,542,323 bytes).
+OGLE_MD5=368b18f4394175f5ba3e1fea15d15a93
+do_ogle() {
+    mkdir -p "$(dirname "$P_OGLE")"
+    say "  download $OGLE_URL (1.5 MB) -> $P_OGLE"
+    curl -fL --retry 3 -sS -o "$P_OGLE.part" "$OGLE_URL" && mv "$P_OGLE.part" "$P_OGLE" || return 1
+    [[ $(md5f "$P_OGLE") == "$OGLE_MD5" ]] \
+        || warn "the OGLE-IV table's md5 differs from the one the w2 check was written for: has the file changed upstream?"
+}
+
 do_dustmaps() {
     need_py
     say "  downloading the DECaPS mean map (7 GB) and the Marshall map (5 MB) into dustmaps/ ..."
@@ -322,7 +337,7 @@ do_lens_ml() {
 }
 do_ms_hypothesis() {   # the main-sequence mass -> magnitude table of the dark-lens test (analysis/f5)
     need_py
-    "$PY" CMD/lens_ml_table.py --hypothesis --input "$P_BESANCON" --out "$ROOT/CMD/components/ms_hypothesis.dat"
+    "$PY" CMD/lens_ml_table.py --hypothesis --input "$P_BESANCON" --lens-table "$ROOT/CMD/components/lens_ml.dat" --out "$ROOT/CMD/components/ms_hypothesis.dat"
 }
 do_rubin_visits()  { need_py; (cd Baseline && "$PY" readbaselineBulge.py --db "$P_OPSIM" --no-plots); }
 do_roman_visits()  { need_py; "$PY" Baseline/generateRomanBaseline.py --mission-start "$ROMAN_MISSION_START"; }
@@ -427,8 +442,14 @@ check_inputs() {
         local py=python3; [[ -x $PY ]] && py=$PY
         if msg=$("$py" pipeline/validate_inputs.py opsim "$P_OPSIM" 2>&1); then item req ok "OpSim db" "$OPSIM_DB: $(echo "$msg" | head -1)"; echo "$msg" | tail -n +2 | sed 's/^/           /'
         else item req MISSING "OpSim db" "$msg"; fi
-    elif [[ -n $OPSIM_URL ]]; then item prod MISSING "OpSim db" "$OPSIM_DB missing; fetch downloads it from OPSIM_URL"
+    elif [[ -n $OPSIM_URL ]]; then item prod missing "OpSim db" "$OPSIM_DB missing; fetch downloads it from OPSIM_URL"
     else item req MISSING "OpSim db" "$OPSIM_DB missing and OPSIM_URL empty"; fi
+    if [[ -z $OGLE_TABLE3 ]]; then item req note "OGLE-IV table" "OGLE_TABLE3 is empty: the w2 blend-fraction check is skipped"
+    elif [[ -f $P_OGLE ]]; then
+        if [[ $(md5f "$P_OGLE") == "$OGLE_MD5" ]]; then item req ok "OGLE-IV table" "$OGLE_TABLE3"
+        else item req note "OGLE-IV table" "$OGLE_TABLE3: md5 differs from Mroz et al. (2019) Table 3 as downloaded 2026-11-03"; fi
+    elif [[ -n $OGLE_URL ]]; then item prod missing "OGLE-IV table" "$OGLE_TABLE3 missing; fetch downloads it from OGLE_URL"
+    else item req MISSING "OGLE-IV table" "$OGLE_TABLE3 missing and OGLE_URL empty (OGLE_TABLE3= skips the w2 check)"; fi
     if [[ -z $EXT_TABLES ]]; then item req MISSING "EXT_TABLES" "not set: path to a prebuilt ext_tables.dat, or 'build' (needs the 7 GB DECaPS map, ~35 min)"
     elif [[ $EXT_TABLES == build ]]; then item req ok EXT_TABLES "build (maps.py)"
     elif [[ -f $P_EXT ]]; then item req ok EXT_TABLES "$EXT_TABLES"
@@ -534,6 +555,10 @@ stage_fetch() {
     elif [[ -n $OPSIM_URL ]]; then do_opsim && say "  done   OpSim database" || { say "  FAILED OpSim download"; rc=1; }
     else say "  OpSim database $OPSIM_DB is missing and OPSIM_URL is empty: download one yourself"; rc=1; fi
     if [[ $EXT_TABLES == build ]]; then run_named_step dustmaps || rc=1; fi
+    if [[ -z $OGLE_TABLE3 ]]; then say "  skip   OGLE-IV table (OGLE_TABLE3 is empty: the w2 check is skipped)"
+    elif [[ -f $P_OGLE ]]; then say "  skip   OGLE-IV table (present: $OGLE_TABLE3)"
+    elif [[ -n $OGLE_URL ]]; then do_ogle && say "  done   OGLE-IV table" || { say "  FAILED OGLE-IV table download"; rc=1; }
+    else say "  OGLE-IV table $OGLE_TABLE3 is missing and OGLE_URL is empty: download it yourself, or set OGLE_TABLE3="; rc=1; fi
     if [[ -f $P_BESANCON ]]; then say "  ok     Besancon catalogue present"
     else say "  NOTE   Besancon catalogue $BESANCON_CATALOGUE not found. It cannot be fetched by script (web form);"
          say "         the parameters to enter are in CMD/Besancon/RERUN_bos10.md (summary: pipeline/README.md)."; fi
@@ -809,6 +834,34 @@ stage_chunk() {
 # ------------------------------------------------------------------------------------------------
 # merge, analyze, status
 # ------------------------------------------------------------------------------------------------
+# The merged event table of a population: test<tag>.dat or, once compressed, test<tag>.dat.gz (old run roots
+# keep the plain one). Prints the plain name when neither exists.
+merged_table() {   # merged_table DIR TAG
+    if [[ -f $1/test$2.dat ]]; then echo "$1/test$2.dat"
+    elif [[ -f $1/test$2.dat.gz ]]; then echo "$1/test$2.dat.gz"
+    else echo "$1/test$2.dat"; fi
+}
+
+# gzip -6 the merged event table (COMPRESS_TABLES=1). The plain file is deleted only after gzip -t passes and the
+# decompressed line count equals the plain one's. Safe to repeat: no plain file = nothing to do; a plain file
+# beside an older .gz (a re-merge) replaces it. Chunk tables are never touched.
+compress_merged() {   # compress_merged POPDIR
+    [[ $COMPRESS_TABLES == 1 ]] || return 0
+    local f gz n1 n2
+    for f in "$1"/test*.dat; do
+        [[ -f $f && $f != *_detJ.dat ]] || continue
+        gz=$f.gz
+        gzip -6 -c "$f" > "$gz.tmp" || { rm -f "$gz.tmp"; warn "compress: gzip failed on $f"; return 1; }
+        n1=$(wc -l < "$f"); n2=$(gzip -dc "$gz.tmp" | wc -l)
+        if gzip -t "$gz.tmp" && [[ $n1 == "$n2" ]]; then
+            mv "$gz.tmp" "$gz" && rm -f "$f"
+            say "  compressed ${f##*/}: $n1 lines, $(wc -c < "$gz") B"
+        else
+            rm -f "$gz.tmp"; warn "compress: check failed on $f (kept the plain file)"; return 1
+        fi
+    done
+}
+
 stage_merge() {
     need_py
     mkdir -p "$RUN_STAMPS"
@@ -816,11 +869,11 @@ stage_merge() {
     for pop in $POPULATIONS; do
         d=$P_RUN/$pop
         [[ -f $d/plan.txt ]] || { say "merge: $pop: no plan.txt (sim has not run)"; rc=1; continue; }
-        if [[ -f $d/MERGED && ! -d $d/chunks ]]; then say "  skip   merge $pop (merged; chunks removed)"; continue; fi
+        if [[ -f $d/MERGED && ! -d $d/chunks ]]; then say "  skip   merge $pop (merged; chunks removed)"; compress_merged "$d" || rc=1; continue; fi
         ins=""; nch=$(plan_get "$d/plan.txt" n_chunks)
         for (( k = 0; k < nch; k++ )); do ins="$ins $(chunk_dir "$pop" "$k")/DONE"; done
         if [[ $FORCE != 1 ]] && [[ -f $d/MERGED ]] && [[ $(step_state "$RUN_STAMPS/merge_$pop.stamp" "chunks=$nch" "$ins" "$d/MERGED") == current ]]; then
-            say "  skip   merge $pop (up to date)"; continue
+            say "  skip   merge $pop (up to date)"; compress_merged "$d" || rc=1; continue
         fi
         # shellcheck disable=SC2086
         if ! all_exist $ins; then
@@ -831,6 +884,7 @@ stage_merge() {
               "$PY" pipeline/merge_chunks.py "$d"; then
             sed 's/^/         /' "$P_RUN/logs/merge_$pop.log"
             if [[ $KEEP_CHUNKS == 0 ]]; then rm -rf "$d/chunks"; say "  removed $d/chunks (KEEP_CHUNKS=0)"; fi
+            compress_merged "$d" || rc=1
         else rc=1; fi
     done
     return $rc
@@ -840,9 +894,9 @@ prov_get() { sed -n "s/^# *$2  *\([^ #]*\).*/\1/p" "$1" | head -1; }
 
 # Detection-only copy of a population's table: header kept, rows with detJ == 1; the column is found
 # from the header, not by a fixed index.
-make_detj() {   # make_detj TABLE OUT
-    awk 'NR==1 { print; h=$0; sub(/^#[ \t]*/, "", h); n=split(h, c, /[ \t]+/); for (i=1;i<=n;i++) if (c[i]=="detJ") j=i; if (!j) { print "no detJ column in the header" > "/dev/stderr"; exit 2 } next }
-         /^#/ { print; next } $j == 1' "$1" > "$2.tmp" && mv "$2.tmp" "$2"
+make_detj() {   # make_detj TABLE OUT   (TABLE may be .gz)
+    { if [[ $1 == *.gz ]]; then gzip -dc "$1"; else cat "$1"; fi; } | awk 'NR==1 { print; h=$0; sub(/^#[ \t]*/, "", h); n=split(h, c, /[ \t]+/); for (i=1;i<=n;i++) if (c[i]=="detJ") j=i; if (!j) { print "no detJ column in the header" > "/dev/stderr"; exit 2 } next }
+         /^#/ { print; next } $j == 1' > "$2.tmp" && mv "$2.tmp" "$2"
 }
 
 FAILED_ANALYSES=""
@@ -859,7 +913,7 @@ analysis() {
 stage_analyze() {
     need_py
     mkdir -p "$RUN_STAMPS"
-    local a pop d tag out do_y=0 do_f=0 pops=""
+    local T a pop d tag out do_y=0 do_f=0 pops=""
     for a in $ANALYSES; do [[ $a == yields ]] && do_y=1; [[ $a == figures ]] && do_f=1; done
     for pop in $POPULATIONS; do
         [[ -f $P_RUN/$pop/MERGED ]] || die "$pop has not been merged: run the merge stage first"
@@ -867,13 +921,17 @@ stage_analyze() {
     done
     local A=$P_RUN/analysis
     P_MSH=$ROOT/CMD/components/ms_hypothesis.dat
-    [[ -z $P_OGLE || -f $P_OGLE ]] || die "OGLE_TABLE3 file not found: $OGLE_TABLE3"
+    if [[ -n $P_OGLE && ! -f $P_OGLE ]]; then
+        warn "OGLE_TABLE3 file not found ($OGLE_TABLE3): the w2 check is skipped (the fetch stage downloads it)"
+        P_OGLE=""
+    fi
     if (( do_y )); then
         say "analyze: yields"
         local csvs=""
         for pop in $pops; do
             d=$P_RUN/$pop; out=$A/yields/$pop; mkdir -p "$out"; tag=$(prov_get "$d/files/MONTLMC/files/run_provenance.txt" population_tag)
-            AN_OUTS="$out/y1_yields.csv" analysis "y1 $pop" "$out/y1.log" "$d/test$tag.dat $d/files/MONTLMC/files/MapLMC$tag.dat" \
+            T=$(merged_table "$d" "$tag")
+            AN_OUTS="$out/y1_yields.csv" analysis "y1 $pop" "$out/y1.log" "$T $d/files/MONTLMC/files/MapLMC$tag.dat" \
                 "$PY" analysis/memrun.py analysis/y1_absolute_yield.py --run "$pop=$d" -o "$out"
             [[ -f $out/y1_yields.csv ]] && csvs="$csvs $out/y1_yields.csv"
         done
@@ -893,10 +951,11 @@ stage_analyze() {
             d=$P_RUN/$pop; tag=$(prov_get "$d/files/MONTLMC/files/run_provenance.txt" population_tag)
             [[ -n $tag ]] || { FAILED_ANALYSES="$FAILED_ANALYSES
    $pop: no population_tag in run_provenance.txt"; continue; }
+            T=$(merged_table "$d" "$tag")
             det=$d/test${tag}_detJ.dat; o=$A/figures/$pop; mkdir -p "$o"
             W="--map $d/files/MONTLMC/files/MapLMC$tag.dat --log $d/run.log"
             P="--provenance $d/files/MONTLMC/files/run_provenance.txt"
-            AN_OUTS="$det" analysis "detJ extract $pop" "$o/detJ_extract.log" "$d/test$tag.dat" make_detj "$d/test$tag.dat" "$det"
+            AN_OUTS="$det" analysis "detJ extract $pop" "$o/detJ_extract.log" "$T" make_detj "$T" "$det"
             [[ -f $det ]] || continue
             local In="$det $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log"
             # Every script that takes --convention runs twice: every star (the default, the headline)
@@ -907,7 +966,7 @@ stage_analyze() {
             sfx=""; cvf=""; [[ $cv == per-object ]] && { sfx=_per_object; cvf="--convention per-object"; }
             {
             # f1 counts the non-detected draws too (its N_events column), so it reads the FULL table
-            analysis "f1 $pop$sfx"      "$o/f1$sfx.log"      "$d/test$tag.dat $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log" "$PY" analysis/f1_results_table.py "$d/test$tag.dat" --fields-only -o "$o/f1$sfx.csv" $cvf $P $W
+            analysis "f1 $pop$sfx"      "$o/f1$sfx.log"      "$T $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log" "$PY" analysis/f1_results_table.py "$T" --fields-only -o "$o/f1$sfx.csv" $cvf $P $W
             analysis "f2_tE $pop$sfx"   "$o/f2_tE$sfx.log"   "$In" "$PY" analysis/f2_gap_filling.py "$det" --param tE -o "$o/f2_gap_filling$sfx.png" $cvf $P $W
             analysis "f2_piE $pop$sfx"  "$o/f2_piE$sfx.log"  "$In" "$PY" analysis/f2_gap_filling.py "$det" --param piE -o "$o/f2_gap_filling_piE$sfx.png" $cvf $P $W
             analysis "f3 $pop$sfx"      "$o/f3$sfx.log"      "$In" "$PY" analysis/f3_characterization_map.py "$det" -o "$o/f3_characterization_map$sfx.png" $cvf $P $W
@@ -921,7 +980,7 @@ stage_analyze() {
             done
             # f5 reads the FULL table (it selects the Rubin-, Roman- and joint-detected rows itself) and prints both conventions
             if [[ -f $P_MSH ]]; then
-            analysis "f5 $pop" "$o/f5.log" "$d/test$tag.dat $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log $P_MSH" "$PY" analysis/f5_blend_selection.py "$d/test$tag.dat" --ms "$P_MSH" -o "$o/f5_blend_selection.md" $W
+            analysis "f5 $pop" "$o/f5.log" "$T $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log $P_MSH" "$PY" analysis/f5_blend_selection.py "$T" --ms "$P_MSH" -o "$o/f5_blend_selection.md" $W
             else
                 FAILED_ANALYSES="$FAILED_ANALYSES
    f5 $pop: $P_MSH not found (run the prep stage)"
@@ -929,9 +988,9 @@ stage_analyze() {
             # w2 compares the bulge population's blend fractions with OGLE-IV's Table 3
             if [[ $pop == bulge ]]; then
                 if [[ -n $P_OGLE ]]; then
-                analysis "w2 $pop" "$o/w2.log" "$d/test$tag.dat $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log $P_OGLE" "$PY" analysis/w2_ogle4_blend_check.py "$d/test$tag.dat" --ogle "$P_OGLE" -o "$o/w2_ogle4_blend_check.png" $P $W
+                analysis "w2 $pop" "$o/w2.log" "$T $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log $P_OGLE" "$PY" analysis/w2_ogle4_blend_check.py "$T" --ogle "$P_OGLE" -o "$o/w2_ogle4_blend_check.png" $P $W
                 else
-                    say "  note   w2 (OGLE-IV blend check) skipped: OGLE_TABLE3 is not set in $CONFIG_ARG"
+                    say "  note   w2 (OGLE-IV blend check) skipped: no OGLE-IV table (OGLE_TABLE3 empty, or not fetched)"
                 fi
             fi
             runs="$runs --run $pop=$d"

@@ -186,15 +186,15 @@ void appendEpoch(source& s, lens& l, astromet& as, double tim, int tele, int& nd
     ++ndw;
 }
 
+// The fixture's own 10-year window, fixed so that the regression table does not move when the simulated
+// window (config's Tobs) is redefined.
+constexpr double kFixtureTobs = 10.0 * year;
+
 // Half-width of the fit window around t0, in days; epochs outside it are dropped. A real fit uses
 // a window scaled to the event duration. The window also avoids FisherM's astrometric
 // CHECK(!(s.pos1c == l.soux[i] && s.pos2c == l.souy[i])), which fires for epochs so far from peak
 // that the deflection (decaying as 1/u^2) is below double precision and a piE perturbation returns
 // bit-identical coordinates.
-// The fixture's own 10-year window, fixed so that the regression table does not move when the simulated
-// window (config's Tobs) is redefined.
-constexpr double kFixtureTobs = 10.0 * year;
-
 double fitHalfWindow(double tE)
 {
     double w = 20.0 * tE;

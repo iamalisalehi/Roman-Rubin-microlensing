@@ -50,7 +50,8 @@ constexpr double VSunZ = 7.25;
 constexpr double Dsun = 8.0;
 constexpr std::array<double, 8> rho0 = {4.0, 7.9, 6.2, 4.0, 5.8, 4.9, 6.6, 3.96}; //considering WD
 constexpr std::array<double, 8> d0   = {0.073117, 0.0216524, 0.0217405, 0.0217901, 0.0218061, 0.0218118, 0.0218121, 0.0218121};
-constexpr std::array<double, 8> epci = {0.014, 0.0268, 0.0375, 0.0551, 0.0696, 0.0785, 0.0791, 0.0791};
+// Disc flattenings from the header of Besancon model 1612; the 8th bin (disc white dwarfs) repeats the 7th.
+constexpr std::array<double, 8> epci = {0.0140, 0.0217, 0.0309, 0.0464, 0.0594, 0.0673, 0.0678, 0.0678};
 constexpr std::array<double, 8> corr = {1.0, 7.9/4.48419, 6.2/3.52112, 4.0/2.27237, 5.8/3.29525, 4.9/2.78402, 6.6/3.74991, 3.96/2.24994};
 constexpr std::array<double, 4> Rv   = {3.1, 2.5 ,3.1 ,3.1}; //Disk, Bulge, Thick, Halo
 constexpr int    Num  = 9500;

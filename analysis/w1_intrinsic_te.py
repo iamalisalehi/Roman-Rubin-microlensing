@@ -56,10 +56,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("events")
     ap.add_argument("--map", required=True,
-                    help="the run's MapLMC5.dat: says which bulge normalisation the run used")
+                    help="the run's MapLMC5.dat: says which galaxy model the run used")
     ap.add_argument("--chunksize", type=int, default=1_000_000)
     a = ap.parse_args()
-    bar_norm = R.run_bar_norm(R.load_sightlines(a.map))
+    galaxy = R.run_galaxy(R.load_sightlines(a.map))
 
     df = R.load_events(a.events, usecols=COLS, chunksize=a.chunksize)
     print(f"{len(df):,} draws, {int((df['detJ'] == 1).sum()):,} joint-detected")
@@ -75,7 +75,7 @@ def main():
     rng = np.random.default_rng(0)
     for k, pos in pd.Series(np.arange(len(df))).groupby(key).groups.items():
         pos = np.asarray(pos)
-        prof = G.density_profile(*k, bar_norm=bar_norm)
+        prof = G.density_profile(*k, galaxy=galaxy)
         ds = Ds[pos]
         # Z(Ds) is smooth in Ds; interpolating on 200 points avoids an (events x 9500) matrix per
         # sightline. The interpolation error is checked below.

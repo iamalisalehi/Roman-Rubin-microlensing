@@ -101,10 +101,10 @@ class Run:
         self.sl = R.load_sightlines(self.map)
         override = R.nsim_from_logs(self.logs)
         df = self.df
-        bar_norm = R.run_bar_norm(self.sl)       # this run's bulge (the factor changed 2026-11-03)
+        galaxy = R.run_galaxy(self.sl)       # this run's galaxy model
         y = np.asarray(R.yield_weight(df, self.sl, self.tobs_days, nsim_override=override,
-                                      bar_norm=bar_norm), dtype=np.float64)
-        df["gamma"] = np.asarray(R.draw_rate(df, bar_norm=bar_norm), dtype=np.float64)
+                                      galaxy=galaxy), dtype=np.float64)
+        df["gamma"] = np.asarray(R.draw_rate(df, galaxy=galaxy), dtype=np.float64)
         df["P"] = R.keep_probability(
             df, self.sl, self.mode, fixed_rubin_depths,
             hint="or pass --fixed-rubin-depths (approximate Rubin depths) for a map without them")

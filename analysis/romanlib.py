@@ -377,26 +377,26 @@ def area_weight(df, prov=None):
     return pd.Series(1.0, index=df.index)
 
 
-def run_bar_norm(sightlines, bar_norm=None):
-    """The bar factor to weight a run with: `bar_norm` if given, else read from its map table.
+def run_galaxy(sightlines, galaxy=None):
+    """The galaxy model to weight a run with: `galaxy` if given, else read from its map table.
 
-    Runs made before 2026-11-03 multiplied the bar by galaxy_model.LEGACY_BAR_NORM (0.45); later runs
-    do not. The weight's star count and lens-distance normaliser must use the run's own bulge.
+    See galaxy_model.GALAXIES. Runs made before the current model used older bar or thin-disc
+    laws; the weight's star count and lens-distance normaliser must use the run's own galaxy.
     """
     import galaxy_model as G
-    if bar_norm is not None:
-        return G.check_bar_norm(bar_norm)
+    if galaxy is not None:
+        return G.check_galaxy(galaxy)
     if sightlines is None or "lon" not in sightlines or "log10_Rostart" not in sightlines:
-        raise ValueError("the event weight needs the run's bar normalisation: pass the map table "
-                         "(load_sightlines) or bar_norm explicitly")
-    bar_norm = G.bar_norm_for_map(sightlines)
-    if bar_norm != G.CURRENT_BAR_NORM:
-        print(f"  note: this run's bulge carries the old extra factor {bar_norm} (made before 2026-11-03); "
-              f"weighting it with that bulge")
-    return bar_norm
+        raise ValueError("the event weight needs the run's galaxy model: pass the map table "
+                         "(load_sightlines) or galaxy explicitly")
+    galaxy = G.galaxy_for_map(sightlines)
+    if galaxy != "current":
+        print(f"  note: this run used the older galaxy model {galaxy!r} (see galaxy_model.GALAXIES); "
+              f"weighting it with that model")
+    return galaxy
 
 
-def event_weight(df, sightlines, nsim_override=None, bar_norm=None):
+def event_weight(df, sightlines, nsim_override=None, galaxy=None):
     """Per-event importance weight for a pooled statistic.
 
     A pooled fraction or median is a statement about the sky only if the events are distributed
@@ -433,8 +433,8 @@ def event_weight(df, sightlines, nsim_override=None, bar_norm=None):
     sightlines  : map table from load_sightlines(), for `nsim` and the (lon, lat) join
     nsim_override : optional {(lon, lat) rounded to 3 dp: nsim}, for sightlines missing from a
                     damaged map file. The run log prints `nsim` for every sightline.
-    bar_norm    : the run's bar factor (galaxy_model.BAR_NORMS); None reads it from `sightlines`
-                  (galaxy_model.bar_norm_for_map), so runs from before and after 2026-11-03 both weigh right.
+    galaxy      : the run's galaxy model (a key of galaxy_model.GALAXIES); None reads it from `sightlines`
+                  (galaxy_model.galaxy_for_map), so runs made with older models still weigh right.
 
     Returns a float Series aligned to df. Raises if any event's sightline has no `nsim`.
     """
@@ -442,7 +442,7 @@ def event_weight(df, sightlines, nsim_override=None, bar_norm=None):
 
     if "w_area" not in df.columns:
         raise ValueError("event table has no w_area column (older simulator version), so no pooled weight")
-    bar_norm = run_bar_norm(sightlines, bar_norm)
+    galaxy = run_galaxy(sightlines, galaxy)
 
     codes, keys = sightline_index(df)
     nsim = {}
@@ -494,7 +494,7 @@ def event_weight(df, sightlines, nsim_override=None, bar_norm=None):
     Ds = df["Ds"].to_numpy()
     for c, pos in sightline_groups(codes):
         k = keys[c]
-        prof = G.density_profile(*k, bar_norm=bar_norm)
+        prof = G.density_profile(*k, galaxy=galaxy)
         n_draws[pos] = nsim[k]
         nstart[pos] = prof.Nstart
         Z[pos] = G.lens_distance_norm(prof, Ds[pos])
@@ -758,20 +758,20 @@ SATU = P.satu
 FILTERS = ["u", "g", "r", "i", "z", "y", "F146"]
 
 
-def draw_rate(df, sightlines=None, bar_norm=None):
+def draw_rate(df, sightlines=None, galaxy=None):
     """gamma_i: the rate (s^-1 per source star, F = 1) that draw i stands for.
 
     Independent of event_weight() (Z is recomputed here per sightline), so the optical-depth
     check in y1_absolute_yield.py tests the constants rather than re-deriving them.
-    The run's bar factor: `bar_norm`, or read from its map table `sightlines` (run_bar_norm).
+    The run's galaxy model: `galaxy`, or read from its map table `sightlines` (run_galaxy).
     """
     import galaxy_model as G
-    bar_norm = run_bar_norm(sightlines, bar_norm)
+    galaxy = run_galaxy(sightlines, galaxy)
     Z = np.empty(len(df))
     Ds = df["Ds"].to_numpy()
     codes, keys = sightline_index(df)
     for c, pos in sightline_groups(codes):
-        Z[pos] = G.lens_distance_norm(G.density_profile(*keys[c], bar_norm=bar_norm), Ds[pos])
+        Z[pos] = G.lens_distance_norm(G.density_profile(*keys[c], galaxy=galaxy), Ds[pos])
     return (RATE_UNIT * Z * np.sqrt(df["Ml"].to_numpy()) * df["Vt"].to_numpy()
             / mean_lens_mass(df))
 
@@ -842,16 +842,16 @@ def acceptance_probability(df, sightlines, fixed_rubin_depths=False):
     return 1.0 - (1.0 - pL) * (1.0 - pR)
 
 
-def yield_weight(df, sightlines, tobs_days, nsim_override=None, bar_norm=None):
+def yield_weight(df, sightlines, tobs_days, nsim_override=None, galaxy=None):
     """Per-row expected number of events in the window, for F = 1.
 
     y_i = T * [w_area Nstar / nsim] * gamma_i. Summing y_i over detected rows gives the
     detected yield with every lens drawn from the population and F = 1; multiply by F.
     nsim counts every draw, so y_i is on every star in an every-star run and per resolved object in
     a per-object (legacy) run; count_weight(y, p_keep, mode, convention) converts to the other.
-    bar_norm: as in event_weight (None reads it from `sightlines`).
+    galaxy: as in event_weight (None reads it from `sightlines`).
     """
-    w = event_weight(df, sightlines, nsim_override=nsim_override, bar_norm=bar_norm).to_numpy()
+    w = event_weight(df, sightlines, nsim_override=nsim_override, galaxy=galaxy).to_numpy()
     # event_weight = w_area Nstart/nsim sqrt(M) Vt Z; the rest of gamma is RATE_UNIT / <M>.
     T = (tobs_days - 2.0 * T0_MARGIN_DAYS) * 86400.0
     y = T * RATE_UNIT * w / mean_lens_mass(df)

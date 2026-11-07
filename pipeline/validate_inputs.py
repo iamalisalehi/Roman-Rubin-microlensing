@@ -104,7 +104,7 @@ def opsim(path):
         if hi < end - 1.0:
             print(f"  note: this baseline ends {end - hi:.1f} d BEFORE the clock does (day {tobs:.1f} = "
                   f"MJD {end:.3f}): Rubin has no visits in the last {end - hi:.1f} d of the window "
-                  "(a 10-yr baseline that starts before day 0 always does this).")
+                  "(the simulated window itself ends at the last visit in the scan region, RUBIN_LAST_VISIT_DAY).")
         elif hi > end + 1.0:
             print(f"  note: visits after day {tobs:.1f} (MJD {end:.3f}) are dropped.")
 

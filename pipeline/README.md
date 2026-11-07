@@ -190,8 +190,8 @@ pipeline/logs/, pipeline/.stamps/       prep logs and stamps (ignored by git)
   `RUN_ROOT` whose plan used other flags.
 - **Another OpSim baseline** should start on or before the simulation's day 0, MJD 61141.312 (2026-04-11, pinned in
   `Baseline/readbaselineBulge.py`; Roman's mission is placed on the same clock). `readbaselineBulge.py` keeps the
-  visits within reach of a Roman field and silently drops those outside the clock `[0, Tobs]`
-  (`Tobs` = 10 years = 3652.4 d in `config/parameters.h`); it prints how many (49 for v5.1.0, which starts 160 d before
+  visits within reach of a Roman field and silently drops those outside the survey's 10 years
+  `[0, 3652.4 d]`; it prints how many (49 for v5.1.0, which starts 160 d before
   day 0 and ends 161 d before the clock does, so the last 161 days have no Rubin visits). A baseline that starts
   *after* day 0 is not rejected: Rubin simply has no visits at the start of the clock (an event peaking there is
   seen by Roman alone, or by nothing before Roman's mission starts at day 306). `check` prints what it finds.

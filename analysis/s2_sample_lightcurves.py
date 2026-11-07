@@ -387,7 +387,7 @@ def sanity_checks(p, ep, mo):
 # with/without-parallax distinction throughout: solid = with, dashed = without.
 TRACK = {"src_u": "#0891b2", "src_d": "#1e3a8a", "lens": "#c026d3", "lens0": "#dc2626",
          "rel": "#7f1d1d", "defl": "#1a1a1a"}
-TOBS = P.Tobs          # Rubin's 10-year window; the tracks are dotted outside it
+TOBS = P.Tobs          # the simulated window (ends at Rubin's last visit); the tracks are dotted outside it
 
 # A point or bin is drawn only if its 1-sigma is below this fraction of the signal it is plotted
 # against (event amplitude, parallax signal, peak centroid shift), so every point shown
@@ -540,7 +540,7 @@ def draw_event(stem, out_dir, prov, noplx="geocentric", layout="5x2"):
                  label="lens, no parallax"),
           Line2D([], [], color=TRACK["rel"], lw=1.0, label="lens $-$ source"),
           Line2D([], [], color=TRACK["defl"], lw=1.0, label="deflection"),
-          Line2D([], [], color=ps.MUTED, lw=0.9, ls=":", label="outside Rubin's 10 yr")]
+          Line2D([], [], color=ps.MUTED, lw=0.9, ls=":", label="outside the simulated window")]
     h2.insert(6, Line2D([], [], color=TRACK["defl"], lw=0.8, ls=(0, (3, 2)),
                         label="deflection, no microlensing parallax"))
     h2.insert(7, Line2D([], [], color=TRACK["src_d"], lw=0.8, ls=(0, (3, 2)),

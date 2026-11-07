@@ -58,9 +58,11 @@ REACH = G.scan_reach() + RUBIN_MAX_RADIUS
 # Day 0 of the simulation clock is pinned to MJD 61141.312002288 = 2026-04-11 (observationId
 # 74334), independent of which visits are selected, because Roman's placement on the clock
 # (MISSION_START_DAY in generateRomanBaseline.py) is defined against it. Visits before it or
-# after Tobs fall outside the simulated window and are dropped.
+# after the survey's 10 years fall outside the clock and are dropped. The cut is NOT config's Tobs:
+# Tobs is derived from the visit list this script writes (RUBIN_LAST_VISIT_DAY), so using it here would
+# clip a new baseline to the old one's end.
 TIME0_MJD = 61141.312002288
-TOBS_DAYS = P.Tobs                   # config/parameters.h Tobs
+TOBS_DAYS = 10.0 * P.year            # the OpSim survey length [days]
 
 #################################################################################
 

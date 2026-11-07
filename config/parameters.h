@@ -219,7 +219,12 @@ inline const std::vector<int> RUBIN_REF_BANDS = {2};
 // (4) RUBIN / LSST SURVEY AND FOOTPRINT
 // ==========================================================================================
 
-constexpr double Tobs = 10.0 * year;//LSST observational time: 10 years
+// Margin of the t0 draw from the ends of the simulated window [days].
+constexpr double T0_MARGIN_DAYS = 2.0;
+// The simulated window [0, Tobs] days ends at Rubin's last visit in the scan region's visit list
+// (RUBIN_LAST_VISIT_DAY, measured from Baseline/BulgeBaseline.dat in data_products.h) plus the margin, so
+// the latest t0 is that visit; the OpSim baseline itself runs ~180 d further but has no visit here.
+constexpr double Tobs = RUBIN_LAST_VISIT_DAY + T0_MARGIN_DAYS;
 // The simulation clock. Day 0 is the first Rubin bulge visit of the OpSim baseline, MJD 61141.312002288
 // (2026-04-11); every time in the visit lists and every event time t0 is in days from it. It must equal
 // TIME0_MJD in Baseline/readbaselineBulge.py, which subtracts it from the visit times.
@@ -402,9 +407,8 @@ inline constexpr LensPopulation POPULATIONS[] = {
 };
 constexpr double u0m   = 3.0;
 // Event-parameter draws (func_lens): u0 is uniform in [U0_MIN_DRAW, u0m]; the peak time t0 is uniform
-// in [T0_MARGIN_DAYS, Tobs - T0_MARGIN_DAYS] days, i.e. at least 2 days inside the survey ends.
+// in [T0_MARGIN_DAYS, Tobs - T0_MARGIN_DAYS] days, i.e. at least 2 days inside the window's ends.
 constexpr double U0_MIN_DRAW = 0.001;
-constexpr double T0_MARGIN_DAYS = 2.0;
 // ---- Kroupa (2001) initial mass function, dN/dM ~ M^-alpha, with the standard breaks ----
 // Continuity coefficients are derived in drawKroupaInitialMass(); only breaks and slopes are named here.
 constexpr double KROUPA_MI_MIN = 0.01;   //below the hydrogen-burning limit: brown dwarfs

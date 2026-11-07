@@ -77,7 +77,7 @@ void Disk_model(source& s, int numt)
         s.rho_halo[i]  = 0;
         s.rho_thick[i] = 0;
         x  = double(i  * step); //kpc
-        zb = std::sin(s.FI) * x;
+        zb = std::sin(s.FI) * x + Z_SUN;   // height above the Galactic plane
         yb = std::cos(s.FI) * std::sin(s.TET) * x;
         xb = x * std::cos(s.FI) * std::cos(s.TET) - Dsun;
         Rb = std::sqrt(xb * xb + yb * yb);

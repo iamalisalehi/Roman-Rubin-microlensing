@@ -15,7 +15,7 @@ static int thinRowOfAge(double age)
 // with probability proportional to thinBinDensity there (as Disk_model builds it), take that bin's row.
 static int thinRowAtPosition(const source & s, double D)
 {
-    double zb = std::sin(s.FI) * D;
+    double zb = std::sin(s.FI) * D + Z_SUN;   // height above the Galactic plane, as in Disk_model
     double yb = std::cos(s.FI) * std::sin(s.TET) * D;
     double xb = D * std::cos(s.FI) * std::cos(s.TET) - Dsun;
     double Rb = std::sqrt(xb * xb + yb * yb);

@@ -48,6 +48,9 @@ constexpr double VSunT = vro_sun*(1.00762 + 0.00712) + 12.24;
 constexpr double VSunZ = 7.25;
 ///============================ Besancon constant ==========================///
 constexpr double Dsun = 8.0;
+// The Sun's height above the Galactic plane [kpc]: Besancon 1612 ("Sun position z_0 : 15.00" pc in its output
+// header). Every density law sees a point at z = Z_SUN + d sin(b).
+constexpr double Z_SUN = 0.015;
 constexpr std::array<double, 8> rho0 = {4.0, 7.9, 6.2, 4.0, 5.8, 4.9, 6.6, 3.96}; //considering WD
 constexpr std::array<double, 8> d0   = {0.073117, 0.0216524, 0.0217405, 0.0217901, 0.0218061, 0.0218118, 0.0218121, 0.0218121};
 // Disc flattenings from the header of Besancon model 1612; the 8th bin (disc white dwarfs) repeats the 7th.
@@ -98,10 +101,11 @@ constexpr double HALO_NORM = 5281.0;                          //total mass 1.2e9
 
 // Bulge / bar: two triaxial components, S (boxy, 1/cosh^2 profile) and E (exponential).
 constexpr double BAR_ANGLE_DEG = 12.89;                       //bar angle [deg]
-constexpr double BAR_MASS_RESCALE = 0.24529; // calibrated so bulge column density toward
-                                             // Baade's Window (l=1, b=-3.9) matches the
-                                             // Han & Gould (2003) HST benchmark: 2086 Msun/pc^2.
-                                             // The bar's only normalisation: S+E total 9.3e9 Msun.
+constexpr double BAR_MASS_RESCALE = 0.23281; // calibrated so bulge column density toward
+                                             // Baade's Window (l=1, b=-3.9), with the Sun at Z_SUN,
+                                             // matches the Han & Gould (2003) HST benchmark: 2086
+                                             // Msun/pc^2 (2,081 here; 0.24529 with the Sun in the plane).
+                                             // The bar's only normalisation.
 constexpr double BAR_CUTOFF_K = 4.0;                          //Gaussian cut-off exp(-K (r2-Rc)^2) beyond Rc
 constexpr double BAR_S_RX0 = 1.46;
 constexpr double BAR_S_RY0 = 0.49;

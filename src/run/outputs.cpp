@@ -332,7 +332,7 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "# bulge_norm          Robin+2012 S+E bars x BAR_MASS_RESCALE " << BAR_MASS_RESCALE
              << " only   # Han & Gould 2003 column toward Baade's window\n"
              // Runs before this line used Robin+2003's thin-disc flattenings and hole form.
-             << "# thin_disc           Besancon 1612: eps 0.0140..0.0678, hole with the disc's vertical scale\n"
+             << "# thin_disc           Besancon 1612: eps 0.0140..0.0678, hole with the disc's vertical scale; Sun 15 pc above the plane\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex.nTables << " x "
              << ex.nDist << ", k " << ex.k << " --" << ex.built << "\n"
 

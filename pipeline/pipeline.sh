@@ -224,8 +224,10 @@ step_def() {
         lens_ml)
             S_FN=do_lens_ml; S_OPTS="dwarfs=$CATALOGUE_DWARFS"
             S_INS="$P_BESANCON CMD/lens_ml_table.py CMD/BolometricCorrection.py $EEM"; S_OUTS=CMD/components/lens_ml.dat ;;
-        ms_hypothesis)   # no stamp: built when missing, never replaced unless FORCE=1
-            S_FN=do_ms_hypothesis; S_OUTS=CMD/components/ms_hypothesis.dat; S_STAMP="" ;;
+        ms_hypothesis)   # rebuilt when the lens table (whose rows it copies below 1 Msun) or the script changes
+            S_FN=do_ms_hypothesis
+            S_INS="$P_BESANCON CMD/lens_ml_table.py CMD/BolometricCorrection.py $EEM CMD/components/lens_ml.dat"
+            S_OUTS=CMD/components/ms_hypothesis.dat ;;
         rubin_visits)
             S_FN=do_rubin_visits; S_OPTS="db=$P_OPSIM"
             S_INS="$P_OPSIM Baseline/readbaselineBulge.py analysis/gbtds_geometry.py Baseline/gbtds_layout config/parameters.h"
@@ -322,7 +324,7 @@ do_lens_ml() {
 }
 do_ms_hypothesis() {   # the main-sequence mass -> magnitude table of the dark-lens test (analysis/f5)
     need_py
-    "$PY" CMD/lens_ml_table.py --hypothesis --input "$P_BESANCON" --out "$ROOT/CMD/components/ms_hypothesis.dat"
+    "$PY" CMD/lens_ml_table.py --hypothesis --input "$P_BESANCON" --lens-table "$ROOT/CMD/components/lens_ml.dat" --out "$ROOT/CMD/components/ms_hypothesis.dat"
 }
 do_rubin_visits()  { need_py; (cd Baseline && "$PY" readbaselineBulge.py --db "$P_OPSIM" --no-plots); }
 do_roman_visits()  { need_py; "$PY" Baseline/generateRomanBaseline.py --mission-start "$ROMAN_MISSION_START"; }

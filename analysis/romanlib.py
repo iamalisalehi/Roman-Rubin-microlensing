@@ -939,17 +939,37 @@ def blend_class(df):
 def load_ms_hypothesis(path):
     """The main-sequence mass -> absolute AB magnitude table (CMD/lens_ml_table.py --hypothesis).
 
-    Columns `mass` [Msun] and `Mab_<band>` for u g r i z y F146. Raises if the layout is not that or
-    the masses are not increasing.
+    Columns `comp` (Galactic component 0-3), `mass` [Msun] and `Mab_<band>` for u g r i z y F146, masses
+    strictly increasing within each component. The older layout without `comp` (one relation for every
+    component) still loads: it is returned with comp = -1 on every row. Raises on any other layout.
     """
-    names = ["mass"] + [f"Mab_{b}" for b in FILTERS]
+    bands = [f"Mab_{b}" for b in FILTERS]
     a = np.loadtxt(path, comments="#", ndmin=2)
-    if a.shape[1] != len(names):
-        raise ValueError(f"{path}: {a.shape[1]} columns, expected {len(names)} ({' '.join(names)})")
-    t = pd.DataFrame(a, columns=names)
-    if not (np.diff(t["mass"]) > 0).all():
-        raise ValueError(f"{path}: masses are not strictly increasing")
+    if a.shape[1] == len(bands) + 2:
+        t = pd.DataFrame(a, columns=["comp", "mass"] + bands)
+        t["comp"] = t["comp"].astype(int)
+        if not t["comp"].isin(range(4)).all():
+            raise ValueError(f"{path}: comp must be 0-3")
+    elif a.shape[1] == len(bands) + 1:
+        t = pd.DataFrame(a, columns=["mass"] + bands)
+        t.insert(0, "comp", -1)
+    else:
+        raise ValueError(f"{path}: {a.shape[1]} columns, expected {len(bands) + 2} (comp mass {' '.join(bands)}) "
+                         f"or the older {len(bands) + 1} without comp")
+    for c, g in t.groupby("comp"):
+        if not (np.diff(g["mass"]) > 0).all():
+            raise ValueError(f"{path}: masses are not strictly increasing (comp {c})")
     return t
+
+
+def _ms_relation(ms, comp):
+    """The rows of the table for Galactic component `comp` (all rows for an old-layout table)."""
+    if (ms["comp"] == -1).all():
+        return ms
+    g = ms[ms["comp"] == comp]
+    if g.empty:
+        raise ValueError(f"the main-sequence table has no rows for component {comp}")
+    return g
 
 
 def _truncnorm01(mu, sg, u):
@@ -988,6 +1008,10 @@ def dark_lens_probability(df, partition, ms, n_samples=2000, seed=12345, ref_ban
     flux in ANY tested band. D_L is held at its true value (an approximation: the forecast has no
     distance error, and the mass error is the dominant one); the mass centre is the true Ml.
 
+    The relation is the event's own Galactic component's (column `struc`, 0 thin disc, 1 bulge, 2 thick
+    disc, 3 halo; the lens's component for every population, remnants included); an old-layout table
+    has one relation for all.
+
     Float in [0, 1]; NaN (no verdict) when relMl <= 0 (the -1 sentinel), no band is tested, or a
     tested band's inputs are not finite. Vectorised over events in chunks; deterministic for a seed.
     """
@@ -1002,7 +1026,7 @@ def dark_lens_probability(df, partition, ms, n_samples=2000, seed=12345, ref_ban
     rel = col(relcol)
     lnM0 = np.log(col("Ml"))
     mu = 5.0 * np.log10(col("Dl") * 100.0)
-    lnm = np.log(ms["mass"].to_numpy(float))
+    struc = col("struc")
     # per tested band: (fb, sigma, baseline mag, [(table column, lens-extinction column)])
     bands = []
     if s0col:
@@ -1017,6 +1041,10 @@ def dark_lens_probability(df, partition, ms, n_samples=2000, seed=12345, ref_ban
         for _, ac in cols:
             good &= np.isfinite(col(ac))
         ok &= ~act | good
+    ok &= np.isin(struc, (0, 1, 2, 3))
+    rel_of = {c: _ms_relation(ms, c) for c in (0, 1, 2, 3) if (ms["comp"] == -1).all() or (ms["comp"] == c).any()}
+    ok &= np.isin(struc, list(rel_of))
+    lnm_of = {c: np.log(g["mass"].to_numpy(float)) for c, g in rel_of.items()}
     out = np.full(n, np.nan)
     rng = np.random.default_rng(seed)
     idx = np.flatnonzero(ok)
@@ -1032,10 +1060,16 @@ def dark_lens_probability(df, partition, ms, n_samples=2000, seed=12345, ref_ban
             fs = _truncnorm01(fb[i, None], np.where(t, sg[i], 0.0)[:, None], rng.random(lnM.shape))
             blend = 10.0 ** (-0.4 * mbs[i, None]) * (1.0 - fs)
             lens = 0.0
+            low = np.zeros(lnM.shape, bool)
             for mc, ac in cols:
-                M = np.interp(lnM, lnm, ms[mc].to_numpy(float))
+                M = np.empty(lnM.shape)
+                for c, g in rel_of.items():       # each event's own component relation
+                    r = np.flatnonzero(struc[i] == c)
+                    if r.size:
+                        M[r] = np.interp(lnM[r], lnm_of[c], g[mc].to_numpy(float))
+                        low[r] = lnM[r] < lnm_of[c][0]
                 lens = lens + 10.0 ** (-0.4 * (M + mu[i, None] + col(ac)[i, None]))
-            excl |= t[:, None] & (lnM >= lnm[0]) & (lens > blend)
+            excl |= t[:, None] & ~low & (lens > blend)
         out[i] = excl.mean(axis=1)
     return pd.Series(out, index=df.index, name=f"pdark_{partition}")
 

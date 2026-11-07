@@ -58,7 +58,9 @@ pipeline/pipeline.sh my_run.sh all                 # everything, on this machine
    (not on the Besancon file or the OpSim db), so copying one is the sensible default. `build` runs `maps.py`:
    `fetch` downloads the DECaPS mean map (7 GB) and Marshall's map into `dustmaps/`, then ~35 minutes of queries.
 4. Fetched for you: MIST v2 bolometric-correction tables (`LSST.txz` 2.9 MB, `Roman.txz` 3.9 MB, from
-   mist.science) into `CMD/Rubin`, `CMD/Roman`; the LSSTCam focal-plane map (`Baseline/lsstcam_fov/fov_map.txt`).
+   mist.science) into `CMD/Rubin`, `CMD/Roman`; the LSSTCam focal-plane map (`Baseline/lsstcam_fov/fov_map.txt`);
+   the OGLE-IV event table of Mroz et al. 2019 (Table 3, 1.5 MB, from the OGLE site; `OGLE_TABLE3`, checked
+   against its known md5) for the w2 check.
    Vendored in git: `files/sigma_roman.txt`, `CMD/empirical/EEM_dwarf_UBVIJHK_colors_Teff.txt`, and what the
    light-curve model reads: `external/VBMicrolensing/` (the library and its Sun-ephemeris and finite-source
    tables) and `files/ephemeris/` (Roman's L2 orbit). Run directories link both.
@@ -113,7 +115,7 @@ pipeline/pipeline.sh my_run.sh all                 # everything, on this machine
   read in either convention. Also per population f5 (`f5_blend_selection.md`: blending shares, follow-up classes and
   dark-lens pass rates, both conventions in one table; reads the full table and `ms_hypothesis.dat`) and, for the
   population named `bulge`, w2 (`w2_ogle4_blend_check.py`: the simulated blend fractions beside OGLE-IV's Table 3;
-  needs `OGLE_TABLE3` in the config, empty = skipped with a note). Each script's output goes to a `.log` next to its results in
+  reads `OGLE_TABLE3`, which `fetch` downloads; empty = skipped with a note). Each script's output goes to a `.log` next to its results in
   `RUN_ROOT/analysis/`. A failing script is reported (name and log) and the others still run; the stage then exits
   non-zero.
 - **status**: chunks done / running / pending per population, CPU used, sizes.

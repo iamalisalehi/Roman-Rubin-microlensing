@@ -93,8 +93,10 @@ KEEP_CHUNKS=1
 #           (outputs and logs with the suffix _per_object)
 ANALYSES="yields figures"
 # Table 3 of Mroz et al. 2019 (ApJS 244, 29), the OGLE-IV events, for the blend-fraction check w2 on the
-# `bulge` population (analysis/w2_ogle4_blend_check.py). Empty = w2 is skipped, with a note in the output.
-OGLE_TABLE3=
+# `bulge` population (analysis/w2_ogle4_blend_check.py). `fetch` downloads it from OGLE_URL (1.5 MB) when the file is
+# missing. Empty = w2 is skipped, with a note in the output.
+OGLE_TABLE3=files/ogle/mroz2019_table3.dat
+OGLE_URL=https://www.astrouw.edu.pl/ogle/ogle4/microlensing_maps/table3.dat
 
 # ---- Python ---------------------------------------------------------------------------------------
 # The interpreter every script runs under. `setup` creates the venv if this path ends in /bin/python.

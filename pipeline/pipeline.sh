@@ -52,7 +52,7 @@ source "$CONFIG"
 
 : "${BESANCON_CATALOGUE:=CMD/Besancon/bos10}"
 : "${OPSIM_DB:=Baseline/baseline_v5.1.0_10yrs.db}"
-: "${OPSIM_URL:=https://s3df.slac.stanford.edu/data/rubin/sim-data/sims_featureScheduler_runs5.1/baseline/baseline_v5.1.0_10yrs.db}"
+: "${OPSIM_URL=https://s3df.slac.stanford.edu/data/rubin/sim-data/sims_featureScheduler_runs5.1/baseline/baseline_v5.1.0_10yrs.db}"
 : "${MIST_URL_BASE:=https://mist.science/BC_tables/v2}"
 : "${EXT_TABLES:=}"
 : "${CATALOGUE_DWARFS:=besancon}"
@@ -76,7 +76,9 @@ source "$CONFIG"
 : "${SUBMIT:=1}"
 : "${KEEP_CHUNKS:=1}"
 : "${ANALYSES:=yields figures}"
-: "${OGLE_TABLE3:=}"
+# OGLE_TABLE3 empty = skip the w2 check; unset = the default path, which fetch fills from OGLE_URL.
+: "${OGLE_TABLE3=files/ogle/mroz2019_table3.dat}"
+: "${OGLE_URL=https://www.astrouw.edu.pl/ogle/ogle4/microlensing_maps/table3.dat}"
 : "${PYTHON:=.roman/bin/python}"
 : "${GSL:=auto}"
 : "${ALLOW_DIRTY:=0}"
@@ -300,6 +302,16 @@ do_opsim() {
     curl -fL --retry 3 -C - -o "$P_OPSIM.part" "$OPSIM_URL" && mv "$P_OPSIM.part" "$P_OPSIM"
 }
 
+# Mroz et al. 2019 (ApJS 244, 29) Table 3 as the OGLE team serves it (downloaded 2026-11-03, 1,542,323 bytes).
+OGLE_MD5=368b18f4394175f5ba3e1fea15d15a93
+do_ogle() {
+    mkdir -p "$(dirname "$P_OGLE")"
+    say "  download $OGLE_URL (1.5 MB) -> $P_OGLE"
+    curl -fL --retry 3 -sS -o "$P_OGLE.part" "$OGLE_URL" && mv "$P_OGLE.part" "$P_OGLE" || return 1
+    [[ $(md5f "$P_OGLE") == "$OGLE_MD5" ]] \
+        || warn "the OGLE-IV table's md5 differs from the one the w2 check was written for: has the file changed upstream?"
+}
+
 do_dustmaps() {
     need_py
     say "  downloading the DECaPS mean map (7 GB) and the Marshall map (5 MB) into dustmaps/ ..."
@@ -429,8 +441,14 @@ check_inputs() {
         local py=python3; [[ -x $PY ]] && py=$PY
         if msg=$("$py" pipeline/validate_inputs.py opsim "$P_OPSIM" 2>&1); then item req ok "OpSim db" "$OPSIM_DB: $(echo "$msg" | head -1)"; echo "$msg" | tail -n +2 | sed 's/^/           /'
         else item req MISSING "OpSim db" "$msg"; fi
-    elif [[ -n $OPSIM_URL ]]; then item prod MISSING "OpSim db" "$OPSIM_DB missing; fetch downloads it from OPSIM_URL"
+    elif [[ -n $OPSIM_URL ]]; then item prod missing "OpSim db" "$OPSIM_DB missing; fetch downloads it from OPSIM_URL"
     else item req MISSING "OpSim db" "$OPSIM_DB missing and OPSIM_URL empty"; fi
+    if [[ -z $OGLE_TABLE3 ]]; then item req note "OGLE-IV table" "OGLE_TABLE3 is empty: the w2 blend-fraction check is skipped"
+    elif [[ -f $P_OGLE ]]; then
+        if [[ $(md5f "$P_OGLE") == "$OGLE_MD5" ]]; then item req ok "OGLE-IV table" "$OGLE_TABLE3"
+        else item req note "OGLE-IV table" "$OGLE_TABLE3: md5 differs from Mroz et al. (2019) Table 3 as downloaded 2026-11-03"; fi
+    elif [[ -n $OGLE_URL ]]; then item prod missing "OGLE-IV table" "$OGLE_TABLE3 missing; fetch downloads it from OGLE_URL"
+    else item req MISSING "OGLE-IV table" "$OGLE_TABLE3 missing and OGLE_URL empty (OGLE_TABLE3= skips the w2 check)"; fi
     if [[ -z $EXT_TABLES ]]; then item req MISSING "EXT_TABLES" "not set: path to a prebuilt ext_tables.dat, or 'build' (needs the 7 GB DECaPS map, ~35 min)"
     elif [[ $EXT_TABLES == build ]]; then item req ok EXT_TABLES "build (maps.py)"
     elif [[ -f $P_EXT ]]; then item req ok EXT_TABLES "$EXT_TABLES"
@@ -536,6 +554,10 @@ stage_fetch() {
     elif [[ -n $OPSIM_URL ]]; then do_opsim && say "  done   OpSim database" || { say "  FAILED OpSim download"; rc=1; }
     else say "  OpSim database $OPSIM_DB is missing and OPSIM_URL is empty: download one yourself"; rc=1; fi
     if [[ $EXT_TABLES == build ]]; then run_named_step dustmaps || rc=1; fi
+    if [[ -z $OGLE_TABLE3 ]]; then say "  skip   OGLE-IV table (OGLE_TABLE3 is empty: the w2 check is skipped)"
+    elif [[ -f $P_OGLE ]]; then say "  skip   OGLE-IV table (present: $OGLE_TABLE3)"
+    elif [[ -n $OGLE_URL ]]; then do_ogle && say "  done   OGLE-IV table" || { say "  FAILED OGLE-IV table download"; rc=1; }
+    else say "  OGLE-IV table $OGLE_TABLE3 is missing and OGLE_URL is empty: download it yourself, or set OGLE_TABLE3="; rc=1; fi
     if [[ -f $P_BESANCON ]]; then say "  ok     Besancon catalogue present"
     else say "  NOTE   Besancon catalogue $BESANCON_CATALOGUE not found. It cannot be fetched by script (web form);"
          say "         the parameters to enter are in CMD/Besancon/RERUN_bos10.md (summary: pipeline/README.md)."; fi
@@ -869,7 +891,10 @@ stage_analyze() {
     done
     local A=$P_RUN/analysis
     P_MSH=$ROOT/CMD/components/ms_hypothesis.dat
-    [[ -z $P_OGLE || -f $P_OGLE ]] || die "OGLE_TABLE3 file not found: $OGLE_TABLE3"
+    if [[ -n $P_OGLE && ! -f $P_OGLE ]]; then
+        warn "OGLE_TABLE3 file not found ($OGLE_TABLE3): the w2 check is skipped (the fetch stage downloads it)"
+        P_OGLE=""
+    fi
     if (( do_y )); then
         say "analyze: yields"
         local csvs=""
@@ -933,7 +958,7 @@ stage_analyze() {
                 if [[ -n $P_OGLE ]]; then
                 analysis "w2 $pop" "$o/w2.log" "$d/test$tag.dat $d/files/MONTLMC/files/MapLMC$tag.dat $d/run.log $P_OGLE" "$PY" analysis/w2_ogle4_blend_check.py "$d/test$tag.dat" --ogle "$P_OGLE" -o "$o/w2_ogle4_blend_check.png" $P $W
                 else
-                    say "  note   w2 (OGLE-IV blend check) skipped: OGLE_TABLE3 is not set in $CONFIG_ARG"
+                    say "  note   w2 (OGLE-IV blend check) skipped: no OGLE-IV table (OGLE_TABLE3 empty, or not fetched)"
                 fi
             fi
             runs="$runs --run $pop=$d"

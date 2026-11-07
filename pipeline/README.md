@@ -145,7 +145,7 @@ network, a few GB of RAM and ~30 minutes: run them on the login node or in an in
 ```bash
 #   SCHEDULER=slurm
 #   SLURM_OPTS="--account=myproj --partition=normal --time=03:00:00 --mem=2G --cpus-per-task=1"
-#   SLURM_OPTS_FINISH="--account=myproj --partition=normal --time=04:00:00 --mem=12G"
+#   SLURM_OPTS_FINISH="--account=myproj --partition=normal --time=08:00:00 --mem=24G"
 for s in check setup fetch prep; do pipeline/pipeline.sh my_run.sh $s || break; done
 SUBMIT=0 pipeline/pipeline.sh my_run.sh sim   # only writes RUN_ROOT/slurm/<pop>.sbatch and finish.sbatch
 pipeline/pipeline.sh my_run.sh sim            # submits: one array job per population over the pending chunks,
@@ -161,15 +161,19 @@ config (`RUN_ROOT/slurm/config.sh`), so editing your config afterwards does not 
 
 ## Time, memory, disk (production flags: `--events 300 --lenses 50 --stride 10 --stride-roman 5 --pair-satellite`)
 
-- `./roman`: ~18-19 CPU-hours per population, one thread each, ~0.7 GB RAM each; 2013 sightlines, of which the
-  ~160 on a Roman detector cost 4-6 CPU-min each and the others 0.1-0.3. Each chunk first reads the inputs (~25 s).
-  Wall time = CPU time / `JOBS` (or the number of array tasks the cluster runs at once).
+- `./roman`: ~12-13 CPU-hours per population on a laptop core (2026-11-07, a 34-sightline stratified sample per
+  population), one thread each, ~0.7 GB RAM each; 2013 sightlines, of which the 161 on a Roman detector cost
+  0.9-1.4 CPU-min each (max ~2) and the others 0.2-0.4 (max ~0.8). Each chunk first reads the inputs (~25 s).
+  Wall time = CPU time / `JOBS` (or the number of array tasks the cluster runs at once). `STRIDE_ROMAN=2` (1,152
+  sightlines on a detector): ~30-37 CPU-hours per population.
 - `prep`: star lists ~8 min and 1.7 GB RAM; Rubin visit list ~3 min; the rest is seconds; the first `make` ~1-2 min.
   Downloads: ~7 MB MIST, 0.8 GB OpSim, 7 GB DECaPS only for `EXT_TABLES=build`.
-- Disk: star lists 0.6 GB; per-event tables are large: about 6.0 GB (bulge), 4.1 GB (ns), 3.2 GB (bh) at
-  production flags, and they exist twice (chunks and merged) unless `KEEP_CHUNKS=0`.
-- `analyze`: y1 holds a population's draws in memory (bulge ~2.4 GB, ~33 min); p6/p7 hold two populations. Give
-  `SLURM_OPTS_FINISH` ~12 GB.
+- Disk: star lists 0.6 GB; per-event tables are large (~770 bytes per drawn star, up to 50,000 rows per sightline):
+  about 21 GB (bulge), 15 GB (ns), 12 GB (bh) at production flags, each +-30% (the few outside-footprint sightlines
+  that reach the draw cap dominate), ~10% more at `STRIDE_ROMAN=2`; they exist twice (chunks and merged) unless
+  `KEEP_CHUNKS=0`. The tables compress ~3x (zstd), but the analysis reads them uncompressed.
+- `analyze`: y1 holds a population's draws in memory (~2.4 GB per 6 GB of table, so ~8 GB for bulge, ~1 h at
+  laptop speed); p6/p7 hold two populations. Give `SLURM_OPTS_FINISH` ~24 GB and several hours.
 
 ## Where things go
 

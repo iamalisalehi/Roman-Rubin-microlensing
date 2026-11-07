@@ -66,8 +66,8 @@ EXTRA_FLAGS=""
 
 # ---- step 5: how the simulation is split and where it runs ----------------------------------------
 # Sightlines per chunk. Chunks are independent runs whose concatenation equals the whole run exactly.
-# 20 gives ~100 chunks per population at the default grid (2013 sightlines): a footprint sightline costs
-# 4-6 CPU-min, so a chunk takes ~10 min on average and at most ~2 h, and the ~25 s of input reading per
+# 20 gives ~100 chunks per population at the default grid (2013 sightlines): a sightline on a Roman detector
+# costs ~1-2 CPU-min, the others ~0.2-0.8, so a chunk takes ~5-10 min and at most ~40 min, and the ~25 s of input reading per
 # chunk is a few percent. Use a smaller value to spread work over more workers (cost is uneven over the
 # index range, so have more chunks than workers).
 CHUNK_SIZE=20
@@ -79,8 +79,8 @@ JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
 # ~2 GB and 2-3 h are comfortable at the default flags. No spaces inside an option.
 SLURM_OPTS="--account=CHANGE_ME --partition=CHANGE_ME --time=03:00:00 --mem=2G --cpus-per-task=1"
 # slurm: the same for the final merge + analysis job (holds a whole population's table in memory:
-# the bulge y1 analysis peaks at ~2.5 GB; give it room and an hour or more). Default: SLURM_OPTS.
-SLURM_OPTS_FINISH="--account=CHANGE_ME --partition=CHANGE_ME --time=04:00:00 --mem=12G --cpus-per-task=1"
+# the bulge y1 analysis needs ~8 GB at production flags; give it room and several hours). Default: SLURM_OPTS.
+SLURM_OPTS_FINISH="--account=CHANGE_ME --partition=CHANGE_ME --time=08:00:00 --mem=24G --cpus-per-task=1"
 # slurm: 1 = submit now, 0 = only write RUN_ROOT/slurm/*.sbatch and print how to submit them.
 SUBMIT=1
 # 1 = keep RUN_ROOT/<pop>/chunks after merging (the merged tables then exist twice on disk); 0 = delete them.

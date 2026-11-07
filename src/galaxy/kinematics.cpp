@@ -1,6 +1,36 @@
 // Relative kinematics of a lens and its source (vrel).
 #include "galaxy/kinematics.h"
+#include "galaxy/density.h"
 #include "util/random.h"
+
+// Row of the age-velocity table for a catalogue age [Gyr]; ages of 10 Gyr and more take the last row.
+static int thinRowOfAge(double age)
+{
+    for (int r = 0; r < 6; ++r)
+        if (age < THIN_AGE_EDGES[r + 1]) return r;
+    return 6;
+}
+
+// Row for a thin-disc star with no catalogue age at distance D along the sightline: draw its density bin
+// with probability proportional to thinBinDensity there (as Disk_model builds it), take that bin's row.
+static int thinRowAtPosition(const source & s, double D)
+{
+    double zb = std::sin(s.FI) * D;
+    double yb = std::cos(s.FI) * std::sin(s.TET) * D;
+    double xb = D * std::cos(s.FI) * std::cos(s.TET) - Dsun;
+    double Rb = std::sqrt(xb * xb + yb * yb);
+    double w[8], tot = 0.0;
+    for (int ii = 0; ii < 8; ++ii) {
+        w[ii] = thinBinDensity(ii, Rb, zb);
+        tot += w[ii];
+    }
+    double test = RandR(0.0, tot), acc = 0.0;
+    for (int ii = 0; ii < 7; ++ii) {
+        acc += w[ii];
+        if (test <= acc) return ii;
+    }
+    return 6;   // bin 8 (white dwarfs) shares the last row
+}
 
 // Draws source and lens velocities from the component dispersions (plus disk rotation), projects
 // them and the Sun's motion onto the lens plane, and sets the relative speed l.Vt [km/s], the
@@ -14,47 +44,27 @@ void vrel(source & s, lens & l){
 
     double LVx, SVx, vt2;
     double SVT, SVR, SVZ, LVT, LVR, LVZ;
-    double test, age = -1;
+    double test;
     double  VSunx, vls2, vls1;
     double  tetd ;
 
     double NN = VEL_NSIGMA_TRUNC;
-    double sigma_R_Disk,          sigma_T_Disk,          sigma_Z_Disk;
-    double sigma_R_DiskL,         sigma_T_DiskL,         sigma_Z_DiskL;
-    double sigma_R_DiskS,         sigma_T_DiskS,         sigma_Z_DiskS;
+    double sigma_R_DiskL = 0.0,   sigma_T_DiskL = 0.0,   sigma_Z_DiskL = 0.0;   // used only for thin-disc objects
+    double sigma_R_DiskS = 0.0,   sigma_T_DiskS = 0.0,   sigma_Z_DiskS = 0.0;
     double sigma_R_TDisk = THICK_SIGMA_R,  sigma_T_TDisk = THICK_SIGMA_T,  sigma_Z_TDisk = THICK_SIGMA_Z;
     double sigma_R_halo  = HALO_SIGMA_R, sigma_T_halo  = HALO_SIGMA_T, sigma_Z_halo  = HALO_SIGMA_Z;
     double sigma_R_Bulge = BULGE_SIGMA_R, sigma_T_Bulge = BULGE_SIGMA_T, sigma_Z_Bulge = BULGE_SIGMA_Z;
 
-    double Rho[4] = {0.0};
-    double maxr = 0.0;
-    for (int i = 0; i < 4; ++i) {
-        Rho[i] = rho0[i] * corr[i] / d0[i];
-        maxr += Rho[i];
+    // Thin-disc dispersions: a source takes the row of its own catalogue age; a lens (no age), or a source
+    // without one, draws a density bin at its position.
+    if (s.struc == GalacticComponent::THIN_DISK) {
+        int row = (s.age >= 0.0) ? thinRowOfAge(s.age) : thinRowAtPosition(s, s.Ds);
+        sigma_R_DiskS = THIN_SIGMA_R[row]; sigma_T_DiskS = THIN_SIGMA_T[row]; sigma_Z_DiskS = THIN_SIGMA_Z[row];
     }
-
-
-    for (int i = 0; i < 2; ++i) {
-        test = RandR(0.0, maxr); ///total ages
-
-        if      (test <=  Rho[0])                       {sigma_R_Disk = THIN_SIGMA_R[0]; sigma_T_Disk = THIN_SIGMA_T[0]; sigma_Z_Disk = THIN_SIGMA_Z[0]; age = THIN_AGE[0];}
-        else if (test <= (Rho[0]+Rho[1]))               {sigma_R_Disk = THIN_SIGMA_R[1]; sigma_T_Disk = THIN_SIGMA_T[1]; sigma_Z_Disk = THIN_SIGMA_Z[1]; age = THIN_AGE[1];}
-        else if (test <= (Rho[0]+Rho[1]+Rho[2]))        {sigma_R_Disk = THIN_SIGMA_R[2]; sigma_T_Disk = THIN_SIGMA_T[2]; sigma_Z_Disk = THIN_SIGMA_Z[2]; age = THIN_AGE[2];}
-        else if (test <= (Rho[0]+Rho[1]+Rho[2]+Rho[3])) {sigma_R_Disk = THIN_SIGMA_R[3]; sigma_T_Disk = THIN_SIGMA_T[3]; sigma_Z_Disk = THIN_SIGMA_Z[3]; age = THIN_AGE[3];}
-
-        if (i == 0) {
-            sigma_R_DiskS = sigma_R_Disk;
-            sigma_T_DiskS = sigma_T_Disk;
-            sigma_Z_DiskS = sigma_Z_Disk;
-        }
-        if (i == 1) {
-            sigma_R_DiskL = sigma_R_Disk;
-            sigma_T_DiskL = sigma_T_Disk;
-            sigma_Z_DiskL = sigma_Z_Disk;
-        }
+    if (l.struc == GalacticComponent::THIN_DISK) {
+        int row = thinRowAtPosition(s, l.Dl);
+        sigma_R_DiskL = THIN_SIGMA_R[row]; sigma_T_DiskL = THIN_SIGMA_T[row]; sigma_Z_DiskL = THIN_SIGMA_Z[row];
     }
-    CHECK(age >= 0);
-
 
     // Source velocity.
     if (s.struc == GalacticComponent::THIN_DISK) {///Galactic disk

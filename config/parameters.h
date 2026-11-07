@@ -123,11 +123,12 @@ constexpr double BAR_E_MASS_DEN = 87.0;                       // normalized
 // ---- (2b) Galactic model: kinematics (vrel, src/galaxy/kinematics.cpp) ----
 // Velocity dispersions [km/s] in the Galactic (R, T, Z) frame, drawn as truncated Gaussians.
 constexpr double VEL_NSIGMA_TRUNC = 3.5;   //truncation of the Gaussian velocity draws [sigma]
-// Thin disc: one row per age bin, chosen by the bin's share of Rho[0..3] = rho0*corr/d0.
-constexpr std::array<double, 4> THIN_AGE     = {0.075, 0.575, 1.5, 2.5};   //Gyr
-constexpr std::array<double, 4> THIN_SIGMA_R = {16.7, 19.8, 27.2, 30.2};
-constexpr std::array<double, 4> THIN_SIGMA_T = {10.8, 12.8, 17.6, 19.5};
-constexpr std::array<double, 4> THIN_SIGMA_Z = {6.0, 8.0, 10.0, 13.2};
+// Thin disc: the Besancon age-velocity relation, one row per catalogue age bin (Robin et al. 2003; Table 1 of
+// Robin et al. 2017, arXiv:1704.06274). The disc white dwarfs (8th density bin) use the last row.
+constexpr std::array<double, 8> THIN_AGE_EDGES = {0.0, 0.15, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0};   //Gyr
+constexpr std::array<double, 7> THIN_SIGMA_R = {16.7, 19.8, 27.2, 30.2, 36.7, 43.1, 43.1};
+constexpr std::array<double, 7> THIN_SIGMA_T = {10.8, 12.8, 17.6, 19.5, 23.7, 27.8, 27.8};
+constexpr std::array<double, 7> THIN_SIGMA_Z = {6.0, 8.0, 10.0, 13.2, 15.8, 17.4, 17.5};
 constexpr double THICK_SIGMA_R = 67.0,  THICK_SIGMA_T = 51.0,  THICK_SIGMA_Z = 42.0;
 constexpr double HALO_SIGMA_R  = 131.0, HALO_SIGMA_T  = 106.0, HALO_SIGMA_Z  = 85.0;
 constexpr double BULGE_SIGMA_R = 113.0, BULGE_SIGMA_T = 115.0, BULGE_SIGMA_Z = 100.0;

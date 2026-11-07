@@ -386,8 +386,10 @@ void finishSightline(SimContext& ctx, SightlineState& st) {
     
     CHECK(DelT[0] > 0.0);
     CHECK(DelT[1] > 0.0);
-    CHECK(vsn[0] > 0.0);
-    CHECK(vsn[1] > 0.0);
+    // vsn sums the source's sky speed over RUBIN epochs only, so it is 0 when no event (or no characterised
+    // event) of the sightline has a Rubin epoch: legitimate deep in the dust, where only Roman sees.
+    CHECK(vsn[0] >= 0.0);
+    CHECK(vsn[1] >= 0.0);
     CHECK(fwhm[0] > 0.0);
     CHECK(fwhm[1] > 0.0);
     

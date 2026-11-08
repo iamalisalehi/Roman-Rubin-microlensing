@@ -152,7 +152,12 @@ constexpr std::array<double, 2> THICK_SIGMA_Z = {27.89, 66.43};
 constexpr double THICK_AGE_SPLIT = 11.0;   //Gyr
 constexpr double HALO_SIGMA_R  = 131.0, HALO_SIGMA_T  = 106.0, HALO_SIGMA_Z  = 85.0;
 constexpr double BULGE_SIGMA_R = 113.0, BULGE_SIGMA_T = 115.0, BULGE_SIGMA_Z = 100.0;
-// Rotation of the disc: V_T += vro_sun * (ROT_A * (R/Dsun)^ROT_SLOPE + ROT_B), thin and thick disc only.
+// Rotation of the disc: V_T += v_c(R) - v_a, thin and thick disc only, with the circular speed
+// v_c(R) = vro_sun * (ROT_A * (R/Dsun)^ROT_SLOPE + ROT_B) and v_a the asymmetric drift of the star's age bin or
+// episode at its position (discAsymmetricDrift, src/galaxy/kinematics.cpp: Binney & Tremaine 2008 Eq. 4.228 in the
+// plane, from its own dispersions and density law; the BGM's choice before Robin et al. 2017). The Sun's motion
+// (VSunT) is circular + 12.24 km/s, unchanged. false: every disc star rotates at v_c, as before 2026-11-08.
+constexpr bool DISC_ASYMMETRIC_DRIFT = true;
 constexpr double ROT_A = 1.00762;
 constexpr double ROT_SLOPE = 0.0394;
 constexpr double ROT_B = 0.00712;

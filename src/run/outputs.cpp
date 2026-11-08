@@ -339,6 +339,10 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << std::accumulate(THIN_RHO_LOCAL.begin(), THIN_RHO_LOCAL.end(), 0.0) << " (" << THIN_NBIN
              << " age bins), thick " << THICK_RHO_LOCAL[0] << " + " << THICK_RHO_LOCAL[1]
              << " (two sech^2 episodes), halo " << HALO_RHO_LOCAL << " (Robin+2014 Eq. 6, a >= " << HALO_A_MIN << " kpc)\n"
+             // Runs before this line drew every thick-disc star from one ellipsoid (67/51/42 km/s) with no drift.
+             << "# disc_kinematics     thin: Robin+2017 Table 1 per age bin; thick: Robin+2017 Table 3 per episode; "
+             << "asymmetric drift " << (DISC_ASYMMETRIC_DRIFT ? "Binney & Tremaine 2008 Eq. 4.228 in the plane" : "none")
+             << "\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex.nTables << " x "
              << ex.nDist << ", k " << ex.k << " --" << ex.built << "\n"
 

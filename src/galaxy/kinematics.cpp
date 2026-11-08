@@ -55,26 +55,37 @@ static double circularSpeed(double R)
     return vro_sun * (ROT_A * std::pow(R / Dsun, ROT_SLOPE) + ROT_B);
 }
 
+// Factor by which a thin-disc dispersion at Galactocentric radius R [kpc] exceeds its local value: exp(-(R - Dsun)/h),
+// h = THIN_SIGMA_HU (sigma_R, sigma_T) or THIN_SIGMA_HW (sigma_Z).
+static double thinSigmaScale(double R, double h)
+{
+    return std::exp(-(R - Dsun) / h);
+}
+
 // Asymmetric drift [km/s] of thin-disc age bin idx (comp THIN_DISK) or thick-disc episode idx (THICK_DISK) at
 // Galactocentric radius R [kpc]: the Jeans equation in the plane, Binney & Tremaine (2008) Eq. 4.228 without the tilt
 // term (the in-plane formula the BGM used before Robin et al. 2017),
-//     v_a = sigma_R^2 / (2 v_c) [sigma_T^2 / sigma_R^2 - 1 - dln(nu sigma_R^2)/dln R],
-// with the component's own dispersions (constant in R, as in vrel, so only the density nu varies) and nu its own
-// density law (thinBinDensity / thickEpisodeDensity) in the plane, differentiated numerically. In the plane: off it the
-// ellipsoidal laws' radial slope flattens (a^2 = R^2 + z^2/eps^2), which the in-plane formula does not describe.
+//     v_a = sigma_R^2 / (2 v_c) [sigma_T^2 / sigma_R^2 - 1 - dln nu/dln R - dln sigma_R^2/dln R],
+// with the component's own dispersions at R (vrel draws the same) and nu its own density law (thinBinDensity /
+// thickEpisodeDensity) in the plane, differentiated numerically. The thin disc's dispersions fall as exp(-(R - Dsun)/
+// THIN_SIGMA_HU), so -dln sigma_R^2/dln R = 2R / THIN_SIGMA_HU; the thick disc's are constant in R (0). In the plane: off
+// it the ellipsoidal laws' radial slope flattens (a^2 = R^2 + z^2/eps^2), which the in-plane formula does not describe.
 // Clipped at 0: inside the thin disc's central hole the density rises outward and the formula, made for a smooth
 // disc, does not apply.
 double discAsymmetricDrift(GalacticComponent comp, int idx, double R)
 {
     constexpr double z = 0.0;
     if (!DISC_ASYMMETRIC_DRIFT) return 0.0;
-    double sigR, sigT;
+    double sigR, sigT, sigmaSlope;   // sigmaSlope = -dln sigma_R^2 / dln R
     double (*rho)(int, double, double);
     if (comp == GalacticComponent::THIN_DISK) {
-        sigR = THIN_SIGMA_R[idx]; sigT = THIN_SIGMA_T[idx]; rho = thinBinDensity;
+        const double g = thinSigmaScale(R, THIN_SIGMA_HU);
+        sigR = THIN_SIGMA_R[idx] * g; sigT = THIN_SIGMA_T[idx] * g; rho = thinBinDensity;
+        sigmaSlope = 2.0 * R / THIN_SIGMA_HU;
     }
     else if (comp == GalacticComponent::THICK_DISK) {
         sigR = THICK_SIGMA_R[idx]; sigT = THICK_SIGMA_T[idx]; rho = thickEpisodeDensity;
+        sigmaSlope = 0.0;
     }
     else return 0.0;
     constexpr double h = 0.005;   // kpc, the step of the numerical derivative
@@ -82,7 +93,8 @@ double discAsymmetricDrift(GalacticComponent comp, int idx, double R)
     const double lo = rho(idx, R - h, z), hi = rho(idx, R + h, z);
     if (!(lo > 0.0) or !(hi > 0.0)) return 0.0;
     const double slope = -R * (std::log(hi) - std::log(lo)) / (2.0 * h);   // -dln nu / dln R
-    const double va = sigR * sigR / (2.0 * circularSpeed(R)) * (sigT * sigT / (sigR * sigR) - 1.0 + slope);
+    const double va = sigR * sigR / (2.0 * circularSpeed(R))
+                    * (sigT * sigT / (sigR * sigR) - 1.0 + slope + sigmaSlope);
     return std::max(0.0, va);
 }
 
@@ -111,16 +123,18 @@ void vrel(source & s, lens & l){
     double sigma_R_Bulge = BULGE_SIGMA_R, sigma_T_Bulge = BULGE_SIGMA_T, sigma_Z_Bulge = BULGE_SIGMA_Z;
 
     // Thin-disc dispersions: a source takes the row of its own catalogue age; a lens (no age), or a source
-    // without one, draws a density bin at its position.
+    // without one, draws a density bin at its position. Each is the local value scaled to the star's radius.
     int idxS = -1, idxL = -1;   // the disc star's age bin (thin) or episode (thick), for its dispersions and drift
     if (s.struc == GalacticComponent::THIN_DISK) {
         int row = (s.age >= 0.0) ? thinRowOfAge(s.age) : thinRowAtPosition(s, s.Ds);
-        sigma_R_DiskS = THIN_SIGMA_R[row]; sigma_T_DiskS = THIN_SIGMA_T[row]; sigma_Z_DiskS = THIN_SIGMA_Z[row];
+        const double gU = thinSigmaScale(Rsc, THIN_SIGMA_HU), gW = thinSigmaScale(Rsc, THIN_SIGMA_HW);
+        sigma_R_DiskS = THIN_SIGMA_R[row] * gU; sigma_T_DiskS = THIN_SIGMA_T[row] * gU; sigma_Z_DiskS = THIN_SIGMA_Z[row] * gW;
         idxS = row;
     }
     if (l.struc == GalacticComponent::THIN_DISK) {
         int row = thinRowAtPosition(s, l.Dl);
-        sigma_R_DiskL = THIN_SIGMA_R[row]; sigma_T_DiskL = THIN_SIGMA_T[row]; sigma_Z_DiskL = THIN_SIGMA_Z[row];
+        const double gU = thinSigmaScale(Rlc, THIN_SIGMA_HU), gW = thinSigmaScale(Rlc, THIN_SIGMA_HW);
+        sigma_R_DiskL = THIN_SIGMA_R[row] * gU; sigma_T_DiskL = THIN_SIGMA_T[row] * gU; sigma_Z_DiskL = THIN_SIGMA_Z[row] * gW;
         idxL = row;
     }
     // Thick-disc dispersions, the same way: a source by its catalogue age (10 or 12 Gyr), a lens by position.

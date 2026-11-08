@@ -141,6 +141,13 @@ constexpr std::array<double, THIN_NBIN + 1> THIN_AGE_EDGES = {0.0, 0.15, 1.0, 2.
 constexpr std::array<double, THIN_NBIN> THIN_SIGMA_R = {16.7, 19.8, 27.2, 30.2, 36.7, 43.1, 43.1};
 constexpr std::array<double, THIN_NBIN> THIN_SIGMA_T = {10.8, 12.8, 17.6, 19.5, 23.7, 27.8, 27.8};
 constexpr std::array<double, THIN_NBIN> THIN_SIGMA_Z = {6.0, 8.0, 10.0, 13.2, 15.8, 17.4, 17.5};
+// The thin disc is hotter inward: these are the dispersions at the Sun, and at Galactocentric radius R each is
+// multiplied by exp(-(R - Dsun)/h), h = THIN_SIGMA_HU for sigma_R and sigma_T (Robin et al. 2017 keep sigma_V/sigma_U
+// fixed), THIN_SIGMA_HW for sigma_Z: Robin et al. 2017 Table 3, Caldwell & Ostriker column (h_sigmaU = 13176 +- 6908 pc,
+// h_sigmaW = 15919 +- 8609 pc). WEAKLY CONSTRAINED: the paper says the gradient could not be pinned down from the solar
+// neighbourhood (its other fits give 7.5-19.4 kpc). A very large h switches the gradient off.
+constexpr double THIN_SIGMA_HU = 13.176;   //kpc
+constexpr double THIN_SIGMA_HW = 15.919;   //kpc
 // Thick disc: one velocity ellipsoid per Besancon episode (index as THICK_RHO_LOCAL: 0 = young, 10 Gyr, catalogue
 // population 8; 1 = old, 12 Gyr, population 11), Robin et al. 2017 Table 3 (the paper that gives the two-episode thick
 // disc of Robin et al. 2014 its kinematics; Caldwell & Ostriker rotation-curve column, the Sofue column is within

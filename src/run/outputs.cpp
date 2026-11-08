@@ -357,6 +357,8 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "# source_selection    " << (cfg.blendThinning ? "per-object" : "every-star")
              << "   # every-star: each source with a visible peak is kept; per-object: kept with probability = its "
                 "blend fraction (pKeep column). Detection aggregates (MapLMC, EfLMC, LpLMC, summary) count what is kept\n"
+             << "# rubin_fisher_visits " << (cfg.rubinFisherRefOnly ? "reference band only" : "all bands")
+             << "   # Rubin visits in the Fisher matrices; each fitted with the reference band's model (RUBIN_REF_BANDS)\n"
              << "# dchi_det            " << cfg.dchiDet
              << "   # fixed detection bar; every yield is conditioned on it\n";
         if (!cfg.dryRun) {   // a dry run must not overwrite the last run's provenance

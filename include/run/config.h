@@ -74,6 +74,12 @@ struct RunConfig {
     // fraction, i.e. one candidate per resolved object (Sajadian & Makler 2022).
     bool   blendThinning = false;
 
+    // Rubin's visits in the Fisher matrices. false (default): every recorded Rubin visit, each fitted with the reference
+    // band's model (RUBIN_REF_BANDS) and its own band's errors. true (--rubin-fisher-ref-only): only the visits taken
+    // in a reference band (option B of the per-band plan: consistent, pessimistic). Detection is unchanged and no random
+    // number is drawn differently, so the two runs are the same events.
+    bool   rubinFisherRefOnly = false;
+
     // Path to a sample-event dump spec, or empty for no dump. The dump consumes no RNG, so a
     // run with it is event-for-event the same as one without.
     std::string dumpSpec;

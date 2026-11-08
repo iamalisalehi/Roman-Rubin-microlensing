@@ -24,6 +24,14 @@
 
 namespace {
 
+// Is Rubin band fi one of the reference bands (RUBIN_REF_BANDS) whose model every Rubin visit is fitted with?
+bool isRubinRefBand(int fi)
+{
+    for (int b : RUBIN_REF_BANDS)
+        if (b == fi) return true;
+    return false;
+}
+
 // One epoch of the time grid, and what the two surveys do there.
 struct TimeStep {
     double tim;         // [days]
@@ -271,6 +279,10 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                         chi3a_L += std::fabs( sil2  * sil2 / (errs * errs));
                     }
 
+                    // The Fisher matrices' record of this visit; with --rubin-fisher-ref-only only the
+                    // reference band's visits are recorded (detection above and below is unchanged).
+                    const bool recordRubin = !ctx.cfg.rubinFisherRefOnly or isRubinRefBand(fi);
+                    if (recordRubin) {
                     CHECK(ndw < coun); // array-bounds guard — see note on `coun` sizing
                     l.timn[ndw] = tim;
                     l.magn[ndw] = magniRubinRef; // Rubin representative-band model value (RUBIN_REF_BANDS)
@@ -280,6 +292,7 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                     l.erra[ndw] = errs;
                     l.tele[ndw] = 0; // 0 = LSST
                     l.rseas[ndw] = -1; l.rroll[ndw] = -1;
+                    }
 
                     // Sample dump: reuses the values computed above (magnio is the noisy datum the
                     // chi-squared sums just used); nothing new is drawn.
@@ -311,11 +324,13 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                     CHECK(errg >= 0.0);
                     CHECK(deltaA >= 0.0);
 
-                    s.errM += deltaA;
-                    s.errA += errs;
-                    vsave += std::sqrt(vs1 * vs1 + vs2 * vs2);
-
-                    ndw += 1;
+                    // Running sums averaged over the recorded points (characterize.cpp divides by ndw).
+                    if (recordRubin) {
+                        s.errM += deltaA;
+                        s.errA += errs;
+                        vsave += std::sqrt(vs1 * vs1 + vs2 * vs2);
+                        ndw += 1;
+                    }
                     ndw_L += 1;
                 }//magnitude limit
             }

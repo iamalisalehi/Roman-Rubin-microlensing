@@ -76,8 +76,9 @@ struct RunConfig {
 
     // Rubin's visits in the Fisher matrices. false (default): every recorded Rubin visit, each fitted with the reference
     // band's model (RUBIN_REF_BANDS) and its own band's errors. true (--rubin-fisher-ref-only): only the visits taken
-    // in a reference band (option B of the per-band plan: consistent, pessimistic). Detection is unchanged and no random
-    // number is drawn differently, so the two runs are the same events.
+    // in a reference band (option B of the per-band plan: consistent, pessimistic). Visibility, detection and the draws
+    // are unchanged, so the two runs hold the same events in the same order; a sightline may run longer with it, since
+    // it stops after a set number of characterised events (nerrTarget) and fewer events are characterised.
     bool   rubinFisherRefOnly = false;
 
     // Path to a sample-event dump spec, or empty for no dump. The dump consumes no RNG, so a

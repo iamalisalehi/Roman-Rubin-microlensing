@@ -31,7 +31,7 @@ Detection detectEvent(SimContext& ctx, const LightCurveStats& lc) {
     // dropped from characterisation.
     if (s.FWHM < Tobs and d.dchiL_L > cfg.dchiDet and lc.flag_det_L > 0 and lc.ndw_L > 10) d.detL = 1;
     if (s.FWHM < Tobs and d.dchiL_R > cfg.dchiDet and lc.flag_det_R > 0 and lc.ndw_R > 10) d.detR = 1;
-    if (s.FWHM < Tobs and d.dchiL   > cfg.dchiDet and (lc.flag_det_L > 0 or lc.flag_det_R > 0) and lc.ndw > 10) d.detJ = 1;
+    if (s.FWHM < Tobs and d.dchiL   > cfg.dchiDet and (lc.flag_det_L > 0 or lc.flag_det_R > 0) and lc.ndw_L + lc.ndw_R > 10) d.detJ = 1;
 
     // Monotonicity: adding data cannot destroy information, so a single-survey detection implies a
     // joint one. With the signed statistic and one fixed bar this holds by construction (chi1 and chi3

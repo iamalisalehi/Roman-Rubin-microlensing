@@ -324,13 +324,12 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                     CHECK(errg >= 0.0);
                     CHECK(deltaA >= 0.0);
 
-                    // Running sums averaged over the recorded points (characterize.cpp divides by ndw).
-                    if (recordRubin) {
-                        s.errM += deltaA;
-                        s.errA += errs;
-                        vsave += std::sqrt(vs1 * vs1 + vs2 * vs2);
-                        ndw += 1;
-                    }
+                    // Running sums over every observed point (characterize.cpp divides by ndw_L + ndw_R).
+                    s.errM += deltaA;
+                    s.errA += errs;
+                    vsave += std::sqrt(vs1 * vs1 + vs2 * vs2);
+
+                    if (recordRubin) ndw += 1;
                     ndw_L += 1;
                 }//magnitude limit
             }

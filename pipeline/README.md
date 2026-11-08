@@ -173,11 +173,11 @@ config (`RUN_ROOT/slurm/config.sh`), so editing your config afterwards does not 
 - `prep`: star lists ~8 min and 1.7 GB RAM; Rubin visit list ~3 min; the rest is seconds; the first `make` ~1-2 min.
   Downloads: ~7 MB MIST, 0.8 GB OpSim, 7 GB DECaPS only for `EXT_TABLES=build`.
 - Disk: star lists 0.6 GB; per-event tables are large (~770 bytes per drawn star, up to 50,000 rows per sightline):
-  about 21 GB (bulge), 15 GB (ns), 12 GB (bh) at production flags, each +-30% (the few outside-footprint sightlines
-  that reach the draw cap dominate), ~10% more at `STRIDE_ROMAN=2`; they exist twice (chunks and merged) unless
+  about 24 GB (bulge), 15 GB (ns), 12 GB (bh) at production flags, each +-30% (the few outside-footprint sightlines
+  that reach the draw cap dominate; bulge re-measured after Besancon 1612's normalisations, +13% rows, ns and bh not), ~10% more at `STRIDE_ROMAN=2`; they exist twice (chunks and merged) unless
   `KEEP_CHUNKS=0`. The merged tables compress ~3x (gzip -6, `COMPRESS_TABLES=1`), and the analysis reads the `.gz` directly:
-  ~7 / 5 / 4 GB, ~17 GB for the three with their logs (the merge needs the plain table's space once, briefly).
-- `analyze`: y1 holds a population's draws in memory (~2.4 GB per 6 GB of table, so ~8 GB for bulge, ~1 h at
+  ~8 / 5 / 4 GB, ~19 GB for the three with their logs (the merge needs the plain table's space once, briefly).
+- `analyze`: y1 holds a population's draws in memory (~2.4 GB per 6 GB of table, so ~10 GB for bulge, ~1 h at
   laptop speed); p6/p7 hold two populations. Give `SLURM_OPTS_FINISH` ~24 GB and several hours.
 
 ## Where things go

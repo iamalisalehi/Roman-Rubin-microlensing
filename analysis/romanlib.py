@@ -397,7 +397,7 @@ def area_weight(df, prov=None):
 def run_galaxy(sightlines, galaxy=None):
     """The galaxy model to weight a run with: `galaxy` if given, else read from its map table.
 
-    See galaxy_model.GALAXIES. Runs made before the current model used older bar or thin-disc
+    See galaxy_model.GALAXIES. Runs made before the current model used older bar, disc or halo
     laws; the weight's star count and lens-distance normaliser must use the run's own galaxy.
     """
     import galaxy_model as G

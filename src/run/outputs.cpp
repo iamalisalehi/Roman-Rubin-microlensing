@@ -1,5 +1,6 @@
 // The run's output files, the per-event table header and the provenance block.
 #include "run/outputs.h"
+#include <numeric>   // std::accumulate (local thin-disc density)
 #include <sstream>   // provenance block
 
 // The Makefile makes this object depend on the git stamp: GIT_COMMIT is printed below.
@@ -333,6 +334,11 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << " only   # Han & Gould 2003 column toward Baade's window\n"
              // Runs before this line used Robin+2003's thin-disc flattenings and hole form.
              << "# thin_disc           Besancon 1612: eps 0.0140..0.0678, hole with the disc's vertical scale; Sun 15 pc above the plane\n"
+             // Runs before this line used Robin+2003's local densities, thick disc and halo (analysis/galaxy_model.py).
+             << "# disc_norm           Besancon 1612 local densities [Msun/pc^3]: thin "
+             << std::accumulate(THIN_RHO_LOCAL.begin(), THIN_RHO_LOCAL.end(), 0.0) << " (" << THIN_NBIN
+             << " age bins), thick " << THICK_RHO_LOCAL[0] << " + " << THICK_RHO_LOCAL[1]
+             << " (two sech^2 episodes), halo " << HALO_RHO_LOCAL << " (Robin+2014 Eq. 6, a >= " << HALO_A_MIN << " kpc)\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex.nTables << " x "
              << ex.nDist << ", k " << ex.k << " --" << ex.built << "\n"
 

@@ -6,9 +6,9 @@
 // Row of the age-velocity table for a catalogue age [Gyr]; ages of 10 Gyr and more take the last row.
 static int thinRowOfAge(double age)
 {
-    for (int r = 0; r < 6; ++r)
+    for (int r = 0; r < THIN_NBIN - 1; ++r)
         if (age < THIN_AGE_EDGES[r + 1]) return r;
-    return 6;
+    return THIN_NBIN - 1;
 }
 
 // Row for a thin-disc star with no catalogue age at distance D along the sightline: draw its density bin
@@ -19,17 +19,17 @@ static int thinRowAtPosition(const source & s, double D)
     double yb = std::cos(s.FI) * std::sin(s.TET) * D;
     double xb = D * std::cos(s.FI) * std::cos(s.TET) - Dsun;
     double Rb = std::sqrt(xb * xb + yb * yb);
-    double w[8], tot = 0.0;
-    for (int ii = 0; ii < 8; ++ii) {
+    double w[THIN_NBIN], tot = 0.0;
+    for (int ii = 0; ii < THIN_NBIN; ++ii) {
         w[ii] = thinBinDensity(ii, Rb, zb);
         tot += w[ii];
     }
     double test = RandR(0.0, tot), acc = 0.0;
-    for (int ii = 0; ii < 7; ++ii) {
+    for (int ii = 0; ii < THIN_NBIN - 1; ++ii) {
         acc += w[ii];
         if (test <= acc) return ii;
     }
-    return 6;   // bin 8 (white dwarfs) shares the last row
+    return THIN_NBIN - 1;
 }
 
 // Draws source and lens velocities from the component dispersions (plus disk rotation), projects

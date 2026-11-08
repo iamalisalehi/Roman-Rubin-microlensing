@@ -13,10 +13,12 @@ first thing to run after any change to `Disk_model`.
 
 Three galaxy models exist in runs on disk (the GALAXIES table below). Every profile therefore takes the
 run's `galaxy` key, and `galaxy_for_map()` reads which one a run used from its own map file:
-  "current"   bar once + Besancon 1612's thin disc, the Sun 15 pc above the plane (run_provenance.txt has a
-              thin_disc line naming the Sun's height)
-  "bar-once"  bar once + Robin et al. 2003's thin disc (runs of 2026-11-03 on; bulge_norm line, no thin_disc)
-  "legacy"    bar x 0.45 + Robin 2003's thin disc (runs before 2026-11-03; no bulge_norm line)
+  "current"   bar once + Besancon 1612's thin disc, thick disc and halo, in shape and local density, the Sun 15 pc
+              above the plane (run_provenance.txt has a disc_norm line)
+  "bar-once"  bar once + Robin et al. 2003's discs and halo (runs of 2026-11-03 on; bulge_norm line, no thin_disc)
+  "legacy"    bar x 0.45 + Robin 2003's discs and halo (runs before 2026-11-03; no bulge_norm line)
+Runs of 2026-11-07 (9170d33: a thin_disc line but no disc_norm line) had Besancon 1612's thin-disc shape with Robin
+2003's normalisations; none was kept, so that model is not in the table and such a map matches nothing.
 The kinematics in kinematics.cpp are not ported here: the weights read each event's own Vt column.
 
     from galaxy_model import galaxy_for_map, density_profile, lens_distance_norm
@@ -35,21 +37,30 @@ STEP = MAXD / NUM                # kpc
 DSUN = P.Dsun                    # kpc
 RAA = 180.0 / np.pi
 BINARY_FRACTION = P.binary_fraction
-RHO0, D0, EPCI, CORR = P.rho0, P.d0, P.epci, P.corr
+# Besancon 1612 (the "current" galaxy): thin disc per age bin, thick disc's two episodes, halo.
+THIN_RHO_LOCAL, EPCI = P.THIN_RHO_LOCAL, P.epci
+THICK_RHO_LOCAL, THICK_HZ, THICK_HR = P.THICK_RHO_LOCAL, P.THICK_HZ, P.THICK_HR
+HALO_FLATTEN, HALO_A_CORE, HALO_EXPONENT = P.HALO_FLATTEN, P.HALO_A_CORE, P.HALO_EXPONENT
+HALO_A_MIN, HALO_RHO_LOCAL = P.HALO_A_MIN, P.HALO_RHO_LOCAL
 BAR_MASS_RESCALE = P.BAR_MASS_RESCALE   # calibrated to the Han & Gould (2003) Baade's Window benchmark
 Z_SUN = P.Z_SUN                         # kpc, the Sun's height above the plane (Besancon 1612)
 # The older runs put the Sun in the plane, and their bar scale was calibrated that way.
 BAR_MASS_RESCALE_SUN0 = 0.24529
 
-# Robin et al. (2003) thin-disc flattenings, used by the "bar-once" and "legacy" runs (config/parameters.h
-# now holds Besancon 1612's, which are smaller). Their hole term also divided the vertical term by the hole's
-# scale length squared, which Besancon 1612 does not.
+# The older runs' thin disc ("bar-once", "legacy"): Robin et al. (2003) as the C++ had it until 2026-11-07, eight bins
+# (the 8th: disc white dwarfs), local densities RHO0_ROBIN03 [1e-3 Msun/pc^3] x CORR_ROBIN03 x 1.2 / D0_ROBIN03, and
+# Robin 2003's flattenings. Their hole term also divided the vertical term by the hole's scale length squared, which
+# Besancon 1612 does not. config/parameters.h no longer has these; the analysis keeps them to weight those runs.
+RHO0_ROBIN03 = (4.0, 7.9, 6.2, 4.0, 5.8, 4.9, 6.6, 3.96)
+D0_ROBIN03 = (0.073117, 0.0216524, 0.0217405, 0.0217901, 0.0218061, 0.0218118, 0.0218121, 0.0218121)
+CORR_ROBIN03 = (1.0, 7.9 / 4.48419, 6.2 / 3.52112, 4.0 / 2.27237, 5.8 / 3.29525, 4.9 / 2.78402, 6.6 / 3.74991,
+                3.96 / 2.24994)
 EPCI_ROBIN03 = (0.014, 0.0268, 0.0375, 0.0551, 0.0696, 0.0785, 0.0791, 0.0791)
 
 # The bar's second factor in "legacy" runs ("total mass 1.7e10 Msun", computed without BAR_MASS_RESCALE, so the
 # bar was normalised twice: 937 instead of 2,086 Msun/pc^2 toward Baade's window). config/parameters.h no
 # longer has it; the analysis keeps it to weight those runs.
-# key: (bar mass rescale, bar factor, thin disc, the Sun's height [kpc])
+# key: (bar mass rescale, bar factor, discs and halo, the Sun's height [kpc])
 GALAXIES = {
     "current":  (BAR_MASS_RESCALE, 1.0, "besancon1612", Z_SUN),
     "bar-once": (BAR_MASS_RESCALE_SUN0, 1.0, "robin2003", 0.0),
@@ -88,16 +99,16 @@ def check_galaxy(galaxy):
     if galaxy not in GALAXIES:
         raise ValueError(
             f"galaxy must be one of {tuple(GALAXIES)}, got {galaxy!r}: 'current' if the run's run_provenance.txt "
-            f"has a thin_disc line, 'bar-once' if it has a bulge_norm line but no thin_disc, 'legacy' if it has "
+            f"has a disc_norm line, 'bar-once' if it has a bulge_norm line but no thin_disc, 'legacy' if it has "
             f"neither. galaxy_for_map(sightlines) reads it from the run's map file.")
     return galaxy
 
 
 def _profile(comp, galaxy):
     """A Profile from _components()'s output and the run's galaxy key."""
-    lon, lat, x, thin_b, thin_r, thick, halo, bar = comp
+    lon, lat, x, discs, bar = comp
     bar_rescale, bar_factor, disc, _ = GALAXIES[check_galaxy(galaxy)]
-    thin = thin_b if disc == "besancon1612" else thin_r
+    thin, thick, halo = discs[disc]
     bulge = bar * bar_rescale * bar_factor
     rho_tot = thin + thick + bulge + halo
     # Shell volume per square degree: x^2 dx in kpc^3 -> pc^3, times (pi/180)^2 sr per deg^2.
@@ -108,22 +119,39 @@ def _profile(comp, galaxy):
     return Profile(lon, lat, x, rho_tot, Rostart, Nstart)
 
 
-def thin_bin_density(ii, Rb, zb):
-    """Port of `thinBinDensity()`: Msun/pc^3 of Besancon-1612 thin-disc age bin ii at (R, z) [kpc].
-    The hole has the disc's vertical scale; both forms are >= 0 everywhere."""
+def _thin_bin_shape(ii, Rb, zb):
+    """Shape of Besancon-1612 thin-disc age bin ii at (R, z) [kpc]; the hole has the disc's vertical scale."""
     e2 = EPCI[ii]**2
     if ii == 0:
-        shape = (np.exp(-(Rb**2 + zb**2 / e2) / 25.0)
-                 - np.exp(-(Rb**2 / 9.0 + zb**2 / (e2 * 25.0))))
-    else:
-        shape = (np.exp(-np.sqrt(0.25 + (Rb**2 + zb**2 / e2) / 2.17**2))
-                 - np.exp(-np.sqrt(0.25 + Rb**2 / 1.33**2 + zb**2 / (e2 * 2.17**2))))
-    return RHO0[ii] * CORR[ii] * 0.001 * 1.2 * shape / D0[ii]   # 1.2: total mass 4.25e10 Msun
+        return (np.exp(-(Rb**2 + zb**2 / e2) / 25.0)
+                - np.exp(-(Rb**2 / 9.0 + zb**2 / (e2 * 25.0))))
+    return (np.exp(-np.sqrt(0.25 + (Rb**2 + zb**2 / e2) / 2.17**2))
+            - np.exp(-np.sqrt(0.25 + Rb**2 / 1.33**2 + zb**2 / (e2 * 2.17**2))))
+
+
+def thin_bin_density(ii, Rb, zb):
+    """Port of `thinBinDensity()`: Msun/pc^3 of Besancon-1612 thin-disc age bin ii at (R, z) [kpc], the bin's
+    local density THIN_RHO_LOCAL at (DSUN, 0)."""
+    return THIN_RHO_LOCAL[ii] * _thin_bin_shape(ii, Rb, zb) / _thin_bin_shape(ii, DSUN, 0.0)
+
+
+def thick_density(Rb, zb):
+    """Port of `thickDensity()`: Msun/pc^3 of Besancon 1612's two sech^2 thick-disc episodes."""
+    return sum(THICK_RHO_LOCAL[k] * np.exp(-(Rb - DSUN) / THICK_HR[k]) / np.cosh(zb / (2.0 * THICK_HZ[k]))**2
+               for k in range(len(THICK_RHO_LOCAL)))
+
+
+def halo_density(Rb, zb):
+    """Port of `haloDensity()`: Msun/pc^3 of Besancon 1612's spheroid, 1 / (a (a_c + a)^n), a >= HALO_A_MIN."""
+    def law(a):
+        return 1.0 / (a * (HALO_A_CORE + a)**HALO_EXPONENT)
+    a = np.maximum(np.sqrt(Rb**2 + zb**2 / HALO_FLATTEN**2), HALO_A_MIN)
+    return HALO_RHO_LOCAL * law(a) / law(DSUN)
 
 
 def _components(lon, lat, zsun):
-    """The densities [Msun/pc^3] along (lon, lat), with the Sun `zsun` kpc above the plane: both thin discs
-    (Besancon 1612, Robin 2003), thick, halo, and the bar before its mass rescale and any bar factor."""
+    """The densities [Msun/pc^3] along (lon, lat), with the Sun `zsun` kpc above the plane: {model: (thin, thick,
+    halo)} for both models (Besancon 1612, Robin 2003), and the bar before its mass rescale and any bar factor."""
     TET, FI = (360.0 - lon) / RAA, lat / RAA
     x = np.arange(1, NUM) * STEP
     zb = np.sin(FI) * x + zsun
@@ -131,13 +159,12 @@ def _components(lon, lat, zsun):
     xb = x * np.cos(FI) * np.cos(TET) - DSUN
     Rb = np.hypot(xb, yb)
 
-    # --- thin disk: eight age bins, each with its own flattening ---
-    # Besancon 1612 (EPCI from parameters.h); see thin_bin_density.
-    thin_b = np.zeros_like(x)
-    for ii in range(8):
-        thin_b = np.abs(thin_b + thin_bin_density(ii, Rb, zb))
+    # --- Besancon 1612: thin disc (seven age bins), thick disc (two episodes), halo ---
+    thin_b = sum(thin_bin_density(ii, Rb, zb) for ii in range(len(THIN_RHO_LOCAL)))
+    b1612 = (thin_b, thick_density(Rb, zb), halo_density(Rb, zb))
 
-    # Robin et al. 2003 (the older runs): the hole's vertical term divided by the hole's scale length.
+    # --- Robin et al. 2003 (the older runs) ---
+    # thin disc: eight bins; the hole's vertical term divided by the hole's scale length
     Rdd, Rhh = 2.17, 1.33
     thin_r = np.zeros_like(x)
     for ii in range(8):
@@ -148,20 +175,21 @@ def _components(lon, lat, zsun):
             rho = (np.exp(-np.sqrt(0.25 + rdi / Rdd**2))
                    - np.exp(-np.sqrt(0.25 + rdi / Rhh**2)))
         rho *= 1.2
-        thin_r = np.abs(thin_r + RHO0[ii] * CORR[ii] * 0.001 * rho / D0[ii])
+        thin_r = np.abs(thin_r + RHO0_ROBIN03[ii] * CORR_ROBIN03[ii] * 0.001 * rho / D0_ROBIN03[ii])
 
-    # --- thick disk: parabolic near the plane, exponential beyond 400 pc ---
+    # thick disc: parabolic near the plane, exponential beyond 400 pc
     nnf = 0.4 / 0.8
     rho00 = 1.34e-3 + 3.04e-4
     near = np.abs((rho00 / 0.999719) * np.exp(-(Rb - DSUN) / 2.5)
                   * (1.0 - zb**2 / (0.4 * 0.8 * (2.0 + nnf))))
     far = np.abs((rho00 / 0.999719) * np.exp(-(Rb - DSUN) / 2.5)
                  * np.exp(nnf) * np.exp(-np.abs(zb) / 0.8) / (1.0 + 0.5 * nnf))
-    thick = np.where(np.abs(zb) < 0.4, near, far) * 2.67   # total mass 0.8e10 Msun
+    thick_r = np.where(np.abs(zb) < 0.4, near, far) * 2.67   # total mass 0.8e10 Msun
 
-    # --- stellar halo: flattened power law, cored inside 0.5 kpc ---
+    # stellar halo: flattened power law, cored inside 0.5 kpc
     rdi = np.sqrt(Rb**2 + zb**2 / 0.76**2)
-    halo = np.abs((0.932e-5 / 867.067) * np.power(np.maximum(rdi, 0.5) / DSUN, -2.44)) * 5281.0
+    halo_r = np.abs((0.932e-5 / 867.067) * np.power(np.maximum(rdi, 0.5) / DSUN, -2.44)) * 5281.0
+    r2003 = (thin_r, thick_r, halo_r)
 
     # --- bulge: two triaxial bars, rotated by alfa from the Sun-centre line ---
     alfa = 12.89 / RAA
@@ -184,7 +212,7 @@ def _components(lon, lat, zsun):
     rhoE = mE * np.exp(-r4) * np.where(r2 <= 6.83, 1.0, np.exp(-4.0 * (r2 - 6.83)**2))
 
     bar = np.abs(rhoS) + np.abs(rhoE)
-    return lon, lat, x, thin_b, thin_r, thick, halo, bar
+    return lon, lat, x, {"besancon1612": b1612, "robin2003": r2003}, bar
 
 
 def lens_distance_norm(prof, Ds):
@@ -258,7 +286,7 @@ def _pick_galaxy(worst, n, tol):
     if len(fits) > 1:
         raise ValueError(
             f"the map file's {n} sightline(s) fit several galaxy models ({shown}), so it cannot say which "
-            f"the run used. Pass galaxy: 'current' if its run_provenance.txt has a thin_disc line, "
+            f"the run used. Pass galaxy: 'current' if its run_provenance.txt has a disc_norm line, "
             f"'bar-once' if it has a bulge_norm line only, else 'legacy'.")
     return fits[0]
 

@@ -51,11 +51,15 @@ constexpr double Dsun = 8.0;
 // The Sun's height above the Galactic plane [kpc]: Besancon 1612 ("Sun position z_0 : 15.00" pc in its output
 // header). Every density law sees a point at z = Z_SUN + d sin(b).
 constexpr double Z_SUN = 0.015;
-constexpr std::array<double, 8> rho0 = {4.0, 7.9, 6.2, 4.0, 5.8, 4.9, 6.6, 3.96}; //considering WD
-constexpr std::array<double, 8> d0   = {0.073117, 0.0216524, 0.0217405, 0.0217901, 0.0218061, 0.0218118, 0.0218121, 0.0218121};
-// Disc flattenings from the header of Besancon model 1612; the 8th bin (disc white dwarfs) repeats the 7th.
-constexpr std::array<double, 8> epci = {0.0140, 0.0217, 0.0309, 0.0464, 0.0594, 0.0673, 0.0678, 0.0678};
-constexpr std::array<double, 8> corr = {1.0, 7.9/4.48419, 6.2/3.52112, 4.0/2.27237, 5.8/3.29525, 4.9/2.78402, 6.6/3.74991, 3.96/2.24994};
+// Thin disc: Besancon 1612's seven age bins (0-0.15, 0.15-1, 1-2, 2-3, 3-5, 5-7, 7-10 Gyr; catalogue populations
+// 1-7). Local mass density of each bin at (R = Dsun, z = 0) [Msun/pc^3], from the 1612 output header ("Disc mass
+// density as a fct of age"). A bin's mass includes its own white dwarfs (the catalogue's CL = 6 stars), so there is no
+// separate white-dwarf bin. On five bulge cones these reproduce the catalogue's thin-disc mass to 0.95-1.00 (per bin
+// 0.87-1.10; the 7-10 Gyr bin holds ~12% less in the catalogue than its header density).
+constexpr int THIN_NBIN = 7;
+constexpr std::array<double, THIN_NBIN> THIN_RHO_LOCAL = {0.003905, 0.009503, 0.007536, 0.005608, 0.007880, 0.006759, 0.008205};
+// Disc flattenings (axis ratios) per bin, from the same header.
+constexpr std::array<double, THIN_NBIN> epci = {0.0140, 0.0217, 0.0309, 0.0464, 0.0594, 0.0673, 0.0678};
 constexpr std::array<double, 4> Rv   = {3.1, 2.5 ,3.1 ,3.1}; //Disk, Bulge, Thick, Halo
 constexpr int    Num  = 9500;
 constexpr double MaxD = 12.0; //kpc
@@ -67,7 +71,8 @@ constexpr double SRC_IDX_END_MARGIN = 2.0;
 constexpr double dd  = 0.02;   // native sightline grid step [deg]; the scan steps by stride*dd
 
 // ---- (2a) Galactic model: density laws (Disk_model, src/galaxy/density.cpp) ----
-// Mass fractions of each component are set by the *_NORM factors below; number densities follow
+// Thin disc, thick disc and halo follow Besancon model 1612 in shape AND normalisation (the local densities
+// *_RHO_LOCAL); the bar is normalised to the Baade's-window column (BAR_MASS_RESCALE). Number densities follow
 // from Disk_model's rho / <m> with the MEANMASS_* of config/data_products.h.
 
 // Star-count completeness factors per component.
@@ -75,29 +80,32 @@ constexpr double DENS_FD = 1.0;  //disc: all stars counted (no V < 11.5 limit)
 constexpr double DENS_FB = 1.0;  //bulge: all stars counted
 constexpr double DENS_FH = 1.0;  //halo: no limitation
 
-// Thin disc (8 age bins; rho0, d0, epci, corr above are its per-bin parameters).
+// Thin disc: the shape of each age bin (thinBinDensity); THIN_RHO_LOCAL and epci above are its per-bin parameters.
 constexpr double THIN_RDD = 2.17;       //scale length of the old bins (ii > 0) [kpc]
 constexpr double THIN_RHH = 1.33;       //hole scale length of the old bins (ii > 0) [kpc]
 constexpr double THIN_YOUNG_L1 = 25.0;  //young (ii == 0) bin: outer scale, exp(-rdi/25)
 constexpr double THIN_YOUNG_L2 = 9.0;   //young (ii == 0) bin: inner scale, exp(-rdi/9)
 constexpr double THIN_CORE = 0.25;      //softening inside sqrt(0.25 + rdi/R^2) of the old bins
-constexpr double THIN_NORM = 1.2;       //total mass 4.25e10 Msun
 
-// Thick disc.
-constexpr double THICK_RHO00 = 1.34 * 0.001 + 3.04 * 0.0001;  //local density, Msun/pc^3
-constexpr double THICK_RHO_DIV = 0.999719;                    //normalisation divisor of rho00
-constexpr double THICK_SCALE_LEN = 2.5;                       //radial scale length [kpc]
-constexpr double THICK_H1 = 0.4;                              //height of the parabolic core [kpc]
-constexpr double THICK_H2 = 0.8;                              //exponential scale height [kpc]
-constexpr double THICK_NNF = 0.4 / 0.8;                       //THICK_H1 / THICK_H2
-constexpr double THICK_NORM = 2.67;                           //total mass 0.8e10 Msun
+// Thick disc: Besancon 1612's two episodes (10 and 12 Gyr; catalogue populations 8 and 11), each
+// rho_local exp(-(R - Dsun)/h_R) sech^2(z / (2 h_z)) (Robin et al. 2014, A&A 569, A13, Eq. 3; h_z, h_R from the 1612
+// header). The header gives their normalisations in internal units only, so the local densities are fitted to the
+// catalogue's own mass on five bulge cones (catalogue/model 1.00-1.01 per cone). The header's flares start at
+// R = 15.3 and 9.5 kpc, beyond any bulge sightline (R <= Dsun there), and are not modelled.
+constexpr std::array<double, 2> THICK_RHO_LOCAL = {0.0056147, 0.00051785};   //at (R = Dsun, z = 0) [Msun/pc^3]
+constexpr std::array<double, 2> THICK_HZ = {0.345, 0.795};                   //scale heights [kpc]
+constexpr std::array<double, 2> THICK_HR = {2.040, 2.919};                   //scale lengths [kpc]
 
-// Stellar halo.
-constexpr double HALO_FLATTEN = 0.76;                         //axis ratio
-constexpr double HALO_CORE = 0.5;                             //core radius [kpc]
-constexpr double HALO_RHO0 = (0.932 * 0.00001 / 867.067);     //local density, Msun/pc^3
-constexpr double HALO_SLOPE = -2.44;                          //power-law index
-constexpr double HALO_NORM = 5281.0;                          //total mass 1.2e9 Msun
+// Stellar halo: Besancon 1612's "Hernquist" spheroid, rho = C / (a (a_c + a)^n), a^2 = R^2 + z^2/q^2 (Robin et al.
+// 2014, Eq. 6; the header's "Spheroid Hernquist: 0.000 2.128 0.776 1.000 5171.000 4.390" read as n = 2.128,
+// q = 0.776, p = 1, a_c = 5171 pc). The catalogue holds a at >= HALO_A_MIN (fit 0.98 kpc; without the floor the law puts 1.5-2.4x the
+// catalogue's halo stars within ~1 kpc of the centre). Local density fitted to the catalogue's own mass
+// (catalogue/model 0.94-1.05 per cone).
+constexpr double HALO_FLATTEN = 0.776;                        //axis ratio q
+constexpr double HALO_A_CORE = 5.171;                         //a_c [kpc]
+constexpr double HALO_EXPONENT = 2.128;                       //n
+constexpr double HALO_A_MIN = 1.0;                            //floor on a [kpc]
+constexpr double HALO_RHO_LOCAL = 4.7241e-5;                  //at (R = Dsun, z = 0) [Msun/pc^3]
 
 // Bulge / bar: two triaxial components, S (boxy, 1/cosh^2 profile) and E (exponential).
 constexpr double BAR_ANGLE_DEG = 12.89;                       //bar angle [deg]
@@ -128,11 +136,11 @@ constexpr double BAR_E_MASS_DEN = 87.0;                       // normalized
 // Velocity dispersions [km/s] in the Galactic (R, T, Z) frame, drawn as truncated Gaussians.
 constexpr double VEL_NSIGMA_TRUNC = 3.5;   //truncation of the Gaussian velocity draws [sigma]
 // Thin disc: the Besancon age-velocity relation, one row per catalogue age bin (Robin et al. 2003; Table 1 of
-// Robin et al. 2017, arXiv:1704.06274). The disc white dwarfs (8th density bin) use the last row.
-constexpr std::array<double, 8> THIN_AGE_EDGES = {0.0, 0.15, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0};   //Gyr
-constexpr std::array<double, 7> THIN_SIGMA_R = {16.7, 19.8, 27.2, 30.2, 36.7, 43.1, 43.1};
-constexpr std::array<double, 7> THIN_SIGMA_T = {10.8, 12.8, 17.6, 19.5, 23.7, 27.8, 27.8};
-constexpr std::array<double, 7> THIN_SIGMA_Z = {6.0, 8.0, 10.0, 13.2, 15.8, 17.4, 17.5};
+// Robin et al. 2017, arXiv:1704.06274), the same seven bins as the densities (THIN_RHO_LOCAL).
+constexpr std::array<double, THIN_NBIN + 1> THIN_AGE_EDGES = {0.0, 0.15, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0};   //Gyr
+constexpr std::array<double, THIN_NBIN> THIN_SIGMA_R = {16.7, 19.8, 27.2, 30.2, 36.7, 43.1, 43.1};
+constexpr std::array<double, THIN_NBIN> THIN_SIGMA_T = {10.8, 12.8, 17.6, 19.5, 23.7, 27.8, 27.8};
+constexpr std::array<double, THIN_NBIN> THIN_SIGMA_Z = {6.0, 8.0, 10.0, 13.2, 15.8, 17.4, 17.5};
 constexpr double THICK_SIGMA_R = 67.0,  THICK_SIGMA_T = 51.0,  THICK_SIGMA_Z = 42.0;
 constexpr double HALO_SIGMA_R  = 131.0, HALO_SIGMA_T  = 106.0, HALO_SIGMA_Z  = 85.0;
 constexpr double BULGE_SIGMA_R = 113.0, BULGE_SIGMA_T = 115.0, BULGE_SIGMA_Z = 100.0;

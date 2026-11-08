@@ -23,21 +23,55 @@ void optical_depth(source& s)
     s.opt = std::fabs(s.od_thin + s.od_thick + s.od_bulge + s.od_halo);
 }
 
-// Thin-disc density of age bin ii at (Rb, zb) [kpc], Msun/pc^3: Besancon's Einasto difference law, in which the
-// central hole has the same vertical scale as the disc. Both forms are >= 0 everywhere.
-double thinBinDensity(int ii, double Rb, double zb)
+// Shape of thin-disc age bin ii at (Rb, zb) [kpc]: Besancon's Einasto difference law, in which the central hole has
+// the same vertical scale as the disc. Both forms are >= 0 everywhere.
+static double thinBinShape(int ii, double Rb, double zb)
 {
     const double e2 = epci[ii] * epci[ii];
-    double shape;
     if (ii == 0) {
-        shape = std::exp(-(Rb * Rb + zb * zb / e2) / THIN_YOUNG_L1)
-              - std::exp(-(Rb * Rb / THIN_YOUNG_L2 + zb * zb / (e2 * THIN_YOUNG_L1)));
+        return std::exp(-(Rb * Rb + zb * zb / e2) / THIN_YOUNG_L1)
+             - std::exp(-(Rb * Rb / THIN_YOUNG_L2 + zb * zb / (e2 * THIN_YOUNG_L1)));
     }
-    else {
-        shape = std::exp(-std::sqrt(THIN_CORE + (Rb * Rb + zb * zb / e2) / (THIN_RDD * THIN_RDD)))
-              - std::exp(-std::sqrt(THIN_CORE + Rb * Rb / (THIN_RHH * THIN_RHH) + zb * zb / (e2 * THIN_RDD * THIN_RDD)));
+    return std::exp(-std::sqrt(THIN_CORE + (Rb * Rb + zb * zb / e2) / (THIN_RDD * THIN_RDD)))
+         - std::exp(-std::sqrt(THIN_CORE + Rb * Rb / (THIN_RHH * THIN_RHH) + zb * zb / (e2 * THIN_RDD * THIN_RDD)));
+}
+
+// Each shape at the local normalisation point (R = Dsun, z = 0), computed once.
+static const std::array<double, THIN_NBIN> kThinShapeLocal = [] {
+    std::array<double, THIN_NBIN> a{};
+    for (int ii = 0; ii < THIN_NBIN; ++ii) a[ii] = thinBinShape(ii, Dsun, 0.0);
+    return a;
+}();
+
+// Thin-disc density of age bin ii at (Rb, zb) [kpc], Msun/pc^3: THIN_RHO_LOCAL[ii] at (Dsun, 0).
+double thinBinDensity(int ii, double Rb, double zb)
+{
+    return THIN_RHO_LOCAL[ii] * thinBinShape(ii, Rb, zb) / kThinShapeLocal[ii];
+}
+
+// Thick disc at (Rb, zb) [kpc], Msun/pc^3: Besancon 1612's two sech^2 episodes.
+double thickDensity(double Rb, double zb)
+{
+    double rho = 0.0;
+    for (int k = 0; k < 2; ++k) {
+        const double c = std::cosh(zb / (2.0 * THICK_HZ[k]));
+        rho += THICK_RHO_LOCAL[k] * std::exp(-(Rb - Dsun) / THICK_HR[k]) / (c * c);
     }
-    return rho0[ii] * corr[ii] * 0.001 * THIN_NORM * shape / d0[ii];
+    return rho;
+}
+
+// Besancon 1612's spheroid law 1 / (a (a_c + a)^n), without its normalisation.
+static double haloLaw(double a)
+{
+    return 1.0 / (a * std::pow(HALO_A_CORE + a, HALO_EXPONENT));
+}
+static const double kHaloLawLocal = haloLaw(Dsun);
+
+// Stellar halo at (Rb, zb) [kpc], Msun/pc^3: HALO_RHO_LOCAL at (Dsun, 0), a floored at HALO_A_MIN.
+double haloDensity(double Rb, double zb)
+{
+    const double a = std::max(std::sqrt(Rb * Rb + zb * zb / (HALO_FLATTEN * HALO_FLATTEN)), HALO_A_MIN);
+    return HALO_RHO_LOCAL * haloLaw(a) / kHaloLawLocal;
 }
 
 // Densities of the four components along the sightline (s.TET, s.FI), their totals per deg^2, and
@@ -45,8 +79,7 @@ double thinBinDensity(int ii, double Rb, double zb)
 // is also written to PATH_DENSITY_DIR.
 void Disk_model(source& s, int numt)
 {
-    double x, xb, yb, zb, r4, r2, rdi, Rb;
-    double nnf = THICK_NNF;
+    double x, xb, yb, zb, r4, r2, Rb;
     double mBarre; //stars/pc^3
     double Rx0, Ry0, Rz0, Rc, cp, cn, rhoE, rhoS;
     double alfa = BAR_ANGLE_DEG / RAa;
@@ -83,29 +116,15 @@ void Disk_model(source& s, int numt)
         Rb = std::sqrt(xb * xb + yb * yb);
 
 // Thin disk
-        for (int ii = 0; ii < 8; ++ii)
-            s.rho_thin[i] = std::fabs(s.rho_thin[i] + thinBinDensity(ii, Rb, zb));
+        for (int ii = 0; ii < THIN_NBIN; ++ii)
+            s.rho_thin[i] += thinBinDensity(ii, Rb, zb);
         //Msun/pc^3
 
 // Thick disk
-        double rho00 = THICK_RHO00;
-        if (std::fabs(zb) < THICK_H1) {
-            s.rho_thick[i] = std::fabs((rho00 / THICK_RHO_DIV) * std::exp(-(Rb - Dsun) / THICK_SCALE_LEN) * (1.0 - zb * zb / (THICK_H1 * THICK_H2 * (2.0 + nnf))));
-        }
-        else {
-            s.rho_thick[i] = std::fabs((rho00 / THICK_RHO_DIV) * std::exp(-(Rb - Dsun) / THICK_SCALE_LEN) * std::exp(nnf) * std::exp(-std::fabs(zb) / THICK_H2) / (1.0 + 0.5 * nnf)); //Msun/pc^3
-        }
-        s.rho_thick[i] *= THICK_NORM;
+        s.rho_thick[i] = thickDensity(Rb, zb);
 
 // Stellar halo
-        rdi = std::sqrt(Rb * Rb + zb * zb / (HALO_FLATTEN * HALO_FLATTEN));
-        if (rdi <= HALO_CORE) {
-            s.rho_halo[i] = std::fabs(1.0 * HALO_RHO0 * std::pow(HALO_CORE / Dsun, HALO_SLOPE));
-        }
-        else {
-            s.rho_halo[i] = std::fabs(1.0 * HALO_RHO0 * std::pow(rdi / Dsun, HALO_SLOPE)); //Msun/pc^3
-        }
-        s.rho_halo[i] *= HALO_NORM;
+        s.rho_halo[i] = haloDensity(Rb, zb);
 
 // Bulge: sum of the S and E bar components
         constexpr double barMassRescale = BAR_MASS_RESCALE;   // see config/parameters.h, section 2a

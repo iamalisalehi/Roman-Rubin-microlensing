@@ -79,7 +79,7 @@ JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
 # ~2 GB and 2-3 h are comfortable at the default flags. No spaces inside an option.
 SLURM_OPTS="--account=CHANGE_ME --partition=CHANGE_ME --time=03:00:00 --mem=2G --cpus-per-task=1"
 # slurm: the same for the final merge + analysis job (holds a whole population's table in memory:
-# the bulge y1 analysis needs ~8 GB at production flags; give it room and several hours). Default: SLURM_OPTS.
+# the bulge y1 analysis needs ~10 GB at production flags; give it room and several hours). Default: SLURM_OPTS.
 SLURM_OPTS_FINISH="--account=CHANGE_ME --partition=CHANGE_ME --time=08:00:00 --mem=24G --cpus-per-task=1"
 # slurm: 1 = submit now, 0 = only write RUN_ROOT/slurm/*.sbatch and print how to submit them.
 SUBMIT=1

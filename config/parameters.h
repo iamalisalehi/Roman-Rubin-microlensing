@@ -141,7 +141,15 @@ constexpr std::array<double, THIN_NBIN + 1> THIN_AGE_EDGES = {0.0, 0.15, 1.0, 2.
 constexpr std::array<double, THIN_NBIN> THIN_SIGMA_R = {16.7, 19.8, 27.2, 30.2, 36.7, 43.1, 43.1};
 constexpr std::array<double, THIN_NBIN> THIN_SIGMA_T = {10.8, 12.8, 17.6, 19.5, 23.7, 27.8, 27.8};
 constexpr std::array<double, THIN_NBIN> THIN_SIGMA_Z = {6.0, 8.0, 10.0, 13.2, 15.8, 17.4, 17.5};
-constexpr double THICK_SIGMA_R = 67.0,  THICK_SIGMA_T = 51.0,  THICK_SIGMA_Z = 42.0;
+// Thick disc: one velocity ellipsoid per Besancon episode (index as THICK_RHO_LOCAL: 0 = young, 10 Gyr, catalogue
+// population 8; 1 = old, 12 Gyr, population 11), Robin et al. 2017 Table 3 (the paper that gives the two-episode thick
+// disc of Robin et al. 2014 its kinematics; Caldwell & Ostriker rotation-curve column, the Sofue column is within
+// 4 km/s). A source takes its episode from its catalogue age (10 or 12 Gyr, split at THICK_AGE_SPLIT); a lens draws
+// it from the two episodes' densities at its position.
+constexpr std::array<double, 2> THICK_SIGMA_R = {40.02, 75.64};
+constexpr std::array<double, 2> THICK_SIGMA_T = {31.86, 55.41};
+constexpr std::array<double, 2> THICK_SIGMA_Z = {27.89, 66.43};
+constexpr double THICK_AGE_SPLIT = 11.0;   //Gyr
 constexpr double HALO_SIGMA_R  = 131.0, HALO_SIGMA_T  = 106.0, HALO_SIGMA_Z  = 85.0;
 constexpr double BULGE_SIGMA_R = 113.0, BULGE_SIGMA_T = 115.0, BULGE_SIGMA_Z = 100.0;
 // Rotation of the disc: V_T += vro_sun * (ROT_A * (R/Dsun)^ROT_SLOPE + ROT_B), thin and thick disc only.

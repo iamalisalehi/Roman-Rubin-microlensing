@@ -86,7 +86,7 @@ void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sight
     // main-sequence star at Dl); no random numbers are drawn.
     const double AvL = interpExtinctionAlongSightline(ex, sightlineIdx, l.Dl);
     for (int i = 0; i < M; ++i)
-        l.Alens[i] = std::max(0.0, AvL * AlAv(lambda_um[i], Rv[static_cast<int>(l.struc)]));
+        l.Alens[i] = std::max(0.0, AvL * AlAv(lambda_um[i], RV_DUST));
     if (l.luminous) {
         if (mabFromCatalogue or lensAbsMag(static_cast<int>(l.struc), l.Ml, mab)) {
             std::array<double, M> fluxL{};

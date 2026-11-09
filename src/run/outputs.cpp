@@ -346,6 +346,8 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex.nTables << " x "
              << ex.nDist << ", k " << ex.k << " --" << ex.built << "\n"
+             // Runs before this line gave each star its component's R_V (bulge 2.5; thin, thick disc and halo 3.1).
+             << "# extinction_law      CCM89, R_V " << RV_DUST << " for every star (the sightline's dust)\n"
 
              << "# rng_seed            " << cfg.seedBase << "\n"
              // 1 = Roman at Sun-Earth L2; 0 = Roman at the centre of the Earth, so the piE

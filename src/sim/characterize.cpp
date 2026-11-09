@@ -37,7 +37,11 @@ Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const Ef
         }
     }
 
-    if (lc.flagf == 0 or lc.ndw <= 2) {
+    // Observed points (Rubin + Roman). ndw counts the points recorded for the Fisher matrices: the same unless
+    // --rubin-fisher-ref-only leaves Rubin's other bands out, which must not change visibility or detection.
+    const int nobs = lc.ndw_L + lc.ndw_R;
+
+    if (lc.flagf == 0 or nobs <= 2) {
         errg    = errlsstM(s.magb[2], 2, double(RUBIN_R_DEPTH5_FALLBACK)); //r-band
         s.errA = errlsstA(errg, FWHM[2]); //r-band, a median r visit
         s.errM = std::fabs(std::pow(10.0, - 0.4 * errg) - 1.0); //r-band
@@ -47,18 +51,20 @@ Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const Ef
     // The no-satellite forecast of this event is ch.pair; its defaults are the -1.0 not-measured
     // sentinel and it is filled below only if the Fisher step runs.
 
-    if (lc.flagf > 0 and lc.ndw > 2) { //if star is visible
+    if (lc.flagf > 0 and nobs > 2) { //if star is visible
         cout << "************** DETECTABLE!!!!!! ********" << endl;
         st.icon +=1;
-        ch.vMean = double(lc.vsave / (lc.ndw + 0.000065645));
-        s.errM   = double(s.errM   / (lc.ndw + 0.000065645));
-        s.errA   = double(s.errA   / (lc.ndw + 0.000065645));
+        ch.vMean = double(lc.vsave / (nobs + 0.000065645));
+        s.errM   = double(s.errM   / (nobs + 0.000065645));
+        s.errA   = double(s.errA   / (nobs + 0.000065645));
         ch.det = detectEvent(ctx, lc);
 
+        // The Fisher step needs at least three recorded points (always true unless --rubin-fisher-ref-only).
+        const bool fitPoints = lc.ndw > 2;
         if (ch.det.detL or ch.det.detR or ch.det.detJ) { //lensing — detected by Rubin, Roman, or the joint test
             ch.fisher = 1; //Lensing
             st.nlens += ch.fisher;
-            FisherM(s, l, as, co, lc.ndw);
+            if (fitPoints) FisherM(s, l, as, co, lc.ndw);
 
             if (co.flagi > 0) {
                 // flagi is always +1 (FisherM's F*F^-1 checks are disabled); the effective
@@ -82,7 +88,7 @@ Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const Ef
             // populations (shifting the median sigma_tE by ~15%). satScale puts Roman at L2 or at the Earth in
             // the model (evaluateModel); the Fisher matrix uses model derivatives at the true parameters, not
             // realised noise, so re-evaluating is legitimate.
-            if (cfg.pairSat) {
+            if (cfg.pairSat and fitPoints) {
                 const double keepScale = as.satScale;
                 as.satScale = 0.0;
                 FisherM(s, l, as, coNS, lc.ndw);

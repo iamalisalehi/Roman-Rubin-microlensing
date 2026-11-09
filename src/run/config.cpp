@@ -34,6 +34,10 @@ void printUsage(const char* prog) {
         << "                 the every-star selection. Default: every source whose peak is\n"
         << "                 visible is kept, whatever its blend. The per-object keep\n"
         << "                 probability is the pKeep column in both modes.\n"
+        << "  --rubin-fisher-ref-only\n"
+        << "                 feed the Fisher matrices only Rubin's visits in its reference band\n"
+        << "                 (RUBIN_REF_BANDS, r): a diagnostic of the one-band approximation.\n"
+        << "                 Detection and the drawn events are unchanged.\n"
         << "  --pair-satellite\n"
         << "                 characterise each detected event twice, with Roman at L2 and\n"
         << "                 with the offset zeroed, writing both forecasts to h3_pair.dat.\n"
@@ -131,6 +135,7 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
         else if (arg == "--no-satellite-parallax") cfg.noSatPar = true;
         else if (arg == "--pair-satellite") cfg.pairSat = true;
         else if (arg == "--blend-thinning") cfg.blendThinning = true;
+        else if (arg == "--rubin-fisher-ref-only") cfg.rubinFisherRefOnly = true;
         else if (arg == "--source-model") {
             const std::string v = need("--source-model");
             if      (v == "espl") cfg.sourceModel = SourceModel::ESPL;

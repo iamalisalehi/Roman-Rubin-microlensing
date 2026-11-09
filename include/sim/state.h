@@ -64,7 +64,8 @@ struct EfficiencyBins { int gg = -1, ss = 0, qq = 0, ww = 0, vv = 0, zz = 0, pp 
 // simulateLightCurve: what the time loop accumulated. All-zero (flagf = 0) if no light curve was generated.
 struct LightCurveStats {
     int flagf = 0;                   // 1 if the light curve was generated at all
-    // Epoch counts (ndw = joint total = ndw_L + ndw_R) and the run-test results.
+    // Epoch counts (ndw = the points recorded for the Fisher matrices: ndw_L + ndw_R, fewer with
+    // --rubin-fisher-ref-only) and the run-test results.
     int ndw = 0, ndw_L = 0, ndw_R = 0;
     int flag_det_L = 0, flag_det_R = 0;
     // Epochs at which the two images were both detectable and far enough apart.

@@ -339,6 +339,11 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << std::accumulate(THIN_RHO_LOCAL.begin(), THIN_RHO_LOCAL.end(), 0.0) << " (" << THIN_NBIN
              << " age bins), thick " << THICK_RHO_LOCAL[0] << " + " << THICK_RHO_LOCAL[1]
              << " (two sech^2 episodes), halo " << HALO_RHO_LOCAL << " (Robin+2014 Eq. 6, a >= " << HALO_A_MIN << " kpc)\n"
+             // Runs before this line drew every thick-disc star from one ellipsoid (67/51/42 km/s) with no drift.
+             << "# disc_kinematics     thin: Robin+2017 Table 1 per age bin, x exp(-(R-Dsun)/h), h " << THIN_SIGMA_HU
+             << " (R, T), " << THIN_SIGMA_HW << " kpc (Z); thick: Robin+2017 Table 3 per episode; "
+             << "asymmetric drift " << (DISC_ASYMMETRIC_DRIFT ? "Binney & Tremaine 2008 Eq. 4.228 in the plane" : "none")
+             << "\n"
              << "# extinction          files/ext/ext_tables.dat: " << ex.nTables << " x "
              << ex.nDist << ", k " << ex.k << " --" << ex.built << "\n"
 
@@ -357,6 +362,8 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "# source_selection    " << (cfg.blendThinning ? "per-object" : "every-star")
              << "   # every-star: each source with a visible peak is kept; per-object: kept with probability = its "
                 "blend fraction (pKeep column). Detection aggregates (MapLMC, EfLMC, LpLMC, summary) count what is kept\n"
+             << "# rubin_fisher_visits " << (cfg.rubinFisherRefOnly ? "reference band only" : "all bands")
+             << "   # Rubin visits in the Fisher matrices; each fitted with the reference band's model (RUBIN_REF_BANDS)\n"
              << "# dchi_det            " << cfg.dchiDet
              << "   # fixed detection bar; every yield is conditioned on it\n";
         if (!cfg.dryRun) {   // a dry run must not overwrite the last run's provenance

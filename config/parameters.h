@@ -141,10 +141,30 @@ constexpr std::array<double, THIN_NBIN + 1> THIN_AGE_EDGES = {0.0, 0.15, 1.0, 2.
 constexpr std::array<double, THIN_NBIN> THIN_SIGMA_R = {16.7, 19.8, 27.2, 30.2, 36.7, 43.1, 43.1};
 constexpr std::array<double, THIN_NBIN> THIN_SIGMA_T = {10.8, 12.8, 17.6, 19.5, 23.7, 27.8, 27.8};
 constexpr std::array<double, THIN_NBIN> THIN_SIGMA_Z = {6.0, 8.0, 10.0, 13.2, 15.8, 17.4, 17.5};
-constexpr double THICK_SIGMA_R = 67.0,  THICK_SIGMA_T = 51.0,  THICK_SIGMA_Z = 42.0;
+// The thin disc is hotter inward: these are the dispersions at the Sun, and at Galactocentric radius R each is
+// multiplied by exp(-(R - Dsun)/h), h = THIN_SIGMA_HU for sigma_R and sigma_T (Robin et al. 2017 keep sigma_V/sigma_U
+// fixed), THIN_SIGMA_HW for sigma_Z: Robin et al. 2017 Table 3, Caldwell & Ostriker column (h_sigmaU = 13176 +- 6908 pc,
+// h_sigmaW = 15919 +- 8609 pc). WEAKLY CONSTRAINED: the paper says the gradient could not be pinned down from the solar
+// neighbourhood (its other fits give 7.5-19.4 kpc). A very large h switches the gradient off.
+constexpr double THIN_SIGMA_HU = 13.176;   //kpc
+constexpr double THIN_SIGMA_HW = 15.919;   //kpc
+// Thick disc: one velocity ellipsoid per Besancon episode (index as THICK_RHO_LOCAL: 0 = young, 10 Gyr, catalogue
+// population 8; 1 = old, 12 Gyr, population 11), Robin et al. 2017 Table 3 (the paper that gives the two-episode thick
+// disc of Robin et al. 2014 its kinematics; Caldwell & Ostriker rotation-curve column, the Sofue column is within
+// 4 km/s). A source takes its episode from its catalogue age (10 or 12 Gyr, split at THICK_AGE_SPLIT); a lens draws
+// it from the two episodes' densities at its position.
+constexpr std::array<double, 2> THICK_SIGMA_R = {40.02, 75.64};
+constexpr std::array<double, 2> THICK_SIGMA_T = {31.86, 55.41};
+constexpr std::array<double, 2> THICK_SIGMA_Z = {27.89, 66.43};
+constexpr double THICK_AGE_SPLIT = 11.0;   //Gyr
 constexpr double HALO_SIGMA_R  = 131.0, HALO_SIGMA_T  = 106.0, HALO_SIGMA_Z  = 85.0;
 constexpr double BULGE_SIGMA_R = 113.0, BULGE_SIGMA_T = 115.0, BULGE_SIGMA_Z = 100.0;
-// Rotation of the disc: V_T += vro_sun * (ROT_A * (R/Dsun)^ROT_SLOPE + ROT_B), thin and thick disc only.
+// Rotation of the disc: V_T += v_c(R) - v_a, thin and thick disc only, with the circular speed
+// v_c(R) = vro_sun * (ROT_A * (R/Dsun)^ROT_SLOPE + ROT_B) and v_a the asymmetric drift of the star's age bin or
+// episode at its position (discAsymmetricDrift, src/galaxy/kinematics.cpp: Binney & Tremaine 2008 Eq. 4.228 in the
+// plane, from its own dispersions and density law; the BGM's choice before Robin et al. 2017). The Sun's motion
+// (VSunT) is circular + 12.24 km/s, unchanged. false: every disc star rotates at v_c, as before 2026-11-08.
+constexpr bool DISC_ASYMMETRIC_DRIFT = true;
 constexpr double ROT_A = 1.00762;
 constexpr double ROT_SLOPE = 0.0394;
 constexpr double ROT_B = 0.00712;

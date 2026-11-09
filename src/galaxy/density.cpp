@@ -49,14 +49,19 @@ double thinBinDensity(int ii, double Rb, double zb)
     return THIN_RHO_LOCAL[ii] * thinBinShape(ii, Rb, zb) / kThinShapeLocal[ii];
 }
 
+// Thick-disc episode k at (Rb, zb) [kpc], Msun/pc^3: rho_local exp(-(R - Dsun)/h_R) sech^2(z / 2h_z).
+double thickEpisodeDensity(int k, double Rb, double zb)
+{
+    const double c = std::cosh(zb / (2.0 * THICK_HZ[k]));
+    return THICK_RHO_LOCAL[k] * std::exp(-(Rb - Dsun) / THICK_HR[k]) / (c * c);
+}
+
 // Thick disc at (Rb, zb) [kpc], Msun/pc^3: Besancon 1612's two sech^2 episodes.
 double thickDensity(double Rb, double zb)
 {
     double rho = 0.0;
-    for (int k = 0; k < 2; ++k) {
-        const double c = std::cosh(zb / (2.0 * THICK_HZ[k]));
-        rho += THICK_RHO_LOCAL[k] * std::exp(-(Rb - Dsun) / THICK_HR[k]) / (c * c);
-    }
+    for (int k = 0; k < 2; ++k)
+        rho += thickEpisodeDensity(k, Rb, zb);
     return rho;
 }
 

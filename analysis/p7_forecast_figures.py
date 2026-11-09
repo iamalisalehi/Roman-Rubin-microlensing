@@ -212,7 +212,8 @@ def fig_mass_distance(runs, out):
     The lenses whose mass can be measured are not drawn uniformly from the population, so a mass
     precision needs this context.
     """
-    fig, axes = ps.figure(width="double", height=3.0, ncols=max(len(runs), 2))
+    # Constrained layout keeps each panel's colour bar clear of the next panel's axis (three populations).
+    fig, axes = ps.figure(width="double", height=3.0, ncols=max(len(runs), 2), layout="constrained")
     axes = np.ravel(axes)
 
     for ax, r in zip(axes, runs):
@@ -245,7 +246,7 @@ def fig_mass_distance(runs, out):
         ax.set_xlabel(r"lens distance $D_{\rm L}$ [kpc]")
         ax.set_ylabel(r"lens mass $M_{\rm L}$ [$M_\odot$]")
         ps.plain_log_ticks(ax, yb[0], yb[-1], "y")
-        ps.panel_label(ax, f"({'ab'[list(runs).index(r)]}) {r.name}")
+        ps.panel_label(ax, f"({chr(ord('a') + list(runs).index(r))}) {r.name}")
     for ax in axes[len(runs):]:
         ax.set_visible(False)
     ps.stamp(fig, stamp_for(runs)

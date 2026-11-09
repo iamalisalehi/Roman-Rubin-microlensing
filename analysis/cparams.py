@@ -5,7 +5,7 @@ and config/parameters.h. This module parses the same text, so the analysis scrip
 hand-typed copies of the numbers.
 
     from cparams import P            # P = load() of this checkout, done at import
-    P.Tobs, P.thre[6], P['Rv']       # attribute or item access; arrays come back as numpy arrays
+    P.Tobs, P.thre[6], P['lambda_um']  # attribute or item access; arrays come back as numpy arrays
     P.names()                        # every top-level constexpr/const constant found
 
     python3 analysis/cparams.py            # print every constant, list those it cannot evaluate

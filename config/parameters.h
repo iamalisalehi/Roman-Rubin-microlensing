@@ -60,7 +60,6 @@ constexpr int THIN_NBIN = 7;
 constexpr std::array<double, THIN_NBIN> THIN_RHO_LOCAL = {0.003905, 0.009503, 0.007536, 0.005608, 0.007880, 0.006759, 0.008205};
 // Disc flattenings (axis ratios) per bin, from the same header.
 constexpr std::array<double, THIN_NBIN> epci = {0.0140, 0.0217, 0.0309, 0.0464, 0.0594, 0.0673, 0.0678};
-constexpr std::array<double, 4> Rv   = {3.1, 2.5 ,3.1 ,3.1}; //Disk, Bulge, Thick, Halo
 constexpr int    Num  = 9500;
 constexpr double MaxD = 12.0; //kpc
 constexpr double step = double(MaxD / Num / 1.0); //step in kpc
@@ -239,6 +238,11 @@ constexpr double BLEND_RADIUS_FWHM_FRAC = 0.5;
 // Wavelength at which each band's extinction is evaluated [um]. F146 is its pivot wavelength,
 // sqrt(int T l dl / int T/l dl) of the SVO Filter Profile Service curve Roman/WFI.F146 (band centre: 1.464).
 constexpr std::array<double, M> lambda_um = {0.367, 0.482, 0.622, 0.755, 0.869, 0.971, 1.4378};
+// R_V of the CCM89 law, the same for every star (source, blend neighbours, lens). R_V belongs to the dust in front of a
+// star, not to the star: toward the bulge the measured law is R_V ~ 2.5 (Nataf et al. 2013, ApJ 769, 88, from red-clump
+// stars, i.e. the whole foreground column), and a disc or halo star behind the bulge's dust sees that same column.
+// Nearby stars have little dust in front, so a local R_V of 3.1 would move them little (~0.05 mag in F146 at A_V 2).
+constexpr double RV_DUST = 2.5;
 
 // Which LSST filter(s) (indices 0-5 = u,g,r,i,z,y) form the single "Rubin representative band"
 // standing in for the whole LSST light curve in the Fisher matrix, the recorded per-epoch Rubin model

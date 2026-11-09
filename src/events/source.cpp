@@ -142,7 +142,7 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
 
         Av = interpExtinctionAlongSightline(ex, sightlineIdx, Ds);
         for (int i = 0; i < M; ++i) {
-            Alv = AlAv(lambda_um[i], Rv[static_cast<int>(struc)]); // A_lambda / A_V
+            Alv = AlAv(lambda_um[i], RV_DUST); // A_lambda / A_V
             Ai[i] = Av * Alv + RandN(sigma[i], EXT_SCATTER_TRUNC_NSIGMA); //extinction in other bands
 
             if (Ai[i] < 0.0) {

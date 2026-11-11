@@ -142,6 +142,7 @@ struct lens {
     std::vector<double> errm; // size coun
     std::vector<double> erra; // size coun
     std::vector<int> tele;    // size coun
+    std::vector<int> filt;    // size coun: filter of the epoch, 0-5 Rubin ugrizy, 6 Roman F146, -1 unused slot
     std::vector<int> rseas;   // size coun: Roman season index of the epoch (-1 for Rubin)
     std::vector<int> rroll;   // size coun: Roman roll of the epoch, 0 spring / 1 autumn (-1 Rubin)
     
@@ -163,7 +164,7 @@ struct lens {
           Nsfb(GG+1), Ndfb(GG+1),
           Nsmu(GG+1), Ndmu(GG+1),
           timn(coun), magn(coun), soux(coun), souy(coun), errm(coun), erra(coun),
-          tele(coun), rseas(coun, -1), rroll(coun, -1),
+          tele(coun), filt(coun, -1), rseas(coun, -1), rroll(coun, -1),
 
           tEs(make_grid(tE_min, tE_max)),
           Mls(gPop->logGrid ? make_grid_log(mlMin(), mlMax()) : make_grid(mlMin(), mlMax())),

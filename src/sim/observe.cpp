@@ -230,10 +230,6 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                     errg = errlsstM(magni[fi], int(fi), m5v); //[mag]
                     errs = errlsstA(errg, double(ls.fwhm[sq])); //[mas], this visit's band, depth and seeing
 
-                    // Rubin's representative-band model magnitude (RUBIN_REF_BANDS, config/parameters.h);
-                    // equals magni[2] (r-band) for the default {2}, since s.mbs[0]/s.fb[0] are built from
-                    // the same combination in func_source.
-                    const double magniRubinRef = s.mbs[0] - 2.5 * std::log10(r.A * s.fb[0] + 1.0 - s.fb[0]);
                     const double vs1 = double(s.mus1 + (def1p - def1prev) / dt); //[mas/days]
                     const double vs2 = double(s.mus2 + (def2p - def2prev) / dt); //[mas/days]
                     // Both instruments' astrometric chi-square terms need these (positions only).
@@ -285,12 +281,13 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                     if (recordRubin) {
                     CHECK(ndw < coun); // array-bounds guard — see note on `coun` sizing
                     l.timn[ndw] = tim;
-                    l.magn[ndw] = magniRubinRef; // Rubin representative-band model value (RUBIN_REF_BANDS)
+                    l.magn[ndw] = magni[fi]; // model magnitude in this epoch's own band
                     l.errm[ndw] = errg;
                     l.soux[ndw] = r.pos1c;   // NaN unless `positions`; never read by the Fisher matrices
                     l.souy[ndw] = r.pos2c;
                     l.erra[ndw] = errs;
                     l.tele[ndw] = 0; // 0 = LSST
+                    l.filt[ndw] = fi; // ugrizy = 0..5
                     l.rseas[ndw] = -1; l.rroll[ndw] = -1;
                     }
 
@@ -408,6 +405,7 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
                     l.souy[ndw] = q.pos2c;
                     l.erra[ndw] = errsR;
                     l.tele[ndw] = 1; // 1 = Roman/F146
+                    l.filt[ndw] = 6;  // F146
                     // Season and roll of this exposure, for the astrometric noise variants' day blocks
                     // and frame groups.
                     l.rseas[ndw] = sched.seasonOf(ro.tim[sqR]);

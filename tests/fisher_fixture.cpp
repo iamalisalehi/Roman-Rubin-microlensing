@@ -148,6 +148,9 @@ void setupStatic(source& s, lens& l)
     s.rho = kRho;
 
     s.mbs[0] = kMbsRubin;  s.fb[0] = kFbRubin;
+    // Per-filter copies (index 2 = Rubin r, 6 = Roman F146), as func_source fills them
+    s.blend[2] = kFbRubin;  s.magb[2] = kMbsRubin;
+    s.blend[6] = kFbRoman;  s.magb[6] = kMbsRoman;
     s.mbs[1] = kMbsRoman;  s.fb[1] = kFbRoman;
 
     s.mus1 = kMus1;  s.mus2 = kMus2;
@@ -167,7 +170,7 @@ double modelMag(const source& s, int tt, double Astar)
 // Append one epoch to the light-curve buffers. The stored magnitude and astrometric position are
 // the NOISELESS model values at the true parameters, which is what a Fisher forecast wants (and
 // what the one-sided stencils difference against).
-void appendEpoch(source& s, lens& l, astromet& as, double tim, int tele, int& ndw, int season = -1)
+void appendEpoch(source& s, lens& l, astromet& as, double tim, int tele, int& ndw, int season = -1, int filt = -1)
 {
     // Roman observes from L2, so its observer displacement differs from Rubin's.
     TrackPoint p;
@@ -180,6 +183,7 @@ void appendEpoch(source& s, lens& l, astromet& as, double tim, int tele, int& nd
     l.souy[ndw] = p.pos2c;
     l.erra[ndw] = (tele == 0) ? kErrAstRubin : kErrAstRoman;
     l.tele[ndw] = tele;
+    l.filt[ndw] = (filt >= 0) ? filt : ((tele == 0) ? 2 : 6); // default: Rubin r, Roman F146
     // Season and roll of a Roman exposure; seasons alternate spring / autumn from the first.
     l.rseas[ndw] = (tele == 1) ? season : -1;
     l.rroll[ndw] = (tele == 1) ? season % 2 : -1;
@@ -852,7 +856,7 @@ bool checkFewEpochTelescope()
         if (l->tele[i] == 0) { if (keptRubin) continue; keptRubin = true; }
         l->timn[w] = l->timn[i]; l->magn[w] = l->magn[i]; l->errm[w] = l->errm[i];
         l->soux[w] = l->soux[i]; l->souy[w] = l->souy[i]; l->erra[w] = l->erra[i];
-        l->tele[w] = l->tele[i]; l->rseas[w] = l->rseas[i]; l->rroll[w] = l->rroll[i];
+        l->tele[w] = l->tele[i]; l->filt[w] = l->filt[i]; l->rseas[w] = l->rseas[i]; l->rroll[w] = l->rroll[i];
         ++w;
     }
     ndw = w;

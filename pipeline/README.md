@@ -102,11 +102,27 @@ pipeline/pipeline.sh my_run.sh all                 # everything, on this machine
   chunked run. `run.log` is the chunk logs in order (each chunk keeps its own `RUN TOTALS` block).
   `run_provenance.txt` is chunk 0's, with `start_index 0`, `end_index N` and `merged_chunks K` set and the
   end-of-run sightline counts and areas summed over the chunks (they equal the unchunked values).
-  `KEEP_CHUNKS=0` deletes the chunks afterwards. With `COMPRESS_TABLES=1` (default) the merged `test<tag>.dat` is then
-  gzip-compressed to `test<tag>.dat.gz` (checked with `gzip -t` and a line count before the plain file is deleted;
-  re-running merge never leaves both). Chunk tables stay plain. The analysis scripts and `romanlib.load_events` read
-  either name, so a script given `test5.dat` finds `test5.dat.gz`; to compress an existing run use
-  `gzip -6 RUN/<pop>/test*.dat`.
+  `KEEP_CHUNKS=0` deletes the chunks afterwards.
+  **Table compression (`COMPRESS_TABLES`).** `1` (default): each chunk's `test<tag>.dat` is compressed to
+  `test<tag>.dat.colxz` by the chunk's own job as soon as `./roman` exits 0 (encode to `.colxz.tmp`, decode and `cmp`
+  against the plain file, rename, delete the plain file, all before `DONE` is written, at `nice -n 19`, ~220 MB),
+  and the merge concatenates the chunks' `.colxz` files byte for byte, so no plain copy of a whole population's table
+  ever exists. The merged `test<tag>.dat.colxz` decodes to exactly the bytes the plain merge writes (header once; the
+  merge compares the chunks' headers and the row count and refuses on a mismatch). `gzip`: chunks and the merge stay
+  plain, then the merged table is gzip -6 compressed to `.dat.gz` (checked with `gzip -t` and a line count; the plain
+  merged table exists once, briefly). `0`: everything plain. Any other value is a config error. A finished chunk must hold
+  exactly one table in the form the setting names, or the merge refuses and names the chunk; a chunk that was interrupted
+  (no `DONE`) is re-run from scratch. The detection-only subset `test<tag>_detJ.dat` is always a plain file, decoded as a
+  stream from the table. `run.log` and the other merged files (`h3_pair.dat`, `MapLMC<tag>.dat`, ...) stay plain.
+  The format in two lines: `.colxz` is one xz stream of blocks of 25,000 rows, each block holding the table
+  transposed (one line per column) with its header lines; a block that cannot be transposed is stored row-wise, so
+  decoding is always byte-identical (`cat a.colxz b.colxz` is a valid `.colxz`; that is the merge). To read one by hand:
+  `.roman/bin/python analysis/coltable.py decode RUN/<pop>/test<tag>.dat.colxz > plain.dat` (also `rows FILE`,
+  `verify PLAIN FILE`). The analysis scripts and `romanlib.load_events` read `.dat`, `.dat.colxz` and `.dat.gz` (a
+  script given one name finds a twin). Run roots made before this option (plain or `.gz` chunks and merged tables) stay
+  readable; to merge such a root, use the `COMPRESS_TABLES` its chunks were made with (`gzip` for the former default
+  `1`). To compress an existing merged table by hand: `.roman/bin/python analysis/coltable.py encode FILE.dat FILE.dat.colxz`,
+  `verify`, then delete the plain file.
 - **analyze** (`ANALYSES`): `yields` = y1 per population and y3 on their concatenation (y3's `eta` column needs a
   population named `bulge`; without one it is NaN, and a `besancon` run does not count as `bulge`); `figures` = per
   population f1 (`--fields-only`, on the full table: it also counts the non-detected draws), then, on a
@@ -175,8 +191,10 @@ config (`RUN_ROOT/slurm/config.sh`), so editing your config afterwards does not 
 - Disk: star lists 0.6 GB; per-event tables are large (~770 bytes per drawn star, up to 50,000 rows per sightline):
   about 24 GB (bulge), 15 GB (ns), 12 GB (bh) at production flags, each +-30% (the few outside-footprint sightlines
   that reach the draw cap dominate; bulge re-measured after Besancon 1612's normalisations, +13% rows, ns and bh not), ~10% more at `STRIDE_ROMAN=2`; they exist twice (chunks and merged) unless
-  `KEEP_CHUNKS=0`. The merged tables compress ~3x (gzip -6, `COMPRESS_TABLES=1`), and the analysis reads the `.gz` directly:
-  ~8 / 5 / 4 GB, ~19 GB for the three with their logs (the merge needs the plain table's space once, briefly).
+  `KEEP_CHUNKS=0`. The tables are stored as `.colxz` (`COMPRESS_TABLES=1`): ~0.21 of the plain size (0.64 of gzip -6; measured
+  on a 244 MB bulge table), so ~53 GB plain over the three populations become ~11 GB, with chunks and merged
+  tables both kept ~22 GB; at no time does more than one chunk's plain table per running job exist. Compression costs
+  roughly 1 CPU-second per 1.2 MB of plain table, inside the chunk's job. The analysis decodes the `.colxz` as it reads.
 - `analyze`: y1 holds a population's draws in memory (~2.4 GB per 6 GB of table, so ~10 GB for bulge, ~1 h at
   laptop speed); p6/p7 hold two populations. Give `SLURM_OPTS_FINISH` ~24 GB and several hours.
 

@@ -11,6 +11,10 @@ lines of each file; those are dropped here if they equal the first chunk's.
 
 What is written into <pop>/ (each file to a .tmp name first, renamed when complete):
   test<tag>.dat, h3_pair.dat, ...         every regular file in a chunk's top directory
+  test<tag>.dat.colxz                     (COMPRESS_TABLES=1) the chunks' column-block xz tables, concatenated
+                                          byte for byte -- a valid .colxz (analysis/coltable.py); the chunks'
+                                          headers and the row count are checked, the decode of the result is
+                                          the plain merge
   files/MONTLMC/files/*                   every output file of the run, except run_provenance.txt
   run.log                                 the chunks' logs, in chunk order
   files/MONTLMC/files/run_provenance.txt  chunk 0's, with start_index/end_index set to the merged range,
@@ -26,9 +30,13 @@ Refuses (exit 1, listing them) if a chunk has no DONE file or the chunks do not 
 Stdlib only.
 """
 import argparse
+import lzma
 import os
 import re
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "analysis"))
+import coltable                               # noqa: E402  (stdlib only)
 
 BLOCK = 8 << 20
 SKIP_TOP = {"DONE", "RUNNING", "run.log"}          # chunk bookkeeping, not outputs
@@ -58,6 +66,11 @@ def output_files(chunk_dir):
         p = os.path.join(chunk_dir, name)
         if os.path.isfile(p) and not os.path.islink(p) and name not in SKIP_TOP:
             out.append(name)
+    for name in out:
+        if name.endswith(".colxz.tmp"):
+            sys.exit(f"{chunk_dir}: stale {name} beside a DONE file (an interrupted compression). Re-run the chunk. Not merging.")
+        if name + ".colxz" in out:
+            sys.exit(f"{chunk_dir}: holds both {name} and {name}.colxz; a finished chunk holds one. Not merging.")
     mdir = os.path.join(chunk_dir, "files/MONTLMC/files")
     if os.path.isdir(mdir):
         for name in sorted(os.listdir(mdir)):
@@ -78,8 +91,71 @@ def leading_header(path):
                 return hdr, len(hdr)
 
 
+def colxz_info(path):
+    """(header lines of the first block or None for a stream with no blocks, data rows) of a .colxz."""
+    header, rows = None, 0
+    for b in coltable.iter_blocks(path):
+        if header is None:
+            header = b.header_lines
+        rows += b.nrows
+    return header, rows
+
+
+def merge_colxz(rel, chunk_dirs, dest_dir):
+    """Concatenate the chunks' .colxz tables byte for byte (no decoding of the data into the output).
+
+    Same rules as the plain merge: a chunk with no blocks (the encoding of an empty table) is skipped, the
+    header of every other chunk (its first block's) must equal the first one's, and the merged file must
+    hold exactly the sum of the chunks' rows. Returns (lines, bytes, n_chunks_with_file, header_lines),
+    `lines` counting the header once like the plain merge does."""
+    dest = os.path.join(dest_dir, rel)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    tmp = dest + ".tmp"
+    header, want_rows, present = None, 0, 0
+    parts = []
+    for cd in chunk_dirs:
+        p = os.path.join(cd, rel)
+        if not os.path.isfile(p) or os.path.getsize(p) == 0:
+            continue
+        hdr, n = colxz_info(p)
+        if hdr is None:                      # a stream without blocks: an empty table
+            continue
+        present += 1
+        if header is None:
+            header = hdr
+        elif hdr != header:
+            sys.exit(f"{p}: its header lines differ from the first chunk's; "
+                     "chunks of one run must share a header. Not merging.")
+        want_rows += n
+        parts.append(p)
+    with open(tmp, "wb") as out:
+        if not parts:                        # every chunk empty: the plain merge is a 0-byte file; the .colxz of
+            out.write(lzma.compress(b"", format=lzma.FORMAT_XZ))   # that is a stream with no blocks
+        for p in parts:
+            with open(p, "rb") as fh:
+                while True:
+                    buf = fh.read(BLOCK)
+                    if not buf:
+                        break
+                    out.write(buf)
+        out.flush()
+    try:
+        mh, got_rows = colxz_info(tmp)
+    except Exception as e:                   # noqa: BLE001 -- any decode failure means do not publish
+        os.remove(tmp)
+        sys.exit(f"{rel}: the concatenation does not read back as a .colxz ({e}). Not merging.")
+    if got_rows != want_rows or mh != header:
+        os.remove(tmp)
+        sys.exit(f"{rel}: merged row count {got_rows} != sum of the chunks' {want_rows} (or header changed). Not merging.")
+    os.replace(tmp, dest)
+    hrows = len(header) if header else 0
+    return want_rows + hrows, os.path.getsize(dest), present, hrows
+
+
 def merge_file(rel, chunk_dirs, dest_dir):
     """Concatenate one output file over the chunks. Returns (rows, bytes, n_chunks_with_file)."""
+    if rel.endswith(".colxz"):
+        return merge_colxz(rel, chunk_dirs, dest_dir)
     dest = os.path.join(dest_dir, rel)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     tmp = dest + ".tmp"
@@ -244,6 +320,10 @@ def main():
         for rel in output_files(cd):
             if rel not in names:
                 names.append(rel)
+    for rel in names:
+        if rel + ".colxz" in names:
+            sys.exit(f"{rel}: plain in some chunks and .colxz in others (chunks written with different "
+                     "COMPRESS_TABLES). Re-run the odd chunks. Not merging.")
     print(f"merge: {os.path.basename(pop)}: {nchunks} chunks tile [0,{n_total}); "
           f"{len(names)} output files")
     summary = []

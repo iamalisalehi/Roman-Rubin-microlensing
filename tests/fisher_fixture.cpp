@@ -2134,6 +2134,407 @@ bool checkChromaticEvent()
     return ok;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Astrometric dilution per band. Each Rubin visit's centroid is diluted with its own band's fractions, each Rubin band
+// carries its own unknown neighbours' offset (all sharing one reference position), and the visits of a Rubin band with
+// fewer than kMinTeleEpochs visits leave the astrometric matrix as they leave the photometric one.
+// ---------------------------------------------------------------------------------------------
+
+// The astrometric forecast (Erb, okB, condB and the three noise variants' ErbV, okBV, condBV of every partition) the
+// 2ccd875 build printed for every kEvents event, at full precision (hexadecimal floats, exact), under the point source
+// (espl 0) and the uniform disc (espl 1): every Rubin visit in r, where the astrometry has always diluted with r's
+// fractions. Generated once from that build; never regenerated to make a check pass.
+struct AstroRefV { int ok; double cond; double erb[Ny]; };
+struct AstroRef { int espl; const char* name; int q; int ok; double cond; double erb[Ny]; AstroRefV v[NAVAR]; };
+const AstroRef kAstroRef[] = {
+    {0, "short_inseason", 0, 1, 0x1.2df999ee5c1b6p+6, {0x1.23e360f1d3efap-6, 0x1.4713e488df562p-12, 0x1.c2668e2500c75p-12, 0x1.f087c7409d503p+2}, {{1, 0x1.2df999ee5c1b6p+6, {0x1.23e360f1d3efap-6, 0x1.4713e488df562p-12, 0x1.c2668e2500c75p-12, 0x1.f087c7409d503p+2}}, {1, 0x1.5871468ac3224p+2, {0x1.80d85e3ff3a9ap-3, 0x1.984975649aef6p-10, 0x1.b1acbd2ddafcep-10, 0x1.127e44111496ap+5}}, {1, 0x1.c7964c71a0af8p+0, {0x1.3845337fe58b2p-2, 0x1.e272f6e8ba22cp-10, 0x1.df1eb6319e0bfp-10, 0x1.17e6523087af6p+6}}}},
+    {0, "short_inseason", 1, 1, 0x1.4b23148eb5accp+5, {0x1.08dd668c7f492p+0, 0x1.1e120a77fcf37p-8, 0x1.3ef6872526fcdp-8, 0x1.721bcba7dae17p+10}, {{1, 0x1.4b23148eb5accp+5, {0x1.08dd668c7f492p+0, 0x1.1e120a77fcf37p-8, 0x1.3ef6872526fcdp-8, 0x1.721bcba7dae17p+10}}, {1, 0x1.4b23148eb5accp+5, {0x1.08dd668c7f492p+0, 0x1.1e120a77fcf37p-8, 0x1.3ef6872526fcdp-8, 0x1.721bcba7dae17p+10}}, {1, 0x1.4b23148eb5accp+5, {0x1.08dd668c7f492p+0, 0x1.1e120a77fcf37p-8, 0x1.3ef6872526fcdp-8, 0x1.721bcba7dae17p+10}}}},
+    {0, "short_inseason", 2, 1, 0x1.46fc13388394ep+6, {0x1.245ce42a6d8e4p-6, 0x1.524591dbec603p-12, 0x1.d4458fda71102p-12, 0x1.0214d4bf976aap+3}, {{1, 0x1.46fc13388394ep+6, {0x1.245ce42a6d8e4p-6, 0x1.524591dbec603p-12, 0x1.d4458fda71102p-12, 0x1.0214d4bf976aap+3}}, {1, 0x1.4e1862c3d2e51p+5, {0x1.b218c5e6516f7p-3, 0x1.d301852397161p-9, 0x1.352c23e64b6edp-8, 0x1.4a8c21bb88cecp+6}}, {1, 0x1.d9d7be37c80d6p+3, {0x1.5c4b1631120bp-2, 0x1.e043f58fe0c4dp-8, 0x1.2354a366d9445p-7, 0x1.1d20a787d22f1p+7}}}},
+    {0, "short_ingap", 0, 1, 0x1.16d6b4d20cb91p+3, {0x1.1153c59831c26p+0, 0x1.657951dfd3b89p-10, 0x1.91860738f85a2p-10, 0x1.a0d7d2c3b9addp+9}, {{1, 0x1.16d6b4d20cb91p+3, {0x1.1153c59831c26p+0, 0x1.657951dfd3b89p-10, 0x1.91860738f85a2p-10, 0x1.a0d7d2c3b9addp+9}}, {1, 0x1.16d6b4d20cb91p+3, {0x1.1153c59831c26p+0, 0x1.657951dfd3b89p-10, 0x1.91860738f85a2p-10, 0x1.a0d7d2c3b9addp+9}}, {1, 0x1.16d6b4d20cb91p+3, {0x1.1153c59831c26p+0, 0x1.657951dfd3b89p-10, 0x1.91860738f85a2p-10, 0x1.a0d7d2c3b9addp+9}}}},
+    {0, "short_ingap", 1, 1, 0x1.16d6b4d20cb91p+3, {0x1.1153c59831c26p+0, 0x1.657951dfd3b89p-10, 0x1.91860738f85a2p-10, 0x1.a0d7d2c3b9addp+9}, {{1, 0x1.16d6b4d20cb91p+3, {0x1.1153c59831c26p+0, 0x1.657951dfd3b89p-10, 0x1.91860738f85a2p-10, 0x1.a0d7d2c3b9addp+9}}, {1, 0x1.16d6b4d20cb91p+3, {0x1.1153c59831c26p+0, 0x1.657951dfd3b89p-10, 0x1.91860738f85a2p-10, 0x1.a0d7d2c3b9addp+9}}, {1, 0x1.16d6b4d20cb91p+3, {0x1.1153c59831c26p+0, 0x1.657951dfd3b89p-10, 0x1.91860738f85a2p-10, 0x1.a0d7d2c3b9addp+9}}}},
+    {0, "short_ingap", 2, 0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}, {{0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}}, {0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}}, {0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}}}},
+    {0, "mid_inseason", 0, 1, 0x1.03e5866af86b5p+2, {0x1.a5b6ef7cf62c9p-7, 0x1.008c9edcbd7b2p-15, 0x1.fc4f64a1874a3p-16, 0x1.3f80cf7c27aa1p-1}, {{1, 0x1.03e5866af86b5p+2, {0x1.a5b6ef7cf62c9p-7, 0x1.008c9edcbd7b2p-15, 0x1.fc4f64a1874a3p-16, 0x1.3f80cf7c27aa1p-1}}, {1, 0x1.211e821f546d7p+1, {0x1.3c168e8e5fap-3, 0x1.d8d870b091bfbp-14, 0x1.dcfd9aa556d2p-14, 0x1.1d7d21721af9fp+2}}, {1, 0x1.237406233d695p+1, {0x1.4743d75e14051p-2, 0x1.e5833982f6923p-14, 0x1.e6fe9a0836786p-14, 0x1.3f6228ede6426p+2}}}},
+    {0, "mid_inseason", 1, 1, 0x1.4ff45bb1f86dbp+1, {0x1.ac0e2444402c7p-2, 0x1.f09f2571d0548p-14, 0x1.ee80cfbf4e474p-14, 0x1.48b2e3957eb33p+2}, {{1, 0x1.4ff45bb1f86dbp+1, {0x1.ac0e2444402c7p-2, 0x1.f09f2571d0548p-14, 0x1.ee80cfbf4e474p-14, 0x1.48b2e3957eb33p+2}}, {1, 0x1.4ff45bb1f86dbp+1, {0x1.ac0e2444402c7p-2, 0x1.f09f2571d0548p-14, 0x1.ee80cfbf4e474p-14, 0x1.48b2e3957eb33p+2}}, {1, 0x1.4ff45bb1f86dbp+1, {0x1.ac0e2444402c7p-2, 0x1.f09f2571d0548p-14, 0x1.ee80cfbf4e474p-14, 0x1.48b2e3957eb33p+2}}}},
+    {0, "mid_inseason", 2, 1, 0x1.07f19b25add7fp+2, {0x1.a7c6b8f90b74bp-7, 0x1.0ad61752e8791p-15, 0x1.07d28c97a79f1p-15, 0x1.4298c985131ccp-1}, {{1, 0x1.07f19b25add7fp+2, {0x1.a7c6b8f90b74bp-7, 0x1.0ad61752e8791p-15, 0x1.07d28c97a79f1p-15, 0x1.4298c985131ccp-1}}, {1, 0x1.3d5c54a4df2afp+3, {0x1.00a3c94d685ccp-2, 0x1.c3d82d354e6e4p-10, 0x1.78fd3a912d317p-10, 0x1.7a758c5975e23p+3}}, {1, 0x1.755d2d987bc7ep+2, {0x1.503aeed79f6b8p-1, 0x1.25ba7467df75p-8, 0x1.107f7c13cb435p-8, 0x1.867dd35b98cddp+4}}}},
+    {0, "mid_ingap", 0, 1, 0x1.4dbb68986be57p+2, {0x1.24dfcf8216c28p-1, 0x1.3ca29f3a4d4afp-13, 0x1.343cc1fc1c63ap-13, 0x1.788924b369e7cp+2}, {{1, 0x1.4dbb68986be57p+2, {0x1.24dfcf8216c28p-1, 0x1.3ca29f3a4d4afp-13, 0x1.343cc1fc1c63ap-13, 0x1.788924b369e7cp+2}}, {1, 0x1.4dbb68986be57p+2, {0x1.24dfcf8216c28p-1, 0x1.3ca29f3a4d4afp-13, 0x1.343cc1fc1c63ap-13, 0x1.788924b369e7cp+2}}, {1, 0x1.4dbb68986be57p+2, {0x1.24dfcf8216c28p-1, 0x1.3ca29f3a4d4afp-13, 0x1.343cc1fc1c63ap-13, 0x1.788924b369e7cp+2}}}},
+    {0, "mid_ingap", 1, 1, 0x1.4dbb68986be57p+2, {0x1.24dfcf8216c28p-1, 0x1.3ca29f3a4d4afp-13, 0x1.343cc1fc1c63ap-13, 0x1.788924b369e7cp+2}, {{1, 0x1.4dbb68986be57p+2, {0x1.24dfcf8216c28p-1, 0x1.3ca29f3a4d4afp-13, 0x1.343cc1fc1c63ap-13, 0x1.788924b369e7cp+2}}, {1, 0x1.4dbb68986be57p+2, {0x1.24dfcf8216c28p-1, 0x1.3ca29f3a4d4afp-13, 0x1.343cc1fc1c63ap-13, 0x1.788924b369e7cp+2}}, {1, 0x1.4dbb68986be57p+2, {0x1.24dfcf8216c28p-1, 0x1.3ca29f3a4d4afp-13, 0x1.343cc1fc1c63ap-13, 0x1.788924b369e7cp+2}}}},
+    {0, "mid_ingap", 2, 0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}, {{0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}}, {0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}}, {0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}}}},
+    {0, "long_inseason", 0, 1, 0x1.43262f6e0b06p+1, {0x1.32b72d2b619cbp-7, 0x1.9ba48f97e6d41p-21, 0x1.96f336ba7d108p-21, 0x1.095ac2ef4b9dp-5}, {{1, 0x1.43262f6e0b06p+1, {0x1.32b72d2b619cbp-7, 0x1.9ba48f97e6d41p-21, 0x1.96f336ba7d108p-21, 0x1.095ac2ef4b9dp-5}}, {1, 0x1.5d54fc549083p+1, {0x1.045fb15bc76fep-3, 0x1.45010b7ef88ddp-17, 0x1.400d4e1fb8d8ap-17, 0x1.a7bd56ffa4959p-2}}, {1, 0x1.981bf80c23619p+1, {0x1.cbde0007d2716p-3, 0x1.1aeb8e5c3e063p-16, 0x1.143c6fb99095ap-16, 0x1.4d1a9e2fad2e4p-1}}}},
+    {0, "long_inseason", 1, 1, 0x1.b0b3d4d55aa65p+1, {0x1.fdf0590e19d4dp-3, 0x1.366168d80d743p-16, 0x1.2dd7bfa579861p-16, 0x1.65d3da8a51752p-1}, {{1, 0x1.b0b3d4d55aa65p+1, {0x1.fdf0590e19d4dp-3, 0x1.366168d80d743p-16, 0x1.2dd7bfa579861p-16, 0x1.65d3da8a51752p-1}}, {1, 0x1.b0b3d4d55aa65p+1, {0x1.fdf0590e19d4dp-3, 0x1.366168d80d743p-16, 0x1.2dd7bfa579861p-16, 0x1.65d3da8a51752p-1}}, {1, 0x1.b0b3d4d55aa65p+1, {0x1.fdf0590e19d4dp-3, 0x1.366168d80d743p-16, 0x1.2dd7bfa579861p-16, 0x1.65d3da8a51752p-1}}}},
+    {0, "long_inseason", 2, 1, 0x1.4302575302a97p+1, {0x1.32f04457d1e3bp-7, 0x1.9c023f36dcf7p-21, 0x1.9751d2b38d863p-21, 0x1.09a4f28eb797cp-5}, {{1, 0x1.4302575302a97p+1, {0x1.32f04457d1e3bp-7, 0x1.9c023f36dcf7p-21, 0x1.9751d2b38d863p-21, 0x1.09a4f28eb797cp-5}}, {1, 0x1.442f5fae864dbp+1, {0x1.2fee391031bfbp-3, 0x1.7eb715b2d9bf9p-17, 0x1.7a2db0882db8fp-17, 0x1.0777ef08ce0e3p-1}}, {1, 0x1.3455c1b5936b5p+1, {0x1.0c4a4a798cd53p-1, 0x1.5c7578668601ep-15, 0x1.5919464efcdb5p-15, 0x1.caadaa2c745dcp+0}}}},
+    {0, "long_ingap", 0, 1, 0x1.1ed8ecec9e37cp+6, {0x1.0f27cd267585fp-4, 0x1.b2b270977efap-18, 0x1.97129978a5616p-18, 0x1.f6852688a0ef5p-4}, {{1, 0x1.1ed8ecec9e37cp+6, {0x1.0f27cd267585fp-4, 0x1.b2b270977efap-18, 0x1.97129978a5616p-18, 0x1.f6852688a0ef5p-4}}, {1, 0x1.187b8f5466504p+3, {0x1.986e53ac16a6bp-3, 0x1.7ef921beeff0fp-16, 0x1.7c21b6213a6e1p-16, 0x1.a2bc8c0a66648p-2}}, {1, 0x1.0a35697495cd7p+2, {0x1.b772f796d250ep-3, 0x1.9c1e13df642a9p-16, 0x1.9be45df0a574fp-16, 0x1.bfdc11bc829edp-2}}}},
+    {0, "long_ingap", 1, 1, 0x1.e3db65e8c47ecp+1, {0x1.bd47bba6238ebp-3, 0x1.a156585819caep-16, 0x1.a166e2f17ab4ap-16, 0x1.c4aa2acd92f53p-2}, {{1, 0x1.e3db65e8c47ecp+1, {0x1.bd47bba6238ebp-3, 0x1.a156585819caep-16, 0x1.a166e2f17ab4ap-16, 0x1.c4aa2acd92f53p-2}}, {1, 0x1.e3db65e8c47ecp+1, {0x1.bd47bba6238ebp-3, 0x1.a156585819caep-16, 0x1.a166e2f17ab4ap-16, 0x1.c4aa2acd92f53p-2}}, {1, 0x1.e3db65e8c47ecp+1, {0x1.bd47bba6238ebp-3, 0x1.a156585819caep-16, 0x1.a166e2f17ab4ap-16, 0x1.c4aa2acd92f53p-2}}}},
+    {0, "long_ingap", 2, 1, 0x1.428a096d81c19p+6, {0x1.203551e1ace85p-4, 0x1.ca943899ebcfap-18, 0x1.ac986819de92ep-18, 0x1.065acd2283af7p-3}, {{1, 0x1.428a096d81c19p+6, {0x1.203551e1ace85p-4, 0x1.ca943899ebcfap-18, 0x1.ac986819de92ep-18, 0x1.065acd2283af7p-3}}, {1, 0x1.8fff2403b8912p+10, {0x1.c7c8844767e5dp+1, 0x1.4309d6a87b2cap-12, 0x1.1f67d7ded3edap-12, 0x1.2d976ff8b9e1fp+1}}, {1, 0x1.1910c68fc2b92p+10, {0x1.5d81fe717fb73p+3, 0x1.f4d3f7404b7bdp-11, 0x1.c1274a51b09a4p-11, 0x1.057981c2ad715p+3}}}},
+    {0, "verylong", 0, 1, 0x1.ac5766d0bc249p+8, {0x1.58b84d99b5b87p-5, 0x1.67a4652885656p-18, 0x1.35d4a50e2a22ep-18, 0x1.444cbcfec6df4p-7}, {{1, 0x1.ac5766d0bc249p+8, {0x1.58b84d99b5b87p-5, 0x1.67a4652885656p-18, 0x1.35d4a50e2a22ep-18, 0x1.444cbcfec6df4p-7}}, {1, 0x1.a3c7df2aa4f9ep+6, {0x1.12909c956bf65p-2, 0x1.29935516c94c3p-15, 0x1.e7ce50c81df55p-16, 0x1.ded853bbb04f5p-4}}, {1, 0x1.6375e28a2b6e9p+5, {0x1.46e927857b3adp-2, 0x1.708d30d5c9bb7p-15, 0x1.132de4f0742ecp-15, 0x1.a7ebe6f6e62f2p-3}}}},
+    {0, "verylong", 1, 1, 0x1.3b6ab9e28261ap+5, {0x1.5551a194d82c1p-2, 0x1.83244bef8787bp-15, 0x1.18082a08e2eadp-15, 0x1.dcd6c600f5dbap-3}, {{1, 0x1.3b6ab9e28261ap+5, {0x1.5551a194d82c1p-2, 0x1.83244bef8787bp-15, 0x1.18082a08e2eadp-15, 0x1.dcd6c600f5dbap-3}}, {1, 0x1.3b6ab9e28261ap+5, {0x1.5551a194d82c1p-2, 0x1.83244bef8787bp-15, 0x1.18082a08e2eadp-15, 0x1.dcd6c600f5dbap-3}}, {1, 0x1.3b6ab9e28261ap+5, {0x1.5551a194d82c1p-2, 0x1.83244bef8787bp-15, 0x1.18082a08e2eadp-15, 0x1.dcd6c600f5dbap-3}}}},
+    {0, "verylong", 2, 1, 0x1.b51ee25344535p+8, {0x1.5c7be5af70898p-5, 0x1.6b7b56b619f44p-18, 0x1.393afd90b675fp-18, 0x1.457c9b002a7e6p-7}, {{1, 0x1.b51ee25344535p+8, {0x1.5c7be5af70898p-5, 0x1.6b7b56b619f44p-18, 0x1.393afd90b675fp-18, 0x1.457c9b002a7e6p-7}}, {1, 0x1.bc1eabb9fe1c4p+8, {0x1.43af63e2efbccp-1, 0x1.5224dcf85d61dp-14, 0x1.2358dbf9d3e02p-14, 0x1.3b21f7e39ce7ap-3}}, {1, 0x1.af3ab8038929p+8, {0x1.23f100708307fp+1, 0x1.314a698ade81dp-12, 0x1.06b67ec90db5dp-12, 0x1.1a46bc977a41dp-1}}}},
+    {1, "short_inseason", 0, 1, 0x1.2df9fc360fa99p+6, {0x1.23e36e952d769p-6, 0x1.47140670aa31dp-12, 0x1.c266dab3631dcp-12, 0x1.f0881a5a4e0a1p+2}, {{1, 0x1.2df9fc360fa99p+6, {0x1.23e36e952d769p-6, 0x1.47140670aa31dp-12, 0x1.c266dab3631dcp-12, 0x1.f0881a5a4e0a1p+2}}, {1, 0x1.58716ebbc06efp+2, {0x1.80d871341df5ap-3, 0x1.98497a78a2a14p-10, 0x1.b1acd20e9d233p-10, 0x1.127e5e1cfcd8dp+5}}, {1, 0x1.c796299e8d3e5p+0, {0x1.38454ae46b173p-2, 0x1.e272f82a76f0ap-10, 0x1.df1ebab44ab41p-10, 0x1.17e69a4bc15a6p+6}}}},
+    {1, "short_inseason", 1, 1, 0x1.4b22f94813506p+5, {0x1.08dd6d4b370bp+0, 0x1.1e120182509d9p-8, 0x1.3ef67b14c8f57p-8, 0x1.721bbd138456fp+10}, {{1, 0x1.4b22f94813506p+5, {0x1.08dd6d4b370bp+0, 0x1.1e120182509d9p-8, 0x1.3ef67b14c8f57p-8, 0x1.721bbd138456fp+10}}, {1, 0x1.4b22f94813506p+5, {0x1.08dd6d4b370bp+0, 0x1.1e120182509d9p-8, 0x1.3ef67b14c8f57p-8, 0x1.721bbd138456fp+10}}, {1, 0x1.4b22f94813506p+5, {0x1.08dd6d4b370bp+0, 0x1.1e120182509d9p-8, 0x1.3ef67b14c8f57p-8, 0x1.721bbd138456fp+10}}}},
+    {1, "short_inseason", 2, 1, 0x1.46fc869e56c05p+6, {0x1.245cf1f32ac3fp-6, 0x1.5245b910ba613p-12, 0x1.d445e5e2ec545p-12, 0x1.0215037a86229p+3}, {{1, 0x1.46fc869e56c05p+6, {0x1.245cf1f32ac3fp-6, 0x1.5245b910ba613p-12, 0x1.d445e5e2ec545p-12, 0x1.0215037a86229p+3}}, {1, 0x1.4e19cc789dd8dp+5, {0x1.b218e01217a39p-3, 0x1.d30224f98866p-9, 0x1.352cc3f457f9ap-8, 0x1.4a8cddaf939d5p+6}}, {1, 0x1.d9db2315fbb95p+3, {0x1.5c4b2db211f01p-2, 0x1.e044db12a93bcp-8, 0x1.235580da3c5d2p-7, 0x1.1d21d8beac7d9p+7}}}},
+    {1, "short_ingap", 0, 1, 0x1.16d6a2210e857p+3, {0x1.1153caac5c953p+0, 0x1.6579529d5d2f8p-10, 0x1.918602a1c0e58p-10, 0x1.a0d7c0566b756p+9}, {{1, 0x1.16d6a2210e857p+3, {0x1.1153caac5c953p+0, 0x1.6579529d5d2f8p-10, 0x1.918602a1c0e58p-10, 0x1.a0d7c0566b756p+9}}, {1, 0x1.16d6a2210e857p+3, {0x1.1153caac5c953p+0, 0x1.6579529d5d2f8p-10, 0x1.918602a1c0e58p-10, 0x1.a0d7c0566b756p+9}}, {1, 0x1.16d6a2210e857p+3, {0x1.1153caac5c953p+0, 0x1.6579529d5d2f8p-10, 0x1.918602a1c0e58p-10, 0x1.a0d7c0566b756p+9}}}},
+    {1, "short_ingap", 1, 1, 0x1.16d6a2210e857p+3, {0x1.1153caac5c953p+0, 0x1.6579529d5d2f8p-10, 0x1.918602a1c0e58p-10, 0x1.a0d7c0566b756p+9}, {{1, 0x1.16d6a2210e857p+3, {0x1.1153caac5c953p+0, 0x1.6579529d5d2f8p-10, 0x1.918602a1c0e58p-10, 0x1.a0d7c0566b756p+9}}, {1, 0x1.16d6a2210e857p+3, {0x1.1153caac5c953p+0, 0x1.6579529d5d2f8p-10, 0x1.918602a1c0e58p-10, 0x1.a0d7c0566b756p+9}}, {1, 0x1.16d6a2210e857p+3, {0x1.1153caac5c953p+0, 0x1.6579529d5d2f8p-10, 0x1.918602a1c0e58p-10, 0x1.a0d7c0566b756p+9}}}},
+    {1, "short_ingap", 2, 0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}, {{0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}}, {0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}}, {0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}}}},
+    {1, "mid_inseason", 0, 1, 0x1.03e581a2dba23p+2, {0x1.a5b710f2de538p-7, 0x1.008ca1deef1dap-15, 0x1.fc4f5b38cb78fp-16, 0x1.3f80d5d6ce5a8p-1}, {{1, 0x1.03e581a2dba23p+2, {0x1.a5b710f2de538p-7, 0x1.008ca1deef1dap-15, 0x1.fc4f5b38cb78fp-16, 0x1.3f80d5d6ce5a8p-1}}, {1, 0x1.211e7bd5c755dp+1, {0x1.3c16a75860c67p-3, 0x1.d8d871a8134c1p-14, 0x1.dcfd9b672e682p-14, 0x1.1d7d25bbe1d8dp+2}}, {1, 0x1.23740e26f1f51p+1, {0x1.4743ec673cf4p-2, 0x1.e5833bb824a5bp-14, 0x1.e6fe9ba1ad369p-14, 0x1.3f622c3e8ee0cp+2}}}},
+    {1, "mid_inseason", 1, 1, 0x1.4ff45f16e3a08p+1, {0x1.ac0e3289a7d52p-2, 0x1.f09f26d8c6094p-14, 0x1.ee80d1ae64608p-14, 0x1.48b2e4ccf654bp+2}, {{1, 0x1.4ff45f16e3a08p+1, {0x1.ac0e3289a7d52p-2, 0x1.f09f26d8c6094p-14, 0x1.ee80d1ae64608p-14, 0x1.48b2e4ccf654bp+2}}, {1, 0x1.4ff45f16e3a08p+1, {0x1.ac0e3289a7d52p-2, 0x1.f09f26d8c6094p-14, 0x1.ee80d1ae64608p-14, 0x1.48b2e4ccf654bp+2}}, {1, 0x1.4ff45f16e3a08p+1, {0x1.ac0e3289a7d52p-2, 0x1.f09f26d8c6094p-14, 0x1.ee80d1ae64608p-14, 0x1.48b2e4ccf654bp+2}}}},
+    {1, "mid_inseason", 2, 1, 0x1.07f1968a2638cp+2, {0x1.a7c6dae48cf8cp-7, 0x1.0ad61aaf597b3p-15, 0x1.07d28758cd3cap-15, 0x1.4298d0063177fp-1}, {{1, 0x1.07f1968a2638cp+2, {0x1.a7c6dae48cf8cp-7, 0x1.0ad61aaf597b3p-15, 0x1.07d28758cd3cap-15, 0x1.4298d0063177fp-1}}, {1, 0x1.3d5c7518a5bcp+3, {0x1.00a3e9839adcdp-2, 0x1.c3d846bedb409p-10, 0x1.78fd37f41c876p-10, 0x1.7a75ad693a0c3p+3}}, {1, 0x1.755da20c03405p+2, {0x1.503b304a2b0f2p-1, 0x1.25ba8abe4ffb8p-8, 0x1.107f7acfd9b53p-8, 0x1.867e119aecf8p+4}}}},
+    {1, "mid_ingap", 0, 1, 0x1.4dbb67f2bed39p+2, {0x1.24dfd00c84a72p-1, 0x1.3ca29f57a2483p-13, 0x1.343cc1f417c63p-13, 0x1.788924771da48p+2}, {{1, 0x1.4dbb67f2bed39p+2, {0x1.24dfd00c84a72p-1, 0x1.3ca29f57a2483p-13, 0x1.343cc1f417c63p-13, 0x1.788924771da48p+2}}, {1, 0x1.4dbb67f2bed39p+2, {0x1.24dfd00c84a72p-1, 0x1.3ca29f57a2483p-13, 0x1.343cc1f417c63p-13, 0x1.788924771da48p+2}}, {1, 0x1.4dbb67f2bed39p+2, {0x1.24dfd00c84a72p-1, 0x1.3ca29f57a2483p-13, 0x1.343cc1f417c63p-13, 0x1.788924771da48p+2}}}},
+    {1, "mid_ingap", 1, 1, 0x1.4dbb67f2bed39p+2, {0x1.24dfd00c84a72p-1, 0x1.3ca29f57a2483p-13, 0x1.343cc1f417c63p-13, 0x1.788924771da48p+2}, {{1, 0x1.4dbb67f2bed39p+2, {0x1.24dfd00c84a72p-1, 0x1.3ca29f57a2483p-13, 0x1.343cc1f417c63p-13, 0x1.788924771da48p+2}}, {1, 0x1.4dbb67f2bed39p+2, {0x1.24dfd00c84a72p-1, 0x1.3ca29f57a2483p-13, 0x1.343cc1f417c63p-13, 0x1.788924771da48p+2}}, {1, 0x1.4dbb67f2bed39p+2, {0x1.24dfd00c84a72p-1, 0x1.3ca29f57a2483p-13, 0x1.343cc1f417c63p-13, 0x1.788924771da48p+2}}}},
+    {1, "mid_ingap", 2, 0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}, {{0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}}, {0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}}, {0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}}}},
+    {1, "long_inseason", 0, 1, 0x1.43261868790b4p+1, {0x1.32b7378103d05p-7, 0x1.9ba49009b7acp-21, 0x1.96f338e1f58a9p-21, 0x1.095ac3f0d4276p-5}, {{1, 0x1.43261868790b4p+1, {0x1.32b7378103d05p-7, 0x1.9ba49009b7acp-21, 0x1.96f338e1f58a9p-21, 0x1.095ac3f0d4276p-5}}, {1, 0x1.5d54e7feae498p+1, {0x1.045fbac07ccfdp-3, 0x1.45010bf6201dap-17, 0x1.400d5085405bep-17, 0x1.a7bd5b197860fp-2}}, {1, 0x1.981be97884465p+1, {0x1.cbde0c375f408p-3, 0x1.1aeb8ec51123ap-16, 0x1.143c726a5233dp-16, 0x1.4d1aa4f8a0798p-1}}}},
+    {1, "long_inseason", 1, 1, 0x1.b0b3c7732c474p+1, {0x1.fdf063d5eaca1p-3, 0x1.3661692e0d5ecp-16, 0x1.2dd7c29a2703dp-16, 0x1.65d3e2dad3143p-1}, {{1, 0x1.b0b3c7732c474p+1, {0x1.fdf063d5eaca1p-3, 0x1.3661692e0d5ecp-16, 0x1.2dd7c29a2703dp-16, 0x1.65d3e2dad3143p-1}}, {1, 0x1.b0b3c7732c474p+1, {0x1.fdf063d5eaca1p-3, 0x1.3661692e0d5ecp-16, 0x1.2dd7c29a2703dp-16, 0x1.65d3e2dad3143p-1}}, {1, 0x1.b0b3c7732c474p+1, {0x1.fdf063d5eaca1p-3, 0x1.3661692e0d5ecp-16, 0x1.2dd7c29a2703dp-16, 0x1.65d3e2dad3143p-1}}}},
+    {1, "long_inseason", 2, 1, 0x1.4302404812f7bp+1, {0x1.32f04eb07cdcbp-7, 0x1.9c023fa89df5dp-21, 0x1.9751d4dabfec7p-21, 0x1.09a4f38daae85p-5}, {{1, 0x1.4302404812f7bp+1, {0x1.32f04eb07cdcbp-7, 0x1.9c023fa89df5dp-21, 0x1.9751d4dabfec7p-21, 0x1.09a4f38daae85p-5}}, {1, 0x1.442f47043afabp+1, {0x1.2fee45811bc71p-3, 0x1.7eb7161a15d59p-17, 0x1.7a2db2ef286d6p-17, 0x1.0777efa40e8aap-1}}, {1, 0x1.3455a4da23573p+1, {0x1.0c4a57a8ee5fp-1, 0x1.5c7578bc46023p-15, 0x1.591948e1f7e91p-15, 0x1.caadab27911f1p+0}}}},
+    {1, "long_ingap", 0, 1, 0x1.1ed8ee1d502bfp+6, {0x1.0f27cdeb42049p-4, 0x1.b2b27204e812p-18, 0x1.97129a1331886p-18, 0x1.f68527d08ffa5p-4}, {{1, 0x1.1ed8ee1d502bfp+6, {0x1.0f27cdeb42049p-4, 0x1.b2b27204e812p-18, 0x1.97129a1331886p-18, 0x1.f68527d08ffa5p-4}}, {1, 0x1.187b8f64764f7p+3, {0x1.986e5ba68af2p-3, 0x1.7ef9271cc1bf7p-16, 0x1.7c21b6f436c72p-16, 0x1.a2bc8f49e7984p-2}}, {1, 0x1.0a35679b22a84p+2, {0x1.b77301bfc6519p-3, 0x1.9c1e170345e8dp-16, 0x1.9be45e6ac4533p-16, 0x1.bfdc15c7f7debp-2}}}},
+    {1, "long_ingap", 1, 1, 0x1.e3db61cb44d2ep+1, {0x1.bd47c642a3527p-3, 0x1.a1565b1f57799p-16, 0x1.a166e35d27106p-16, 0x1.c4aa2efd47f78p-2}, {{1, 0x1.e3db61cb44d2ep+1, {0x1.bd47c642a3527p-3, 0x1.a1565b1f57799p-16, 0x1.a166e35d27106p-16, 0x1.c4aa2efd47f78p-2}}, {1, 0x1.e3db61cb44d2ep+1, {0x1.bd47c642a3527p-3, 0x1.a1565b1f57799p-16, 0x1.a166e35d27106p-16, 0x1.c4aa2efd47f78p-2}}, {1, 0x1.e3db61cb44d2ep+1, {0x1.bd47c642a3527p-3, 0x1.a1565b1f57799p-16, 0x1.a166e35d27106p-16, 0x1.c4aa2efd47f78p-2}}}},
+    {1, "long_ingap", 2, 1, 0x1.428a09afc6206p+6, {0x1.2035521c2f07dp-4, 0x1.ca9438ff58d8ap-18, 0x1.ac98688941babp-18, 0x1.065acdae385aap-3}, {{1, 0x1.428a09afc6206p+6, {0x1.2035521c2f07dp-4, 0x1.ca9438ff58d8ap-18, 0x1.ac98688941babp-18, 0x1.065acdae385aap-3}}, {1, 0x1.8fff243f5c851p+10, {0x1.c7c884761a333p+1, 0x1.4309d6c123715p-12, 0x1.1f67d7f352575p-12, 0x1.2d9770071ca27p+1}}, {1, 0x1.1910c6b439be9p+10, {0x1.5d81fe920b045p+3, 0x1.f4d3f7630022dp-11, 0x1.c1274a6bf9881p-11, 0x1.057981cde86dcp+3}}}},
+    {1, "verylong", 0, 1, 0x1.ac5875204a108p+8, {0x1.58b8c6f676531p-5, 0x1.67a5064a09211p-18, 0x1.35d4f4ed711p-18, 0x1.444c43a46bf6p-7}, {{1, 0x1.ac5875204a108p+8, {0x1.58b8c6f676531p-5, 0x1.67a5064a09211p-18, 0x1.35d4f4ed711p-18, 0x1.444c43a46bf6p-7}}, {1, 0x1.a3c899df8b45bp+6, {0x1.1290e7a6325eep-2, 0x1.2993ba3ea1e85p-15, 0x1.e7ce8fb3c4f9dp-16, 0x1.ded7fc2ce987dp-4}}, {1, 0x1.6376b082fabb3p+5, {0x1.46e9a74da815dp-2, 0x1.708db55639deep-15, 0x1.132e061032358p-15, 0x1.a7ebbb6a24bbdp-3}}}},
+    {1, "verylong", 1, 1, 0x1.3b6b90f533c29p+5, {0x1.55523d5be851dp-2, 0x1.8324e3c70b54bp-15, 0x1.18084de32a3b4p-15, 0x1.dcd6a571aded2p-3}, {{1, 0x1.3b6b90f533c29p+5, {0x1.55523d5be851dp-2, 0x1.8324e3c70b54bp-15, 0x1.18084de32a3b4p-15, 0x1.dcd6a571aded2p-3}}, {1, 0x1.3b6b90f533c29p+5, {0x1.55523d5be851dp-2, 0x1.8324e3c70b54bp-15, 0x1.18084de32a3b4p-15, 0x1.dcd6a571aded2p-3}}, {1, 0x1.3b6b90f533c29p+5, {0x1.55523d5be851dp-2, 0x1.8324e3c70b54bp-15, 0x1.18084de32a3b4p-15, 0x1.dcd6a571aded2p-3}}}},
+    {1, "verylong", 2, 1, 0x1.b51ff93c092ffp+8, {0x1.5c7c618c30dbbp-5, 0x1.6b7bfaddb4acap-18, 0x1.393b4f71244d5p-18, 0x1.457c1ff4209d5p-7}, {{1, 0x1.b51ff93c092ffp+8, {0x1.5c7c618c30dbbp-5, 0x1.6b7bfaddb4acap-18, 0x1.393b4f71244d5p-18, 0x1.457c1ff4209d5p-7}}, {1, 0x1.bc1fec482d523p+8, {0x1.43afe1e619a2dp-1, 0x1.5225860ad6158p-14, 0x1.23592f1ee096dp-14, 0x1.3b2178f56a202p-3}}, {1, 0x1.af3bf5c0bd72bp+8, {0x1.23f1746d4098ep+1, 0x1.314b02ca2bf79p-12, 0x1.06b6cc8cc7e4fp-12, 0x1.1a4650a171c17p-1}}}},
+};
+
+// Every astrometric output of two runs is identical to the last bit.
+bool sameAstrometry(const covarian& a, const covarian& b, const char* what)
+{
+    bool ok = true;
+    for (int q = 0; q < NSURV; ++q) {
+        bool same = a.okB[q] == b.okB[q] and sameDouble(a.condB[q], b.condB[q]);
+        for (int k = 0; k < Ny; ++k) same = same and sameDouble(a.Erb[q][k], b.Erb[q][k]);
+        for (int v = 0; v < NAVAR; ++v) {
+            same = same and a.okBV[v][q] == b.okBV[v][q] and sameDouble(a.condBV[v][q], b.condBV[v][q]);
+            for (int k = 0; k < Ny; ++k) same = same and sameDouble(a.ErbV[v][q][k], b.ErbV[v][q][k]);
+            for (int jm = 0; jm < Ny * Ny; ++jm) same = same and sameDouble(a.FBV[v][q][jm], b.FBV[v][q][jm]);
+        }
+        if (not same) {
+            std::cerr << "FAIL [" << what << "] partition " << q << " differs from the reference in an astrometric output\n";
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+// With every Rubin visit in r (every kEvents event) the astrometric forecast is the one of the build before the
+// astrometry was diluted per band, bit for bit: one band takes today's path.
+bool checkAstroAllRUnchanged()
+{
+    bool ok = true;
+    const SourceModel keep = vbmSourceModel();
+    int n = 0;
+    for (const SourceModel model : {SourceModel::PSPL, SourceModel::ESPL}) {
+        vbmSetSourceModel(model);
+        for (const auto& ev : kEvents) {
+            EventRun r(ev);
+            r.run();
+            for (const auto& ref : kAstroRef) {
+                if (ref.espl != (model == SourceModel::ESPL ? 1 : 0) or std::strcmp(ref.name, ev.name) != 0) continue;
+                const int q = ref.q;
+                const covarian& c = *r.co;
+                bool same = c.okB[q] == ref.ok and sameDouble(c.condB[q], ref.cond);
+                for (int k = 0; k < Ny; ++k) same = same and sameDouble(c.Erb[q][k], ref.erb[k]);
+                for (int v = 0; v < NAVAR; ++v) {
+                    same = same and c.okBV[v][q] == ref.v[v].ok and sameDouble(c.condBV[v][q], ref.v[v].cond);
+                    for (int k = 0; k < Ny; ++k) same = same and sameDouble(c.ErbV[v][q][k], ref.v[v].erb[k]);
+                }
+                ++n;
+                if (not same) {
+                    std::cerr << "FAIL [astro-all-r] " << ev.name << (model == SourceModel::ESPL ? " (espl)" : " (pspl)")
+                              << " partition " << q << " is not bit-identical to the 2ccd875 astrometric forecast\n";
+                    ok = false;
+                }
+            }
+        }
+    }
+    vbmSetSourceModel(keep);
+    if (n != 2 * NSURV * int(sizeof(kEvents) / sizeof(kEvents[0]))) {
+        std::cerr << "FAIL [astro-all-r] compared " << n << " rows, not every event/partition/model\n";
+        ok = false;
+    }
+    std::cout << "# astrometry with every Rubin visit in r reproduces the 2ccd875 forecast bit for bit: " << n << " rows, "
+              << (ok ? "ok\n" : "FAIL\n");
+    return ok;
+}
+
+// Rubin's visits relabelled cycling through `cycle` (in stored order), the bands' fractions as the caller set them.
+void relabelRubin(EventRun& r, const std::vector<int>& cycle)
+{
+    int c = 0;
+    for (int i = 0; i < r.ndw; ++i) if (r.l->tele[i] == 0) r.l->filt[i] = cycle[c++ % cycle.size()];
+}
+
+// i and z set to r's fractions and baseline (the lens's share too).
+void copyRBandToIZ(source& s)
+{
+    for (const int b : {3, 4}) { s.blend[b] = s.blend[2];  s.magb[b] = s.magb[2];  s.fLensF[b] = s.fLensF[2]; }
+}
+
+// Splitting Rubin's visits over three bands with IDENTICAL fractions changes nothing in what the visits say about the
+// centroid, but each band now carries an offset of its own: more nuisance parameters cannot add astrometric information.
+bool checkAstroBandSplitNoGain()
+{
+    bool ok = true;
+    const SourceModel keep = vbmSourceModel();
+    for (const SourceModel model : {SourceModel::PSPL, SourceModel::ESPL}) {
+        vbmSetSourceModel(model);
+        EventRun a(kEvents[2]), b(kEvents[2]);
+        copyRBandToIZ(*b.s);
+        relabelRubin(b, {2, 3, 4});
+        a.run();  b.run();
+        for (const int q : {SRUBIN, SJOINT})
+            for (int k = 0; k < Ny; ++k) {
+                const double s1 = a.co->Erb[q][k], s3 = b.co->Erb[q][k];
+                if (not (s3 >= s1 * (1.0 - 1e-12))) {
+                    std::cerr << "FAIL [astro-band-split] partition " << q << " sigma[" << k << "]: three bands " << s3
+                              << " < one band " << s1 << "\n";
+                    ok = false;
+                }
+            }
+        std::cout << "# astro band split, identical fractions" << (model == SourceModel::ESPL ? " (espl)" : " (pspl)")
+                  << ": sigma(thetaE) Rubin " << a.co->Erb[SRUBIN][0] << " (r) -> " << b.co->Erb[SRUBIN][0] << " (r,i,z), joint "
+                  << a.co->Erb[SJOINT][0] << " -> " << b.co->Erb[SJOINT][0]
+                  << ";  sigma(piE) Rubin " << a.co->Erb[SRUBIN][3] << " -> " << b.co->Erb[SRUBIN][3] << "\n";
+    }
+    vbmSetSourceModel(keep);
+    std::cout << "#   no sigma smaller with three offsets" << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
+// The chromatic event (f_S 0.3 / 0.5 / 0.6 in r / i / z, dark lens) against the same event whose i and z visits are
+// diluted like r's: i and z are less diluted, so Rubin's sigma(thetaE) is lower with the true fractions. Expected, not a
+// theorem (the offset's derivative changes with the fractions as well).
+bool checkAstroChromaticDilution()
+{
+    bool ok = true;
+    EventRun a(kEvents[2]), b(kEvents[2]);
+    makeChromatic(*a.s, *a.l, a.ndw);
+    makeChromatic(*b.s, *b.l, b.ndw);
+    copyRBandToIZ(*b.s);                       // the labels stay r, i, z; i and z are diluted like r
+    a.run();  b.run();
+    const double sTrue = a.co->Erb[SRUBIN][0], sSame = b.co->Erb[SRUBIN][0];
+    if (not (sTrue < sSame)) {
+        std::cerr << "FAIL [astro-chromatic] sigma(thetaE) Rubin with the true fractions " << sTrue
+                  << " is not below the one with r's fractions in every band " << sSame << "\n";
+        ok = false;
+    }
+    std::cout << "# astro chromatic dilution: sigma(thetaE) Rubin " << sTrue << " (true fractions) vs " << sSame
+              << " (r's in every band); joint " << a.co->Erb[SJOINT][0] << " vs " << b.co->Erb[SJOINT][0]
+              << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
+// Two g visits at the peak: the band has too few visits for the photometry and leaves the astrometry too, every
+// astrometric output bit for bit as without them.
+bool checkAstroSparseBandDropped()
+{
+    const auto& ev = kEvents[2];
+    EventRun ref(ev), r(ev);
+    ref.run();
+    r.addRubin(ev.t0 - 0.1 * ev.tE, 1);
+    r.addRubin(ev.t0 + 0.1 * ev.tE, 1);
+    r.run();
+    const bool ok = sameAstrometry(*r.co, *ref.co, "astro-sparse-band");
+    std::cout << "# two g visits at the peak leave the astrometric forecast bit for bit unchanged" << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
+// Rubin with only two r and two i visits has no band in the astrometry either: its partition is empty and the joint
+// astrometric forecast is Roman's, bit for bit (the matrices too, in every noise variant).
+bool checkAstroRubinAllSparse()
+{
+    bool ok = true;
+    const auto& ev = kEvents[2];
+    EventRun r(ev);
+    r.keepOnly([&](int i) { return r.l->tele[i] == 1; });
+    r.addRubin(ev.t0 - 3.0, 2);  r.addRubin(ev.t0 + 3.0, 2);
+    r.addRubin(ev.t0 - 2.0, 3);  r.addRubin(ev.t0 + 2.0, 3);
+    r.run();
+    const covarian& c = *r.co;
+    if (c.okB[SRUBIN] != 0) { std::cerr << "FAIL [astro-all-sparse] okB[Rubin] = " << int(c.okB[SRUBIN]) << ", not 0\n"; ok = false; }
+    for (int k = 0; k < Ny; ++k)
+        if (not sameDouble(c.Erb[SJOINT][k], c.Erb[SROMAN][k])) {
+            std::cerr << "FAIL [astro-all-sparse] Erb[joint][" << k << "] = " << c.Erb[SJOINT][k] << " != Erb[roman] = " << c.Erb[SROMAN][k] << "\n";
+            ok = false;
+        }
+    for (int v = 0; v < NAVAR; ++v)
+        for (int jm = 0; jm < Ny * Ny; ++jm)
+            if (not sameDouble(c.FBV[v][SJOINT][jm], c.FBV[v][SROMAN][jm])) {
+                std::cerr << "FAIL [astro-all-sparse] FBV[" << v << "] joint != Roman at " << jm << "\n";
+                ok = false;
+            }
+    std::cout << "# 2 r + 2 i Rubin visits: Rubin out of the astrometry, joint = Roman alone" << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
+// ---- the closed form for several Rubin bands, on synthetic sums ----
+using fisher_detail::AstSums;
+constexpr int kD = Ny + 1;
+
+// One band's sums: n epochs, derivative vectors a smooth deterministic function of the epoch, offset derivative h(m).
+template <class H> AstSums syntheticBand(int n, double shift, H hOf)
+{
+    AstSums k;
+    for (int m = 0; m < n; ++m) {
+        std::array<double, kD> dx{}, dy{};
+        for (int j = 0; j < Ny; ++j) {
+            dx[j] = (1.0 + 0.3 * j) * std::sin(0.37 * m + 1.1 * j + shift) + 0.2 * std::cos(0.11 * m * (j + 1));
+            dy[j] = (1.0 - 0.1 * j) * std::cos(0.29 * m + 0.7 * j + 2.0 * shift) - 0.1 * std::sin(0.05 * m * (j + 2));
+        }
+        const double h = hOf(m);
+        dx[Ny] = h;  dy[Ny] = 0.8 * h;                       // y: a different, still positive, offset derivative
+        k.add(1.0 + 0.3 * std::cos(0.9 * m + shift), dx, dy);
+    }
+    return k;
+}
+
+// Solve C X = Bt (n x n, n x Ny) by Gauss elimination with partial pivoting; X returned in place of Bt.
+void gaussSolve(std::vector<double>& C, std::vector<double>& Bt, int n)
+{
+    for (int p = 0; p < n; ++p) {
+        int piv = p;
+        for (int i = p + 1; i < n; ++i) if (std::fabs(C[i * n + p]) > std::fabs(C[piv * n + p])) piv = i;
+        for (int j = 0; j < n; ++j) std::swap(C[p * n + j], C[piv * n + j]);
+        for (int j = 0; j < Ny; ++j) std::swap(Bt[p * Ny + j], Bt[piv * Ny + j]);
+        for (int i = p + 1; i < n; ++i) {
+            const double f = C[i * n + p] / C[p * n + p];
+            for (int j = p; j < n; ++j) C[i * n + j] -= f * C[p * n + j];
+            for (int j = 0; j < Ny; ++j) Bt[i * Ny + j] -= f * Bt[p * Ny + j];
+        }
+    }
+    for (int p = n - 1; p >= 0; --p)
+        for (int j = 0; j < Ny; ++j) {
+            double v = Bt[p * Ny + j];
+            for (int m = p + 1; m < n; ++m) v -= C[p * n + m] * Bt[m * Ny + j];
+            Bt[p * Ny + j] = v / C[p * n + p];
+        }
+}
+
+// The brute force: per coordinate the full information matrix on (the four physical parameters, one offset for every
+// band whose offset derivative is not identically zero, ONE reference position), the unknowns beyond the physical ones
+// marginalised by a direct solve. Valid when that block is not singular (some band's h not constant).
+std::array<double, Ny * Ny> bruteForceRubin(const std::array<AstSums, kRubinBands>& bands)
+{
+    std::array<double, Ny * Ny> out{};
+    for (int cc = 0; cc < 2; ++cc) {
+        std::vector<int> off;
+        for (int b = 0; b < kRubinBands; ++b) if (bands[b].Sw > 0.0 and bands[b].Swdd[cc][Ny * kD + Ny] > 0.0) off.push_back(b);
+        const int n = int(off.size()) + 1;                   // the offsets, then the reference
+        std::vector<double> C(n * n, 0.0), Bt(n * Ny, 0.0);
+        std::array<double, Ny * Ny> A{};
+        for (int b = 0; b < kRubinBands; ++b) {
+            if (bands[b].Sw <= 0.0) continue;
+            const auto& S = bands[b];
+            for (int j = 0; j < Ny; ++j) {
+                for (int m = 0; m < Ny; ++m) A[j * Ny + m] += S.Swdd[cc][j * kD + m];
+                Bt[(n - 1) * Ny + j] += S.Swd[cc][j];                    // reference row: sum w d_j
+            }
+            C[(n - 1) * n + (n - 1)] += S.Sw;
+        }
+        for (int a = 0; a < int(off.size()); ++a) {
+            const auto& S = bands[off[a]];
+            for (int j = 0; j < Ny; ++j) Bt[a * Ny + j] = S.Swdd[cc][j * kD + Ny];
+            C[a * n + a] = S.Swdd[cc][Ny * kD + Ny];
+            C[a * n + (n - 1)] = C[(n - 1) * n + a] = S.Swd[cc][Ny];
+        }
+        std::vector<double> X = Bt;
+        gaussSolve(C, X, n);
+        for (int j = 0; j < Ny; ++j)
+            for (int m = 0; m < Ny; ++m) {
+                double v = A[j * Ny + m];
+                for (int p = 0; p < n; ++p) v -= Bt[p * Ny + j] * X[p * Ny + m];
+                out[j * Ny + m] += v;
+            }
+    }
+    return out;
+}
+
+// Today's route for one band (Group at sigma_c = 0, marginalised, then the Schur complement of the offset with the
+// raw-h guard), reimplemented as the reference of the one-band case.
+std::array<double, Ny * Ny> todayRoute(const AstSums& k)
+{
+    std::array<double, Ny * Ny> out{};
+    for (int cc = 0; cc < 2; ++cc) {
+        std::array<double, kD * kD> G{};
+        for (int jm = 0; jm < kD * kD; ++jm)
+            G[jm] = k.Swdd[cc][jm] - (k.Sw > 0.0 ? k.Swd[cc][jm / kD] * k.Swd[cc][jm % kD] / k.Sw : 0.0);
+        const double raw = k.Swdd[cc][Ny * kD + Ny], hh = G[Ny * kD + Ny];
+        const bool fit = AST_BLEND_OFFSET_FREE and raw > 0.0 and hh > 1.0e-9 * raw;
+        for (int j = 0; j < Ny; ++j)
+            for (int m = 0; m < Ny; ++m)
+                out[j * Ny + m] += G[j * kD + m] - (fit ? G[j * kD + Ny] * G[m * kD + Ny] / hh : 0.0);
+    }
+    return out;
+}
+
+double worstRelative(const std::array<double, Ny * Ny>& a, const std::array<double, Ny * Ny>& b)
+{
+    double worst = 0.0;
+    for (int j = 0; j < Ny; ++j)
+        for (int m = 0; m < Ny; ++m) {
+            const double scale = std::sqrt(std::fabs(b[j * Ny + j] * b[m * Ny + m])) + 1e-300;
+            worst = std::max(worst, std::fabs(a[j * Ny + m] - b[j * Ny + m]) / scale);
+        }
+    return worst;
+}
+
+bool checkAstroClosedForm()
+{
+    bool ok = true;
+    const auto expectClose = [&](const char* what, const std::array<double, Ny * Ny>& got,
+                                 const std::array<double, Ny * Ny>& want) {
+        const double w = worstRelative(got, want);
+        const bool good = std::isfinite(w) and w < 1e-12;
+        std::cout << "#   closed form, " << what << ": worst relative difference " << w << (good ? "  -> ok\n" : "  -> FAIL\n");
+        if (not good) { std::cerr << "FAIL [astro-closed-form] " << what << ": " << w << "\n"; ok = false; }
+    };
+    std::cout << "# astrometric closed form for several Rubin bands, on synthetic sums\n";
+
+    // (i) Every band flat (h constant in each band, different between them): each band's offset takes out its own
+    // mean, the reference is degenerate and nothing more is subtracted: the sum over bands of Swdd - Swd Swd^T / Sw.
+    {
+        std::array<AstSums, kRubinBands> bands{};
+        bands[2] = syntheticBand(40, 0.1, [](int) { return 0.45; });
+        bands[3] = syntheticBand(25, 0.9, [](int) { return 0.30; });
+        bands[4] = syntheticBand(31, 1.7, [](int) { return 0.20; });
+        std::array<double, Ny * Ny> want{};
+        for (const int b : {2, 3, 4})
+            for (int cc = 0; cc < 2; ++cc)
+                for (int j = 0; j < Ny; ++j)
+                    for (int m = 0; m < Ny; ++m)
+                        want[j * Ny + m] += bands[b].Swdd[cc][j * kD + m] - bands[b].Swd[cc][j] * bands[b].Swd[cc][m] / bands[b].Sw;
+        std::array<double, Ny * Ny> got{};
+        fisher_detail::rubinBandInformation(bands, got);
+        expectClose("every band flat: each band keeps its own reference", got, want);
+    }
+    // (ii) A band with no neighbours' light (h = 0, Swhh = 0) carries no offset and nothing divides by zero; the others
+    // are as the brute-force solve with that band's offset column absent.
+    {
+        std::array<AstSums, kRubinBands> bands{};
+        bands[2] = syntheticBand(40, 0.1, [](int m) { return 0.6 / (1.0 + 0.2 * m); });
+        bands[3] = syntheticBand(25, 0.9, [](int) { return 0.0; });
+        bands[4] = syntheticBand(31, 1.7, [](int m) { return 0.3 / (1.0 + 0.05 * m * m); });
+        std::array<double, Ny * Ny> got{};
+        fisher_detail::rubinBandInformation(bands, got);
+        expectClose("a band with Swhh = 0 carries no offset", got, bruteForceRubin(bands));
+    }
+    // (iii) Several bands, none flat: the closed form is the brute-force solve over (physical, offsets, one reference).
+    {
+        std::array<AstSums, kRubinBands> bands{};
+        bands[2] = syntheticBand(40, 0.1, [](int m) { return 0.6 / (1.0 + 0.2 * m); });
+        bands[3] = syntheticBand(25, 0.9, [](int m) { return 0.5 / (1.0 + 0.1 * m); });
+        bands[4] = syntheticBand(31, 1.7, [](int m) { return 0.3 / (1.0 + 0.05 * m * m); });
+        bands[5] = syntheticBand(12, 2.3, [](int m) { return 0.2 + 0.02 * m; });
+        std::array<double, Ny * Ny> got{};
+        fisher_detail::rubinBandInformation(bands, got);
+        expectClose("four bands, none flat, against the brute-force solve", got, bruteForceRubin(bands));
+    }
+    // (iv) One band: the closed form is today's Group/marginalise/physical route.
+    {
+        std::array<AstSums, kRubinBands> bands{};
+        bands[2] = syntheticBand(40, 0.1, [](int m) { return 0.6 / (1.0 + 0.2 * m); });
+        std::array<double, Ny * Ny> got{};
+        fisher_detail::rubinBandInformation(bands, got);
+        expectClose("one band, against today's route", got, todayRoute(bands[2]));
+    }
+    return ok;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -2199,6 +2600,13 @@ int main(int argc, char** argv)
     if (!checkRubinBandsAllSparse())     ++failures;
     if (!checkChromaticEvent())          ++failures;
     if (!checkROmittedSentinel())        ++failures;
+    std::cout << "\n# --- Astrometric dilution per band ---\n";
+    if (!checkAstroAllRUnchanged())      ++failures;
+    if (!checkAstroBandSplitNoGain())    ++failures;
+    if (!checkAstroChromaticDilution())  ++failures;
+    if (!checkAstroSparseBandDropped())  ++failures;
+    if (!checkAstroRubinAllSparse())     ++failures;
+    if (!checkAstroClosedForm())         ++failures;
 
     if (model == SourceModel::ESPL)
         std::cout << "# SOURCE MODEL espl: a uniform disc of radius rho = " << kRho << " Einstein radii\n";

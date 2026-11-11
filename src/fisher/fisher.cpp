@@ -70,6 +70,38 @@ void fluxPairDerivs(double fb, double mbs, double fbScale, double mbsStep, const
 } // namespace
 
 
+// Rubin's information from several bands: per coordinate, each band's own neighbours' offset is marginalised from that
+// band's sums (Schur complement of slot Ny); what is left of the bands is added and the ONE shared reference position
+// is taken out of the total. A band with no offset (f_N = 0, Swhh = 0, or AST_BLEND_OFFSET_FREE off) goes in as it is.
+// When every band sits at baseline each band's offset has already absorbed its own mean and c vanishes: the reference
+// is degenerate and nothing more is subtracted (c against the summed weight, as physical() compares against raw).
+void fisher_detail::rubinBandInformation(const std::array<AstSums, kRubinBands>& bands, std::array<double, Ny * Ny>& FL)
+{
+    constexpr int D = kAstD;
+    for (int cc = 0; cc < 2; ++cc) {
+        std::array<double, Ny * Ny> P{};
+        std::array<double, Ny>      r{};
+        double c = 0.0, SwTot = 0.0;
+        for (int b = 0; b < kRubinBands; ++b) {
+            const AstSums& S = bands[b];
+            if (not (S.Sw > 0.0)) continue;
+            const double Swh = S.Swd[cc][Ny], Swhh = S.Swdd[cc][Ny * D + Ny];
+            SwTot += S.Sw;
+            const bool off = AST_BLEND_OFFSET_FREE and Swhh > 0.0;
+            for (int j = 0; j < Ny; ++j) {
+                const double Swhd_j = S.Swdd[cc][j * D + Ny];
+                for (int m = 0; m < Ny; ++m)
+                    P[j * Ny + m] += S.Swdd[cc][j * D + m] - (off ? Swhd_j * S.Swdd[cc][m * D + Ny] / Swhh : 0.0);
+                r[j] += S.Swd[cc][j] - (off ? Swhd_j * Swh / Swhh : 0.0);
+            }
+            c += S.Sw - (off ? Swh * Swh / Swhh : 0.0);
+        }
+        const bool ref = c > 1.0e-9 * SwTot;
+        for (int j = 0; j < Ny; ++j)
+            for (int m = 0; m < Ny; ++m) FL[j * Ny + m] += P[j * Ny + m] - (ref ? r[j] * r[m] / c : 0.0);
+    }
+}
+
 void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 {
     co.flagi =+ 1;
@@ -77,6 +109,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     // s.magb[2]: the photometric fit). They are the same numbers because RUBIN_REF_BANDS = {2}; a change that parts them
     // must change both readers.
     CHECK(s.fb[0] == s.blend[2] and s.mbs[0] == s.magb[2]);
+    CHECK(s.fLens[0] == s.fLensF[2] and s.fLens[1] == s.fLensF[6]);   //the lens's share, likewise per telescope and per filter
 
     // The parameter point. Every perturbation below is undone by restoring the saved value (not by
     // subtracting the step, which can leave it an ulp off), so FisherM returns it bit for bit.
@@ -134,8 +167,9 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     // Rubin's bands with fewer than that: a band's own blend fraction and baseline cannot be fixed by one or two
     // visits (co.nRubinBand, 0 for a band left out; activePhotParams reads it). The model is evaluated one observer
     // at a time over all of its epochs, so the epochs are split by telescope here (stored order kept) and the results
-    // put back at their stored index. epo/tim/nTele hold EVERY epoch of a telescope: the astrometric matrices below
-    // take them all, whatever the photometric count. pix/pt/nPh hold the epochs of the photometric matrices.
+    // put back at their stored index. epo/tim/nTele hold EVERY epoch of a telescope. pix/pt/nPh hold the epochs of the
+    // photometric matrices; the astrometric ones take Roman's from epo/tim (every epoch, whatever its photometric count)
+    // and Rubin's from pix/pt, so that a Rubin band left out of the photometry leaves the astrometry too.
     std::array<int, 2> nTele{0, 0};
     std::array<std::vector<int>, 2>    epo;  //stored index of each of the telescope's epochs
     std::array<std::vector<double>, 2> tim;  //and its time
@@ -442,47 +476,40 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     // (AST_SIGC in config/parameters.h, co.astSigc), from ONE pass over the epochs. ----
     // Per epoch the derivatives of each sky coordinate c (0 = x, 1 = y) are computed once.
     // Sums kept per coordinate: S_w = sum w, S_wd[c][j] = sum w d_cj, S_wdd[c][jk]. Rubin's epochs
-    // go into one white group; Roman's go into day blocks (the sigma_c correlation unit), tagged
-    // with season and roll so the variants can group them differently.
-    // Each coordinate carries one extra parameter, slot Ny: the light centroid of the telescope's
-    // unresolved neighbours in that coordinate (s.blendOff), unknown to the analyst. Its derivative is
-    // dcentroid/dblendOff = fn / (fs A + 1 - fs), largest at baseline and falling as the source
-    // brightens; it is marginalised below, per telescope and per coordinate (it appears in no other
-    // telescope's or coordinate's data), when AST_BLEND_OFFSET_FREE.
+    // go into one white group per band (only the bands in the photometric fit: a band with fewer than
+    // kMinTeleEpochs visits is left out here too); Roman's go into day blocks (the sigma_c correlation
+    // unit), tagged with season and roll so the variants can group them differently.
+    // Each visit's centroid is diluted with the fractions of ITS band (f_S, f_L, f_N = 1 - f_S - f_L of the
+    // baseline in that band). Each coordinate carries one extra parameter per telescope, slot Ny: the light
+    // centroid of the unresolved neighbours in that coordinate (s.blendOff), unknown to the analyst; Rubin has
+    // one per band (the neighbours' light centroid differs from band to band, and a shared offset would be
+    // pinned down by colour differences a real analysis does not have), all sharing one reference position.
+    // Its derivative is dcentroid/dblendOff = fn / (fs A + 1 - fs), largest at baseline and falling as the
+    // source brightens; it is marginalised below, per telescope or Rubin band and per coordinate (it appears
+    // in no other telescope's, band's or coordinate's data), when AST_BLEND_OFFSET_FREE.
     constexpr int D = Ny + 1;
-    struct AstSums {
-        double Sw = 0.0;
-        std::array<std::array<double, D>, 2>     Swd{};
-        std::array<std::array<double, D * D>, 2> Swdd{};
-        int season = -1, roll = -1;
-        void add(double w, const std::array<double, D>& dx, const std::array<double, D>& dy) {
-            Sw += w;
-            for (int c = 0; c < 2; ++c) {
-                const auto& d = c ? dy : dx;
-                for (int j = 0; j < D; ++j) {
-                    Swd[c][j] += w * d[j];
-                    for (int k = 0; k < D; ++k) Swdd[c][j * D + k] += w * d[j] * d[k];
-                }
-            }
-        }
-    };
-    AstSums rubin;
+    using fisher_detail::AstSums;
+    std::array<AstSums, kRubinBands> rubinBand;
     std::map<long, AstSums> romanDays;
 
     // Per epoch i, ddx[i][j] and ddy[i][j]: the derivatives of the centroid's x and y, by the
     // central stencil sig for all four astrometric parameters, and in slot Ny the neighbours' share
     // h. As for the photometry, the reference and each of the 2*Ny perturbed models are evaluated
-    // once over a telescope's epochs: 1 + 2*4 = 9 model evaluations per epoch. Every epoch enters,
-    // whatever its telescope's photometric count.
+    // once over a telescope's epochs: 1 + 2*4 = 9 model evaluations per epoch. Roman's every epoch enters,
+    // Rubin's those of the bands of the photometric fit (inFit).
     std::vector<std::array<double, D>> ddx(ndw), ddy(ndw);
     std::vector<double> sx0, sy0;  //reference centroid without the neighbours' share, per epoch
     const std::array<double*, Ny> astPar{&l.tetE, &s.mus1, &s.mus2, &l.piE};
 
     for (int tt = 0; tt < 2; ++tt) {
-        const int n = nTele[tt];
+        // Roman: every epoch. Rubin: the epochs of the bands in the photometric fit, each with its own filter.
+        const int n = (tt == 0) ? nPh[0] : nTele[1];
         if (n == 0) continue;
-        const int*    ix = epo[tt].data();
-        const double* t  = tim[tt].data();
+        const int*    ix = (tt == 0) ? pix[0].data() : epo[1].data();
+        const double* t  = (tt == 0) ? pt[0].data()  : tim[1].data();
+        std::vector<int> filt;                                   //Rubin's epoch bands
+        if (tt == 0) for (int m = 0; m < n; ++m) filt.push_back(l.filt[ix[m]]);
+        const int* fp = (tt == 0) ? filt.data() : nullptr;
         ref.resize(n);  pert.resize(n);  sx0.resize(n);  sy0.resize(n);
 
         // The neighbours' share of the centroid, fn blendOff / (fs A + 1 - fs), and its derivative with
@@ -494,22 +521,25 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         // For a point source A is magnifOf(u) bit for bit, and the share keeps the form it has always had
         // (fs (u^2 + 2) / sqrt(u^2 (u^2 + 4)) rounds differently from fs A), so that point-source results do
         // not move in the last digit; for a finite source it is the model's A, which u alone no longer gives.
-        const double fn = std::max(0.0, 1.0 - s.fb[tt] - s.fLens[tt]);
+        // fs, fL of epoch m: the telescope's, or for Rubin the epoch's band's (the numbers measuredCentroid used).
         const bool   finite = (vbmSourceModel() == SourceModel::ESPL);
-        auto nbrShare = [&](const ModelPoint& p, double& bx, double& by) {
+        auto nbrShare = [&](int m, const ModelPoint& p, double& bx, double& by) {
+            const double fs = fp ? s.blend[fp[m]]  : s.fb[tt];
+            const double fL = fp ? s.fLensF[fp[m]] : s.fLens[tt];
+            const double fn = std::max(0.0, 1.0 - fs - fL);
             const double u2   = p.u * p.u;
-            const double flux = finite ? s.fb[tt] * p.A + 1.0 - s.fb[tt]
-                                       : s.fb[tt] * (u2 + 2.0) / std::sqrt(u2 * (u2 + 4.0)) + 1.0 - s.fb[tt];
+            const double flux = finite ? fs * p.A + 1.0 - fs
+                                       : fs * (u2 + 2.0) / std::sqrt(u2 * (u2 + 4.0)) + 1.0 - fs;
             const double h = fn / flux;
             bx = h * s.blendOff[tt][0];  by = h * s.blendOff[tt][1];
             return h;
         };
 
         // Reference and perturbations use the observer that produced these data.
-        evaluateModel(s, l, as, tt, t, n, true, ref.data());
+        evaluateModel(s, l, as, tt, t, n, true, ref.data(), fp);
         for (int m = 0; m < n; ++m) {
             double nbx0, nby0;
-            ddx[ix[m]][Ny] = ddy[ix[m]][Ny] = nbrShare(ref[m], nbx0, nby0);
+            ddx[ix[m]][Ny] = ddy[ix[m]][Ny] = nbrShare(m, ref[m], nbx0, nby0);
             sx0[m] = ref[m].pos1c - nbx0;
             sy0[m] = ref[m].pos2c - nby0;
         }
@@ -522,12 +552,12 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
                 CHECK(l.tetE > 0.0);
                 CHECK(l.piE > 0.0);
                 CHECK(diff != 0.0);
-                evaluateModel(s, l, as, tt, t, n, true, pert.data());
+                evaluateModel(s, l, as, tt, t, n, true, pert.data(), fp);
                 *astPar[j] = keep;
                 // A null derivative (epoch at t0 or far from the peak) is legitimate and contributes nothing.
                 for (int m = 0; m < n; ++m) {
                     double nbx, nby;
-                    nbrShare(pert[m], nbx, nby);
+                    nbrShare(m, pert[m], nbx, nby);
                     const double derx = (pert[m].pos1c - nbx - sx0[m]) / diff;
                     const double dery = (pert[m].pos2c - nby - sy0[m]) / diff;
                     double& dx = ddx[ix[m]][j];
@@ -543,7 +573,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         CHECK(l.erra[i] > 0.0);
         const double w = 1.0 / (l.erra[i] * l.erra[i]);       // per coordinate
         if (int(l.tele[i]) == 0) {
-            rubin.add(w, ddx[i], ddy[i]);
+            if (inFit[i]) rubinBand[l.filt[i]].add(w, ddx[i], ddy[i]);   //a band left out of the photometry is out here too
         } else {
             CHECK(l.rseas[i] >= 0 and l.rseas[i] < AST_MAX_SEASONS);
             CHECK(l.rroll[i] == 0 or l.rroll[i] == 1);
@@ -594,9 +624,17 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 
     std::array<double, Ny * Ny> FL{};
     {
-        Group g; g.fold(rubin, 0.0);
-        PerCoord G{}; g.marginaliseInto(G);
-        physical(G, {rubin.Swdd[0][Ny * D + Ny], rubin.Swdd[1][Ny * D + Ny]}, FL);
+        int kAst = 0, only = -1;                                   //Rubin's bands with astrometric epochs
+        for (int b = 0; b < kRubinBands; ++b) if (rubinBand[b].Sw > 0.0) { ++kAst; only = b; }
+        if (kAst >= 2) {
+            fisher_detail::rubinBandInformation(rubinBand, FL);
+        } else {                                                    //no band, or one: its offset and the reference
+            const AstSums none;
+            const AstSums& rubin = (kAst == 1) ? rubinBand[only] : none;
+            Group g; g.fold(rubin, 0.0);
+            PerCoord G{}; g.marginaliseInto(G);
+            physical(G, {rubin.Swdd[0][Ny * D + Ny], rubin.Swdd[1][Ny * D + Ny]}, FL);
+        }
     }
     std::array<double, 2> rawR{};
     for (const auto& [day, k] : romanDays)

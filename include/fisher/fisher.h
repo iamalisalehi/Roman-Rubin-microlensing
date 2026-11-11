@@ -340,6 +340,35 @@ void   lensMotionPropagate(const MotionContext& c, const double p[NLM], const do
 long   rhoFallbackCount();
 long   rhoFallbackLostCount();
 
+namespace fisher_detail {
+
+// The weighted sums of one block of astrometric epochs, per sky coordinate: the four physical parameters' derivatives
+// (slots 0..Ny-1) and in slot Ny the derivative with respect to the neighbours' offset, h.
+constexpr int kAstD = Ny + 1;
+struct AstSums {
+    double Sw = 0.0;
+    std::array<std::array<double, kAstD>, 2>          Swd{};
+    std::array<std::array<double, kAstD * kAstD>, 2>  Swdd{};
+    int season = -1, roll = -1;
+    void add(double w, const std::array<double, kAstD>& dx, const std::array<double, kAstD>& dy) {
+        Sw += w;
+        for (int c = 0; c < 2; ++c) {
+            const auto& d = c ? dy : dx;
+            for (int j = 0; j < kAstD; ++j) {
+                Swd[c][j] += w * d[j];
+                for (int k = 0; k < kAstD; ++k) Swdd[c][j * kAstD + k] += w * d[j] * d[k];
+            }
+        }
+    }
+};
+
+// Rubin's information on the four astrometric parameters from the sums of each of its bands (empty bands have Sw = 0),
+// ADDED to FL. Every band carries an offset of its own for the unresolved neighbours (taken out per coordinate), and the
+// bands share one reference position (taken out of what is left). Used when two or more bands have epochs.
+void rubinBandInformation(const std::array<AstSums, kRubinBands>& bands, std::array<double, Ny * Ny>& FL);
+
+}  // namespace fisher_detail
+
 void   ErrorCal(covarian & co, lens &l, source &s);
 void   FisherM(source & s, lens & l, astromet & as,  covarian & co, int);
 

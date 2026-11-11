@@ -326,7 +326,7 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "# astrometric_noise   k/SNR (+) floor, SNR from the epoch's photometric error; Roman k "
              << ROMAN_AST_K << " mas, floor " << ROMAN_AST_FLOOR << " mas; Rubin kappa "
              << LSST_AST_KAPPA << " x visit FWHM_geom, floor " << LSST_AST_FLOOR << " mas; blend offset "
-             << (AST_BLEND_OFFSET_FREE ? "fitted (marginalised)" : "known") << "\n"
+             << (AST_BLEND_OFFSET_FREE ? "fitted (marginalised; one per Rubin band, one for Roman)" : "known") << "\n"
              << "# lightcurve_model    VBMicrolensing 5.6.1 " << sourceText.str()
              << ", geocentric parallax (JPL ephemeris), Roman at L2 table\n"
              // The prior on ln rho, the bar for rho to count as measured, and the theta* uncertainty of the photometric thetaE.

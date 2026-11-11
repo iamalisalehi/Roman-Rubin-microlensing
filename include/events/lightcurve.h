@@ -81,8 +81,10 @@ struct ModelPoint {
 // out[i] is the model at t[i]. The one place FisherM asks for the model. Without `centroids` the library
 // computes the photometric track only (the astrometric one, with the centroid of the images and the lens's
 // motion, costs more per epoch) and pos1c, pos2c are not set. See lightcurve.cpp.
+// `filt`, when given (Rubin's astrometric call), is the filter of each epoch: epoch i's centroid is then diluted with
+// that band's own fractions (s.blend, s.fLensF); null keeps the telescope's (s.fb, s.fLens). Photometry ignores it.
 void   evaluateModel(const source & s, const lens & l, const astromet & as, int tele, const double* t, int n,
-                     bool centroids, ModelPoint* out);
+                     bool centroids, ModelPoint* out, const int* filt = nullptr);
 
 // What every other caller reads from the model at one epoch: the lens-source geometry with and without
 // the microlensing parallax, the magnification, the centroid deflection, the source, centroid and lens

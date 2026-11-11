@@ -95,6 +95,7 @@ def main():
             "leadsp": HDR + b" 1 2 3\n4 5 6\n",
             "blankline": HDR + b"1 2 3\n\n4 5 6\n",
             "hdr_nonl": b"# only a header with no newline",
+            "hashrow": HDR + b"1 2 3\n#x 5 6\n7 8 9\n",
         }
         for name, data in odd.items():
             st, _ = roundtrip(tmp, name, data)

@@ -70,6 +70,7 @@ def main():
         synthetic(syn)
         battery(syn, "synthetic", rows_per_block=4000)
         memory_check(tmp0)
+        hashcase(tmp0)
         if os.path.exists(SAMPLE):
             battery(SAMPLE, "real sample", rows_per_block=ct.ROWS_PER_BLOCK)
         else:
@@ -77,6 +78,29 @@ def main():
     finally:
         shutil.rmtree(tmp0, ignore_errors=True)
     print("coltable_romanlib_test: OK")
+
+
+def hashcase(tmp0):
+    """A data line starting with '#' is dropped by pandas in both forms (plain read == colxz read); blocks
+    with different headers make the reader raise, as decode does."""
+    p = os.path.join(tmp0, "hash.dat")
+    with open(p, "wb") as f:
+        f.write(b"# a b c\n1 2 3\n#x 5 6\n7 8 9\n")
+    enc(p, p + ".colxz")
+    same(R.load_events(p), R.load_events(p + ".colxz"))
+    q = os.path.join(tmp0, "other.dat")
+    with open(q, "wb") as f:
+        f.write(b"# a b d\n1 2 3\n")
+    enc(q, q + ".colxz")
+    with open(os.path.join(tmp0, "cat.dat.colxz"), "wb") as f:
+        for x in (p, q):
+            f.write(open(x + ".colxz", "rb").read())
+    try:
+        R.load_events(os.path.join(tmp0, "cat.dat.colxz"))
+    except ValueError:
+        print("ok   reader raises on differing block headers")
+    else:
+        raise AssertionError("reader accepted differing headers")
 
 
 def battery(source, label, rows_per_block):

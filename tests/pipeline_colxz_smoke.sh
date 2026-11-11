@@ -36,6 +36,7 @@ ALLOW_DIRTY=1
 OGLE_TABLE3=
 JOBS=2
 SEED=42
+${EXTRA_CFG:-}
 CFG
 }
 
@@ -108,6 +109,46 @@ for name, chunks in cases.items():
     good = dec == plain and nrows == want_rows
     print(("ok   " if good else "FAIL ") + f"empty-chunk case {name}: decoded {len(dec)} B vs plain merge {len(plain)} B, rows {nrows} (want {want_rows})")
     bad += not good
+
+# refusals: both forms must refuse exactly as the plain merge does
+def refuses(name, mk, kinds):
+    global bad
+    for kind in kinds:
+        d = os.path.join(E, name + "_" + kind)
+        cds = []
+        for k in range(2):
+            cd = os.path.join(d, f"c{k}"); os.makedirs(cd); cds.append(cd)
+        mk(kind, cds)
+        rel = "test5.dat" + (".colxz" if kind == "colxz" else "")
+        try:
+            merge_chunks.merge_file(rel, cds, d)
+            good, msg = False, "merge accepted it"
+        except SystemExit as e:
+            good, msg = True, str(e)[:90]
+        print(("ok   " if good else "FAIL ") + f"refusal {name} ({kind}): {msg}")
+        bad += not good
+
+def write(kind, cd, txt):
+    p = os.path.join(cd, "test5.dat")
+    open(p, "w").write(txt)
+    if kind == "colxz":
+        coltable.encode(p, p + ".colxz"); os.remove(p)
+
+def cut_last(kind, cds):
+    write(kind, cds[0], H + "1 2 3\n4 5")
+    write(kind, cds[1], H + rows(10, 3))
+refuses("cut_last_row", cut_last, ("plain", "colxz"))
+
+def zero_byte(kind, cds):
+    write(kind, cds[0], H + rows(0, 3)); write(kind, cds[1], H + rows(10, 3))
+    open(os.path.join(cds[1], "test5.dat.colxz"), "wb").close()
+refuses("zero_byte_colxz", zero_byte, ("colxz",))
+
+def truncated(kind, cds):
+    write(kind, cds[0], H + rows(0, 3)); write(kind, cds[1], H + rows(10, 300))
+    q = os.path.join(cds[1], "test5.dat.colxz")
+    b = open(q, "rb").read(); open(q, "wb").write(b[:len(b) // 2])
+refuses("truncated_colxz", truncated, ("colxz",))
 sys.exit(1 if bad else 0)
 PY
 then ok "empty-chunk cases"; else fail "empty-chunk cases"; fi
@@ -202,6 +243,19 @@ check "merge refuses a DONE chunk holding both a plain table and a .colxz (rc=$r
 check "  ... and names chunk 0002" grep -q '0002' "$SR/m1.both.out"
 rm -f "${d2:?}/$t2"
 check "merged .colxz untouched by the refused merge" cmp <($CT decode "$T1") "$T0"
+
+# ---- 6. KEEP_CHUNKS=0: a second sim after the merge starts no chunk ------------------------------------------------
+echo "== sim after a KEEP_CHUNKS=0 merge"
+EXTRA_CFG="KEEP_CHUNKS=0" run_mode mk 1
+TK=$(find "$SR/mk/bulge" -maxdepth 1 -name 'test*.dat.colxz' | head -1)
+check "KEEP_CHUNKS=0: chunks directory removed after the merge" test ! -d "$SR/mk/bulge/chunks"
+cp "$TK" "$SR/mk.before"
+$PIPE "$SR/mk.sh" sim > "$SR/mk.resim.out" 2>&1; rk=$?
+check "second sim exits 0 (rc=$rk)" test "$rk" -eq 0
+check "second sim prints a skip line" grep -q 'skip   sim bulge' "$SR/mk.resim.out"
+check "second sim started no chunk and created no chunks/ directory" bash -c "test ! -d $SR/mk/bulge/chunks && ! grep -q 'start' $SR/mk.resim.out"
+check "merged table untouched by the second sim" cmp "$TK" "$SR/mk.before"
+check "KEEP_CHUNKS=0 merged table still decodes identical to mode 0" cmp <($CT decode "$TK") "$T0"
 
 # ---- report -------------------------------------------------------------------------------------------------------
 echo "== disk peak (du -sb RUN_ROOT, sampled every 5 s): mode 1 $(cat "$SR/m1.peak") B, mode 0 $(cat "$SR/m0.peak") B${WITH_GZIP:+, gzip $(cat "$SR/mg.peak" 2>/dev/null) B}"

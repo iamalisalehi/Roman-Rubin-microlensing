@@ -57,7 +57,8 @@ def _slice_ok(part: List[bytes], m1: int) -> bool:
     """True if every line of `part` has m1 spaces and only single-space-separated, non-empty tokens."""
     joined = b"".join(part)
     if (not joined.endswith(b"\n") or joined.startswith(b" ") or joined.startswith(b"\n")
-            or b"  " in joined or b" \n" in joined or b"\n " in joined or b"\n\n" in joined):
+            or b"  " in joined or b" \n" in joined or b"\n " in joined or b"\n\n" in joined
+            or joined.startswith(b"#") or b"\n#" in joined):   # a '#' data line: pandas drops it, keep it a row block
         return False
     return all(ln.count(b" ") == m1 for ln in part)
 
@@ -147,6 +148,8 @@ def _compress_file(plain_path: str, tmp: str, rows_per_block: int, preset: int, 
             dst.write(comp.compress(b"#@rowblock rows=0 bytes=0 hdr=%d\n" % len(hdr) + head))
             blocks = row_blocks = 1
         dst.write(comp.flush())
+        dst.flush()
+        os.fsync(dst.fileno())            # the plain source is deleted next: the xz must be on disk first
     return rows, blocks, row_blocks
 
 
@@ -159,6 +162,15 @@ def _release_memory() -> None:
         pass
 
 
+def fsync_dir(d: str) -> None:
+    """Make a rename in directory `d` durable."""
+    fd = os.open(d, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def encode(plain_path: str, out_path: str, rows_per_block: int = ROWS_PER_BLOCK,
            preset: int = XZ_PRESET, dict_size: int = XZ_DICT) -> dict:
     """Write `out_path` from the table `plain_path`; it appears only after `verify` passes."""
@@ -169,6 +181,7 @@ def encode(plain_path: str, out_path: str, rows_per_block: int = ROWS_PER_BLOCK,
         if not verify(plain_path, tmp):
             raise RuntimeError("colxz verify failed for %s" % plain_path)
         os.replace(tmp, out_path)
+        fsync_dir(os.path.dirname(os.path.abspath(out_path)))
     except BaseException:
         if os.path.exists(tmp):
             os.remove(tmp)

@@ -686,10 +686,11 @@ $(git -C "$ROOT" status --short --untracked-files=no | head -20)"
 
     local pop flags n k nchunks plist=""
     for pop in $POPULATIONS; do
+        local plan=$P_RUN/$pop/plan.txt
+        # merged and the chunks deleted (KEEP_CHUNKS=0): nothing to simulate. Tested BEFORE chunks/ is (re)created.
+        if [[ $FORCE != 1 && -f $P_RUN/$pop/MERGED && ! -d $P_RUN/$pop/chunks ]]; then say "  skip   sim $pop (already merged; chunks removed)"; continue; fi
         mkdir -p "$P_RUN/$pop/chunks"
         flags=$(build_flags "$pop")
-        local plan=$P_RUN/$pop/plan.txt
-        if [[ -f $P_RUN/$pop/MERGED && ! -d $P_RUN/$pop/chunks ]]; then say "$pop: already merged (chunks removed); nothing to do"; continue; fi
         if [[ -f $plan ]]; then
             [[ $(plan_get "$plan" flags) == "$flags" && $(plan_get "$plan" chunk_size) == "$CHUNK_SIZE" ]] \
                 || die "$P_RUN/$pop was planned with other flags or CHUNK_SIZE ($(plan_get "$plan" flags), chunks of $(plan_get "$plan" chunk_size)). Use a new RUN_ROOT, or delete $P_RUN/$pop to start it over."
@@ -806,20 +807,29 @@ children_cpu() {
 # Event tables of a directory: test<tag>.dat, not the detJ subset.
 plain_tables() { local f; for f in "$1"/test*.dat; do [[ -f $f && $f != *_detJ.dat ]] && echo "$f"; done; return 0; }
 
-# Compress every event table of a chunk directory to column-block xz (analysis/coltable.py): encode to
-# .colxz.tmp, check that the decode equals the plain file byte for byte, rename, and only then delete the plain
-# file. nice 19: the chunk's own simulation slot is shared with a neighbour's ./roman.
+# Compress every event table of a chunk directory to column-block xz (analysis/coltable.py). `coltable.py encode`
+# writes OUT.tmp, then decodes the WHOLE of it and compares it byte for byte with the WHOLE plain file; only if
+# that matches is the tmp fsynced and renamed (otherwise encode exits non-zero and removes its tmp). So no second
+# verify here: the plain file is deleted only after encode succeeded. A table not ending in a newline (cut
+# mid-row) is refused first. nice 19: the chunk's own slot is shared with a neighbour's ./roman.
+# Sets COMP_ROWS / COMP_ROW_BLOCKS / COMP_BYTES (encode's own statistics) for DONE.
 compress_chunk_tables() {   # compress_chunk_tables CHUNKDIR
-    local f n=0 nice_cmd=""
+    local f n=0 nice_cmd="" out
+    COMP_ROWS=0; COMP_ROW_BLOCKS=0; COMP_BYTES=0
     have nice && nice_cmd="nice -n 19"
     for f in $(plain_tables "$1"); do
         n=$((n + 1))
+        if [[ -s $f && -n $(tail -c1 "$f") ]]; then
+            warn "compress: $f does not end in a newline (cut mid-row?); kept, the chunk fails and is re-run"; return 1
+        fi
         rm -f "$f.colxz.tmp"
         # shellcheck disable=SC2086
-        $nice_cmd "$PY" "$ROOT/analysis/coltable.py" encode "$f" "$f.colxz.tmp" > /dev/null \
-            && $nice_cmd "$PY" "$ROOT/analysis/coltable.py" verify "$f" "$f.colxz.tmp" \
-            || { rm -f "$f.colxz.tmp"; warn "compress: encoding or verifying $f failed (the plain file is kept)"; return 1; }
-        mv "$f.colxz.tmp" "$f.colxz" && rm -f "$f" || return 1
+        out=$($nice_cmd "$PY" "$ROOT/analysis/coltable.py" encode "$f" "$f.colxz") \
+            || { rm -f "$f.colxz.tmp"; warn "compress: encoding $f failed (the plain file is kept)"; return 1; }
+        COMP_ROWS=$(printf '%s' "$out" | sed -n "s/.*'rows': \([0-9]*\).*/\1/p")
+        COMP_ROW_BLOCKS=$(printf '%s' "$out" | sed -n "s/.*'row_blocks': \([0-9]*\).*/\1/p")
+        COMP_BYTES=$(printf '%s' "$out" | sed -n "s/.*'bytes_out': \([0-9]*\).*/\1/p")
+        rm -f "$f" || return 1
     done
     (( n == 1 )) || { warn "compress: $1 holds $n event tables (expected 1)"; return 1; }
 }
@@ -865,6 +875,7 @@ stage_chunk() {
         children_cpu; comp_cpu=$(( CHILD_CPU - cpu ))
     fi
     { echo "start=$s"; echo "end=$e"; echo "rc=0"; echo "wall_s=$((SECONDS - t0))"; echo "cpu_s=$cpu"; echo "compress_cpu_s=$comp_cpu"
+      [[ $COMPRESS_TABLES == 1 ]] && { echo "compress_rows=$COMP_ROWS"; echo "compress_row_blocks=$COMP_ROW_BLOCKS"; echo "compress_bytes=$COMP_BYTES"; }
       echo "sightlines_entered=$entered"; echo "host=$(hostname)"; echo "finished=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"; } > "$d/DONE"
     say "chunk $pop $k [$s,$e) done in $(fmt_dur $((SECONDS - t0))) (cpu ${cpu}s)"
 }
@@ -956,8 +967,8 @@ stage_merge() {
         if run_step "merge $pop" "$RUN_STAMPS/merge_$pop.stamp" "$P_RUN/logs/merge_$pop.log" "chunks=$nch" "$ins" "$d/MERGED" \
               "$PY" pipeline/merge_chunks.py "$d"; then
             sed 's/^/         /' "$P_RUN/logs/merge_$pop.log"
+            drop_stale_twins "$d"      # before the chunks go: a stale plain twin would shadow the new .colxz
             if [[ $KEEP_CHUNKS == 0 ]]; then rm -rf "$d/chunks"; say "  removed $d/chunks (KEEP_CHUNKS=0)"; fi
-            drop_stale_twins "$d"
             compress_merged "$d" || rc=1
         else rc=1; fi
     done

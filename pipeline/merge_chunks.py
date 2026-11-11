@@ -91,14 +91,30 @@ def leading_header(path):
                 return hdr, len(hdr)
 
 
+def publish(tmp, dest):
+    """Rename tmp over dest, durably: the tmp's data is fsynced before the rename and the directory after it
+    (the chunks may be deleted next)."""
+    fd = os.open(tmp, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.replace(tmp, dest)
+    coltable.fsync_dir(os.path.dirname(os.path.abspath(dest)))
+
+
 def colxz_info(path):
-    """(header lines of the first block or None for a stream with no blocks, data rows) of a .colxz."""
-    header, rows = None, 0
+    """(header lines of the first block or None for a stream with no blocks, data rows, cut) of a .colxz.
+    `cut` is True if the last block holding rows is a row block whose bytes do not end in a newline (a table
+    cut mid-row; column blocks end in a newline by construction)."""
+    header, rows, cut = None, 0, False
     for b in coltable.iter_blocks(path):
         if header is None:
             header = b.header_lines
         rows += b.nrows
-    return header, rows
+        if b.nrows:
+            cut = b.raw_rows is not None and not b.raw_rows.endswith(b"\n")
+    return header, rows, cut
 
 
 def merge_colxz(rel, chunk_dirs, dest_dir):
@@ -115,9 +131,17 @@ def merge_colxz(rel, chunk_dirs, dest_dir):
     parts = []
     for cd in chunk_dirs:
         p = os.path.join(cd, rel)
-        if not os.path.isfile(p) or os.path.getsize(p) == 0:
+        if not os.path.isfile(p):
             continue
-        hdr, n = colxz_info(p)
+        if os.path.getsize(p) == 0:
+            sys.exit(f"{p}: is 0 bytes; a valid .colxz never is (an empty table encodes to a short stream "
+                     "with no blocks). The file was lost: re-run this chunk. Not merging.")
+        try:
+            hdr, n, cut = colxz_info(p)
+        except Exception as e:               # noqa: BLE001 -- truncated or corrupt: name the file
+            sys.exit(f"{p}: cannot be read as a .colxz ({type(e).__name__}: {e}); re-run this chunk. Not merging.")
+        if cut:
+            sys.exit(f"{p}: its last row does not end in a newline (a chunk was cut mid-row?). Not merging.")
         if hdr is None:                      # a stream without blocks: an empty table
             continue
         present += 1
@@ -140,14 +164,14 @@ def merge_colxz(rel, chunk_dirs, dest_dir):
                     out.write(buf)
         out.flush()
     try:
-        mh, got_rows = colxz_info(tmp)
+        mh, got_rows, _ = colxz_info(tmp)
     except Exception as e:                   # noqa: BLE001 -- any decode failure means do not publish
         os.remove(tmp)
         sys.exit(f"{rel}: the concatenation does not read back as a .colxz ({e}). Not merging.")
     if got_rows != want_rows or mh != header:
         os.remove(tmp)
         sys.exit(f"{rel}: merged row count {got_rows} != sum of the chunks' {want_rows} (or header changed). Not merging.")
-    os.replace(tmp, dest)
+    publish(tmp, dest)
     hrows = len(header) if header else 0
     return want_rows + hrows, os.path.getsize(dest), present, hrows
 
@@ -195,7 +219,7 @@ def merge_file(rel, chunk_dirs, dest_dir):
     if nbytes != src_bytes - dropped:
         os.remove(tmp)
         sys.exit(f"{rel}: merged size {nbytes} != sum of chunk sizes {src_bytes} - dropped headers {dropped}")
-    os.replace(tmp, dest)
+    publish(tmp, dest)
     hrows = header.count(b"\n") if header else 0
     return rows, nbytes, present, hrows
 

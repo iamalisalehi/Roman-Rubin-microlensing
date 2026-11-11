@@ -194,14 +194,22 @@ def _colxz_chunks(path, cols, usecols):
     keepset = None if usecols is None else set(usecols)
     want = [c for c in cols if keepset is None or c in keepset]
     idx = [cols.index(c) for c in want]
+    header = None
     for blk in coltable.iter_blocks(path):
+        if header is None:
+            header = blk.header_lines
+        elif blk.header_lines != header:
+            raise ValueError(f"{path}: chunks have different headers")
         if not blk.nrows:
             continue
         if blk.columns is not None:
             if len(blk.columns) != len(cols):
                 raise ValueError(f"{path}: block has {len(blk.columns)} columns, header names {len(cols)}")
-            yield pd.DataFrame({c: _colxz_column(c, blk.columns[i]) for c, i in zip(want, idx)},
-                               columns=want)
+            df = pd.DataFrame({c: _colxz_column(c, blk.columns[i]) for c, i in zip(want, idx)},
+                              columns=want)
+            if len(df) != blk.nrows:
+                raise ValueError(f"{path}: a column block holds {len(df)} values per column, header says {blk.nrows}")
+            yield df
         else:
             yield pd.read_csv(io.BytesIO(blk.raw_rows), sep=r"\s+", comment="#", header=None,
                               names=cols, usecols=want)

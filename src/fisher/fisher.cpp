@@ -73,6 +73,10 @@ void fluxPairDerivs(double fb, double mbs, double fbScale, double mbsStep, const
 void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 {
     co.flagi =+ 1;
+    // r's pair is kept twice, per telescope (s.fb[0], s.mbs[0]: the astrometric part, resu[2]) and per filter (s.blend[2],
+    // s.magb[2]: the photometric fit). They are the same numbers because RUBIN_REF_BANDS = {2}; a change that parts them
+    // must change both readers.
+    CHECK(s.fb[0] == s.blend[2] and s.mbs[0] == s.magb[2]);
 
     // The parameter point. Every perturbation below is undone by restoring the saved value (not by
     // subtracting the step, which can leave it an ulp off), so FisherM returns it bit for bit.
@@ -89,10 +93,9 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     co.Delta1[3] = FD_STEP_PIE_FRAC * l.piE;//piE
     co.Delta1[4] = FD_STEP_XI_DEG * M_PI / 180.0; //for xi [radian]
     co.Delta1[5] = l.tE * FD_STEP_TE_FRAC; // t0 [days] -- same fractional-of-tE step as tE
-    co.Delta1[6] = FD_STEP_MBS; // mbs0 [mag] -- Rubin r-band baseline magnitude
     co.Delta1[8] = FD_STEP_MBS; // mbs1 [mag] -- Roman baseline magnitude
     for (int b = 0; b < kRubinBands; ++b)
-        co.Delta1[mbsIndexOfFilter(b)] = FD_STEP_MBS; // mbs of Rubin's u g r i z y (11, 13, 6, 15, 17, 19)
+        co.Delta1[mbsIndexOfFilter(b)] = FD_STEP_MBS; // mbs of Rubin's u g r i z y (11, 13, 6 = mbs0, 15, 17, 19) [mag]
     co.Delta1[9] = FD_STEP_LNRHO; // ln rho -- the source radius in Einstein radii, perturbed as rho * exp(Delta)
 
     // The legacy step constants are ~25% of the parameter value, far up the truncation-error
@@ -888,7 +891,9 @@ void ErrorCal(covarian & co, lens & l , source & s){
 
   co.resu[0]  = double(Era[0] / (std::fabs(l.u0)    + eps));
   co.resu[1]  = double(Era[1] / (std::fabs(l.tE)    + eps));
-  co.resu[2]  = double(Era[2] / (std::fabs(s.fb[0]) + eps));
+  // Era[2] is the -1 sentinel when Rubin's r band is not in the fit (no r visits, or fewer than kMinTeleEpochs): it must
+  // not be divided into a negative number that reads as a measurement.
+  co.resu[2]  = (Era[2] >= 0.0) ? double(Era[2] / (std::fabs(s.fb[0]) + eps)) : -1.0;
   co.resu[3]  = double(Era[3] / (std::fabs(l.piE)   + eps));
   co.resu[4]  = double(Era[4] / (std::fabs(s.xi)    + eps));
   co.resu[5]  = double(Erb[0] / (std::fabs(l.tetE)  + eps));

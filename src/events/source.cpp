@@ -193,9 +193,10 @@ void func_source(source& s, CMD& cm, const extin& ex, int sightlineIdx) {
         CHECK(Av >= 0.0);
     }
 
-    // Fisher-matrix inputs. Rubin's representative band is configurable (RUBIN_REF_BANDS,
-    // config/parameters.h): the listed filters' fluxes are combined into one synthetic baseline flux
-    // and one synthetic source-only flux.
+    // Rubin's reference-band pair s.fb[0], s.mbs[0]. The photometric Fisher matrix fits each visit in its own band
+    // (s.blend[], s.magb[]); this pair is r's copy of it (RUBIN_REF_BANDS = {2}, FisherM checks they agree) and what the
+    // astrometric part and the draw's reference quantities read. RUBIN_REF_BANDS (config/parameters.h) is configurable: the
+    // listed filters' fluxes are combined into one synthetic baseline flux and one synthetic source-only flux.
     double fluxTotRubin = 0.0, fluxSrcRubin = 0.0;
     for (int band : RUBIN_REF_BANDS) {
         fluxTotRubin += s.Fluxb[band];

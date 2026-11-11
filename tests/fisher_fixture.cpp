@@ -526,6 +526,9 @@ int runSweep()
 
     co->sigLnRhoMax = std::numeric_limits<double>::infinity();
     co->rhoPriorSigLn = std::numeric_limits<double>::infinity();
+    // The blend prior is dropped as well: with it a Rubin-poor partition's sigma(fb) is held by the prior and would pass
+    // the plateau check whatever the step. A partition that does not invert without it is skipped (ok = 0 rows).
+    co->fbPriorSig = std::numeric_limits<double>::infinity();
     for (const auto& [ev, rho, chromatic] : events) {
         std::vector<int> params;
         for (int pidx = 0; pidx < nPhotShown(); ++pidx) params.push_back(pidx);
@@ -678,6 +681,7 @@ bool checkSentinelDiscipline()
         auto l  = std::make_unique<lens>();
         auto co = std::make_unique<covarian>();
         setupStatic(*s, *l);
+        co->nRubinBand[2] = 100;   // Rubin's r band is in the fit, so the joint and Rubin sets hold fb0, mbs0
         l->u0 = 0.30; l->tE = 40.0; l->piE = 0.12;
 
         // ErrorCal RECOMPUTES Era/Erb as sqrt of the inverse-matrix diagonals, so the inverses
@@ -686,7 +690,6 @@ bool checkSentinelDiscipline()
             co->okA[q] = c.okA;
             co->okB[q] = c.okB;
             co->nepochA[q] = 100;
-            co->nRubinBand[2] = 100;   // Rubin's r band is in the fit, so the joint and Rubin sets hold fb0, mbs0
 
             gsl_matrix_set_zero(co->inverA[q].get());
             for (int k = 0; k < Nx; ++k) gsl_matrix_set(co->inverA[q].get(), k, k, 0.01 * 0.01);
@@ -2051,6 +2054,28 @@ bool checkRubinBandsAllSparse()
     return ok;
 }
 
+// Rubin's visits all in i (at the bump) plus Roman: the joint and Rubin fits hold i's pair and not r's. The r blend
+// fraction is then not measured, and must read as the -1 sentinel everywhere, in Era and in the relative error resu[2]
+// (a negative value there would look like a measurement to a sum or a histogram).
+bool checkROmittedSentinel()
+{
+    bool ok = true;
+    EventRun r(kEvents[2]);
+    r.s->blend[3] = 0.50;  r.s->magb[3] = 19.9;
+    for (int i = 0; i < r.ndw; ++i) if (r.l->tele[i] == 0) r.l->filt[i] = 3;
+    r.run();
+    const covarian& c = *r.co;
+    if (not (c.okA[SJOINT] and c.okA[SRUBIN])) { std::cerr << "FAIL [r-omitted] okA " << c.okA[SJOINT] << c.okA[SRUBIN] << "\n"; ok = false; }
+    for (const int q : {SJOINT, SRUBIN}) {
+        if (c.Era[q][2] != -1.0) { std::cerr << "FAIL [r-omitted] partition " << q << " Era[2] = " << c.Era[q][2] << ", not -1\n"; ok = false; }
+        if (not (c.Era[q][14] > 0.0)) { std::cerr << "FAIL [r-omitted] partition " << q << " sigma(fb_i) = " << c.Era[q][14] << "\n"; ok = false; }
+    }
+    if (c.resu[2] != -1.0) { std::cerr << "FAIL [r-omitted] resu[2] = " << c.resu[2] << ", not the -1 sentinel\n"; ok = false; }
+    std::cout << "# r absent from the fit: Era[2] and resu[2] are the -1 sentinel, sigma(fb_i) " << c.Era[SJOINT][14]
+              << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
 // A chromatic event: Rubin's visits cycle r, i, z with their own blend fractions (0.3, 0.5, 0.6). The forecast has a
 // pair per band, the joint is no worse than either survey for every parameter, F[J] = F[L] + F[R] up to the priors,
 // F F^-1 = 1, and the bands' own sigmas exist.
@@ -2084,6 +2109,21 @@ bool checkChromaticEvent()
                     ok = false;
                 }
             }
+        // Each band's flux pair is in that band's own epochs only, so the information between two different bands'
+        // pairs is exactly zero in every partition's stored matrix (a leak would put the other band's derivative here).
+        for (int q = 0; q < NSURV; ++q) {
+            static const int kBandPair[3][2] = {{2, 6}, {14, 15}, {16, 17}};   // r, i, z: fb, mbs
+            for (int a = 0; a < 3; ++a)
+                for (int b = 0; b < a; ++b)
+                    for (const int ja : kBandPair[a]) for (const int jb : kBandPair[b]) {
+                        const double v = gsl_matrix_get(c.inputA[q].get(), ja, jb), w = gsl_matrix_get(c.inputA[q].get(), jb, ja);
+                        if (v != 0.0 or w != 0.0) {
+                            std::cerr << "FAIL [" << name << "] partition " << q << " F[" << kPhotNames[ja] << "][" << kPhotNames[jb]
+                                      << "] = " << v << ", not exactly 0 between different bands\n";
+                            ok = false;
+                        }
+                    }
+        }
         ok = checkAdditivity(c, name, Nx, true) and ok;
         ok = checkJointNoWorse(c, name, kPhotNames, Nx, true) and ok;
         ok = checkInverseRoundTrip(c, name, Nx, true) and ok;
@@ -2158,6 +2198,7 @@ int main(int argc, char** argv)
     if (!checkFewBandVisits())           ++failures;
     if (!checkRubinBandsAllSparse())     ++failures;
     if (!checkChromaticEvent())          ++failures;
+    if (!checkROmittedSentinel())        ++failures;
 
     if (model == SourceModel::ESPL)
         std::cout << "# SOURCE MODEL espl: a uniform disc of radius rho = " << kRho << " Einstein radii\n";

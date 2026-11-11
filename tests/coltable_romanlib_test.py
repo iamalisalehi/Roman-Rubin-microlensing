@@ -22,6 +22,11 @@ import romanlib as R  # noqa: E402
 SAMPLE = os.path.expanduser("~/.claude/jobs/b0aec636/tmp/kin_sample/rv/bulge/389/test5.dat")
 
 
+def enc(src, dst, rows_per_block=ct.ROWS_PER_BLOCK):
+    """coltable.encode with the fastest xz setting (the container is the same; only the ratio differs)."""
+    ct.encode(src, dst, rows_per_block=rows_per_block, preset=0, dict_size=1 << 20)
+
+
 def same(a, b):
     """Exact equality: values, dtypes, and for float columns the raw bits (NaN positions included)."""
     assert_frame_equal(a, b, check_exact=True)
@@ -30,7 +35,7 @@ def same(a, b):
             assert (a[c].to_numpy().view(np.int64) == b[c].to_numpy().view(np.int64)).all(), c
 
 
-def synthetic(path, nrows=300_000, seed=1):
+def synthetic(path, nrows=40_000, seed=1):
     """A realistic-shaped table: int index column, 17-significant-digit floats (these differ between a
     correctly rounded parser and pandas' default one), -1 sentinels, nan, an int column with a few -1."""
     rng = np.random.default_rng(seed)
@@ -63,9 +68,10 @@ def main():
     try:
         syn = os.path.join(tmp0, "syn.dat")
         synthetic(syn)
-        battery(syn, "synthetic")
+        battery(syn, "synthetic", rows_per_block=4000)
+        memory_check(tmp0)
         if os.path.exists(SAMPLE):
-            battery(SAMPLE, "real sample")
+            battery(SAMPLE, "real sample", rows_per_block=ct.ROWS_PER_BLOCK)
         else:
             print("SKIP real sample: not found")
     finally:
@@ -73,7 +79,7 @@ def main():
     print("coltable_romanlib_test: OK")
 
 
-def battery(source, label):
+def battery(source, label, rows_per_block):
     print("--", label)
     tmp = tempfile.mkdtemp(prefix="cx_rl_")
     try:
@@ -81,7 +87,8 @@ def battery(source, label):
         shutil.copy(source, plain)
         with open(plain, "rb") as f, gzip.open(plain + ".gz", "wb") as g:
             shutil.copyfileobj(f, g)
-        ct.encode(plain, plain + ".colxz")
+        enc(plain, plain + ".colxz", rows_per_block=rows_per_block)
+        assert sum(1 for _ in ct.iter_blocks(plain + ".colxz")) >= 2     # several blocks, not one
         h = R.table_header(plain)
         assert h == R.table_header(plain + ".gz") == R.table_header(plain + ".colxz") and len(h) > 5
 
@@ -119,19 +126,12 @@ def battery(source, label):
         except ValueError:
             pass
 
-        # many blocks
-        small = os.path.join(tmp, "small.colxz")
-        ct.encode(plain, small, rows_per_block=1000)
-        assert sum(1 for _ in ct.iter_blocks(small)) > 3
-        same(R.load_events(small), ref_all)
-        same(R.load_events(small, usecols=sub), ref_sub)
-
         # a row-block fallback among column blocks (a double space forces it)
         mixed = os.path.join(tmp, "mixed.dat")
         lines = open(plain).read().split("\n")
         lines[5] = lines[5].replace(" ", "  ", 1)
         open(mixed, "w").write("\n".join(lines))
-        ct.encode(mixed, mixed + ".colxz", rows_per_block=1000)
+        enc(mixed, mixed + ".colxz", rows_per_block=1000)
         kinds = {b.raw_rows is not None for b in ct.iter_blocks(mixed + ".colxz")}
         assert kinds == {True, False}, kinds
         same(R.load_events(mixed + ".colxz"), R.load_events(mixed))
@@ -144,23 +144,36 @@ def battery(source, label):
             for i in range(30):
                 f.write("%d %s %s\n" % (i, ("%d" % i) if i < 20 else "%d.5" % i,
                                         "nan" if i % 7 == 0 else "-1.5e-3"))
-        ct.encode(odd, odd + ".colxz", rows_per_block=10)
+        enc(odd, odd + ".colxz", rows_per_block=10)
         same(R.load_events(odd + ".colxz"), R.load_events(odd))
 
         # header-only table
         hdr = os.path.join(tmp, "hdr.dat")
         open(hdr, "w").write("# a b c\n")
-        ct.encode(hdr, hdr + ".colxz")
+        enc(hdr, hdr + ".colxz")
         e = R.load_events(hdr + ".colxz")
         assert list(e.columns) == ["a", "b", "c"] and len(e) == 0
 
-        # memory: the 5-column .colxz read is lighter than the all-column read
-        sub_only = peak_rss_mb_isolated(plain + ".colxz", sub)
-        all_only = peak_rss_mb_isolated(plain + ".colxz", None)
-        print("peak RSS isolated: all %.0f MB, 5 columns %.0f MB" % (all_only, sub_only))
-        assert sub_only < all_only
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def memory_check(tmp0):
+    """The 5-column .colxz read holds far less than the all-column read (a wide float table)."""
+    rng = np.random.default_rng(2)
+    n, m = 200_000, 40
+    path = os.path.join(tmp0, "wide.dat")
+    with open(path, "w") as f:
+        f.write("# " + " ".join("c%d" % i for i in range(m)) + "\n")
+        for lo in range(0, n, 20_000):
+            np.savetxt(f, rng.uniform(0, 100, (20_000, m)), fmt="%.6g")
+    enc(path, path + ".colxz")
+    sub = ["c0", "c9", "c19", "c29", "c39"]
+    sub_mb = peak_rss_mb_isolated(path + ".colxz", sub)
+    all_mb = peak_rss_mb_isolated(path + ".colxz", None)
+    print("peak RSS isolated (200k x 40): all %.0f MB, 5 columns %.0f MB, margin %.0f MB (ratio %.2f)"
+          % (all_mb, sub_mb, all_mb - sub_mb, sub_mb / all_mb))
+    assert sub_mb < 0.75 * all_mb
 
 
 def peak_rss_mb_isolated(path, usecols):

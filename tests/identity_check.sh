@@ -8,7 +8,8 @@
 # file a run wrote is compared. Exit 0 iff every compared file is identical.
 #
 # Reference runs (seed 42 throughout):
-#   stub_776, stub_795        --stub, bulge, 10 events, 2 lenses, 1000 draws, one sightline
+#   stub_10, stub_20          --stub, bulge, 10 events, 2 lenses, 1000 draws, one sightline each (10 event rows
+#                             apiece). Not 776/795: the stub patch has only 36 sightlines, so those scan nothing.
 #   prod_bulge_795/_0/_1325   bulge, 300 events, 50 lenses, stride-roman 5, one sightline
 #   prod_bh_795               the same for the BH population
 #   pair_bulge_795            prod_bulge_795 plus --pair-satellite
@@ -18,6 +19,11 @@
 # --quick runs only the stubs and the fishertest modes.
 # --time N then times N interleaved BASE/NEW pairs of prod_bulge_795 (CPU s = user + sys of the child,
 # Python resource.getrusage(RUSAGE_CHILDREN)) and prints the median ratio NEW/BASE.
+#
+# A run only counts if it is non-vacuous: every run must exit 0 (fishertest signals failed assertions that
+# way), must have written its expected files (event table, run_provenance.txt, MapLMC, h3_pair.dat for the
+# pair run, *_params.dat dump files for the dump run), and every ./roman event table must hold data rows
+# (non-# lines). Otherwise the harness prints FAIL and exits 1, whatever the two builds agree on.
 #
 # Compared per run: the stdout log (log.txt), the exit status, every regular file the run wrote (the run
 # directory's own files, files/MONTLMC/files/*, files/density/*, dumped samples) with cmp. Dropped before
@@ -70,8 +76,8 @@ make_rundir() {   # make_rundir DIR
 STUB="--stub --population bulge --events 10 --lenses 2 --maxdraws 1000"
 PROD="--seed 42 --events 300 --lenses 50 --stride-roman 5"
 RUNS=(
-    "stub_776|roman|$STUB --start-index 776 --end-index 777"
-    "stub_795|roman|$STUB --start-index 795 --end-index 796"
+    "stub_10|roman|$STUB --start-index 10 --end-index 11"
+    "stub_20|roman|$STUB --start-index 20 --end-index 21"
 )
 FISH=(
     "fisher_default|fisher|"
@@ -110,6 +116,48 @@ run_one() {
     echo "$rc" > "$d/exit_status"
 }
 
+# Files a run must have written, relative to its directory (the event table is also required to hold rows).
+expected_files() {   # expected_files NAME : prints one path per line
+    local name=$1 tag=5 pop=bulge
+    case $name in
+        fisher_*) echo log.txt; return ;;
+        prod_bh_*) tag=bh; pop=bh ;;
+    esac
+    echo "test$tag.dat"; echo "files/MONTLMC/files/run_provenance.txt"; echo "files/MONTLMC/files/MapLMC$tag.dat"
+    [[ $name == pair_* ]] && echo h3_pair.dat
+    return 0
+}
+event_table() {   # event_table NAME : the event table of a roman run, or nothing
+    case $1 in
+        fisher_*) ;;
+        prod_bh_*) echo testbh.dat ;;
+        *) echo test5.dat ;;
+    esac
+}
+
+NFAIL=0
+fail() { echo "FAIL   $1"; NFAIL=$((NFAIL + 1)); }
+
+# check_run NAME LABEL : exit status 0, expected files present, event table non-empty, dump files present.
+check_run() {
+    local name=$1 label=$2 d=$OUT/$1/x f t
+    d=$OUT/$label/$name
+    if [[ ! -d $d ]]; then fail "$name ($label): run directory missing"; return; fi
+    if [[ ! -f $d/exit_status ]]; then fail "$name ($label): never finished (no exit_status)"; return; fi
+    if [[ $(<"$d/exit_status") != 0 ]]; then
+        fail "$name ($label): exit status $(<"$d/exit_status"), see $d/log.err"; return
+    fi
+    while read -r f; do
+        [[ -s $d/$f || ( $f == files/MONTLMC/files/MapLMC* && -e $d/$f ) ]] || fail "$name ($label): expected file $f missing or empty"
+    done < <(expected_files "$name")
+    t=$(event_table "$name")
+    if [[ -n $t && -s $d/$t ]] && ! grep -qv '^#' "$d/$t"; then fail "$name ($label): $t has no data rows"; fi
+    if [[ $name == dump_* ]] && ! compgen -G "$d/samples/bulge/*_params.dat" >/dev/null; then
+        fail "$name ($label): no dumped samples"
+    fi
+    return 0
+}
+
 # Apply the fixed filter to a file on stdout.
 filtered() {   # filtered FILE
     case $(basename "$1") in
@@ -127,6 +175,7 @@ report() {   # report NAME REL STATUS
 compare_run() {   # compare_run NAME
     local name=$1 b=$OUT/base/$1 n=$OUT/new/$1 rel
     local -a files
+    [[ -d $b && -d $n ]] || { fail "$name: run directory missing on one side"; return; }
     mapfile -t files < <( { (cd "$b" && find . -type f -printf '%P\n'); (cd "$n" && find . -type f -printf '%P\n'); } | sort -u )
     for rel in "${files[@]}"; do
         [[ $rel == log.err ]] && continue   # stderr: compared only through exit_status
@@ -154,9 +203,14 @@ for spec in "${RUNS[@]}"; do
 done
 wait || true
 
+echo "== checking runs completed and wrote output =="
+for spec in "${RUNS[@]}"; do
+    for label in base new; do check_run "${spec%%|*}" "$label"; done
+done
 echo "== comparing =="
 for spec in "${RUNS[@]}"; do compare_run "${spec%%|*}"; done
-echo "== identity: $NSAME same, $NDIFF DIFF =="
+NDIFF=$((NDIFF + NFAIL))
+echo "== identity: $NSAME same, $NDIFF DIFF/FAIL ($NFAIL FAIL) =="
 
 # --time N: N interleaved pairs of the bulge-795 production run, CPU seconds each.
 timed() {   # timed BUILD DIR : prints user+sys of the roman child
@@ -176,7 +230,11 @@ if (( NTIME > 0 )); then
     ratios=()
     for ((i = 1; i <= NTIME; i++)); do
         make_rundir "$OUT/time_base"; make_rundir "$OUT/time_new"
-        tb=$(timed "$BASE" "$OUT/time_base"); tn=$(timed "$NEW" "$OUT/time_new")
+        if (( i % 2 )); then   # alternate the order within a pair: no thermal/cache bias toward one build
+            tb=$(timed "$BASE" "$OUT/time_base"); tn=$(timed "$NEW" "$OUT/time_new")
+        else
+            tn=$(timed "$NEW" "$OUT/time_new"); tb=$(timed "$BASE" "$OUT/time_base")
+        fi
         r=$(python3 -c "print(f'{$tn / $tb:.4f}')")
         ratios+=("$r")
         echo "pair $i: BASE $tb  NEW $tn  NEW/BASE $r"
@@ -187,3 +245,4 @@ if (( NTIME > 0 )); then
 fi
 
 (( NDIFF == 0 ))
+

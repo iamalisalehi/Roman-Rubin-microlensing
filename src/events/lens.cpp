@@ -112,7 +112,10 @@ void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sight
             s.fLens[1] = fluxL[6] / s.Fluxb[6];
             // The lens's share of the baseline in every filter: what each Rubin visit's centroid is diluted with
             // in the astrometric Fisher matrix (with RUBIN_REF_BANDS = {2}, fLensF[2] is fLens[0] to the bit).
-            for (int i = 0; i < M; ++i) s.fLensF[i] = fluxL[i] / s.Fluxb[i];
+            for (int i = 0; i < M; ++i) {
+                s.fLensF[i] = fluxL[i] / s.Fluxb[i];
+                CHECK(s.blend[i] + s.fLensF[i] <= 1.000001);
+            }
             CHECK(s.fb[0] + s.fLens[0] <= 1.000001 and s.fb[1] + s.fLens[1] <= 1.000001);
         } else {
             l.luminous = false;

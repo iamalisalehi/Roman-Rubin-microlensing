@@ -2265,8 +2265,18 @@ void copyRBandToIZ(source& s)
     for (const int b : {3, 4}) { s.blend[b] = s.blend[2];  s.magb[b] = s.magb[2];  s.fLensF[b] = s.fLensF[2]; }
 }
 
+// The astrometric part of the standard checks (F[J] = F[L] + F[R], sigma_J <= single) on one finished run.
+bool astroStandardChecks(const covarian& c, const char* name)
+{
+    bool ok = checkAdditivity(c, name, Ny, false);
+    ok = checkJointNoWorse(c, name, kAstNames, Ny, false) and ok;
+    return ok;
+}
+
 // Splitting Rubin's visits over three bands with IDENTICAL fractions changes nothing in what the visits say about the
-// centroid, but each band now carries an offset of its own: more nuisance parameters cannot add astrometric information.
+// centroid, but each band now carries an offset of its own: more nuisance parameters cannot add astrometric
+// information, and (decision a: one offset per band, in FisherM) with neighbours present they cost some. With no
+// neighbours (f_N = 0 in every band) there is no offset to marginalise and the split changes nothing.
 bool checkAstroBandSplitNoGain()
 {
     bool ok = true;
@@ -2286,13 +2296,101 @@ bool checkAstroBandSplitNoGain()
                     ok = false;
                 }
             }
+        // One offset per band, not one shared by the bands: three offsets cost Rubin's sigma(thetaE) strictly.
+        const double g1 = a.co->Erb[SRUBIN][0], g3 = b.co->Erb[SRUBIN][0];
+        if (not (g3 > g1 * (1.0 + 1e-8))) {
+            std::cerr << "FAIL [astro-band-split] Rubin sigma(thetaE) with three offsets " << g3
+                      << " does not exceed the one with one offset " << g1 << " by 1e-8 relative: the bands share an offset\n";
+            ok = false;
+        }
+        ok = astroStandardChecks(*b.co, "astro-band-split") and ok;
         std::cout << "# astro band split, identical fractions" << (model == SourceModel::ESPL ? " (espl)" : " (pspl)")
-                  << ": sigma(thetaE) Rubin " << a.co->Erb[SRUBIN][0] << " (r) -> " << b.co->Erb[SRUBIN][0] << " (r,i,z), joint "
+                  << ": sigma(thetaE) Rubin " << g1 << " (r) -> " << g3 << " (r,i,z), joint "
                   << a.co->Erb[SJOINT][0] << " -> " << b.co->Erb[SJOINT][0]
                   << ";  sigma(piE) Rubin " << a.co->Erb[SRUBIN][3] << " -> " << b.co->Erb[SRUBIN][3] << "\n";
+
+        // No neighbours at all: f_S = 1 in r, i and z (dark lens): h = 0, no offset, the split changes only the order of sums.
+        EventRun c(kEvents[2]), d(kEvents[2]);
+        for (EventRun* e : {&c, &d}) {
+            for (const int band : {2, 3, 4}) { e->s->blend[band] = 1.0;  e->s->fLensF[band] = 0.0; }
+            e->s->fb[0] = 1.0;
+        }
+        relabelRubin(d, {2, 3, 4});
+        c.run();  d.run();
+        double worst = 0.0;
+        for (const int q : {SRUBIN, SJOINT})
+            for (int k = 0; k < Ny; ++k)
+                worst = std::max(worst, std::fabs(d.co->Erb[q][k] - c.co->Erb[q][k]) / c.co->Erb[q][k]);
+        if (not (worst < 1e-10)) {
+            std::cerr << "FAIL [astro-band-split] without neighbours the split moves sigma by " << worst << " relative\n";
+            ok = false;
+        }
+        std::cout << "#   f_N = 0 in every band: split vs all-r, worst relative difference " << worst << "\n";
     }
     vbmSetSourceModel(keep);
-    std::cout << "#   no sigma smaller with three offsets" << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    std::cout << "#   no sigma smaller with three offsets, Rubin sigma(thetaE) strictly larger" << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
+// Every Rubin visit relabelled i, with i's fractions equal to r's: one band, the same sums in the same order, every
+// astrometric output bit for bit the all-r event's.
+bool checkAstroSingleOtherBand()
+{
+    EventRun a(kEvents[2]), b(kEvents[2]);
+    copyRBandToIZ(*b.s);
+    relabelRubin(b, {3});
+    a.run();  b.run();
+    const bool ok = sameAstrometry(*b.co, *a.co, "astro-single-i");
+    std::cout << "# every Rubin visit in i (fractions as r's): astrometry bit for bit the all-r event's" << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
+// The neighbours' offset is an unknown of the fit and its true value cancels: each visit's centroid minus the
+// neighbours' share (with that visit's band's f_S and f_N) is independent of blendOff. A share built with another
+// band's (or the telescope's) fractions would leave blendOff in the derivatives. Also with a luminous lens whose
+// share differs by band (the lens's light enters f_N).
+bool checkAstroShareCancels()
+{
+    bool ok = true;
+    const SourceModel keep = vbmSourceModel();
+    for (const SourceModel model : {SourceModel::PSPL, SourceModel::ESPL}) {
+        vbmSetSourceModel(model);
+        for (const bool luminous : {false, true}) {
+            const char* name = luminous ? "astro-share-cancels (luminous)" : "astro-share-cancels";
+            EventRun a(kEvents[2]), b(kEvents[2]);
+            for (EventRun* e : {&a, &b}) {
+                makeChromatic(*e->s, *e->l, e->ndw);
+                if (luminous) {
+                    e->s->fLensF[2] = 0.10;  e->s->fLensF[3] = 0.05;  e->s->fLensF[4] = 0.03;
+                    e->s->fLens[0] = e->s->fLensF[2];
+                }
+            }
+            b.s->blendOff[0] = {3.0, -2.0};                //Rubin's neighbours 3, -2 mas from the source
+            a.run();  b.run();
+            double worst = 0.0;
+            const auto cmp = [&](double x, double y, double scale) { worst = std::max(worst, std::fabs(x - y) / scale); };
+            for (int q = 0; q < NSURV; ++q) {
+                for (int k = 0; k < Ny; ++k) cmp(a.co->Erb[q][k], b.co->Erb[q][k], std::fabs(a.co->Erb[q][k]) + 1e-300);
+                for (int v = 0; v < NAVAR; ++v) {
+                    for (int k = 0; k < Ny; ++k)
+                        cmp(a.co->ErbV[v][q][k], b.co->ErbV[v][q][k], std::fabs(a.co->ErbV[v][q][k]) + 1e-300);
+                    for (int j = 0; j < Ny; ++j)
+                        for (int m = 0; m < Ny; ++m)
+                            cmp(a.co->FBV[v][q][j * Ny + m], b.co->FBV[v][q][j * Ny + m],
+                                std::sqrt(std::fabs(a.co->FBV[v][q][j * Ny + j] * a.co->FBV[v][q][m * Ny + m])) + 1e-300);
+                }
+            }
+            if (not (worst < 1e-9)) {
+                std::cerr << "FAIL [" << name << "] blendOff moves an astrometric output by " << worst << " relative\n";
+                ok = false;
+            }
+            ok = astroStandardChecks(*b.co, name) and ok;
+            std::cout << "# " << name << (model == SourceModel::ESPL ? " (espl)" : " (pspl)")
+                      << ": blendOff (3, -2) mas vs 0, worst relative difference of any astrometric output " << worst << "\n";
+        }
+    }
+    vbmSetSourceModel(keep);
+    std::cout << "#   the neighbours' share cancels" << (ok ? "  -> ok\n" : "  -> FAIL\n");
     return ok;
 }
 
@@ -2307,6 +2405,7 @@ bool checkAstroChromaticDilution()
     makeChromatic(*b.s, *b.l, b.ndw);
     copyRBandToIZ(*b.s);                       // the labels stay r, i, z; i and z are diluted like r
     a.run();  b.run();
+    ok = astroStandardChecks(*a.co, "astro-chromatic") and ok;
     const double sTrue = a.co->Erb[SRUBIN][0], sSame = b.co->Erb[SRUBIN][0];
     if (not (sTrue < sSame)) {
         std::cerr << "FAIL [astro-chromatic] sigma(thetaE) Rubin with the true fractions " << sTrue
@@ -2604,6 +2703,8 @@ int main(int argc, char** argv)
     if (!checkAstroAllRUnchanged())      ++failures;
     if (!checkAstroBandSplitNoGain())    ++failures;
     if (!checkAstroChromaticDilution())  ++failures;
+    if (!checkAstroSingleOtherBand())    ++failures;
+    if (!checkAstroShareCancels())       ++failures;
     if (!checkAstroSparseBandDropped())  ++failures;
     if (!checkAstroRubinAllSparse())     ++failures;
     if (!checkAstroClosedForm())         ++failures;

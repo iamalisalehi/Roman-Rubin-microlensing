@@ -487,7 +487,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     // Its derivative is dcentroid/dblendOff = fn / (fs A + 1 - fs), largest at baseline and falling as the
     // source brightens; it is marginalised below, per telescope or Rubin band and per coordinate (it appears
     // in no other telescope's, band's or coordinate's data), when AST_BLEND_OFFSET_FREE.
-    constexpr int D = Ny + 1;
+    constexpr int D = fisher_detail::kAstD;
     using fisher_detail::AstSums;
     std::array<AstSums, kRubinBands> rubinBand;
     std::map<long, AstSums> romanDays;

@@ -75,8 +75,9 @@ struct RunConfig {
     bool   blendThinning = false;
 
     // Rubin's visits in the Fisher matrices. false (default): every recorded Rubin visit, each in its own band's model
-    // (blend fraction, baseline) and errors; a band with fewer than kMinTeleEpochs visits is left out of the photometric matrices. true (--rubin-fisher-ref-only): only the visits taken
-    // in a reference band (option B of the per-band plan: consistent, pessimistic). Visibility, detection and the draws
+    // (blend fraction, baseline) and errors; a band with fewer than kMinTeleEpochs visits is left out of the photometric
+    // matrices. true (--rubin-fisher-ref-only): only the visits taken in a reference band (option B of the per-band plan:
+    // consistent, pessimistic). Visibility, detection and the draws
     // are unchanged, so the two runs hold the same events in the same order; a sightline may run longer with it, since
     // it stops after a set number of characterised events (nerrTarget) and fewer events are characterised.
     bool   rubinFisherRefOnly = false;

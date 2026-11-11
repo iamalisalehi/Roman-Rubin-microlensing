@@ -84,7 +84,12 @@ const char* eventTableHeader()
         // main-sequence star of the lens's mass is Mab(M) + 5 log10(D_L / 10 pc) + Alens.
         "Alens_u Alens_g Alens_r Alens_i Alens_z Alens_y Alens_F146 "
         // u0side: +1 or -1, the side of the lens the source passes (u0 is the positive distance of closest approach).
-        "u0side";
+        "u0side "
+        // Rubin's i and z, fitted each as a band of its own (the dark-lens test, comment C7): the baseline magnitude
+        // (mbs_<band>, as mbs0 is r's), the Fisher error of the band's f_S from the joint (_J) and the Rubin-only
+        // (_L) matrix (-1 = band not in the fit, or the partition not characterised), and nbandL, the number of
+        // Rubin bands in the fit (bands with fewer than 3 visits are left out; 0 = no Rubin photometric matrix).
+        "mbs_i mbs_z sigfb_i_J sigfb_i_L sigfb_z_J sigfb_z_L nbandL";
 }
 
 int openOutputs(const RunConfig& cfg, RunOutputs& o) {
@@ -365,7 +370,9 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "   # every-star: each source with a visible peak is kept; per-object: kept with probability = its "
                 "blend fraction (pKeep column). Detection aggregates (MapLMC, EfLMC, LpLMC, summary) count what is kept\n"
              << "# rubin_fisher_visits " << (cfg.rubinFisherRefOnly ? "reference band only" : "all bands")
-             << "   # Rubin visits in the Fisher matrices; each fitted with the reference band's model (RUBIN_REF_BANDS)\n"
+             << "   # Rubin visits in the Fisher matrices; reference band only: each fitted with the reference band's "
+                "model (RUBIN_REF_BANDS); all bands: each fitted in its own band (blend fraction and baseline per band; "
+                "bands with fewer than 3 visits left out)\n"
              << "# dchi_det            " << cfg.dchiDet
              << "   # fixed detection bar; every yield is conditioned on it\n";
         if (!cfg.dryRun) {   // a dry run must not overwrite the last run's provenance

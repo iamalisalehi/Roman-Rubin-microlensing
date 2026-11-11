@@ -158,6 +158,11 @@ void recordEvent(SimContext& ctx, SightlineState& st, const EfficiencyBins& bins
     for (int i = 0; i < M; ++i)
         filg_in << " " << l.Alens[i];
     filg_in << " " << l.u0side;    // the side of the lens the source passes, +1 or -1
+    // Rubin's i and z: baseline magnitude, the f_S error (joint, Rubin-only; -1 = not measured), and how many
+    // Rubin bands are in the fit
+    filg_in << " " << s.magb[3] << " " << s.magb[4] << " "
+            << co.Era[SJOINT][14] << " " << co.Era[SRUBIN][14] << " " << co.Era[SJOINT][16] << " " << co.Era[SRUBIN][16]
+            << " " << nRubinBandsFitted(co);
     filg_in << "\n";
     filg_in.close();
 

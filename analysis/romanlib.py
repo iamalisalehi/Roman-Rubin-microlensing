@@ -1022,7 +1022,15 @@ def dark_lens_probability(df, partition, ms, n_samples=2000, seed=12345, ref_ban
     main-sequence star of mass M at D_L has flux 10^(-0.4 (Mab(M) + 5 log10(D_L 100) + Alens)), Mab
     linear in ln M, the top row above the table, and a sample below the table's lowest mass is NOT
     excluded (a brown dwarf can hide anywhere). A sample is excluded when that flux exceeds the blend
-    flux in ANY tested band. D_L is held at its true value (an approximation: the forecast has no
+    flux in ANY tested band.
+
+    For "joint" and "rubin" Rubin's i and z are tested as well, each as a band of its own (its own f_S
+    fb = blend_<band>, sigma sigfb_<band>_J / _L, baseline mbs_<band>, the lens's Alens_ / Mab_ in that
+    band), whenever the table has the sigma column and it is > 0 and the band's other inputs are finite
+    (otherwise the band is simply not tested). Their f_S draws come from generators of their own
+    (seeded [seed, 3] for i, [seed, 4] for z), so the mass draws and the r / F146 draws are the same
+    whatever i and z do, and adding a band can only raise P(dark). A table without those columns gives
+    today's numbers exactly. D_L is held at its true value (an approximation: the forecast has no
     distance error, and the mass error is the dominant one); the mass centre is the true Ml.
 
     The relation is the event's own Galactic component's (column `struc`, 0 thin disc, 1 bulge, 2 thick
@@ -1034,6 +1042,9 @@ def dark_lens_probability(df, partition, ms, n_samples=2000, seed=12345, ref_ban
     """
     spec = {"joint": ("relMl_J", "sigfb0_J", "sigfb1_J"), "rubin": ("relMl_L", "sigfb0_L", None),
             "roman": ("relMl_R", None, "sigfb1_R")}
+    # Rubin's i and z: (band, sigma column) per partition; "roman" tests neither
+    izcols = {"joint": (("i", "sigfb_i_J"), ("z", "sigfb_z_J")), "rubin": (("i", "sigfb_i_L"), ("z", "sigfb_z_L")),
+              "roman": ()}
     if partition not in spec:
         raise ValueError(f"partition {partition!r}; expected one of {sorted(spec)}")
     relcol, s0col, s1col = spec[partition]
@@ -1044,50 +1055,67 @@ def dark_lens_probability(df, partition, ms, n_samples=2000, seed=12345, ref_ban
     lnM0 = np.log(col("Ml"))
     mu = 5.0 * np.log10(col("Dl") * 100.0)
     struc = col("struc")
-    # per tested band: (fb, sigma, baseline mag, [(table column, lens-extinction column)])
+    # per tested band: (fb, sigma, baseline mag, [(table column, lens-extinction column)], own generator or None)
     bands = []
     if s0col:
         bands.append((col("fb0"), col(s0col), col("mbs0"),
-                      [(f"Mab_{FILTERS[b]}", f"Alens_{FILTERS[b]}") for b in rubin]))
+                      [(f"Mab_{FILTERS[b]}", f"Alens_{FILTERS[b]}") for b in rubin], None))
     if s1col:
-        bands.append((col("fb1"), col(s1col), col("mbs1"), [("Mab_F146", "Alens_F146")]))
+        bands.append((col("fb1"), col(s1col), col("mbs1"), [("Mab_F146", "Alens_F146")], None))
     active = [b[1] > 0 for b in bands]
-    ok = (rel > 0) & np.isfinite(rel) & np.isfinite(lnM0) & np.isfinite(mu) & np.any(active, axis=0)
-    for (fb, sg, mbs, cols), act in zip(bands, active):
+    ok = (rel > 0) & np.isfinite(rel) & np.isfinite(lnM0) & np.isfinite(mu)
+    for (fb, sg, mbs, cols, _), act in zip(bands, active):
         good = np.isfinite(fb) & np.isfinite(sg) & np.isfinite(mbs)
         for _, ac in cols:
             good &= np.isfinite(col(ac))
         ok &= ~act | good
+    n_old = len(active)
+    # i and z: a row whose inputs are not finite leaves that band out (it never turns a verdict into NaN)
+    for b, scol in izcols[partition]:
+        if scol not in df.columns:
+            continue
+        fb, sg, mbs = col(f"blend_{b}"), col(scol), col(f"mbs_{b}")
+        act = (sg > 0) & np.isfinite(fb) & np.isfinite(mbs) & np.isfinite(col(f"Alens_{b}"))
+        bands.append((fb, sg, mbs, [(f"Mab_{b}", f"Alens_{b}")], np.random.default_rng([seed, 3 if b == "i" else 4])))
+        active.append(act)
     ok &= np.isin(struc, (0, 1, 2, 3))
     rel_of = {c: _ms_relation(ms, c) for c in (0, 1, 2, 3) if (ms["comp"] == -1).all() or (ms["comp"] == c).any()}
     ok &= np.isin(struc, list(rel_of))
     lnm_of = {c: np.log(g["mass"].to_numpy(float)) for c, g in rel_of.items()}
     out = np.full(n, np.nan)
-    rng = np.random.default_rng(seed)
-    idx = np.flatnonzero(ok)
+    # The rows today's function would test (a band of r / F146 active) keep today's mass and f_S draws, row for
+    # row; the rows only i or z can test (r and F146 unfitted) are a second group with a generator of their own.
+    ok_old = ok & np.any(active[:n_old], axis=0) if n_old else np.zeros(n, bool)
+    ok_new = ok & np.any(active, axis=0) if active else np.zeros(n, bool)
+    groups = [(np.flatnonzero(ok_old), np.random.default_rng(seed)),
+              (np.flatnonzero(ok_new & ~ok_old), np.random.default_rng([seed, 5]))]
     chunk = max(1, 4_000_000 // n_samples)
-    for lo in range(0, idx.size, chunk):
-        i = idx[lo:lo + chunk]
-        lnM = lnM0[i, None] + rel[i, None] * rng.standard_normal((i.size, n_samples))
-        excl = np.zeros(lnM.shape, bool)
-        for (fb, sg, mbs, cols), act in zip(bands, active):
-            t = act[i]
-            if not t.any():
-                continue
-            fs = _truncnorm01(fb[i, None], np.where(t, sg[i], 0.0)[:, None], rng.random(lnM.shape))
-            blend = 10.0 ** (-0.4 * mbs[i, None]) * (1.0 - fs)
-            lens = 0.0
-            low = np.zeros(lnM.shape, bool)
-            for mc, ac in cols:
-                M = np.empty(lnM.shape)
-                for c, g in rel_of.items():       # each event's own component relation
-                    r = np.flatnonzero(struc[i] == c)
-                    if r.size:
-                        M[r] = np.interp(lnM[r], lnm_of[c], g[mc].to_numpy(float))
-                        low[r] = lnM[r] < lnm_of[c][0]
-                lens = lens + 10.0 ** (-0.4 * (M + mu[i, None] + col(ac)[i, None]))
-            excl |= t[:, None] & ~low & (lens > blend)
-        out[i] = excl.mean(axis=1)
+    for idx, rng in groups:
+        for lo in range(0, idx.size, chunk):
+            i = idx[lo:lo + chunk]
+            lnM = lnM0[i, None] + rel[i, None] * rng.standard_normal((i.size, n_samples))
+            excl = np.zeros(lnM.shape, bool)
+            for (fb, sg, mbs, cols, rg), act in zip(bands, active):
+                t = act[i]
+                if rg is not None:             # i / z: a stream of their own, drawn every chunk whatever the rows do
+                    u = rg.random(lnM.shape)
+                if not t.any():
+                    continue
+                fs = _truncnorm01(fb[i, None], np.where(t, sg[i], 0.0)[:, None],
+                                  rng.random(lnM.shape) if rg is None else u)
+                blend = 10.0 ** (-0.4 * mbs[i, None]) * (1.0 - fs)
+                lens = 0.0
+                low = np.zeros(lnM.shape, bool)
+                for mc, ac in cols:
+                    M = np.empty(lnM.shape)
+                    for c, g in rel_of.items():       # each event's own component relation
+                        r = np.flatnonzero(struc[i] == c)
+                        if r.size:
+                            M[r] = np.interp(lnM[r], lnm_of[c], g[mc].to_numpy(float))
+                            low[r] = lnM[r] < lnm_of[c][0]
+                    lens = lens + 10.0 ** (-0.4 * (M + mu[i, None] + col(ac)[i, None]))
+                excl |= t[:, None] & ~low & (lens > blend)
+            out[i] = excl.mean(axis=1)
     return pd.Series(out, index=df.index, name=f"pdark_{partition}")
 
 

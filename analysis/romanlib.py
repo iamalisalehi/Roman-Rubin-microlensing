@@ -122,18 +122,79 @@ def sightline_groups(codes):
 
 
 def resolve_table(path):
-    """`path` if it exists, else its `.gz` twin (or the plain twin of a `.gz` name), else `path`."""
+    """`path` if it exists, else its twin: plain, then `.colxz`, then `.gz` (whichever exists first).
+
+    The twins are looked up under the base name, so `t.dat`, `t.dat.colxz` and `t.dat.gz` each find the others.
+    """
     path = os.fspath(path)
     if os.path.exists(path):
         return path
-    alt = path[:-3] if path.endswith(".gz") else path + ".gz"
-    return alt if os.path.exists(alt) else path
+    base = path
+    for suffix in (".gz", ".colxz"):
+        if base.endswith(suffix):
+            base = base[:-len(suffix)]
+    for cand in (base, base + ".colxz", base + ".gz"):
+        if os.path.exists(cand):
+            return cand
+    return path
 
 
 def open_text(path):
-    """Open a text table for reading, gunzipping a `*.gz` name."""
+    """Open a text table for reading, gunzipping a `*.gz` name and decoding a `*.colxz` to row-major text.
+
+    A `.colxz` is decoded whole into memory here; the event reader never calls this for one (it streams the
+    blocks), so this is for the small callers that read a header or a few lines.
+    """
     path = os.fspath(path)
+    if path.endswith(".colxz"):
+        import io
+        import coltable
+        buf = io.BytesIO()
+        coltable.decode(path, buf)
+        return io.TextIOWrapper(io.BytesIO(buf.getvalue()))
     return gzip.open(path, "rt") if path.endswith(".gz") else open(path)
+
+
+def _colxz_header(path):
+    """The first `#` header line of a `.colxz` table (str, with its newline), or "" if it has none."""
+    import coltable
+    for blk in coltable.iter_blocks(path):
+        return (blk.header_lines[0].decode() + "\n") if blk.header_lines else ""
+    return ""
+
+
+def _colxz_column(line, nrows):
+    """One column line (space-joined tokens) -> int64 if every token is an integer, else float64.
+
+    pd.read_csv's inference for numeric tables; a column that is integer in one block and float in
+    another is promoted to float64 by the concatenation, as it is for the plain table.
+    """
+    if not nrows:
+        return np.empty(0, np.int64)
+    if line.translate(None, b"0123456789+- ") == b"":
+        return np.array(line.split(), dtype=np.int64)
+    return np.array(line.split(), dtype=np.float64)
+
+
+def _colxz_chunks(path, cols, usecols):
+    """Yield one DataFrame per block of a `.colxz` table, holding only `usecols` (file order).
+
+    Only the requested column lines of a block are tokenised, so a few-column read costs a few
+    columns' worth of memory; the other lines are skipped as bytes. A row-block (fallback) is parsed
+    by pandas as the plain table would be.
+    """
+    import coltable
+    want = [c for c in cols if usecols is None or c in set(usecols)]
+    idx = [cols.index(c) for c in want]
+    for blk in coltable.iter_blocks(path):
+        if blk.columns is not None:
+            if len(blk.columns) != len(cols):
+                raise ValueError(f"{path}: block has {len(blk.columns)} columns, header names {len(cols)}")
+            yield pd.DataFrame({c: _colxz_column(blk.columns[i], blk.nrows) for c, i in zip(want, idx)},
+                               columns=want)
+        else:
+            yield pd.read_csv(io.BytesIO(blk.raw_rows), sep=r"\s+", comment="#", header=None,
+                              names=cols, usecols=want)
 
 
 def load_events(path, keep=None, chunksize=None, usecols=None, narrow=False,
@@ -160,8 +221,12 @@ def load_events(path, keep=None, chunksize=None, usecols=None, narrow=False,
         the sightline lookup, and float64(float32(-0.319)) differs from the map file's -0.319.
     """
     path = resolve_table(path)
-    with open_text(path) as fh:
-        header = fh.readline()
+    colxz = path.endswith(".colxz")
+    if colxz:
+        header = _colxz_header(path)
+    else:
+        with open_text(path) as fh:
+            header = fh.readline()
     if not header.startswith("#"):
         raise ValueError(
             f"{path}: no '#' header line. Files from older versions of the simulator have no header and a "
@@ -175,7 +240,19 @@ def load_events(path, keep=None, chunksize=None, usecols=None, narrow=False,
         if missing:
             raise ValueError(f"{path}: no such column(s) {missing}")
         reader_kw["usecols"] = list(usecols)
-    if keep is None and chunksize is None and not narrow:
+    if colxz:
+        # block by block (a block is <= 25,000 rows): keep/narrow act per block, which is what the chunked
+        # plain read does too; chunksize is irrelevant, the blocks are the chunks.
+        parts = []
+        for chunk in _colxz_chunks(path, cols, reader_kw.get("usecols")):
+            if keep is not None:
+                chunk = chunk[keep(chunk)]
+            if narrow:
+                chunk = _narrow(chunk, keep64)
+            parts.append(chunk)
+        want = [c for c in cols if "usecols" not in reader_kw or c in reader_kw["usecols"]]
+        df = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=want)
+    elif keep is None and chunksize is None and not narrow:
         df = pd.read_csv(path, **reader_kw)
     else:
         parts = []

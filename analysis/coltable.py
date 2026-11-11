@@ -33,10 +33,10 @@ import os
 import sys
 from typing import BinaryIO, Iterator, List, NamedTuple, Optional
 
-# Chosen by measurement (Task 2 codec scan, 244 MB bulge table): 50k rows beat 100k by 4.5 % in size;
-# with dict_size given explicitly presets 6 and 9 build the same encoder (identical bytes), and
-# EXTREME gained nothing (+0.03 %), so the plain preset is used. 16 MiB dict: -5.4 % vs 8 MiB at ~220 MB peak.
-ROWS_PER_BLOCK = 50_000
+# Chosen by measurement (codec scan, 244 MB bulge table): block 25k < 50k (+0.6 %) < 12.5k (+1.3 %)
+# < 100k (+5 %); with dict_size given explicitly presets 6 and 9 build the same encoder (identical
+# bytes) and EXTREME gained nothing, so the plain preset is used. 16 MiB dict: -5.4 % vs 8 MiB, ~220 MB peak.
+ROWS_PER_BLOCK = 25_000
 XZ_PRESET = 6
 XZ_DICT = 16 * 1024 * 1024
 

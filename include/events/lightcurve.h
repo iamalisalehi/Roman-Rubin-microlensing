@@ -75,6 +75,8 @@ struct ModelPoint {
     double A;             //magnification of the model (magnifOf(u) for a point source)
     double u;             //impact parameter [Einstein radii]
     double pos1c, pos2c;  //measured light centroid [mas]; only when the centroids are asked for
+    double lensDx, lensDy; //d(centroid)/d(f_L), the lens's own light fraction of the epoch's band [mas]: -thetaE u / (fs A + 1 - fs),
+                           //the neighbours' share not included (it lies along their offset's derivative); with the centroids
 };
 
 // The current event seen by observer `tele` (0 = Rubin on Earth, 1 = Roman) at the n epochs t[0..n-1]:

@@ -327,6 +327,10 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << ROMAN_AST_K << " mas, floor " << ROMAN_AST_FLOOR << " mas; Rubin kappa "
              << LSST_AST_KAPPA << " x visit FWHM_geom, floor " << LSST_AST_FLOOR << " mas; blend offset "
              << (AST_BLEND_OFFSET_FREE ? "fitted (marginalised; one per Rubin band, one for Roman)" : "known") << "\n"
+             << "# lens_light          "
+             << (cfg.lensLightFree ? (cfg.lensLightPriorBlend ? "free (prior sigma(f_L) = 1 - f_S)"
+                                                              : "free (prior sigma(f_L) = (1 - f_S)/sqrt(12))")
+                                   : "known") << "\n"
              << "# lightcurve_model    VBMicrolensing 5.6.1 " << sourceText.str()
              << ", geocentric parallax (JPL ephemeris), Roman at L2 table\n"
              // The prior on ln rho, the bar for rho to count as measured, and the theta* uncertainty of the photometric thetaE.

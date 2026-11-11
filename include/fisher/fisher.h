@@ -187,6 +187,13 @@ struct covarian {
     std::array<int, kRubinBands> nRubinBand{};
     double fbPriorSig = RUBIN_FB_PRIOR_SIG;
 
+    // The lens's own light fraction in each band is an unknown of the astrometric fit (one per Rubin band with astrometric
+    // visits and one for Roman's F146, the same number in x and y) when lensLightFree; else (the default, --lens-light known)
+    // it is held at its true value, so the lens's drift measures thetaE. Its Gaussian prior is lensLightPriorFrac x (1 - f_S)
+    // wide: 1/sqrt(12) (uniform on [0, 1 - f_S], --lens-light-prior uniform) or 1 (--lens-light-prior blend). main.cpp sets both.
+    bool   lensLightFree = false;
+    double lensLightPriorFrac = 0.28867513459481288;   //1/sqrt(12)
+
     // Multiplicative override on each photometric parameter's finite-difference step; 1.0 is the
     // production value. A runtime knob so the step-size sweep can run many values in one process.
     std::array<double, Nx> deltaScale;
@@ -343,8 +350,9 @@ long   rhoFallbackLostCount();
 namespace fisher_detail {
 
 // The weighted sums of one block of astrometric epochs, per sky coordinate: the four physical parameters' derivatives
-// (slots 0..Ny-1) and in slot Ny the derivative with respect to the neighbours' offset, h.
-constexpr int kAstD = Ny + 1;
+// (slots 0..Ny-1), in slot Ny the derivative with respect to the neighbours' offset, h, and in slot Ny + 1 the one
+// with respect to the lens's light fraction of the block's band, l (read only when the lens's light is a free parameter).
+constexpr int kAstD = Ny + 2;
 struct AstSums {
     double Sw = 0.0;
     std::array<std::array<double, kAstD>, 2>          Swd{};
@@ -366,6 +374,15 @@ struct AstSums {
 // ADDED to FL. Every band carries an offset of its own for the unresolved neighbours (taken out per coordinate), and the
 // bands share one reference position (taken out of what is left). Used when two or more bands have epochs.
 void rubinBandInformation(const std::array<AstSums, kRubinBands>& bands, std::array<double, Ny * Ny>& FL);
+
+// The same with the lens's light fraction of every band an unknown (slot Ny + 1 of the band's sums), ADDED to FL. flInfo[b] is
+// the precision 1/sigma^2 of band b's Gaussian prior on its fraction, or negative for a band with no such parameter
+// (no room for lens light). Per coordinate each band takes out its own offset (Schur complement of slot Ny, as
+// rubinBandInformation); the bands' fractions are kept, one each, beside the physical parameters, and the shared reference
+// position is taken out of the sum over bands. The two coordinates are added (the fractions are shared by x and y), the
+// priors added to the fractions' diagonal and the fractions marginalised. False if their block does not invert.
+bool rubinBandInformationLensFree(const std::array<AstSums, kRubinBands>& bands, const std::array<double, kRubinBands>& flInfo,
+                                  std::array<double, Ny * Ny>& FL);
 
 }  // namespace fisher_detail
 

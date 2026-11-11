@@ -2463,7 +2463,7 @@ bool checkAstroRubinAllSparse()
 
 // ---- the closed form for several Rubin bands, on synthetic sums ----
 using fisher_detail::AstSums;
-constexpr int kD = Ny + 1;
+constexpr int kD = fisher_detail::kAstD;
 
 // One band's sums: n epochs, derivative vectors a smooth deterministic function of the epoch, offset derivative h(m).
 template <class H> AstSums syntheticBand(int n, double shift, H hOf)
@@ -2634,6 +2634,488 @@ bool checkAstroClosedForm()
     return ok;
 }
 
+
+// ---------------------------------------------------------------------------------------------
+// The lens's own light fraction as a free parameter of the astrometric fit (--lens-light free).
+// ---------------------------------------------------------------------------------------------
+
+// One band's sums with the lens's-light derivative l (slot Ny + 1) as well: lOf(m) in x, a different one in y.
+template <class H, class L> AstSums syntheticBandL(int n, double shift, H hOf, L lOf)
+{
+    AstSums k;
+    for (int m = 0; m < n; ++m) {
+        std::array<double, kD> dx{}, dy{};
+        for (int j = 0; j < Ny; ++j) {
+            dx[j] = (1.0 + 0.3 * j) * std::sin(0.37 * m + 1.1 * j + shift) + 0.2 * std::cos(0.11 * m * (j + 1));
+            dy[j] = (1.0 - 0.1 * j) * std::cos(0.29 * m + 0.7 * j + 2.0 * shift) - 0.1 * std::sin(0.05 * m * (j + 2));
+        }
+        const double h = hOf(m), l = lOf(m);
+        dx[Ny] = h;  dy[Ny] = 0.8 * h;
+        dx[Ny + 1] = l;  dy[Ny + 1] = 0.6 * l + 0.05 * std::cos(0.2 * m + shift);
+        k.add(1.0 + 0.3 * std::cos(0.9 * m + shift), dx, dy);
+    }
+    return k;
+}
+
+// Dense solve A X = B (n x n, n x nrhs), Gauss elimination with partial pivoting; X returned in B.
+void solveDense(std::vector<double> A, std::vector<double>& B, int n, int nrhs)
+{
+    for (int p = 0; p < n; ++p) {
+        int piv = p;
+        for (int i = p + 1; i < n; ++i) if (std::fabs(A[i * n + p]) > std::fabs(A[piv * n + p])) piv = i;
+        for (int j = 0; j < n; ++j) std::swap(A[p * n + j], A[piv * n + j]);
+        for (int j = 0; j < nrhs; ++j) std::swap(B[p * nrhs + j], B[piv * nrhs + j]);
+        for (int i = p + 1; i < n; ++i) {
+            const double f = A[i * n + p] / A[p * n + p];
+            for (int j = p; j < n; ++j) A[i * n + j] -= f * A[p * n + j];
+            for (int j = 0; j < nrhs; ++j) B[i * nrhs + j] -= f * B[p * nrhs + j];
+        }
+    }
+    for (int p = n - 1; p >= 0; --p)
+        for (int j = 0; j < nrhs; ++j) {
+            double v = B[p * nrhs + j];
+            for (int m = p + 1; m < n; ++m) v -= A[p * n + m] * B[m * nrhs + j];
+            B[p * nrhs + j] = v / A[p * n + p];
+        }
+}
+
+// X (n x n symmetric, row-major) with the last `nn` unknowns marginalised: the Schur complement on the first n - nn.
+std::vector<double> schurOut(const std::vector<double>& X, int n, int nn)
+{
+    const int nk = n - nn;
+    std::vector<double> out(nk * nk);
+    for (int i = 0; i < nk; ++i) for (int j = 0; j < nk; ++j) out[i * nk + j] = X[i * n + j];
+    if (nn == 0) return out;
+    std::vector<double> Ann(nn * nn), Ank(nn * nk);
+    for (int i = 0; i < nn; ++i) {
+        for (int j = 0; j < nn; ++j) Ann[i * nn + j] = X[(nk + i) * n + nk + j];
+        for (int j = 0; j < nk; ++j) Ank[i * nk + j] = X[(nk + i) * n + j];
+    }
+    std::vector<double> sol = Ank;
+    solveDense(Ann, sol, nn, nk);
+    for (int i = 0; i < nk; ++i)
+        for (int j = 0; j < nk; ++j)
+            for (int p = 0; p < nn; ++p) out[i * nk + j] -= X[i * n + nk + p] * sol[p * nk + j];
+    return out;
+}
+
+// The brute force for the lens's-light fit: per coordinate the full information on (the four physical parameters, the
+// kept bands' fractions, one offset for every band whose offset derivative is not zero, ONE reference position), the
+// offsets and the reference marginalised by a direct solve; the two coordinates added, the priors added to the
+// fractions, and the fractions marginalised. flInfo < 0: the band keeps no fraction.
+std::array<double, Ny * Ny> bruteForceLensFree(const std::array<AstSums, kRubinBands>& bands,
+                                               const std::array<double, kRubinBands>& flInfo)
+{
+    std::array<int, kRubinBands> fSlot{};
+    int k = 0;
+    for (int b = 0; b < kRubinBands; ++b) fSlot[b] = (bands[b].Sw > 0.0 and flInfo[b] >= 0.0) ? k++ : -1;
+    const int nk = Ny + k;
+    std::vector<double> T(nk * nk, 0.0);
+    for (int cc = 0; cc < 2; ++cc) {
+        std::array<int, kRubinBands> oSlot{};
+        int no = 0;
+        for (int b = 0; b < kRubinBands; ++b)
+            oSlot[b] = (bands[b].Sw > 0.0 and bands[b].Swdd[cc][Ny * kD + Ny] > 0.0) ? no++ : -1;
+        const int n = nk + no + 1;
+        std::vector<double> X(n * n, 0.0);
+        for (int b = 0; b < kRubinBands; ++b) {
+            const AstSums& S = bands[b];
+            if (not (S.Sw > 0.0)) continue;
+            // the band's components: slots of the full vector (-1: not a parameter) and the sums' own slots
+            std::vector<int> full, mine;
+            for (int j = 0; j < Ny; ++j) { full.push_back(j);  mine.push_back(j); }
+            if (fSlot[b] >= 0) { full.push_back(Ny + fSlot[b]);  mine.push_back(Ny + 1); }
+            if (oSlot[b] >= 0) { full.push_back(nk + oSlot[b]);  mine.push_back(Ny); }
+            full.push_back(n - 1);  mine.push_back(-1);              // the reference: the constant 1
+            for (size_t a = 0; a < full.size(); ++a)
+                for (size_t c = 0; c < full.size(); ++c) {
+                    const int ma = mine[a], mc = mine[c];
+                    double v;
+                    if (ma >= 0 and mc >= 0) v = S.Swdd[cc][ma * kD + mc];
+                    else if (ma >= 0)        v = S.Swd[cc][ma];
+                    else if (mc >= 0)        v = S.Swd[cc][mc];
+                    else                     v = S.Sw;
+                    X[full[a] * n + full[c]] += v;
+                }
+        }
+        const std::vector<double> M = schurOut(X, n, no + 1);
+        for (int i = 0; i < nk * nk; ++i) T[i] += M[i];
+    }
+    for (int b = 0; b < kRubinBands; ++b) if (fSlot[b] >= 0) T[(Ny + fSlot[b]) * nk + Ny + fSlot[b]] += flInfo[b];
+    const std::vector<double> R = schurOut(T, nk, k);
+    std::array<double, Ny * Ny> out{};
+    for (int j = 0; j < Ny; ++j) for (int m = 0; m < Ny; ++m) out[j * Ny + m] = R[j * Ny + m];
+    return out;
+}
+
+// l -> l + alpha x_src on the sums of one band: src = Ny (the offset's derivative h) or -1 (the constant 1, the reference).
+void shiftLensColumn(AstSums& S, int src, double alpha)
+{
+    for (int cc = 0; cc < 2; ++cc) {
+        const auto old = S.Swdd[cc];
+        const auto oldd = S.Swd[cc];
+        const auto cross = [&](int a) { return src >= 0 ? old[a * kD + src] : oldd[a]; };   // sum w x_a x_src
+        const double oneSrc = src >= 0 ? oldd[src] : S.Sw;                                 // sum w x_src
+        const double srcSrc = src >= 0 ? old[src * kD + src] : S.Sw;
+        for (int a = 0; a < kD; ++a) if (a != Ny + 1) {
+            S.Swdd[cc][a * kD + Ny + 1] = old[a * kD + Ny + 1] + alpha * cross(a);
+            S.Swdd[cc][(Ny + 1) * kD + a] = S.Swdd[cc][a * kD + Ny + 1];
+        }
+        S.Swdd[cc][(Ny + 1) * kD + Ny + 1] = old[(Ny + 1) * kD + Ny + 1] + 2.0 * alpha * cross(Ny + 1) + alpha * alpha * srcSrc;
+        S.Swd[cc][Ny + 1] = oldd[Ny + 1] + alpha * oneSrc;
+    }
+}
+
+bool checkLensLightFreeFunction()
+{
+    bool ok = true;
+    const auto expectClose = [&](const char* what, const std::array<double, Ny * Ny>& got,
+                                 const std::array<double, Ny * Ny>& want) {
+        const double w = worstRelative(got, want);
+        const bool good = std::isfinite(w) and w < 1e-12;
+        std::cout << "#   lens-light function, " << what << ": worst relative difference " << w << (good ? "  -> ok\n" : "  -> FAIL\n");
+        if (not good) { std::cerr << "FAIL [lens-light-function] " << what << ": " << w << "\n"; ok = false; }
+    };
+    std::cout << "# the lens's-light reduction on synthetic sums\n";
+    const auto lOf = [](double s0) { return [s0](int m) { return 0.4 * std::sin(0.13 * m + s0) + 0.3; }; };
+    std::array<AstSums, kRubinBands> four{};
+    four[2] = syntheticBandL(40, 0.1, [](int m) { return 0.6 / (1.0 + 0.2 * m); }, lOf(0.3));
+    four[3] = syntheticBandL(25, 0.9, [](int m) { return 0.5 / (1.0 + 0.1 * m); }, lOf(1.1));
+    four[4] = syntheticBandL(31, 1.7, [](int m) { return 0.3 / (1.0 + 0.05 * m * m); }, lOf(2.5));
+    four[5] = syntheticBandL(12, 2.3, [](int m) { return 0.2 + 0.02 * m; }, lOf(0.8));
+    const std::array<double, kRubinBands> info = {-1.0, -1.0, 12.0, 50.0, 3.0, 25.0};
+    {
+        std::array<double, Ny * Ny> got{};
+        const bool good = fisher_detail::rubinBandInformationLensFree(four, info, got);
+        if (not good) { std::cerr << "FAIL [lens-light-function] four bands did not invert\n"; ok = false; }
+        expectClose("four bands against the brute-force solve", got, bruteForceLensFree(four, info));
+    }
+    {   // a band without a fraction parameter (negative precision) keeps its physical part, drops its l column
+        std::array<double, kRubinBands> info2 = info;  info2[3] = -1.0;
+        std::array<double, Ny * Ny> got{};
+        fisher_detail::rubinBandInformationLensFree(four, info2, got);
+        expectClose("a band with no fraction parameter", got, bruteForceLensFree(four, info2));
+    }
+    {   // one band: the same as the brute-force solve over (physical, fraction, offset, reference)
+        std::array<AstSums, kRubinBands> one{};
+        one[2] = four[2];
+        std::array<double, Ny * Ny> got{};
+        fisher_detail::rubinBandInformationLensFree(one, info, got);
+        expectClose("one band", got, bruteForceLensFree(one, info));
+    }
+    // Adding alpha h (the offset's derivative) to every l of a band changes nothing, whatever the other bands do: the band's own
+    // offset takes that direction out. Adding alpha 1 (the reference) does so for a single band, whose epochs the reference's
+    // column covers whole; with several bands the constant on one band's epochs is not the shared reference's direction.
+    {
+        std::array<AstSums, kRubinBands> moved = four;
+        shiftLensColumn(moved[3], Ny, 0.7);
+        shiftLensColumn(moved[5], Ny, -1.9);
+        std::array<double, Ny * Ny> a{}, b{};
+        fisher_detail::rubinBandInformationLensFree(four, info, a);
+        fisher_detail::rubinBandInformationLensFree(moved, info, b);
+        expectClose("l + alpha h in two bands leaves FL unchanged", b, a);
+    }
+    {
+        std::array<AstSums, kRubinBands> one{}, moved{};
+        one[3] = four[3];  moved[3] = four[3];
+        shiftLensColumn(moved[3], -1, -1.9);
+        std::array<double, Ny * Ny> a{}, b{};
+        fisher_detail::rubinBandInformationLensFree(one, info, a);
+        fisher_detail::rubinBandInformationLensFree(moved, info, b);
+        expectClose("l + alpha 1 in a single band leaves FL unchanged", b, a);
+    }
+    return ok;
+}
+
+// ---- the events ----
+// The cases of the lens's-light checks: the kEvents events (every Rubin visit in r, dark lens), then the chromatic event
+// (r, i, z at f_S 0.3 / 0.5 / 0.6) with a dark lens and with a luminous one (f_L 0.10 / 0.05 / 0.03 in r / i / z, 0.05 in F146).
+constexpr int kLensCases = int(sizeof(kEvents) / sizeof(kEvents[0])) + 2;
+
+const char* lensCaseName(int c)
+{
+    const int n = kLensCases - 2;
+    return c < n ? kEvents[c].name : (c == n ? "chromatic_dark" : "chromatic_luminous");
+}
+
+std::unique_ptr<EventRun> makeLensCase(int c, bool lensFree, double priorFrac)
+{
+    const int n = kLensCases - 2;
+    auto r = std::make_unique<EventRun>(c < n ? kEvents[c] : kEvents[2]);
+    if (c >= n) makeChromatic(*r->s, *r->l, r->ndw);
+    if (c == n + 1) {
+        r->s->fLensF[2] = 0.10;  r->s->fLensF[3] = 0.05;  r->s->fLensF[4] = 0.03;
+        r->s->fLens[0] = r->s->fLensF[2];
+        r->s->fLensF[6] = 0.05;  r->s->fLens[1] = r->s->fLensF[6];
+    }
+    r->co->lensLightFree = lensFree;
+    r->co->lensLightPriorFrac = priorFrac;
+    r->run();
+    return r;
+}
+
+constexpr double kUniformFrac = 0.28867513459481288;   // 1/sqrt(12)
+
+// The chromatic events' astrometric forecast of the 5dd83b6 build, hexadecimal floats: dark and luminous, point source
+// (espl 0) and disc (1). Generated once from that build (a temporary mode of this file); never regenerated to make a check pass.
+const AstroRef kAstroRefChrom[] = {
+    {0, "chrom_dark", 0, 1, 0x1.03e3de41f03b8p+2, {0x1.a5b9c5ee23f66p-7, 0x1.0088bdf6c4ef5p-15, 0x1.fc3ecbd9b9d87p-16, 0x1.3fa24f7f6a12fp-1}, {{1, 0x1.03e3de41f03b8p+2, {0x1.a5b9c5ee23f66p-7, 0x1.0088bdf6c4ef5p-15, 0x1.fc3ecbd9b9d87p-16, 0x1.3fa24f7f6a12fp-1}}, {1, 0x1.1ea99a669a882p+1, {0x1.3d916e4baa649p-3, 0x1.d7fa7c31ec548p-14, 0x1.dbd5016a0fb6ap-14, 0x1.24a1356d2a157p+2}}, {1, 0x1.1b4161c49dee6p+1, {0x1.4d2da1ad0b179p-2, 0x1.e3919a83528dap-14, 0x1.e51d88ea13889p-14, 0x1.49a069c182f53p+2}}}},
+    {0, "chrom_dark", 1, 1, 0x1.459677648262p+1, {0x1.b9b2b839278cap-2, 0x1.ee47205023d29p-14, 0x1.ec5b9f631e031p-14, 0x1.53eab663a7f79p+2}, {{1, 0x1.459677648262p+1, {0x1.b9b2b839278cap-2, 0x1.ee47205023d29p-14, 0x1.ec5b9f631e031p-14, 0x1.53eab663a7f79p+2}}, {1, 0x1.459677648262p+1, {0x1.b9b2b839278cap-2, 0x1.ee47205023d29p-14, 0x1.ec5b9f631e031p-14, 0x1.53eab663a7f79p+2}}, {1, 0x1.459677648262p+1, {0x1.b9b2b839278cap-2, 0x1.ee47205023d29p-14, 0x1.ec5b9f631e031p-14, 0x1.53eab663a7f79p+2}}}},
+    {0, "chrom_dark", 2, 1, 0x1.07f19b25add7fp+2, {0x1.a7c6b8f90b74bp-7, 0x1.0ad61752e8791p-15, 0x1.07d28c97a79f1p-15, 0x1.4298c985131ccp-1}, {{1, 0x1.07f19b25add7fp+2, {0x1.a7c6b8f90b74bp-7, 0x1.0ad61752e8791p-15, 0x1.07d28c97a79f1p-15, 0x1.4298c985131ccp-1}}, {1, 0x1.3d5c54a4df2afp+3, {0x1.00a3c94d685ccp-2, 0x1.c3d82d354e6e4p-10, 0x1.78fd3a912d317p-10, 0x1.7a758c5975e23p+3}}, {1, 0x1.755d2d987bc7ep+2, {0x1.503aeed79f6b8p-1, 0x1.25ba7467df75p-8, 0x1.107f7c13cb435p-8, 0x1.867dd35b98cddp+4}}}},
+    {0, "chrom_lum", 0, 1, 0x1.9f1ca21215c9p+3, {0x1.6bf158522d989p-7, 0x1.e28f8a247997ap-16, 0x1.c1d31ef306f98p-15, 0x1.51d7543005ab5p-2}, {{1, 0x1.9f1ca21215c9p+3, {0x1.6bf158522d989p-7, 0x1.e28f8a247997ap-16, 0x1.c1d31ef306f98p-15, 0x1.51d7543005ab5p-2}}, {1, 0x1.9cc37f1a5c349p+3, {0x1.39580627cbc6fp-4, 0x1.a925e168af2d1p-13, 0x1.80643d72f0a27p-13, 0x1.43ec726665c07p+0}}, {1, 0x1.0baa6222c3a6cp+4, {0x1.684a6a3f5ac92p-4, 0x1.c25fe82b16ae8p-13, 0x1.a30d02163506ep-13, 0x1.48beafa54456bp+0}}}},
+    {0, "chrom_lum", 1, 1, 0x1.15d7dad5578e2p+4, {0x1.6f7c71fd511cbp-4, 0x1.c663e7a9ba8c7p-13, 0x1.a87b248b6a7c9p-13, 0x1.499d6aaf25798p+0}, {{1, 0x1.15d7dad5578e2p+4, {0x1.6f7c71fd511cbp-4, 0x1.c663e7a9ba8c7p-13, 0x1.a87b248b6a7c9p-13, 0x1.499d6aaf25798p+0}}, {1, 0x1.15d7dad5578e2p+4, {0x1.6f7c71fd511cbp-4, 0x1.c663e7a9ba8c7p-13, 0x1.a87b248b6a7c9p-13, 0x1.499d6aaf25798p+0}}, {1, 0x1.15d7dad5578e2p+4, {0x1.6f7c71fd511cbp-4, 0x1.c663e7a9ba8c7p-13, 0x1.a87b248b6a7c9p-13, 0x1.499d6aaf25798p+0}}}},
+    {0, "chrom_lum", 2, 1, 0x1.dc774e6972ad5p+4, {0x1.738d55282a385p-7, 0x1.f72b03f58185p-16, 0x1.51060d6148b5bp-14, 0x1.fc370e2349e6p-2}, {{1, 0x1.dc774e6972ad5p+4, {0x1.738d55282a385p-7, 0x1.f72b03f58185p-16, 0x1.51060d6148b5bp-14, 0x1.fc370e2349e6p-2}}, {1, 0x1.896f937de8bccp+2, {0x1.ed937d88b34b5p-3, 0x1.5b070c7aa189p-10, 0x1.48aaeb4fda2c4p-10, 0x1.08ca22b789c41p+4}}, {1, 0x1.93bfdfcaf6268p+1, {0x1.3a7c733c03cedp-1, 0x1.f8fad008de82fp-9, 0x1.e742a87a581d5p-9, 0x1.f0b8685f50edep+4}}}},
+    {1, "chrom_dark", 0, 1, 0x1.03e3d976e4b2ep+2, {0x1.a5b9e761f5e2cp-7, 0x1.0088c0f85e8a7p-15, 0x1.fc3ec271dad86p-16, 0x1.3fa255dcdab6bp-1}, {{1, 0x1.03e3d976e4b2ep+2, {0x1.a5b9e761f5e2cp-7, 0x1.0088c0f85e8a7p-15, 0x1.fc3ec271dad86p-16, 0x1.3fa255dcdab6bp-1}}, {1, 0x1.1ea993cd20407p+1, {0x1.3d91873e76101p-3, 0x1.d7fa7d14c15e7p-14, 0x1.dbd50218d15d8p-14, 0x1.24a139fb27902p+2}}, {1, 0x1.1b41693b2f0ebp+1, {0x1.4d2db75e0362cp-2, 0x1.e3919c8f8fa3dp-14, 0x1.e51d8a5c1acp-14, 0x1.49a06d4eaf0cep+2}}}},
+    {1, "chrom_dark", 1, 1, 0x1.45967a16f8fbcp+1, {0x1.b9b2c6ae07484p-2, 0x1.ee472196373aap-14, 0x1.ec5ba126b1d31p-14, 0x1.53eab7a3c3f52p+2}, {{1, 0x1.45967a16f8fbcp+1, {0x1.b9b2c6ae07484p-2, 0x1.ee472196373aap-14, 0x1.ec5ba126b1d31p-14, 0x1.53eab7a3c3f52p+2}}, {1, 0x1.45967a16f8fbcp+1, {0x1.b9b2c6ae07484p-2, 0x1.ee472196373aap-14, 0x1.ec5ba126b1d31p-14, 0x1.53eab7a3c3f52p+2}}, {1, 0x1.45967a16f8fbcp+1, {0x1.b9b2c6ae07484p-2, 0x1.ee472196373aap-14, 0x1.ec5ba126b1d31p-14, 0x1.53eab7a3c3f52p+2}}}},
+    {1, "chrom_dark", 2, 1, 0x1.07f1968a2638cp+2, {0x1.a7c6dae48cf8cp-7, 0x1.0ad61aaf597b3p-15, 0x1.07d28758cd3cap-15, 0x1.4298d0063177fp-1}, {{1, 0x1.07f1968a2638cp+2, {0x1.a7c6dae48cf8cp-7, 0x1.0ad61aaf597b3p-15, 0x1.07d28758cd3cap-15, 0x1.4298d0063177fp-1}}, {1, 0x1.3d5c7518a5bcp+3, {0x1.00a3e9839adcdp-2, 0x1.c3d846bedb409p-10, 0x1.78fd37f41c876p-10, 0x1.7a75ad693a0c3p+3}}, {1, 0x1.755da20c03405p+2, {0x1.503b304a2b0f2p-1, 0x1.25ba8abe4ffb8p-8, 0x1.107f7acfd9b53p-8, 0x1.867e119aecf8p+4}}}},
+    {1, "chrom_lum", 0, 1, 0x1.9f1cb550abe5ep+3, {0x1.6bf176a0c1e57p-7, 0x1.e28f85c7ccc7ap-16, 0x1.c1d31d5b18b6bp-15, 0x1.51d755bdb38bap-2}, {{1, 0x1.9f1cb550abe5ep+3, {0x1.6bf176a0c1e57p-7, 0x1.e28f85c7ccc7ap-16, 0x1.c1d31d5b18b6bp-15, 0x1.51d755bdb38bap-2}}, {1, 0x1.9cc390720b9d7p+3, {0x1.39580dd993cdbp-4, 0x1.a925e45819ce1p-13, 0x1.806442e893878p-13, 0x1.43ec73632f86ap+0}}, {1, 0x1.0baa64f4f226p+4, {0x1.684a6c4b35092p-4, 0x1.c25fe8fec40fp-13, 0x1.a30d03be25d14p-13, 0x1.48beb01482c73p+0}}}},
+    {1, "chrom_lum", 1, 1, 0x1.15d7dbfc0a62cp+4, {0x1.6f7c72bf71819p-4, 0x1.c663e7bf5f546p-13, 0x1.a87b256808425p-13, 0x1.499d6aff4b5dap+0}, {{1, 0x1.15d7dbfc0a62cp+4, {0x1.6f7c72bf71819p-4, 0x1.c663e7bf5f546p-13, 0x1.a87b256808425p-13, 0x1.499d6aff4b5dap+0}}, {1, 0x1.15d7dbfc0a62cp+4, {0x1.6f7c72bf71819p-4, 0x1.c663e7bf5f546p-13, 0x1.a87b256808425p-13, 0x1.499d6aff4b5dap+0}}, {1, 0x1.15d7dbfc0a62cp+4, {0x1.6f7c72bf71819p-4, 0x1.c663e7bf5f546p-13, 0x1.a87b256808425p-13, 0x1.499d6aff4b5dap+0}}}},
+    {1, "chrom_lum", 2, 1, 0x1.dc7763796d189p+4, {0x1.738d744698055p-7, 0x1.f72afe96a8efep-16, 0x1.51060b57c1074p-14, 0x1.fc3710c019f55p-2}, {{1, 0x1.dc7763796d189p+4, {0x1.738d744698055p-7, 0x1.f72afe96a8efep-16, 0x1.51060b57c1074p-14, 0x1.fc3710c019f55p-2}}, {1, 0x1.896faf4abf66bp+2, {0x1.ed93bcd9863a4p-3, 0x1.5b070aa780bfap-10, 0x1.48aae82908cbep-10, 0x1.08ca49c1f67c2p+4}}, {1, 0x1.93c04ef2c07c4p+1, {0x1.3a7cab348be45p-1, 0x1.f8face549e2bep-9, 0x1.e742a5a42cddap-9, 0x1.f0b8cc4e9f1c9p+4}}}},
+};
+
+bool matchesRef(const covarian& c, const AstroRef& ref)
+{
+    const int q = ref.q;
+    bool same = c.okB[q] == ref.ok and sameDouble(c.condB[q], ref.cond);
+    for (int k = 0; k < Ny; ++k) same = same and sameDouble(c.Erb[q][k], ref.erb[k]);
+    for (int v = 0; v < NAVAR; ++v) {
+        same = same and c.okBV[v][q] == ref.v[v].ok and sameDouble(c.condBV[v][q], ref.v[v].cond);
+        for (int k = 0; k < Ny; ++k) same = same and sameDouble(c.ErbV[v][q][k], ref.v[v].erb[k]);
+    }
+    return same;
+}
+
+// In known mode (the default) every astrometric output is the 5dd83b6 one, bit for bit: the kEvents events against the
+// table of the Task 3 check and the chromatic events against theirs. A free-mode run before each known one checks that
+// nothing the free mode touches leaks into the next.
+bool checkLensLightKnownUnchanged()
+{
+    bool ok = true;
+    const SourceModel keep = vbmSourceModel();
+    int n = 0;
+    for (const SourceModel model : {SourceModel::PSPL, SourceModel::ESPL}) {
+        vbmSetSourceModel(model);
+        const int espl = model == SourceModel::ESPL ? 1 : 0;
+        for (int c = 0; c < kLensCases; ++c) {
+            makeLensCase(c, true, kUniformFrac);                       // a free-mode run first
+            const auto r = makeLensCase(c, false, kUniformFrac);
+            const bool chrom = c >= kLensCases - 2;
+            const char* refName = chrom ? (c == kLensCases - 2 ? "chrom_dark" : "chrom_lum") : kEvents[c].name;
+            const AstroRef* table = chrom ? kAstroRefChrom : kAstroRef;
+            const size_t tn = chrom ? sizeof(kAstroRefChrom) / sizeof(kAstroRefChrom[0]) : sizeof(kAstroRef) / sizeof(kAstroRef[0]);
+            for (size_t i = 0; i < tn; ++i) {
+                const AstroRef& ref = table[i];
+                if (ref.espl != espl or std::strcmp(ref.name, refName) != 0) continue;
+                ++n;
+                if (not matchesRef(*r->co, ref)) {
+                    std::cerr << "FAIL [lens-light-known] " << lensCaseName(c) << (espl ? " (espl)" : " (pspl)") << " partition "
+                              << ref.q << " is not bit-identical to the 5dd83b6 astrometric forecast\n";
+                    ok = false;
+                }
+            }
+        }
+    }
+    vbmSetSourceModel(keep);
+    if (n != 2 * NSURV * kLensCases) { std::cerr << "FAIL [lens-light-known] compared " << n << " rows\n"; ok = false; }
+    std::cout << "# --lens-light known: every astrometric output equals the 5dd83b6 one bit for bit: " << n << " rows, "
+              << (ok ? "ok\n" : "FAIL\n");
+    return ok;
+}
+
+// Every astrometric sigma of one run, in a list: Erb of each partition, then the three variants' ErbV; -1 where not ok.
+std::vector<double> astroSigmas(const covarian& c)
+{
+    std::vector<double> out;
+    for (int q = 0; q < NSURV; ++q) {
+        for (int k = 0; k < Ny; ++k) out.push_back(c.Erb[q][k]);
+        for (int v = 0; v < NAVAR; ++v) for (int k = 0; k < Ny; ++k) out.push_back(c.ErbV[v][q][k]);
+    }
+    return out;
+}
+
+// A free fraction is one more nuisance parameter: no sigma can fall below its known-mode value, for either prior.
+bool checkLensLightFreeNoGain()
+{
+    bool ok = true;
+    const SourceModel keep = vbmSourceModel();
+    for (const SourceModel model : {SourceModel::PSPL, SourceModel::ESPL}) {
+        vbmSetSourceModel(model);
+        for (int c = 0; c < kLensCases; ++c) {
+            const auto known = makeLensCase(c, false, kUniformFrac);
+            const std::vector<double> sk = astroSigmas(*known->co);
+            for (const double frac : {kUniformFrac, 1.0}) {
+                const auto fr = makeLensCase(c, true, frac);
+                const std::vector<double> sf = astroSigmas(*fr->co);
+                double worst = 1e300, thetaRatio = -1.0;
+                for (size_t i = 0; i < sk.size(); ++i) {
+                    if (sk[i] < 0.0) continue;                                    // not measured in known mode
+                    if (not (sf[i] >= 0.0)) {
+                        std::cerr << "FAIL [lens-light-nogain] " << lensCaseName(c) << ": a sigma measured in known mode is not in free mode\n";
+                        ok = false;  continue;
+                    }
+                    worst = std::min(worst, sf[i] / sk[i] - 1.0);
+                }
+                if (known->co->okB[SJOINT]) thetaRatio = fr->co->Erb[SJOINT][0] / known->co->Erb[SJOINT][0];
+                if (not (worst >= -1e-12)) {
+                    std::cerr << "FAIL [lens-light-nogain] " << lensCaseName(c) << (model == SourceModel::ESPL ? " (espl)" : " (pspl)")
+                              << ", prior frac " << frac << ": a free sigma is below the known one by " << -worst << " relative\n";
+                    ok = false;
+                }
+                // Not vacuous: where Rubin and Roman both watch the event, the free fraction costs thetaE a visible amount.
+                if (c >= kLensCases - 2 and not (thetaRatio > 1.05)) {
+                    std::cerr << "FAIL [lens-light-nogain] " << lensCaseName(c) << ": free mode left sigma(thetaE) at " << thetaRatio
+                              << " x known (expected > 1.05)\n";
+                    ok = false;
+                }
+                std::cout << "#   " << lensCaseName(c) << (model == SourceModel::ESPL ? " (espl)" : " (pspl)") << ", prior x" << frac
+                          << ": smallest free/known - 1 = " << worst << ", joint sigma(thetaE) free/known = " << thetaRatio << "\n";
+            }
+        }
+    }
+    vbmSetSourceModel(keep);
+    std::cout << "# free lens light never lowers an astrometric sigma" << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
+// The tighter the prior on the fraction, the smaller every sigma: uniform <= blend <= 100 x blend; a prior of ~0 width
+// is the known mode.
+bool checkLensLightPriorMonotone()
+{
+    bool ok = true;
+    const SourceModel keep = vbmSourceModel();
+    for (const SourceModel model : {SourceModel::PSPL, SourceModel::ESPL}) {
+        vbmSetSourceModel(model);
+        for (int c = 0; c < kLensCases; ++c) {
+            const auto known = makeLensCase(c, false, kUniformFrac);
+            const auto tiny  = makeLensCase(c, true, 1e-9);
+            const auto uni   = makeLensCase(c, true, kUniformFrac);
+            const auto blend = makeLensCase(c, true, 1.0);
+            const auto wide  = makeLensCase(c, true, 100.0);
+            const auto sk = astroSigmas(*known->co), st = astroSigmas(*tiny->co), su = astroSigmas(*uni->co),
+                       sb = astroSigmas(*blend->co), sw = astroSigmas(*wide->co);
+            double worstOrder = 1e300, worstTiny = 0.0;
+            for (size_t i = 0; i < sk.size(); ++i) {
+                if (sk[i] < 0.0) continue;
+                worstOrder = std::min(worstOrder, std::min(sb[i] / su[i] - 1.0, sw[i] / sb[i] - 1.0));
+                worstTiny = std::max(worstTiny, std::fabs(st[i] / sk[i] - 1.0));
+            }
+            if (not (worstOrder >= -1e-12)) {
+                std::cerr << "FAIL [lens-light-prior] " << lensCaseName(c) << (model == SourceModel::ESPL ? " (espl)" : " (pspl)")
+                          << ": a sigma is not monotone in the prior, by " << -worstOrder << " relative\n";
+                ok = false;
+            }
+            if (not (worstTiny < 1e-8)) {
+                std::cerr << "FAIL [lens-light-prior] " << lensCaseName(c) << (model == SourceModel::ESPL ? " (espl)" : " (pspl)")
+                          << ": a prior of 1e-9 differs from known mode by " << worstTiny << " relative\n";
+                ok = false;
+            }
+            std::cout << "#   " << lensCaseName(c) << (model == SourceModel::ESPL ? " (espl)" : " (pspl)")
+                      << ": smallest ordering margin " << worstOrder << ", prior 1e-9 vs known " << worstTiny << "\n";
+        }
+    }
+    vbmSetSourceModel(keep);
+    std::cout << "# the prior on the lens's light: uniform <= blend <= 100 x blend, and ~0 reproduces known mode"
+              << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
+// The analytic derivative of the centroid with respect to the lens's light fraction against a central difference in it:
+// what is differenced is the centroid minus the neighbours' share (their share, fn blendOff / den, also moves with f_L and
+// belongs to the offset's derivative). Rubin's three bands and Roman's F146, with an offset of the neighbours of (3, -2) mas.
+bool checkLensLightDerivative()
+{
+    bool ok = true;
+    const SourceModel keep = vbmSourceModel();
+    for (const SourceModel model : {SourceModel::PSPL, SourceModel::ESPL}) {
+        vbmSetSourceModel(model);
+        EventRun r(kEvents[2]);
+        makeChromatic(*r.s, *r.l, r.ndw);
+        source& s = *r.s;
+        s.fLensF[2] = 0.10;  s.fLensF[3] = 0.05;  s.fLensF[4] = 0.03;  s.fLens[0] = s.fLensF[2];
+        s.fLensF[6] = 0.05;  s.fLens[1] = s.fLensF[6];
+        s.blendOff[0] = {3.0, -2.0};  s.blendOff[1] = {3.0, -2.0};
+        for (int tele = 0; tele < 2; ++tele) {
+            std::vector<double> t;  std::vector<int> filt;
+            for (int i = 0; i < r.ndw; ++i) if (r.l->tele[i] == tele) { t.push_back(r.l->timn[i]);  filt.push_back(r.l->filt[i]); }
+            const int n = int(t.size());
+            const int* fp = tele == 0 ? filt.data() : nullptr;
+            // the bands tested: Rubin's r, i, z (the epochs with filt == b) and F146 (all of Roman's)
+            for (const int b : (tele == 0 ? std::vector<int>{2, 3, 4} : std::vector<int>{6})) {
+                std::vector<ModelPoint> ref(n), up(n), dn(n);
+                evaluateModel(s, *r.l, *r.as, tele, t.data(), n, true, ref.data(), fp);
+                const double d = 1e-3;
+                const auto setFL = [&](double v) { s.fLensF[b] = v;  if (b == 2) s.fLens[0] = v;  if (b == 6) s.fLens[1] = v; };
+                const double keepFL = s.fLensF[b];
+                setFL(keepFL + d);  evaluateModel(s, *r.l, *r.as, tele, t.data(), n, true, up.data(), fp);
+                setFL(keepFL - d);  evaluateModel(s, *r.l, *r.as, tele, t.data(), n, true, dn.data(), fp);
+                setFL(keepFL);
+                double worst = 0.0, scale = 0.0;
+                int used = 0;
+                for (int c = 0; c < 2; ++c) {
+                    std::vector<double> fd, an;
+                    for (int m = 0; m < n; ++m) {
+                        const int fb = fp ? fp[m] : 6;
+                        if (fb != b) continue;
+                        const double fs = fp ? s.blend[fb] : s.fb[1];
+                        const double den = fs * ref[m].A + 1.0 - fs;
+                        const auto share = [&](double fL) { return std::max(0.0, 1.0 - fs - fL) * s.blendOff[tele][c] / den; };
+                        const double pu = (c ? up[m].pos2c : up[m].pos1c) - share(keepFL + d);
+                        const double pd = (c ? dn[m].pos2c : dn[m].pos1c) - share(keepFL - d);
+                        fd.push_back((pu - pd) / (2.0 * d));
+                        an.push_back(c ? ref[m].lensDy : ref[m].lensDx);
+                    }
+                    used = int(an.size());
+                    for (double a : an) scale = std::max(scale, std::fabs(a));
+                    for (size_t m = 0; m < an.size(); ++m) worst = std::max(worst, std::fabs(fd[m] - an[m]));
+                }
+                const bool good = used > 0 and scale > 0.0 and worst <= 1e-6 * scale;
+                if (not good) {
+                    std::cerr << "FAIL [lens-light-derivative] " << (tele ? "Roman F146" : "Rubin band ") << (tele ? 0 : b)
+                              << ": analytic l differs from the finite difference by " << worst << " (scale " << scale << ", " << used << " epochs)\n";
+                    ok = false;
+                }
+                std::cout << "#   " << (model == SourceModel::ESPL ? "espl " : "pspl ") << (tele ? "F146" : "Rubin band ")
+                          << (tele ? 0 : b) << ": " << used << " epochs, largest |l| " << scale << " mas, worst |analytic - difference| "
+                          << worst << (good ? "  -> ok\n" : "  -> FAIL\n");
+            }
+        }
+    }
+    vbmSetSourceModel(keep);
+    std::cout << "# d(centroid)/d(f_L) against a central difference" << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
+// In free mode the joint matrix is still the Rubin one plus the Roman one in every variant (each telescope's fractions are
+// its own nuisance parameters), and the joint sigma is no worse than either.
+bool checkLensLightAdditivity()
+{
+    bool ok = true;
+    const SourceModel keep = vbmSourceModel();
+    for (const SourceModel model : {SourceModel::PSPL, SourceModel::ESPL}) {
+        vbmSetSourceModel(model);
+        for (const double frac : {kUniformFrac, 1.0}) {
+            const auto r = makeLensCase(kLensCases - 1, true, frac);
+            ok = astroStandardChecks(*r->co, "lens-light-additivity") and ok;
+            double worst = 0.0;
+            for (int v = 0; v < NAVAR; ++v)
+                for (int jm = 0; jm < Ny * Ny; ++jm) {
+                    const double j = r->co->FBV[v][SJOINT][jm];
+                    const double sum = r->co->FBV[v][SRUBIN][jm] + r->co->FBV[v][SROMAN][jm];
+                    worst = std::max(worst, std::fabs(j - sum) / (std::fabs(j) + std::fabs(sum) + 1e-300));
+                }
+            if (not (worst < 1e-12)) {
+                std::cerr << "FAIL [lens-light-additivity] FBV[J] != FBV[L] + FBV[R], worst relative " << worst << "\n";
+                ok = false;
+            }
+            std::cout << "#   " << (model == SourceModel::ESPL ? "espl" : "pspl") << ", prior x" << frac
+                      << ": FBV[J] vs FBV[L] + FBV[R] in all three variants, worst relative " << worst << "\n";
+        }
+    }
+    vbmSetSourceModel(keep);
+    std::cout << "# free lens light: J = L + R" << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -2708,6 +3190,13 @@ int main(int argc, char** argv)
     if (!checkAstroSparseBandDropped())  ++failures;
     if (!checkAstroRubinAllSparse())     ++failures;
     if (!checkAstroClosedForm())         ++failures;
+    std::cout << "\n# --- The lens's light fraction as a free parameter of the astrometric fit ---\n";
+    if (!checkLensLightKnownUnchanged()) ++failures;
+    if (!checkLensLightFreeFunction())   ++failures;
+    if (!checkLensLightDerivative())     ++failures;
+    if (!checkLensLightFreeNoGain())     ++failures;
+    if (!checkLensLightPriorMonotone())  ++failures;
+    if (!checkLensLightAdditivity())     ++failures;
 
     if (model == SourceModel::ESPL)
         std::cout << "# SOURCE MODEL espl: a uniform disc of radius rho = " << kRho << " Einstein radii\n";

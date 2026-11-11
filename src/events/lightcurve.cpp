@@ -41,8 +41,11 @@ std::vector<ModelEpoch>& epochScratch(int n, int which = 0)
 // filters. blendOff stays per telescope.
 // The offsets from the unlensed source are what the light-weighting acts on: def = (image centroid) -
 // (unlensed source), and -thetaE (ux, uy) = (lens) - (source).
+// dl1, dl2 are the derivatives of the centroid with respect to fL, -thetaE (ux, uy) / den: the neighbours' share
+// (fn = 1 - fs - fL moves with it too) lies along the derivative with respect to their offset and is left out, for the
+// astrometric fit takes that offset as a free parameter.
 void measuredCentroid(const source & s, const lens & l, int tele, double fs, double fL, const ModelEpoch & e,
-                      double& def1c, double& def2c, double& pos1c, double& pos2c)
+                      double& def1c, double& def2c, double& pos1c, double& pos2c, double& dl1, double& dl2)
 {
     const int    tt  = (tele == 1) ? 1 : 0;
     const double fn  = std::max(0.0, 1.0 - fs - fL);
@@ -51,6 +54,8 @@ void measuredCentroid(const source & s, const lens & l, int tele, double fs, dou
     def2c = e.imgy - e.srcy;
     pos1c = e.srcx + (fs * e.A * def1c - fL * l.tetE * e.ux + fn * s.blendOff[tt][0]) / den; //x-centroid[mas]
     pos2c = e.srcy + (fs * e.A * def2c - fL * l.tetE * e.uy + fn * s.blendOff[tt][1]) / den; //y-centroid[mas]
+    dl1 = -l.tetE * e.ux / den;
+    dl2 = -l.tetE * e.uy / den;
 }
 
 }  // namespace
@@ -65,13 +70,13 @@ void evaluateModel(const source & s, const lens & l, const astromet & as, int te
     std::vector<ModelEpoch>& e = epochScratch(n);
     vbmEvaluate(eventOf(s, l), atL2(as, tele), centroids, t, n, e.data());
     for (int i = 0; i < n; ++i) {
-        out[i] = ModelPoint{e[i].A, e[i].u, 0.0, 0.0};
+        out[i] = ModelPoint{e[i].A, e[i].u, 0.0, 0.0, 0.0, 0.0};
         if (centroids) {
             double d1, d2;
             const int tt = (tele == 1) ? 1 : 0;
             const double fs = filt ? s.blend[filt[i]]  : s.fb[tt];
             const double fL = filt ? s.fLensF[filt[i]] : s.fLens[tt];
-            measuredCentroid(s, l, tele, fs, fL, e[i], d1, d2, out[i].pos1c, out[i].pos2c);
+            measuredCentroid(s, l, tele, fs, fL, e[i], d1, d2, out[i].pos1c, out[i].pos2c, out[i].lensDx, out[i].lensDy);
         }
     }
 }
@@ -131,7 +136,8 @@ void evaluateTrack(const source & s, const lens & l, const astromet & as, int te
         if (positions) {
             // the centroid, in the astrometric call's own frame and with its own A, ux, uy
             const int tt = (tele == 1) ? 1 : 0;
-            measuredCentroid(s, l, tele, s.fb[tt], s.fLens[tt], ea[i], p.def1c, p.def2c, p.pos1c, p.pos2c);
+            double dl1, dl2;   //the derivatives with respect to fL are the astrometric fit's, not read here
+            measuredCentroid(s, l, tele, s.fb[tt], s.fLens[tt], ea[i], p.def1c, p.def2c, p.pos1c, p.pos2c, dl1, dl2);
             p.pos1b = ea[i].srcx;   //x-source trajectory+parallax[mas]
             p.pos2b = ea[i].srcy;
             p.lens1 = ea[i].lensx;  //x-lens trajectory && parallax[mas]

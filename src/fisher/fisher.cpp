@@ -4,6 +4,7 @@
 #include "events/vbm_model.h"
 #include "surveys/noise.h"
 #include <cstring>
+#include <limits>
 
 namespace {
 long gRhoFallback = 0, gRhoFallbackLost = 0;
@@ -100,6 +101,89 @@ void fisher_detail::rubinBandInformation(const std::array<AstSums, kRubinBands>&
         for (int j = 0; j < Ny; ++j)
             for (int m = 0; m < Ny; ++m) FL[j * Ny + m] += P[j * Ny + m] - (ref ? r[j] * r[m] / c : 0.0);
     }
+}
+
+// The same with the lens's light fraction of every band a parameter beside the four physical ones (slot Ny + 1 of the
+// band's sums; each band has sums of its own, so that slot is always that band's fraction). Per coordinate: the band's
+// offset is taken out of the band's (physical, fraction) block exactly as above, the blocks are embedded in the kept space
+// (physical, then one fraction per band that has one), added over the bands, and the shared reference position taken out
+// of the total. The coordinates are added (the fraction is the same number in x and y), the prior precision flInfo[b] put
+// on the fractions' diagonal, and the fractions marginalised (Cholesky of their block, which the prior makes positive
+// definite). The l column of a band without a fraction is dropped, its physical part kept.
+bool fisher_detail::rubinBandInformationLensFree(const std::array<AstSums, kRubinBands>& bands,
+                                                 const std::array<double, kRubinBands>& flInfo,
+                                                 std::array<double, Ny * Ny>& FL)
+{
+    constexpr int D = kAstD, SL = Ny + 1;                       //SL: the sums' slot of l
+    constexpr int KMAX = Ny + kRubinBands;
+    std::array<int, kRubinBands> slot{};                          //band's index in the kept space, -1: none
+    int nf = 0;
+    for (int b = 0; b < kRubinBands; ++b) slot[b] = (bands[b].Sw > 0.0 and flInfo[b] >= 0.0) ? Ny + nf++ : -1;
+    const int K = Ny + nf;
+    std::array<double, KMAX * KMAX> T{};
+    for (int cc = 0; cc < 2; ++cc) {
+        std::array<double, KMAX * KMAX> P{};
+        std::array<double, KMAX>        r{};
+        double c = 0.0, SwTot = 0.0;
+        for (int b = 0; b < kRubinBands; ++b) {
+            const AstSums& S = bands[b];
+            if (not (S.Sw > 0.0)) continue;
+            const double Swh = S.Swd[cc][Ny], Swhh = S.Swdd[cc][Ny * D + Ny];
+            SwTot += S.Sw;
+            const bool off = AST_BLEND_OFFSET_FREE and Swhh > 0.0;
+            int from[Ny + 1], to[Ny + 1];                         //the band's components: slot in the sums, in the kept space
+            for (int j = 0; j < Ny; ++j) { from[j] = j;  to[j] = j; }
+            from[Ny] = SL;  to[Ny] = slot[b];
+            for (int a = 0; a <= Ny; ++a) {
+                if (to[a] < 0) continue;
+                const double Swha = S.Swdd[cc][from[a] * D + Ny];
+                for (int m = 0; m <= Ny; ++m) {
+                    if (to[m] < 0) continue;
+                    P[to[a] * KMAX + to[m]] += S.Swdd[cc][from[a] * D + from[m]] - (off ? Swha * S.Swdd[cc][from[m] * D + Ny] / Swhh : 0.0);
+                }
+                r[to[a]] += S.Swd[cc][from[a]] - (off ? Swha * Swh / Swhh : 0.0);
+            }
+            c += S.Sw - (off ? Swh * Swh / Swhh : 0.0);
+        }
+        const bool ref = c > 1.0e-9 * SwTot;
+        for (int a = 0; a < K; ++a)
+            for (int m = 0; m < K; ++m) T[a * KMAX + m] += P[a * KMAX + m] - (ref ? r[a] * r[m] / c : 0.0);
+    }
+    for (int b = 0; b < kRubinBands; ++b) if (slot[b] >= 0) T[slot[b] * KMAX + slot[b]] += flInfo[b];
+
+    // Out with the fractions: Cholesky T_ff = Lc Lc^T, then X = T_ff^-1 T_fp, FL += T_pp - T_pf X.
+    std::array<double, KMAX * KMAX> Lc{};
+    for (int a = 0; a < nf; ++a)
+        for (int m = 0; m <= a; ++m) {
+            double v = T[(Ny + a) * KMAX + Ny + m];
+            for (int p = 0; p < m; ++p) v -= Lc[a * KMAX + p] * Lc[m * KMAX + p];
+            if (a == m) {
+                if (not (v > 0.0) or not std::isfinite(v)) return false;
+                Lc[a * KMAX + a] = std::sqrt(v);
+            } else {
+                Lc[a * KMAX + m] = v / Lc[m * KMAX + m];
+            }
+        }
+    std::array<double, KMAX * Ny> X{};                             //row f, column m of T_ff^-1 T_fp
+    for (int m = 0; m < Ny; ++m) {
+        for (int a = 0; a < nf; ++a) {                              //forward: Lc y = T_fp[:, m]
+            double v = T[(Ny + a) * KMAX + m];
+            for (int p = 0; p < a; ++p) v -= Lc[a * KMAX + p] * X[p * Ny + m];
+            X[a * Ny + m] = v / Lc[a * KMAX + a];
+        }
+        for (int a = nf - 1; a >= 0; --a) {                         //back: Lc^T x = y
+            double v = X[a * Ny + m];
+            for (int p = a + 1; p < nf; ++p) v -= Lc[p * KMAX + a] * X[p * Ny + m];
+            X[a * Ny + m] = v / Lc[a * KMAX + a];
+        }
+    }
+    for (int j = 0; j < Ny; ++j)
+        for (int m = 0; m < Ny; ++m) {
+            double v = T[j * KMAX + m];
+            for (int a = 0; a < nf; ++a) v -= T[j * KMAX + Ny + a] * X[a * Ny + m];
+            FL[j * Ny + m] += v;
+        }
+    return true;
 }
 
 void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
@@ -487,6 +571,14 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     // Its derivative is dcentroid/dblendOff = fn / (fs A + 1 - fs), largest at baseline and falling as the
     // source brightens; it is marginalised below, per telescope or Rubin band and per coordinate (it appears
     // in no other telescope's, band's or coordinate's data), when AST_BLEND_OFFSET_FREE.
+    // The lens's own light (fraction f_L of the band's baseline, at the lens, -thetaE u from the source) is held at its
+    // true value (co.lensLightFree false, the default), so its drift with the lens-source motion measures thetaE; or it is
+    // a parameter of the fit, slot Ny + 1: one per Rubin band with astrometric visits (each band's sums are its own) and
+    // one for Roman's F146, the same number in x and y. Its derivative is l = dcentroid/df_L = -thetaE u / (fs A + 1 - fs)
+    // (ModelPoint::lensDx, lensDy at the reference; the neighbours' part -blendOff/den lies along the offset's derivative
+    // and is absorbed by the free offset). A Gaussian prior of sigma = lensLightPriorFrac (1 - f_S) holds each fraction
+    // in [0, 1 - f_S] (frac 1/sqrt(12): uniform on that range; 1: the whole blend; --lens-light-prior). A band with
+    // no room (1 - f_S < 1e-6) has no such parameter. The photometric matrices and the detection are not touched.
     constexpr int D = fisher_detail::kAstD;
     using fisher_detail::AstSums;
     std::array<AstSums, kRubinBands> rubinBand;
@@ -540,6 +632,8 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         for (int m = 0; m < n; ++m) {
             double nbx0, nby0;
             ddx[ix[m]][Ny] = ddy[ix[m]][Ny] = nbrShare(m, ref[m], nbx0, nby0);
+            ddx[ix[m]][Ny + 1] = ref[m].lensDx;                  //the lens's light fraction, read in free mode only
+            ddy[ix[m]][Ny + 1] = ref[m].lensDy;
             sx0[m] = ref[m].pos1c - nbx0;
             sy0[m] = ref[m].pos2c - nby0;
         }
@@ -622,11 +716,24 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         }
     };
 
+    // The precision of the Gaussian prior on a band's lens-light fraction, 1 / (frac (1 - f_S))^2, or -1 where the band has
+    // no room for lens light (no such parameter). Read in free mode only.
+    const auto lensLightInfo = [&](double fS) {
+        const double room = 1.0 - fS;
+        return room >= 1.0e-6 ? 1.0 / (co.lensLightPriorFrac * room * co.lensLightPriorFrac * room) : -1.0;
+    };
+    constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
     std::array<double, Ny * Ny> FL{};
     {
         int kAst = 0, only = -1;                                   //Rubin's bands with astrometric epochs
         for (int b = 0; b < kRubinBands; ++b) if (rubinBand[b].Sw > 0.0) { ++kAst; only = b; }
-        if (kAst >= 2) {
+        if (co.lensLightFree) {
+            // Free fractions: every band's, whatever their number. A block that does not invert leaves NaN, so that the
+            // partitions holding it are not characterised (and not silently better or worse).
+            std::array<double, kRubinBands> flInfo;
+            for (int b = 0; b < kRubinBands; ++b) flInfo[b] = lensLightInfo(s.blend[b]);
+            if (kAst >= 1 and not fisher_detail::rubinBandInformationLensFree(rubinBand, flInfo, FL)) FL.fill(kNaN);
+        } else if (kAst >= 2) {
             fisher_detail::rubinBandInformation(rubinBand, FL);
         } else {                                                    //no band, or one: its offset and the reference
             const AstSums none;
@@ -639,6 +746,29 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     std::array<double, 2> rawR{};
     for (const auto& [day, k] : romanDays)
         for (int cc = 0; cc < 2; ++cc) rawR[cc] += k.Swdd[cc][Ny * D + Ny];
+    // Roman's F146 fraction free: the offset out as in physical(), keeping (physical, f_L); the two coordinates added, the
+    // prior on f_L added, and f_L out (a scalar Schur complement). No room for lens light: as physical().
+    const double romanFlInfo = lensLightInfo(s.fb[1]);
+    auto physicalLensFree = [&](const PerCoord& G, const std::array<double, 2>& raw, std::array<double, Ny * Ny>& out) {
+        constexpr int E = Ny + 1;
+        std::array<double, E * E> T{};
+        int idx[E];
+        for (int j = 0; j < Ny; ++j) idx[j] = j;
+        idx[Ny] = Ny + 1;                                          //the sums' slot of f_L
+        for (int cc = 0; cc < 2; ++cc) {
+            const double hh = G[cc][Ny * D + Ny];
+            const bool   fit = AST_BLEND_OFFSET_FREE and raw[cc] > 0.0 and hh > 1.0e-9 * raw[cc];
+            for (int a = 0; a < E; ++a)
+                for (int m = 0; m < E; ++m)
+                    T[a * E + m] += G[cc][idx[a] * D + idx[m]] - (fit ? G[cc][idx[a] * D + Ny] * G[cc][idx[m] * D + Ny] / hh : 0.0);
+        }
+        T[Ny * E + Ny] += romanFlInfo;
+        const double tff = T[Ny * E + Ny];
+        const bool good = tff > 0.0 and std::isfinite(tff);
+        for (int j = 0; j < Ny; ++j)
+            for (int m = 0; m < Ny; ++m)
+                out[j * Ny + m] += good ? T[j * E + m] - T[j * E + Ny] * T[Ny * E + m] / tff : kNaN;
+    };
     for (int v = 0; v < NAVAR; ++v) {
         std::vector<Group> groups(v == AV_W ? 1 : 2);          // W: one frame; N, P: one per roll
         for (const auto& [day, k] : romanDays)
@@ -646,7 +776,8 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         PerCoord G{};
         for (const auto& g : groups) g.marginaliseInto(G);
         std::array<double, Ny * Ny> FR{};
-        physical(G, rawR, FR);
+        if (co.lensLightFree and romanFlInfo >= 0.0) physicalLensFree(G, rawR, FR);
+        else physical(G, rawR, FR);
         for (int jm = 0; jm < Ny * Ny; ++jm) {
             co.FBV[v][SRUBIN][jm] = FL[jm];
             co.FBV[v][SROMAN][jm] = FR[jm];

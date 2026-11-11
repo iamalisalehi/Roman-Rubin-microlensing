@@ -58,6 +58,15 @@ void printUsage(const char* prog) {
         << "                 per coordinate (default " << AST_SIGC_N << "," << AST_SIGC_P << "); needs 0 <= N <= P.\n"
         << "                 For a scan of the theta_E forecast against it. Recorded in\n"
         << "                 run_provenance.txt.\n"
+        << "  --lens-light known|free\n"
+        << "                 the lens's own light fraction in each band, in the astrometric\n"
+        << "                 forecast: known (default) holds it at its true value, so the lens's\n"
+        << "                 drift measures theta_E; free makes it an unknown of every band (one\n"
+        << "                 per Rubin band and for Roman), the same in x and y, with the prior\n"
+        << "                 of --lens-light-prior. Recorded in run_provenance.txt.\n"
+        << "  --lens-light-prior uniform|blend\n"
+        << "                 only with --lens-light free: sigma of that prior on f_L = (1 - f_S)/sqrt(12)\n"
+        << "                 (uniform on [0, 1 - f_S], default) or (1 - f_S) (blend).\n"
         << "  --stride-roman N  sightline grid step inside Roman's footprint, same units\n"
         << "                 (default: same as --stride, i.e. an unstratified scan). Must\n"
         << "                 divide --stride. Sightlines outside the footprint keep the\n"
@@ -122,6 +131,24 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
             }
             cfg.astSigcN = std::atof(v.substr(0, comma).c_str());
             cfg.astSigcP = std::atof(v.substr(comma + 1).c_str());
+        }
+        else if (arg == "--lens-light") {
+            const std::string v = need("--lens-light");
+            if      (v == "known") cfg.lensLightFree = false;
+            else if (v == "free")  cfg.lensLightFree = true;
+            else {
+                std::cerr << "ERROR: --lens-light takes known or free, not '" << v << "'\n";
+                exitCode = 1; return false;
+            }
+        }
+        else if (arg == "--lens-light-prior") {
+            const std::string v = need("--lens-light-prior");
+            if      (v == "uniform") cfg.lensLightPriorBlend = false;
+            else if (v == "blend")   cfg.lensLightPriorBlend = true;
+            else {
+                std::cerr << "ERROR: --lens-light-prior takes uniform or blend, not '" << v << "'\n";
+                exitCode = 1; return false;
+            }
         }
         else if (arg == "--events")  cfg.iconTarget  = std::atoi(need("--events"));
         else if (arg == "--lenses")  cfg.nlensTarget = std::atoi(need("--lenses"));

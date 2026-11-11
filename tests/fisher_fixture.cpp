@@ -15,6 +15,11 @@
 // Usage: make fishertest && ./fishertest   (modes: --scale S, --sweep, --eigen [S],
 //        --astro-variants, --sweep-astro, --finite-source, --lens-motion, --blend)
 //
+// Rubin's bands: the default mode also checks the per-band fit (a blend fraction and baseline per Rubin band, indices
+// 10-19; sigma(f_S) = RUBIN_FB_PRIOR_SIG on every active Rubin band's blend fraction): prior off reproduces the
+// single-band forecast bit for bit, a band at baseline or with fewer than kMinTeleEpochs visits changes no physical
+// sigma, and a chromatic r/i/z event keeps the joint no worse than either survey. --sweep adds that event.
+//
 // The light-curve model's source is a point (pspl, the default here: the baseline every change to the
 // Fisher matrices is diffed against) or a uniform disc (espl); --source-model pspl|espl picks it, in any
 // mode. Every event of the table has the same source radius, kRho; --finite-source is the mode that puts the
@@ -22,6 +27,7 @@
 // espl, --sweep runs the finite-source events (kFiniteEvents) and adds ln rho to the parameters swept.
 
 #include <random>
+#include <cstring>
 #include <gsl/gsl_eigen.h>
 #include <gsl/gsl_integration.h>
 #include "common.h"
@@ -243,6 +249,20 @@ int buildLightCurve(source& s, lens& l, astromet& as, int& nL, int& nR)
     return ndw;
 }
 
+// Make the event chromatic: Rubin's visits cycle r, i, z (in stored order), each band with its own blend fraction and
+// baseline magnitude -- f_S = 0.3, 0.5, 0.6, as the Rubin bands of a real blended source differ -- and the per-telescope
+// copies of r's pair set to match, as func_source does.
+void makeChromatic(source& s, lens& l, int ndw)
+{
+    s.blend[2] = 0.30;  s.magb[2] = 20.3;
+    s.blend[3] = 0.50;  s.magb[3] = 19.9;
+    s.blend[4] = 0.60;  s.magb[4] = 19.7;
+    s.fb[0] = s.blend[2];  s.mbs[0] = s.magb[2];
+    static const int kCycle[3] = {2, 3, 4};
+    int c = 0;
+    for (int i = 0; i < ndw; ++i) if (l.tele[i] == 0) l.filt[i] = kCycle[c++ % 3];
+}
+
 } // namespace
 
 namespace {
@@ -255,10 +275,16 @@ bool checkAdditivity(const covarian& co, const char* evName, int dim, bool photo
     double worst = 0.0;
     for (int j = 0; j < dim; ++j) {
         for (int k = 0; k < dim; ++k) {
-            // The photometric matrices carry the prior on ln rho once each (F[9][9]); the data parts are what add.
+            // The photometric matrices carry the prior on ln rho once each (F[9][9]), and the joint and Rubin ones the
+            // prior on the blend fraction of every Rubin band in the fit (F[fb_b][fb_b]); the data parts are what add.
             const auto prior = [&](int q) {
-                return (photometric and j == 9 and k == 9 and co.rhoFit[q] and std::isfinite(co.rhoPriorSigLn))
-                    ? 1.0 / (co.rhoPriorSigLn * co.rhoPriorSigLn) : 0.0;
+                double p = 0.0;
+                if (photometric and j == 9 and k == 9 and co.rhoFit[q] and std::isfinite(co.rhoPriorSigLn))
+                    p += 1.0 / (co.rhoPriorSigLn * co.rhoPriorSigLn);
+                if (photometric and j == k and q != SROMAN and std::isfinite(co.fbPriorSig))
+                    for (int b = 0; b < kRubinBands; ++b)
+                        if (co.nRubinBand[b] > 0 and j == fbIndexOfFilter(b)) p += 1.0 / (co.fbPriorSig * co.fbPriorSig);
+                return p;
             };
             const double joint = photometric
                 ? gsl_matrix_get(co.inputA[SJOINT].get(), j, k) - prior(SJOINT)
@@ -429,12 +455,14 @@ bool checkInverseRoundTrip(const covarian& co, const char* evName, int dim, bool
     return ok;
 }
 
-const char* kPhotNames[] = {"u0", "tE", "fb0", "piE", "xi", "t0", "mbs0", "fb1", "mbs1", "lnrho"};
+const char* kPhotNames[] = {"u0", "tE", "fb0", "piE", "xi", "t0", "mbs0", "fb1", "mbs1", "lnrho",
+                            "fb_u", "mbs_u", "fb_g", "mbs_g", "fb_i", "mbs_i", "fb_z", "mbs_z", "fb_y", "mbs_y"};
 const char* kAstNames[]  = {"tetE", "mus1", "mus2", "piE"};
 
-// How many photometric parameters the tables show. ln rho (the last) exists only for a finite source, so a
-// point-source run shows the nine it has: its tables are those of a model without the tenth.
-int nPhotShown() { return (vbmSourceModel() == SourceModel::ESPL) ? Nx : Nx - 1; }
+// How many photometric parameters the tables show: indices 0-9, the single-band ones. ln rho (9) exists only for a finite
+// source, so a point-source run shows the nine it has: its tables are those of a model without the tenth. Rubin's other
+// bands (10-19) get a line of their own, only when a band is in the fit (printRow).
+int nPhotShown() { return (vbmSourceModel() == SourceModel::ESPL) ? 10 : 9; }
 
 void printRow(const char* label, int nep, int ok, double cond,
               const std::vector<double>& era, const std::vector<double>& erb)
@@ -446,6 +474,14 @@ void printRow(const char* label, int nep, int ok, double cond,
     std::cout << std::scientific << std::setprecision(3);
     for (int k = 0; k < nPhotShown(); ++k) std::cout << std::setw(12) << era[k];
     std::cout << std::setw(12) << erb[0] << "\n";
+    // Rubin's other bands, when the partition fits any: their sigmas on a line of their own.
+    bool bands = false;
+    for (int k = 10; k < Nx; ++k) bands = bands or era[k] > 0.0;
+    if (bands) {
+        std::cout << "#   bands  ";
+        for (int k = 10; k < Nx; ++k) if (era[k] > 0.0) std::cout << " " << kPhotNames[k] << "=" << era[k];
+        std::cout << "\n";
+    }
 }
 
 } // namespace
@@ -476,15 +512,25 @@ int runSweep()
     std::cout << "event,tE,survey,param,param_idx,scale,sigma,cond,ok\n";
 
     // The table's events, each with the source of setupStatic; under a disc, the finite-source ones, which
-    // fit ln rho (index 9, the last parameter, absent from a point-source sweep).
-    std::vector<std::pair<FixtureEvent, double>> events;
-    if (vbmSourceModel() == SourceModel::ESPL) for (const auto& f : kFiniteEvents) events.push_back({f.ev, f.rho});
-    else                                       for (const auto& e : kEvents) events.push_back({e, kRho});
+    // fit ln rho (index 9, the last single-band parameter, absent from a point-source sweep). The point-source sweep
+    // adds a chromatic event (mid_inseason with Rubin's visits cycling r, i, z; makeChromatic), the only one with
+    // Rubin bands beyond r: it sweeps the blend fraction and baseline of i and z (14-17) as well, mbs_i and mbs_z being
+    // controls like mbs0 (exactly linear, so flat).
+    struct SweepEvent { FixtureEvent ev; double rho; bool chromatic; };
+    std::vector<SweepEvent> events;
+    if (vbmSourceModel() == SourceModel::ESPL) for (const auto& f : kFiniteEvents) events.push_back({f.ev, f.rho, false});
+    else {
+        for (const auto& e : kEvents) events.push_back({e, kRho, false});
+        events.push_back({{"mid_chromatic", kEvents[2].tE, kEvents[2].t0, kEvents[2].u0, kEvents[2].piE}, kRho, true});
+    }
 
     co->sigLnRhoMax = std::numeric_limits<double>::infinity();
     co->rhoPriorSigLn = std::numeric_limits<double>::infinity();
-    for (const auto& [ev, rho] : events) {
-        for (int pidx = 0; pidx < nPhotShown(); ++pidx) {
+    for (const auto& [ev, rho, chromatic] : events) {
+        std::vector<int> params;
+        for (int pidx = 0; pidx < nPhotShown(); ++pidx) params.push_back(pidx);
+        if (chromatic) for (const int pidx : {14, 15, 16, 17}) params.push_back(pidx);
+        for (const int pidx : params) {
             for (double sc : kScales) {
                 // u0 is stepped by an absolute amount: a step reaching the lens would put the source on its
                 // other side (u0 < 0), which the model does not take.
@@ -502,6 +548,7 @@ int runSweep()
                 s->xi  = kXi;
                 s->fb[0] = kFbRubin;  s->fb[1] = kFbRoman;
                 s->mbs[0] = kMbsRubin; s->mbs[1] = kMbsRoman;
+                if (chromatic) makeChromatic(*s, *l, ndw);
 
                 for (int q = 0; q < Nx; ++q) co->deltaScale[q] = 1.0;
                 co->deltaScale[pidx] = sc;
@@ -639,6 +686,7 @@ bool checkSentinelDiscipline()
             co->okA[q] = c.okA;
             co->okB[q] = c.okB;
             co->nepochA[q] = 100;
+            co->nRubinBand[2] = 100;   // Rubin's r band is in the fit, so the joint and Rubin sets hold fb0, mbs0
 
             gsl_matrix_set_zero(co->inverA[q].get());
             for (int k = 0; k < Nx; ++k) gsl_matrix_set(co->inverA[q].get(), k, k, 0.01 * 0.01);
@@ -862,6 +910,8 @@ bool checkFewEpochTelescope()
     ndw = w;
     l->tE = ev.tE; l->t0 = ev.t0; l->u0 = ev.u0; l->piE = ev.piE;
     s->xi = kXi; s->fb[0] = kFbRubin; s->fb[1] = kFbRoman; s->mbs[0] = kMbsRubin; s->mbs[1] = kMbsRoman;
+    // FisherM reads the per-filter blend and baseline (r is 2, F146 is 6): reset those with the per-telescope ones
+    s->blend[2] = kFbRubin; s->blend[6] = kFbRoman; s->magb[2] = kMbsRubin; s->magb[6] = kMbsRoman;
     FisherM(*s, *l, *as, *co, ndw);
     ErrorCal(*co, *l, *s);
     const bool ok = co->okA[SJOINT] == 1 && co->okA[SROMAN] == 1
@@ -1668,12 +1718,12 @@ int runBlend()
     const auto forecast = [&](const FixtureEvent& ev, double fRubin, double stepScale) {
         for (int q = 0; q < Nx; ++q) co->deltaScale[q] = stepScale;
         setupStatic(*s, *l);
-        s->fb[0] = fRubin;
+        s->fb[0] = fRubin;  s->blend[2] = fRubin;
         l->tE = ev.tE; l->t0 = ev.t0; l->u0 = ev.u0; l->piE = ev.piE;
         int nL = 0, nR = 0;
         const int ndw = buildLightCurve(*s, *l, *as, nL, nR);
         l->tE = ev.tE; l->t0 = ev.t0; l->u0 = ev.u0; l->piE = ev.piE;
-        s->xi = kXi; s->fb[0] = fRubin; s->fb[1] = kFbRoman;
+        s->xi = kXi; s->fb[0] = fRubin; s->fb[1] = kFbRoman; s->blend[2] = fRubin;
         FisherM(*s, *l, *as, *co, ndw);
         ErrorCal(*co, *l, *s);
     };
@@ -1769,6 +1819,283 @@ int runBlend()
     return failures ? 1 : 0;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Rubin's bands (a blend fraction and a baseline magnitude per band, indices 10-19; sigma(f_S) = RUBIN_FB_PRIOR_SIG on
+// every active Rubin band's blend fraction).
+//
+// The light-curve magnification is the same in every band; only m_b = mbs_b - 2.5 log10(fb_b A + 1 - fb_b) differs. The
+// checks below hold the per-band machinery to what it must do: leave the single-band (r) forecast of an event as it was
+// before the other bands existed when the new prior is switched off, ignore a band with too few visits, and not let a
+// band that never sees the bump (an empty fb row, held invertible by the prior) move any physical parameter.
+// ---------------------------------------------------------------------------------------------
+namespace {
+
+// The forecast (Era, okA, condA of indices 0-9) the f9e9938 build printed for every kEvents event and partition, at full
+// precision (hexadecimal floats, exact), under the point source (espl 0) and the uniform disc (espl 1). Generated once
+// from that build; never regenerated to make a check pass.
+struct PriorOffRef { int espl; const char* name; int q; int ok; double cond; double era[10]; };
+const PriorOffRef kPriorOffRef[] = {
+    {0, "short_inseason", 0, 1, 0x1.78c60cd6937a6p+13, {0x1.371feaad9edcap-6, 0x1.7d900dccb5102p-5, 0x1.144befe4a49c3p-5, 0x1.a756ef50c1716p+1, 0x1.031400ff13a23p+2, 0x1.1f3e68a7100d8p-6, 0x1.9eb5c168e70fcp-9, 0x1.de5a580d7ff5cp-7, 0x1.542b44caa3e36p-12, -0x1p+0}},
+    {0, "short_inseason", 1, 1, 0x1.961e7df161309p+15, {0x1.9321abdc73a5ep-3, 0x1.7469948d57f02p+3, 0x1.add3c0dd61f2bp-2, 0x1.8aa39ccc0b1eep+11, 0x1.aa019bd6dd984p+11, 0x1.2fe9b49d47322p-3, 0x1.3d3c5d58120a1p-8, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {0, "short_inseason", 2, 1, 0x1.102f775e793eap+22, {0x1.7039736b864a4p-2, 0x1.789c33ceefa69p-3, -0x1p+0, 0x1.fd199915a1933p+5, 0x1.1348992fceb49p+6, 0x1.8078eddab7ce5p-5, -0x1p+0, 0x1.0ba8fd08093f5p-6, 0x1.a2e9f9e025429p-12, -0x1p+0}},
+    {0, "short_ingap", 0, 1, 0x1.d127a2761a53p+17, {0x1.945274625c9fdp-2, 0x1.85439fa3df33bp+4, 0x1.5f15672165d1ep-1, 0x1.e484e8a3e6576p+11, 0x1.368bc753ec801p+11, 0x1.2117aaba3b0aep-3, 0x1.0706939a634efp-8, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {0, "short_ingap", 1, 1, 0x1.d127a2761a53p+17, {0x1.945274625c9fdp-2, 0x1.85439fa3df33bp+4, 0x1.5f15672165d1ep-1, 0x1.e484e8a3e6576p+11, 0x1.368bc753ec801p+11, 0x1.2117aaba3b0aep-3, 0x1.0706939a634efp-8, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {0, "short_ingap", 2, 0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {0, "mid_inseason", 0, 1, 0x1.5501912a50c26p+14, {0x1.b143d4ba31e8cp-8, 0x1.9ee83d5757593p-1, 0x1.51fb4d7a36965p-7, 0x1.ce5b2930e473bp-1, 0x1.2847b9cefb787p+0, 0x1.1912d2f075d09p-7, 0x1.672c5f0b749d3p-10, 0x1.9d8d192e04359p-7, 0x1.070daf7482a0cp-12, -0x1p+0}},
+    {0, "mid_inseason", 1, 1, 0x1.3c0fa19761426p+13, {0x1.2c394b62c495bp-4, 0x1.854429162452bp+3, 0x1.3ec87322ac4f4p-3, 0x1.842bf3deabdc3p+3, 0x1.ebc57c19fcb4cp+3, 0x1.7bb2c64b963aap-3, 0x1.9af0273a36429p-10, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {0, "mid_inseason", 2, 1, 0x1.97d3353c64177p+16, {0x1.c3dc452ce149fp-7, 0x1.c2cd8481885d2p+0, -0x1p+0, 0x1.fae4f3e365e7p+0, 0x1.44638247d11cp+1, 0x1.752b44fc18868p-7, -0x1p+0, 0x1.7af7aa9c5afbep-6, 0x1.2456a828383edp-12, -0x1p+0}},
+    {0, "mid_ingap", 0, 1, 0x1.6ac75d859088ep+20, {0x1.63d5335ffa8c2p+7, 0x1.0326d46f66daep+10, 0x1.1a8e75397d673p+6, 0x1.46bd007de24e9p+7, 0x1.fd5e38c80bc43p+6, 0x1.ac033f1818853p+5, 0x1.0bb360198aeeep-9, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {0, "mid_ingap", 1, 1, 0x1.6ac75d859088ep+20, {0x1.63d5335ffa8c2p+7, 0x1.0326d46f66daep+10, 0x1.1a8e75397d673p+6, 0x1.46bd007de24e9p+7, 0x1.fd5e38c80bc43p+6, 0x1.ac033f1818853p+5, 0x1.0bb360198aeeep-9, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {0, "mid_ingap", 2, 0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {0, "long_inseason", 0, 1, 0x1.49f213ec1314p+13, {0x1.db11cd4fe906dp-9, 0x1.17dc148fd79abp+0, 0x1.2029b2efd00e2p-7, 0x1.07a0c48b5a9c2p-5, 0x1.0ea214716ca43p-4, 0x1.f22130a1e32a7p-6, 0x1.7a476b12efe8fp-11, 0x1.82367acfc91b1p-7, 0x1.f8601fb7819e1p-14, -0x1p+0}},
+    {0, "long_inseason", 1, 1, 0x1.6e2085c41522bp+11, {0x1.0a822471eb76bp-5, 0x1.8d390cb432c42p+3, 0x1.19363b14b7514p-4, 0x1.8ec7227b7125ep-3, 0x1.07dfd2144bb07p-2, 0x1.dd09bcc126159p-2, 0x1.a4d6ea30efedep-11, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {0, "long_inseason", 2, 1, 0x1.b85ebe6475ebfp+13, {0x1.123f52032ee26p-8, 0x1.1ba31ee3fb9a3p+0, -0x1p+0, 0x1.2088af8242508p-5, 0x1.3c7d33116b63ep-4, 0x1.09d2ed478a712p-5, -0x1p+0, 0x1.bdf6b516ca537p-7, 0x1.f8832a6c7ddf1p-14, -0x1p+0}},
+    {0, "long_ingap", 0, 1, 0x1.7291971501f8ep+13, {0x1.a8b464277423p-3, 0x1.c1302b6acd443p+3, 0x1.303783ac90074p-2, 0x1.13ca5b4056536p-1, 0x1.02d5c5d5354ap-1, 0x1.f45582fbca219p+1, 0x1.cbafda6ffb86bp-11, 0x1.56f213202b1cdp-1, 0x1.01937dbc20fd2p-12, -0x1p+0}},
+    {0, "long_ingap", 1, 1, 0x1.725217f7adf17p+13, {0x1.a9368f4909341p-3, 0x1.c178738687ef7p+3, 0x1.30d89af48730dp-2, 0x1.14a18e871031ep-1, 0x1.03a16a2a68d2cp-1, 0x1.f55435a6aefa8p+1, 0x1.cbafeed072abcp-11, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {0, "long_ingap", 2, 1, 0x1.330b8e1844664p+26, {0x1.0f35291f8ea9ap+8, 0x1.f81007f129cbbp+13, -0x1p+0, 0x1.2624f0f1c1672p+5, 0x1.ee1ef5253bd94p+4, 0x1.058a2a4080f64p+11, -0x1p+0, 0x1.0b80e482bdf7ep+9, 0x1.ae08aa3bb8ee6p-9, -0x1p+0}},
+    {0, "verylong", 0, 1, 0x1.2f9b4fe06f6f9p+16, {0x1.461d74f5a9174p-8, 0x1.77f7e00ddeb45p+3, 0x1.49a59ae41593ep-7, 0x1.64a2b9de432e6p-11, 0x1.982c10e8f6d25p-7, 0x1.36cc47466fb88p-2, 0x1.a5679e3ac8311p-10, 0x1.0a2d784901a3cp-6, 0x1.584c91234361ep-10, -0x1p+0}},
+    {0, "verylong", 1, 1, 0x1.1eb9a1305d414p+13, {0x1.13dc02b751343p-6, 0x1.3c6c72ef652b8p+5, 0x1.18506f364414dp-5, 0x1.07c69c66fe236p-9, 0x1.788317abddaefp-6, 0x1.6477a4c7b649bp-1, 0x1.ef4690728e972p-9, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {0, "verylong", 2, 1, 0x1.888c4ea07e9c3p+16, {0x1.70e758d9675ep-8, 0x1.9e668d3bdd608p+3, -0x1p+0, 0x1.02141d3daed65p-10, 0x1.54b030d438b07p-6, 0x1.84226893d880bp-2, -0x1p+0, 0x1.30f2c15fe6f76p-6, 0x1.774acf5e0ff35p-10, -0x1p+0}},
+    {1, "short_inseason", 0, 1, 0x1.78c60d2b071abp+13, {0x1.371f8490a5168p-6, 0x1.7d8fd7057362p-5, 0x1.144bd0ca1bedap-5, 0x1.a75668c34e239p+1, 0x1.0313bbe02d9cep+2, 0x1.1f3e58f113768p-6, 0x1.9eb5c0d3efecdp-9, 0x1.de5a02bf42808p-7, 0x1.542b416e70b4dp-12, 0x1.ffffffffc2e08p-1}},
+    {1, "short_inseason", 1, 1, 0x1.9627c3b7d7481p+15, {0x1.932502b59d135p-3, 0x1.746dcf4057e4p+3, 0x1.add7b60be5d51p-2, 0x1.8aa7e7c505f4p+11, 0x1.aa061ce2a40cbp+11, 0x1.2fe9fcff13246p-3, 0x1.3d3c6e117f4fdp-8, -0x1p+0, -0x1p+0, 0x1.fffffffffffcep-1}},
+    {1, "short_inseason", 2, 1, 0x1.102f6ac92898fp+22, {0x1.7038f32f47a5p-2, 0x1.789bc8e15d8b7p-3, -0x1p+0, 0x1.fd18e995b1322p+5, 0x1.1348376b206e8p+6, 0x1.80785596ce4d4p-5, -0x1p+0, 0x1.0ba8df29f0b27p-6, 0x1.a2e9c38701f4bp-12, 0x1.ffffffffc9fa2p-1}},
+    {1, "short_ingap", 0, 1, 0x1.d12b50578ce1ap+17, {0x1.94535c1f68f2fp-2, 0x1.854504624d4a4p+4, 0x1.5f165c9eb0b8dp-1, 0x1.e4869a8750c37p+11, 0x1.368ce9a286a4bp+11, 0x1.21194ff61bc9ap-3, 0x1.0706dc78f0138p-8, -0x1p+0, -0x1p+0, 0x1.fffffffffffd3p-1}},
+    {1, "short_ingap", 1, 1, 0x1.d12b50578ce1ap+17, {0x1.94535c1f68f2fp-2, 0x1.854504624d4a4p+4, 0x1.5f165c9eb0b8dp-1, 0x1.e4869a8750c37p+11, 0x1.368ce9a286a4bp+11, 0x1.21194ff61bc9ap-3, 0x1.0706dc78f0138p-8, -0x1p+0, -0x1p+0, 0x1.fffffffffffd3p-1}},
+    {1, "short_ingap", 2, 0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {1, "mid_inseason", 0, 1, 0x1.55028ff60bb7bp+14, {0x1.b1438e7098aeep-8, 0x1.9ee7bf4ceee48p-1, 0x1.51fb4d7750ad1p-7, 0x1.ce5aa3cad0acp-1, 0x1.28476460eda33p+0, 0x1.19129ddf5f6f8p-7, 0x1.672c5f12aebd3p-10, 0x1.9d8c8fe44bf1cp-7, 0x1.070daad5373ap-12, 0x1.ffffffffc8d08p-1}},
+    {1, "mid_inseason", 1, 1, 0x1.3c0f8d5f7923cp+13, {0x1.2c38cf4c87636p-4, 0x1.8544075edd0c7p+3, 0x1.3ec835b724796p-3, 0x1.842bdde5ba6c5p+3, 0x1.ebc5614edf5cbp+3, 0x1.7bb285ef6c323p-3, 0x1.9af027ee7bfa7p-10, -0x1p+0, -0x1p+0, 0x1.ffffffffffe47p-1}},
+    {1, "mid_inseason", 2, 1, 0x1.97d4f25cd525ap+16, {0x1.c3dc536372597p-7, 0x1.c2cd4764b3573p+0, -0x1p+0, 0x1.fae4b8b9ceed2p+0, 0x1.44635c3de0465p+1, 0x1.752b11747f9f1p-7, -0x1p+0, 0x1.7af750bcab465p-6, 0x1.2456a270a92c4p-12, 0x1.fffffffffc511p-1}},
+    {1, "mid_ingap", 0, 1, 0x1.6ac7ba67176f8p+20, {0x1.63d5511126e16p+7, 0x1.0326f0bc9ac19p+10, 0x1.1a8e94311c1aap+6, 0x1.46bd24cadefe3p+7, 0x1.fd5e7d45ea84cp+6, 0x1.ac03486ab0a87p+5, 0x1.0bb3636f1f796p-9, -0x1p+0, -0x1p+0, 0x1p+0}},
+    {1, "mid_ingap", 1, 1, 0x1.6ac7ba67176f8p+20, {0x1.63d5511126e16p+7, 0x1.0326f0bc9ac19p+10, 0x1.1a8e94311c1aap+6, 0x1.46bd24cadefe3p+7, 0x1.fd5e7d45ea84cp+6, 0x1.ac03486ab0a87p+5, 0x1.0bb3636f1f796p-9, -0x1p+0, -0x1p+0, 0x1p+0}},
+    {1, "mid_ingap", 2, 0, -0x1p+0, {-0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {1, "long_inseason", 0, 1, 0x1.49f4f7a420ec6p+13, {0x1.db10fde9ed1a5p-9, 0x1.17dc09e9fd839p+0, 0x1.202979c4e4a7cp-7, 0x1.07a0b5d02a44dp-5, 0x1.0ea1f739d0563p-4, 0x1.f220cb630d19bp-6, 0x1.7a476a8810ad9p-11, 0x1.82361de37d1ap-7, 0x1.f8601fb01c9f5p-14, 0x1.fffffffffeb36p-1}},
+    {1, "long_inseason", 1, 1, 0x1.6e20375241198p+11, {0x1.0a81b37b20658p-5, 0x1.8d38f94fe9f65p+3, 0x1.1936022b825dp-4, 0x1.8ec70eb31e507p-3, 0x1.07dfc87967127p-2, 0x1.dd095f5661ce5p-2, 0x1.a4d6e96a7a531p-11, -0x1p+0, -0x1p+0, 0x1.ffffffffffefbp-1}},
+    {1, "long_inseason", 2, 1, 0x1.b86274aeb8292p+13, {0x1.123ed18fda548p-8, 0x1.1ba31565031fdp+0, -0x1p+0, 0x1.208899b92dac2p-5, 0x1.3c7d05e5b48f2p-4, 0x1.09d2b18ebabcp-5, -0x1p+0, 0x1.bdf63bd2e47ffp-7, 0x1.f8832a6837db3p-14, 0x1.ffffffffff8a4p-1}},
+    {1, "long_ingap", 0, 1, 0x1.72919cf14d3bp+13, {0x1.a8b423b5e4a4bp-3, 0x1.c1301c2573b5bp+3, 0x1.3037792be78bfp-2, 0x1.13ca505928f31p-1, 0x1.02d5c22bc6e84p-1, 0x1.f4556773f5a65p+1, 0x1.cbafd99997cb1p-11, 0x1.56f209b13eacbp-1, 0x1.01937da6444c6p-12, 0x1.fffffffffef7ep-1}},
+    {1, "long_ingap", 1, 1, 0x1.72521e10c549bp+13, {0x1.a9364ec44370ap-3, 0x1.c1786447c9a2ap+3, 0x1.30d8907585f9ep-2, 0x1.14a1839b53437p-1, 0x1.03a1667fc169fp-1, 0x1.f5541a1b43e72p+1, 0x1.cbafedfa1a0e8p-11, -0x1p+0, -0x1p+0, 0x1.fffffffffefb2p-1}},
+    {1, "long_ingap", 2, 1, 0x1.3309bcf628abap+26, {0x1.0f3478eecc619p+8, 0x1.f80e8039e39fap+13, -0x1p+0, 0x1.2624a3f1500fbp+5, 0x1.ee1ed6263a179p+4, 0x1.0589f688c0e61p+11, -0x1p+0, 0x1.0b801c8e58327p+9, 0x1.ae077e6c1efa8p-9, 0x1.fffffffffffffp-1}},
+    {1, "verylong", 0, 1, 0x1.2fa5efee817d3p+16, {0x1.461cd4cfcbfbcp-8, 0x1.77f7a34c2c822p+3, 0x1.49a540aa3fe71p-7, 0x1.64a2f6a4e6726p-11, 0x1.982ba23e28644p-7, 0x1.36cbf6ecbe4cdp-2, 0x1.a5678e7ce55eap-10, 0x1.0a2d2e644275cp-6, 0x1.584c73b70659fp-10, 0x1.ffffffcc245d1p-1}},
+    {1, "verylong", 1, 1, 0x1.1eb968a21b6d9p+13, {0x1.13db7d14d593fp-6, 0x1.3c6c3ba1203ap+5, 0x1.18502448317ap-5, 0x1.07c6d3c1aac6dp-9, 0x1.7882c3b8f83d4p-6, 0x1.647767bbfb4d2p-1, 0x1.ef4663fd6783ep-9, -0x1p+0, -0x1p+0, 0x1.fffffffb5e193p-1}},
+    {1, "verylong", 2, 1, 0x1.8899a5a7afdddp+16, {0x1.70e69ce0a40a8p-8, 0x1.9e6644ab2ae54p+3, -0x1p+0, 0x1.0214340c24db4p-10, 0x1.54afe2097cf6p-6, 0x1.84220433a4473p-2, -0x1p+0, 0x1.30f266fee9c4fp-6, 0x1.774aaeffa5c96p-10, 0x1.ffffffe401031p-1}},
+};
+
+// One event of the table, built and ready for FisherM; the callers change its epochs and run it.
+struct EventRun {
+    std::unique_ptr<source>   s = std::make_unique<source>();
+    std::unique_ptr<lens>     l = std::make_unique<lens>();
+    std::unique_ptr<astromet> as = std::make_unique<astromet>();
+    std::unique_ptr<covarian> co = std::make_unique<covarian>();
+    int ndw = 0, nL = 0, nR = 0;
+    explicit EventRun(const FixtureEvent& ev)
+    {
+        setupStatic(*s, *l);
+        l->tE = ev.tE;  l->t0 = ev.t0;  l->u0 = ev.u0;  l->piE = ev.piE;
+        ndw = buildLightCurve(*s, *l, *as, nL, nR);
+        l->tE = ev.tE;  l->t0 = ev.t0;  l->u0 = ev.u0;  l->piE = ev.piE;   // FisherM perturbs from whatever the structs hold
+        s->xi = kXi;
+    }
+    // Keep the epochs for which keep(i) is true, compacting the buffers in place (stored order kept).
+    template <class Pred> void keepOnly(Pred keep)
+    {
+        int w = 0;
+        for (int i = 0; i < ndw; ++i) {
+            if (not keep(i)) continue;
+            l->timn[w] = l->timn[i]; l->magn[w] = l->magn[i]; l->errm[w] = l->errm[i];
+            l->soux[w] = l->soux[i]; l->souy[w] = l->souy[i]; l->erra[w] = l->erra[i];
+            l->tele[w] = l->tele[i]; l->filt[w] = l->filt[i]; l->rseas[w] = l->rseas[i]; l->rroll[w] = l->rroll[i];
+            ++w;
+        }
+        ndw = w;
+    }
+    void addRubin(double tim, int filt) { appendEpoch(*s, *l, *as, tim, 0, ndw, -1, filt); }
+    void run()
+    {
+        FisherM(*s, *l, *as, *co, ndw);
+        ErrorCal(*co, *l, *s);
+    }
+};
+
+bool sameDouble(double a, double b) { return std::memcmp(&a, &b, sizeof a) == 0; }
+
+// Every photometric output of two runs is identical to the last bit: the epoch counts, okA, condA and all of Era.
+bool samePhotometry(const covarian& a, const covarian& b, const char* what, bool jointOnly)
+{
+    bool ok = true;
+    for (int q = 0; q < NSURV; ++q) {
+        if (jointOnly and q != SJOINT) continue;
+        bool same = a.okA[q] == b.okA[q] and a.nepochA[q] == b.nepochA[q] and sameDouble(a.condA[q], b.condA[q]);
+        for (int k = 0; k < Nx; ++k) same = same and sameDouble(a.Era[q][k], b.Era[q][k]);
+        if (not same) {
+            std::cerr << "FAIL [" << what << "] partition " << q << " differs from the reference in okA, nepochA, condA or Era\n";
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+// With the prior on the blend fractions switched off, every kEvents event (all of Rubin's epochs in r) gives the forecast
+// of the build before the bands existed, bit for bit: the per-filter blend/baseline arrays, the compact derivative rows,
+// the sparse accumulation and the shared flux-pair function change no number for an event with one Rubin band.
+bool checkPriorOffReproducesToday()
+{
+    bool ok = true;
+    const SourceModel keep = vbmSourceModel();
+    int n = 0;
+    for (const SourceModel model : {SourceModel::PSPL, SourceModel::ESPL}) {
+        vbmSetSourceModel(model);
+        for (const auto& ev : kEvents) {
+            EventRun r(ev);
+            r.co->fbPriorSig = std::numeric_limits<double>::infinity();
+            r.run();
+            for (const auto& ref : kPriorOffRef) {
+                if (ref.espl != (model == SourceModel::ESPL ? 1 : 0) or std::strcmp(ref.name, ev.name) != 0) continue;
+                const int q = ref.q;
+                bool same = r.co->okA[q] == ref.ok and sameDouble(r.co->condA[q], ref.cond);
+                for (int k = 0; k < 10; ++k) same = same and sameDouble(r.co->Era[q][k], ref.era[k]);
+                for (int k = 10; k < Nx; ++k) same = same and r.co->Era[q][k] == -1.0;   // no other band, no sigma
+                ++n;
+                if (not same) {
+                    std::cerr << "FAIL [prior-off] " << ev.name << (model == SourceModel::ESPL ? " (espl)" : " (pspl)")
+                              << " partition " << q << " is not bit-identical to the pre-band forecast\n";
+                    ok = false;
+                }
+            }
+        }
+    }
+    vbmSetSourceModel(keep);
+    if (n != 2 * NSURV * int(sizeof(kEvents) / sizeof(kEvents[0]))) {
+        std::cerr << "FAIL [prior-off] compared " << n << " rows, not every event/partition/model\n";
+        ok = false;
+    }
+    std::cout << "# prior-off reproduces the f9e9938 forecast bit for bit: " << n << " rows, " << (ok ? "ok\n" : "FAIL\n");
+    return ok;
+}
+
+// Five u-band visits far from the peak (A - 1 < 1e-6): the band's baseline is measured, its blend fraction is not (the
+// prior holds it at sigma = RUBIN_FB_PRIOR_SIG), and no physical parameter moves.
+bool checkBandAtBaseline()
+{
+    bool ok = true;
+    const auto& ev = kEvents[2];   // mid_inseason
+    EventRun ref(ev), r(ev);
+    ref.run();
+    r.s->blend[0] = 0.40;  r.s->magb[0] = 21.0;   // the u band's own blend fraction and baseline
+    for (int k = 0; k < 5; ++k) r.addRubin(ev.t0 + 40.0 * ev.tE + 0.5 * k, 0);
+    r.run();
+    const covarian& c = *r.co;
+    if (c.nRubinBand[0] != 5) { std::cerr << "FAIL [band-at-baseline] nRubinBand[u] = " << c.nRubinBand[0] << ", not 5\n"; ok = false; }
+    for (int q = 0; q < NSURV; ++q) {
+        if (not c.okA[q] and ref.co->okA[q]) { std::cerr << "FAIL [band-at-baseline] partition " << q << " not characterised\n"; ok = false; continue; }
+        if (not c.okA[q]) continue;
+        for (const int k : {0, 1, 3, 4, 5}) {
+            const double a = c.Era[q][k], b = ref.co->Era[q][k];
+            if (not (std::fabs(a - b) <= 1e-6 * b)) {
+                std::cerr << "FAIL [band-at-baseline] partition " << q << " sigma(" << kPhotNames[k] << ") " << a << " vs " << b
+                          << " without the u visits\n";
+                ok = false;
+            }
+        }
+    }
+    // sigma(f_S,u) is the prior's, sigma(mbs_u) the five visits' own: 0.02 mag / sqrt(5)
+    for (const int q : {SJOINT, SRUBIN}) {
+        if (not (std::fabs(c.Era[q][10] - RUBIN_FB_PRIOR_SIG) < 1e-3 * RUBIN_FB_PRIOR_SIG)) {
+            std::cerr << "FAIL [band-at-baseline] partition " << q << " sigma(fb_u) = " << c.Era[q][10] << ", not the prior's\n";
+            ok = false;
+        }
+        if (not (std::fabs(c.Era[q][11] - kErrMagRubin / std::sqrt(5.0)) < 1e-3 * kErrMagRubin)) {
+            std::cerr << "FAIL [band-at-baseline] partition " << q << " sigma(mbs_u) = " << c.Era[q][11] << "\n";
+            ok = false;
+        }
+    }
+    if (c.Era[SROMAN][10] != -1.0 or c.Era[SROMAN][11] != -1.0) { std::cerr << "FAIL [band-at-baseline] Roman reports a u-band sigma\n"; ok = false; }
+    std::cout << "# band at baseline: sigma(fb_u) " << c.Era[SJOINT][10] << ", sigma(mbs_u) " << c.Era[SJOINT][11]
+              << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
+// Two g-band visits at the peak are too few to fit the band: they are left out of the photometric matrices and
+// nothing about the photometric forecast changes. (The astrometric matrices take every epoch, as before.)
+bool checkFewBandVisits()
+{
+    const auto& ev = kEvents[2];
+    EventRun ref(ev), r(ev);
+    ref.run();
+    r.addRubin(ev.t0 - 0.1 * ev.tE, 1);
+    r.addRubin(ev.t0 + 0.1 * ev.tE, 1);
+    r.run();
+    const bool ok = samePhotometry(*r.co, *ref.co, "few-band-visits", false) and r.co->nRubinBand[1] == 0;
+    std::cout << "# two g visits at the peak leave the photometric forecast bit for bit unchanged" << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
+// Rubin with only two r and two i visits has no band to fit: its partition is empty and the joint forecast is Roman's
+// alone, bit for bit.
+bool checkRubinBandsAllSparse()
+{
+    bool ok = true;
+    const auto& ev = kEvents[2];
+    EventRun ref(ev), r(ev);
+    ref.keepOnly([&](int i) { return ref.l->tele[i] == 1; });
+    ref.run();
+    r.keepOnly([&](int i) { return r.l->tele[i] == 1; });
+    r.addRubin(ev.t0 - 3.0, 2);  r.addRubin(ev.t0 + 3.0, 2);
+    r.addRubin(ev.t0 - 2.0, 3);  r.addRubin(ev.t0 + 2.0, 3);
+    r.run();
+    if (r.co->okA[SRUBIN] != 0 or r.co->nepochA[SRUBIN] != 0) {
+        std::cerr << "FAIL [rubin-all-sparse] Rubin partition okA " << r.co->okA[SRUBIN] << ", nepochA " << r.co->nepochA[SRUBIN] << "\n";
+        ok = false;
+    }
+    if (nRubinBandsFitted(*r.co) != 0) { std::cerr << "FAIL [rubin-all-sparse] a band was fitted\n"; ok = false; }
+    ok = samePhotometry(*r.co, *ref.co, "rubin-all-sparse", true) and ok;
+    std::cout << "# 2 r + 2 i Rubin visits: Rubin out, joint = Roman alone" << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
+// A chromatic event: Rubin's visits cycle r, i, z with their own blend fractions (0.3, 0.5, 0.6). The forecast has a
+// pair per band, the joint is no worse than either survey for every parameter, F[J] = F[L] + F[R] up to the priors,
+// F F^-1 = 1, and the bands' own sigmas exist.
+bool checkChromaticEvent()
+{
+    bool ok = true;
+    const SourceModel keep = vbmSourceModel();
+    for (const SourceModel model : {SourceModel::PSPL, SourceModel::ESPL}) {
+        vbmSetSourceModel(model);
+        EventRun r(kEvents[2]);
+        makeChromatic(*r.s, *r.l, r.ndw);
+        r.run();
+        const covarian& c = *r.co;
+        const char* name = (model == SourceModel::ESPL) ? "chromatic (espl)" : "chromatic (pspl)";
+        if (not (c.okA[SJOINT] and c.okA[SRUBIN] and c.okA[SROMAN])) {
+            std::cerr << "FAIL [" << name << "] okA " << c.okA[SJOINT] << c.okA[SRUBIN] << c.okA[SROMAN] << "\n";
+            ok = false;
+        }
+        if (nRubinBandsFitted(c) != 3) { std::cerr << "FAIL [" << name << "] bands fitted " << nRubinBandsFitted(c) << ", not 3\n"; ok = false; }
+        for (const int q : {SJOINT, SRUBIN})
+            for (const int k : {2, 6, 14, 15, 16, 17})
+                if (not (c.Era[q][k] > 0.0)) { std::cerr << "FAIL [" << name << "] partition " << q << " sigma(" << kPhotNames[k] << ") = " << c.Era[q][k] << "\n"; ok = false; }
+        for (const int k : {10, 11, 12, 13, 18, 19})
+            if (c.Era[SJOINT][k] != -1.0) { std::cerr << "FAIL [" << name << "] sigma(" << kPhotNames[k] << ") for a band without visits\n"; ok = false; }
+        for (const int q : {SRUBIN, SROMAN})
+            for (const int k : {0, 1, 2, 3, 4, 5, 9}) {
+                if (k == 2 and q == SROMAN) continue;
+                const double j = c.Era[SJOINT][k], p = c.Era[q][k];
+                if (j > 0.0 and p > 0.0 and j > p * (1.0 + 1e-9)) {
+                    std::cerr << "FAIL [" << name << "] sigma(" << kPhotNames[k] << ") joint " << j << " > " << (q == SRUBIN ? "rubin " : "roman ") << p << "\n";
+                    ok = false;
+                }
+            }
+        ok = checkAdditivity(c, name, Nx, true) and ok;
+        ok = checkJointNoWorse(c, name, kPhotNames, Nx, true) and ok;
+        ok = checkInverseRoundTrip(c, name, Nx, true) and ok;
+        std::cout << "# " << name << ": sigma(fb_i) " << c.Era[SJOINT][14] << ", sigma(fb_z) " << c.Era[SJOINT][16]
+                  << ", sigma(fb0) " << c.Era[SJOINT][2] << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    }
+    vbmSetSourceModel(keep);
+    return ok;
+}
+
+} // namespace
+
 int main(int argc, char** argv)
 {
     // --source-model pspl|espl in any mode, taken out of the argument list before the modes read it.
@@ -1825,6 +2152,12 @@ int main(int argc, char** argv)
     if (!checkSentinelDiscipline()) ++failures;
     if (!checkSeasonClustering())   ++failures;
     if (!checkFewEpochTelescope())  ++failures;
+    std::cout << "\n# --- Rubin's bands ---\n";
+    if (!checkPriorOffReproducesToday()) ++failures;
+    if (!checkBandAtBaseline())          ++failures;
+    if (!checkFewBandVisits())           ++failures;
+    if (!checkRubinBandsAllSparse())     ++failures;
+    if (!checkChromaticEvent())          ++failures;
 
     if (model == SourceModel::ESPL)
         std::cout << "# SOURCE MODEL espl: a uniform disc of radius rho = " << kRho << " Einstein radii\n";

@@ -36,17 +36,35 @@ inline int surveyOfTele(int tele) { return (tele == 0) ? SRUBIN : SROMAN; }
 // config/parameters.h), which FisherM records per partition in covarian::rhoFit. Whether the data MEASURE it is
 // covarian::rhoMeas (SIGLNRHO_MAX).
 
-inline std::vector<int> activePhotParams(int surv, int nRubinEpochs, int nRomanEpochs, bool rhoFree)
-{
-    const std::vector<int> shared = {0, 1, 3, 4, 5};  //u0, tE, piE, xi, t0
-    const std::vector<int> rubinFlux = {2, 6};        //fb0, mbs0
-    const std::vector<int> romanFlux = {7, 8};        //fb1, mbs1
+//
+// Rubin's flux pair is per band. The magnification A(t) is the same in every band, but the blend fraction f_S and the
+// baseline magnitude differ (the neighbours' colours differ from the source's), so each band that enters the fit is
+// given its own (fb, mbs) pair: m_b = mbs_b - 2.5 log10(fb_b A + 1 - fb_b). A band enters when it has at least
+// kMinTeleEpochs recorded visits (covarian::nRubinBand, 0 for a band left out); the parameter indices of the pairs are
+// fbIndexOfFilter / mbsIndexOfFilter, with r and F146 keeping the 2, 6 and 7, 8 they always had.
+inline constexpr int kRubinBands = 6;   //u g r i z y: the filters 0-5 of lens::filt (6 is Roman's F146)
 
-    std::vector<int> out = shared;
-    const bool wantRubin = (surv == SRUBIN) || (surv == SJOINT && nRubinEpochs > 0);
+inline int fbIndexOfFilter(int filt)
+{
+    static constexpr int kFb[7] = {10, 12, 2, 14, 16, 18, 7};   //u g r i z y F146
+    return kFb[filt];
+}
+inline int mbsIndexOfFilter(int filt)
+{
+    static constexpr int kMbs[7] = {11, 13, 6, 15, 17, 19, 8};
+    return kMbs[filt];
+}
+
+inline std::vector<int> activePhotParams(int surv, const std::array<int, kRubinBands>& nRubinBand, int nRomanEpochs,
+                                         bool rhoFree)
+{
+    std::vector<int> out = {0, 1, 3, 4, 5};           //u0, tE, piE, xi, t0
+    const bool wantRubin = (surv == SRUBIN) || (surv == SJOINT);
     const bool wantRoman = (surv == SROMAN) || (surv == SJOINT && nRomanEpochs > 0);
-    if (wantRubin) out.insert(out.end(), rubinFlux.begin(), rubinFlux.end());
-    if (wantRoman) out.insert(out.end(), romanFlux.begin(), romanFlux.end());
+    if (wantRubin)
+        for (int b = 0; b < kRubinBands; ++b)
+            if (nRubinBand[b] >= kMinTeleEpochs) { out.push_back(fbIndexOfFilter(b)); out.push_back(mbsIndexOfFilter(b)); }
+    if (wantRoman) { out.push_back(fbIndexOfFilter(6)); out.push_back(mbsIndexOfFilter(6)); }
     if (rhoFree)   out.push_back(9);                  //ln rho
     std::sort(out.begin(), out.end());
     return out;
@@ -158,6 +176,16 @@ struct covarian {
     bool   rhoFixed = false;
     double rhoPriorSigLn = RHO_PRIOR_SIGLN;
     double sigLnRhoMax = SIGLNRHO_MAX;
+
+    // Rubin's bands in the photometric fit. nRubinBand[b] is the number of recorded visits of band b (u g r i z y) that
+    // enter the matrices: the band's visit count if it has at least kMinTeleEpochs of them, 0 if it is left out (a band
+    // with fewer visits cannot fix its own blend and baseline). Set by FisherM; activePhotParams reads it, so the
+    // joint and Rubin-only partitions carry a (fb, mbs) pair for every band with a non-zero count. fbPriorSig is the
+    // width of the Gaussian prior on each such band's source-flux fraction (RUBIN_FB_PRIOR_SIG, added once to every
+    // matrix holding the band, Roman's F146 excepted); infinite drops it, which a test uses to compare with the
+    // forecast made before the prior existed. It mirrors rhoPriorSigLn.
+    std::array<int, kRubinBands> nRubinBand{};
+    double fbPriorSig = RUBIN_FB_PRIOR_SIG;
 
     // Multiplicative override on each photometric parameter's finite-difference step; 1.0 is the
     // production value. A runtime knob so the step-size sweep can run many values in one process.
@@ -283,7 +311,15 @@ inline int synergyClass(const covarian& co)
 // The active photometric parameters of partition `surv` of an event whose matrices are in `co`.
 inline std::vector<int> activePhotParams(const covarian& co, int surv)
 {
-    return activePhotParams(surv, co.nepochA[SRUBIN], co.nepochA[SROMAN], co.rhoFit[surv] != 0);
+    return activePhotParams(surv, co.nRubinBand, co.nepochA[SROMAN], co.rhoFit[surv] != 0);
+}
+
+// How many of Rubin's bands are in the fit of the event whose matrices are in `co`.
+inline int nRubinBandsFitted(const covarian& co)
+{
+    int n = 0;
+    for (int b = 0; b < kRubinBands; ++b) n += (co.nRubinBand[b] > 0) ? 1 : 0;
+    return n;
 }
 
 // The parameters of the lens-motion model lensMotion, in the order its covariance is given.

@@ -562,6 +562,8 @@ constexpr double FB_STEP_LARGE = 0.15;
 // A telescope contributing fewer than kMinTeleEpochs epochs to an event is left out of the photometric
 // matrices altogether: its flux pair (fb, mbs) cannot be constrained and with one epoch the joint
 // matrix goes singular. The counts passed to activePhotParams are therefore >= kMinTeleEpochs or zero.
+// The same holds for each of Rubin's bands (u g r i z y): a band with fewer visits is left out of the matrices
+// (covarian::nRubinBand = 0), its visits with it.
 constexpr int kMinTeleEpochs = 3;
 
 // Accuracy of VBMicrolensing's finite-source magnification (its Tol): the ABSOLUTE tolerance on the
@@ -603,6 +605,14 @@ constexpr double VBM_TOL = 1.0e-3;
 // (tests/fisher_fixture.cpp --finite-source): for u0 >= 30 rho every sigma is the point-source one, for u0 <= 2 rho
 // sigma(ln rho) is the data's, and in between the other sigmas are inflated honestly by the unknown rho.
 constexpr double RHO_PRIOR_SIGLN = 1.0;
+
+// One-sigma width of the Gaussian prior on the source-flux fraction f_S of every active Rubin band, r included
+// (F[fb_b][fb_b] += 1 / RUBIN_FB_PRIOR_SIG^2, once per matrix, as for ln rho; Roman's F146 has none). f_S is a fraction,
+// so it lies in [0,1] and a prior of width 1 says nothing about it where the data speak. It matters where they do not:
+// a band whose visits never see the bump (all at baseline, A = 1) has dm/df_S proportional to (A - 1) = 0, an empty row,
+// and the prior keeps the matrix invertible without touching the physical parameters (their derivatives vanish at
+// baseline too, so the band adds nothing to their rows either).
+constexpr double RUBIN_FB_PRIOR_SIG = 1.0;
 
 // The largest DATA-ONLY sigma(ln rho) (the matrix's without the prior) at which a partition has measured the
 // source's size: rho to 30%, a ~3-sigma detection. Only then is the photometric thetaE = theta* / rho used (the

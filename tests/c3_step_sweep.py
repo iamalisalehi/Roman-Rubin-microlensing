@@ -17,7 +17,7 @@ as h shrinks. Their sum is U-shaped in h; a trustworthy step sits on the flat pl
 bottom, with sigma stable to well under 1% across it.
 
 Two controls are built into the sweep:
-  * mbs0 / mbs1 (baseline magnitude): the model depends on these linearly with unit slope, so
+  * mbs0 / mbs1 and the Rubin bands' mbs_i, mbs_z (baseline magnitude): the model depends on these linearly with unit slope, so
     the central difference is exact at any step. Their curves must be perfectly flat; structure
     there means the sweep harness is broken.
   * fb0 / fb1 (blend fraction): FisherM clamps their step so fb + h stays inside [0, 1]. At the
@@ -63,8 +63,10 @@ WARN_PCT = 0.1      # what a genuinely converged parameter looks like
 STEP_TOL = 0.005
 MIN_PLATEAU_PTS = 3
 
-PARAM_ORDER = ["u0", "tE", "fb0", "piE", "xi", "t0", "mbs0", "fb1", "mbs1", "lnrho"]
-OPTIONAL_PARAMS = {"lnrho"}      # only in a finite-source (espl) sweep
+PARAM_ORDER = ["u0", "tE", "fb0", "piE", "xi", "t0", "mbs0", "fb1", "mbs1", "lnrho",
+               "fb_u", "mbs_u", "fb_g", "mbs_g", "fb_i", "mbs_i", "fb_z", "mbs_z", "fb_y", "mbs_y"]
+# ln rho only in a finite-source (espl) sweep; the Rubin bands beyond r only for the chromatic event (i and z)
+OPTIONAL_PARAMS = {"lnrho", "fb_u", "mbs_u", "fb_g", "mbs_g", "fb_i", "mbs_i", "fb_z", "mbs_z", "fb_y", "mbs_y"}
 CHOSEN = list(PARAM_ORDER)       # the parameters reported, plotted and gated on (--params)
 SURVEY_ORDER = ["joint", "rubin", "roman"]
 SURVEY_STYLE = {"joint": "-", "rubin": "--", "roman": ":"}

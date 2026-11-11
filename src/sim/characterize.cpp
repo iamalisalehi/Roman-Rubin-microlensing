@@ -18,6 +18,7 @@ Characterization characterizeEvent(SimContext& ctx, SightlineState& st, const Ef
     Characterization ch;
 
     for (int i = 0; i < nq; ++i) co.resu[i] = -1.0;
+    co.nRubinBand.fill(0);   // no Rubin band in the fit until FisherM says so
     // Per-survey results start at the not-measured sentinel so an event that never reaches
     // FisherM cannot inherit the previous event's sigmas.
     for (int q = 0; q < NSURV; ++q) {

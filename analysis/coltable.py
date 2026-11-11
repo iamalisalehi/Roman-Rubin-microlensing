@@ -46,55 +46,123 @@ class Block(NamedTuple):
     nrows: int
 
 
-def _transpose(lines: List[bytes]) -> Optional[List[bytes]]:
-    """The columns of `lines` as space-joined byte strings, or None if not transposable."""
-    joined = b"".join(lines)
-    if (not joined.endswith(b"\n") or joined.startswith(b" ") or b"  " in joined
-            or b" \n" in joined or b"\n " in joined or b"\n\n" in joined or joined.startswith(b"\n")):
-        return None
-    m = lines[0].count(b" ") + 1
-    if any(ln.count(b" ") != m - 1 for ln in lines):
-        return None
-    return [b" ".join(col) for col in zip(*(ln[:-1].split(b" ") for ln in lines))]
+SLICE_ROWS = 2048             # rows tokenised at a time: bounds the per-token bytes objects
+GROUP_BYTES = 8 * 1024 * 1024  # transposed bytes held at once: the block is re-read once per column group
+
+
+def _slice_ok(part: List[bytes], m1: int) -> bool:
+    """True if every line of `part` has m1 spaces and only single-space-separated, non-empty tokens."""
+    joined = b"".join(part)
+    if (not joined.endswith(b"\n") or joined.startswith(b" ") or joined.startswith(b"\n")
+            or b"  " in joined or b" \n" in joined or b"\n " in joined or b"\n\n" in joined):
+        return False
+    return all(ln.count(b" ") == m1 for ln in part)
+
+
+def _scan_block(src, rows_per_block: int):
+    """Read up to rows_per_block lines from `src` without keeping them.
+
+    Returns (nrows, nbytes, transposable, ncols); the file position ends after the block.
+    """
+    n = nbytes = 0
+    ok, m1 = True, None
+    while n < rows_per_block:
+        part = list(itertools.islice(iter(src.readline, b""), min(SLICE_ROWS, rows_per_block - n)))
+        if not part:
+            break
+        if m1 is None:
+            m1 = part[0].count(b" ")
+        ok = ok and _slice_ok(part, m1)
+        n += len(part)
+        nbytes += sum(map(len, part))
+    return n, nbytes, ok, (m1 or 0) + 1
+
+
+def _read_lines(src, start: int, n: int) -> Iterator[List[bytes]]:
+    """The n lines starting at byte `start`, SLICE_ROWS at a time."""
+    src.seek(start)
+    for done in range(0, n, SLICE_ROWS):
+        yield list(itertools.islice(iter(src.readline, b""), min(SLICE_ROWS, n - done)))
+
+
+def _write_block(src, start: int, n: int, nbytes: int, m: int, ok: bool, head: bytes, nhdr: int,
+                 comp, dst) -> None:
+    """Compress the block of n rows at byte `start` (its text is re-read, never held whole)."""
+    if not ok:
+        dst.write(comp.compress(b"#@rowblock rows=%d bytes=%d hdr=%d\n" % (n, nbytes, nhdr) + head))
+        src.seek(start)
+        left = nbytes
+        while left:
+            chunk = src.read(min(left, 1 << 20))
+            dst.write(comp.compress(chunk))
+            left -= len(chunk)
+        return
+    dst.write(comp.compress(b"#@colblock rows=%d cols=%d hdr=%d\n" % (n, m, nhdr) + head))
+    width = max(1, min(m, m * GROUP_BYTES // max(nbytes, 1)))  # columns per group
+    for g0 in range(0, m, width):
+        g1 = min(m, g0 + width)
+        parts = [[] for _ in range(g1 - g0)]
+        for lines in _read_lines(src, start, n):
+            for j, col in enumerate(zip(*(ln[:-1].split(b" ")[g0:g1] for ln in lines))):
+                parts[j].append(b" ".join(col))
+        for j in range(g1 - g0):
+            dst.write(comp.compress(b" ".join(parts[j]) + b"\n"))
+            parts[j] = None
+
+
+def _compress_file(plain_path: str, tmp: str, rows_per_block: int, preset: int, dict_size: int):
+    """Stream `plain_path` into the xz file `tmp`; returns (rows, blocks, row_blocks).
+
+    Kept apart from encode() so the compressor's memory (~12x the dictionary) is freed before
+    the verify pass starts.
+    """
+    comp = lzma.LZMACompressor(format=lzma.FORMAT_XZ, filters=[
+        {"id": lzma.FILTER_LZMA2, "preset": preset, "dict_size": dict_size}])
+    blocks = row_blocks = rows = 0
+    with open(plain_path, "rb") as src, open(tmp, "wb") as dst:
+        hdr = []
+        start = 0
+        line = src.readline()
+        while line.startswith(b"#") and line.endswith(b"\n"):
+            hdr.append(line)
+            start += len(line)
+            line = src.readline()
+        head = b"".join(hdr)
+        src.seek(start)
+        while True:
+            n, nbytes, ok, m = _scan_block(src, rows_per_block)
+            if n == 0:
+                break
+            end = src.tell()
+            _write_block(src, start, n, end - start, m, ok, head, len(hdr), comp, dst)
+            src.seek(end)
+            start = end
+            blocks += 1
+            rows += n
+            row_blocks += not ok
+        if blocks == 0 and hdr:  # header-only table
+            dst.write(comp.compress(b"#@rowblock rows=0 bytes=0 hdr=%d\n" % len(hdr) + head))
+            blocks = row_blocks = 1
+        dst.write(comp.flush())
+    return rows, blocks, row_blocks
+
+
+def _release_memory() -> None:
+    """Hand freed heap back to the OS (glibc only) so the verify pass starts from a small footprint."""
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
 
 
 def encode(plain_path: str, out_path: str, rows_per_block: int = ROWS_PER_BLOCK,
            preset: int = XZ_PRESET, dict_size: int = XZ_DICT) -> dict:
     """Write `out_path` from the table `plain_path`; it appears only after `verify` passes."""
-    comp = lzma.LZMACompressor(format=lzma.FORMAT_XZ, filters=[
-        {"id": lzma.FILTER_LZMA2, "preset": preset, "dict_size": dict_size}])
     tmp = out_path + ".tmp"
-    blocks = row_blocks = rows = 0
     try:
-        with open(plain_path, "rb") as src, open(tmp, "wb") as dst:
-            hdr = []
-            first = src.readline()
-            while first.startswith(b"#") and first.endswith(b"\n"):
-                hdr.append(first)
-                first = src.readline()
-            head = b"".join(hdr)
-            pending = [first] if first else []
-            while True:
-                lines = pending + list(itertools.islice(src, rows_per_block - len(pending)))
-                pending = []
-                if not lines:
-                    break
-                cols = _transpose(lines)
-                if cols is not None:
-                    text = b"#@colblock rows=%d cols=%d hdr=%d\n" % (len(lines), len(cols), len(hdr))
-                    text += head + b"\n".join(cols) + b"\n"
-                else:
-                    raw = b"".join(lines)
-                    text = b"#@rowblock rows=%d bytes=%d hdr=%d\n" % (len(lines), len(raw), len(hdr))
-                    text += head + raw
-                    row_blocks += 1
-                dst.write(comp.compress(text))
-                blocks += 1
-                rows += len(lines)
-            if blocks == 0 and hdr:  # header-only table
-                dst.write(comp.compress(b"#@rowblock rows=0 bytes=0 hdr=%d\n" % len(hdr) + head))
-                blocks = row_blocks = 1
-            dst.write(comp.flush())
+        rows, blocks, row_blocks = _compress_file(plain_path, tmp, rows_per_block, preset, dict_size)
+        _release_memory()
         if not verify(plain_path, tmp):
             raise RuntimeError("colxz verify failed for %s" % plain_path)
         os.replace(tmp, out_path)
@@ -136,6 +204,19 @@ def iter_blocks(path: str) -> Iterator[Block]:
                 yield Block(hdr, None, raw, mk["rows"])
 
 
+def _write_rows(cols: List[bytes], n: int, out: BinaryIO) -> None:
+    """Write the n rows of a column block, SLICE_ROWS at a time (bounds the token objects)."""
+    rest = list(cols)
+    for done in range(0, n, SLICE_ROWS):
+        k = min(SLICE_ROWS, n - done)
+        toks = []
+        for j, c in enumerate(rest):
+            pieces = c.split(b" ", k)
+            toks.append(pieces[:k])
+            rest[j] = pieces[k] if len(pieces) > k else b""
+        out.write(b"".join(b" ".join(r) + b"\n" for r in zip(*toks)))
+
+
 def decode(path: str, out: BinaryIO) -> int:
     """Write the row-major text of `path` to `out`; return the number of data rows."""
     header = None
@@ -147,7 +228,7 @@ def decode(path: str, out: BinaryIO) -> int:
         elif hdr != header:
             raise ValueError("%s: chunks have different headers" % path)
         if cols is not None:
-            out.write(b"".join(b" ".join(r) + b"\n" for r in zip(*(c.split(b" ") for c in cols))))
+            _write_rows(cols, n, out)
         else:
             out.write(raw)
         rows += n

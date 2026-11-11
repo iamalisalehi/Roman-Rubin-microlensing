@@ -5,6 +5,9 @@ Scratch files go to the system temp dir (set TMPDIR to redirect).
 """
 import io
 import os
+import random
+import resource
+import subprocess
 import sys
 import tempfile
 
@@ -34,8 +37,35 @@ def roundtrip(tmp, name, data, **kw):
     return st, out
 
 
+RSS_LIMIT_MB = 300
+
+
+def memory_case(tmp):
+    """Encode and decode a wide synthetic table (154 cols x 60,000 rows, 2 blocks) in child
+    processes at the default constants; their peak RSS must stay under RSS_LIMIT_MB."""
+    rng = random.Random(1)
+    pool = ["%.6g" % (rng.random() * 10 ** rng.randint(-3, 4)) for _ in range(30_000)]
+    src, out = os.path.join(tmp, "wide.dat"), os.path.join(tmp, "wide.colxz")
+    with open(src, "w") as f:
+        f.write("# " + " ".join("c%d" % j for j in range(154)) + "\n")
+        for _ in range(60_000):
+            f.write(" ".join(rng.choices(pool, k=154)) + "\n")
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "analysis", "coltable.py")
+    subprocess.run([sys.executable, script, "encode", src, out], check=True, stdout=subprocess.DEVNULL)
+    enc = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024
+    with open(os.devnull, "wb") as null:
+        subprocess.run([sys.executable, script, "decode", out], check=True, stdout=null)
+    dec = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024  # max over both children
+    assert ct.verify(src, out)
+    print("wide table: %d -> %d bytes, peak RSS %.0f MB (encode), %.0f MB (max with decode)"
+          % (os.path.getsize(src), os.path.getsize(out), enc, dec))
+    assert enc <= RSS_LIMIT_MB and dec <= RSS_LIMIT_MB, (enc, dec)
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
+        # first, while this process is still small: a child's ru_maxrss starts from its parent's size at fork
+        memory_case(tmp)
         if os.path.exists(SAMPLE):
             data = open(SAMPLE, "rb").read()
             st, _ = roundtrip(tmp, "sample", data, rows_per_block=50_000)

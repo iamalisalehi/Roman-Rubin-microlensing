@@ -142,12 +142,11 @@ def resolve_table(path):
 def open_text(path):
     """Open a text table for reading, gunzipping a `*.gz` name and decoding a `*.colxz` to row-major text.
 
-    A `.colxz` is decoded whole into memory here; the event reader never calls this for one (it streams the
-    blocks), so this is for the small callers that read a header or a few lines.
+    A `.colxz` is decoded WHOLE into memory here (about twice its plain size): small files only. The event
+    reader streams the blocks instead, and `table_header` reads just the header.
     """
     path = os.fspath(path)
     if path.endswith(".colxz"):
-        import io
         import coltable
         buf = io.BytesIO()
         coltable.decode(path, buf)
@@ -163,34 +162,45 @@ def _colxz_header(path):
     return ""
 
 
-def _colxz_column(line, nrows):
-    """One column line (space-joined tokens) -> int64 if every token is an integer, else float64.
+def table_header(path):
+    """The column names of an event table (its first `#` line), for plain, `.gz` and `.colxz` names.
 
-    pd.read_csv's inference for numeric tables; a column that is integer in one block and float in
-    another is promoted to float64 by the concatenation, as it is for the plain table.
+    A `.colxz` is not decoded: only its first block's header lines are read.
     """
-    if not nrows:
-        return np.empty(0, np.int64)
-    if line.translate(None, b"0123456789+- ") == b"":
-        return np.array(line.split(), dtype=np.int64)
-    return np.array(line.split(), dtype=np.float64)
+    path = os.fspath(path)
+    if path.endswith(".colxz"):
+        line = _colxz_header(path)
+    else:
+        with open_text(path) as fh:
+            line = fh.readline()
+    return line.lstrip("#").split()
+
+
+def _colxz_column(name, line):
+    """One column line (space-joined tokens) -> Series, parsed by the same pd.read_csv call the plain
+    table goes through (same engine, default float_precision), so values and dtype match bit for bit."""
+    return pd.read_csv(io.BytesIO(line.replace(b" ", b"\n")), sep=r"\s+", comment="#", header=None,
+                       names=[name])[name]
 
 
 def _colxz_chunks(path, cols, usecols):
     """Yield one DataFrame per block of a `.colxz` table, holding only `usecols` (file order).
 
-    Only the requested column lines of a block are tokenised, so a few-column read costs a few
+    Only the requested column lines of a block are parsed, so a few-column read costs a few
     columns' worth of memory; the other lines are skipped as bytes. A row-block (fallback) is parsed
     by pandas as the plain table would be.
     """
     import coltable
-    want = [c for c in cols if usecols is None or c in set(usecols)]
+    keepset = None if usecols is None else set(usecols)
+    want = [c for c in cols if keepset is None or c in keepset]
     idx = [cols.index(c) for c in want]
     for blk in coltable.iter_blocks(path):
+        if not blk.nrows:
+            continue
         if blk.columns is not None:
             if len(blk.columns) != len(cols):
                 raise ValueError(f"{path}: block has {len(blk.columns)} columns, header names {len(cols)}")
-            yield pd.DataFrame({c: _colxz_column(blk.columns[i], blk.nrows) for c, i in zip(want, idx)},
+            yield pd.DataFrame({c: _colxz_column(c, blk.columns[i]) for c, i in zip(want, idx)},
                                columns=want)
         else:
             yield pd.read_csv(io.BytesIO(blk.raw_rows), sep=r"\s+", comment="#", header=None,
@@ -214,6 +224,9 @@ def load_events(path, keep=None, chunksize=None, usecols=None, narrow=False,
 
     usecols -- keep only these columns. For statistics over all draws, which cannot discard rows.
         The `detCls`/`synClass`/`t0zone` label columns are added only if their source column survives.
+
+    On a `.colxz` table `chunksize` is ignored: `keep` and `narrow` see its 25,000-row blocks, so dtype
+    narrowing is per block.
 
     narrow -- store floats as float32 and integers as int32, halving memory, for statistics that
         need every draw. float32 keeps 7 significant digits; callers must do arithmetic in float64.
@@ -251,7 +264,16 @@ def load_events(path, keep=None, chunksize=None, usecols=None, narrow=False,
                 chunk = _narrow(chunk, keep64)
             parts.append(chunk)
         want = [c for c in cols if "usecols" not in reader_kw or c in reader_kw["usecols"]]
-        df = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=want)
+        if not parts:
+            df = pd.DataFrame(columns=want)
+        elif keep is None and not narrow:
+            # concatenate column by column and build the frame once (never both the blocks and a full copy)
+            out = {}
+            for c in want:                      # each block's column is freed as its piece joins `out`
+                out[c] = pd.concat([pt.pop(c) for pt in parts], ignore_index=True)
+            df = pd.DataFrame(out, columns=want, copy=False)
+        else:
+            df = pd.concat(parts, ignore_index=True)
     elif keep is None and chunksize is None and not narrow:
         df = pd.read_csv(path, **reader_kw)
     else:
@@ -758,8 +780,7 @@ def keep_columns(table_path, map_path, convention):
                                        "run_provenance.txt"))
     if convention == mode:
         return []
-    with open_text(resolve_table(table_path)) as fh:
-        header = fh.readline().lstrip("#").split()
+    header = table_header(resolve_table(table_path))
     if "pKeep" in header:
         return ["pKeep"]
     return [c for c in ["u0", "lon", "lat", "detL", "detR", "detJ"] + [f"{k}_{f}" for k in ("magb", "blend")

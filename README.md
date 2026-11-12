@@ -84,8 +84,12 @@ A source star is kept whenever its peak is visible (every star, the default); `-
 restores the per-resolved-object rule, keeping a draw with probability equal to its blend fraction.
 Either way the event table records that keep probability as `pKeep`, so every analysis script reports
 either convention (`--convention every-star|per-object`, every star the default). The table also carries
-the blend-fraction errors `sigfb0_J`, `sigfb0_L`, `sigfb1_J`, `sigfb1_R` and the lens extinctions
-`Alens_*` (one per band).
+the blend-fraction errors `sigfb0_J`, `sigfb0_L` (Rubin's r), `sigfb1_J`, `sigfb1_R` (F146), the lens extinctions
+`Alens_*` (one per band), and for the dark-lens test Rubin's i and z baselines and blend-fraction errors
+(`mbs_i`, `mbs_z`, `sigfb_i_J`, `sigfb_i_L`, `sigfb_z_J`, `sigfb_z_L`) with the number of Rubin bands fitted (`nbandL`).
+Rubin is fitted band by band: each band with at least three visits has its own blend fraction and baseline. The
+astrometric forecast treats the lens's own light in each band as unknown (`--lens-light free`, the default;
+`--lens-light known` for comparison).
 
 ## Acknowledgements
 

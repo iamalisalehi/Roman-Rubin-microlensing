@@ -112,9 +112,10 @@ validate_config() {
     if is_uint "$STRIDE" && is_uint "$STRIDE_ROMAN" && (( STRIDE_ROMAN >= 1 )) && (( STRIDE % STRIDE_ROMAN != 0 )); then
         err "STRIDE_ROMAN ($STRIDE_ROMAN) must divide STRIDE ($STRIDE)"
     fi
-    for v in PAIR_SATELLITE STUB SUBMIT KEEP_CHUNKS COMPRESS_TABLES; do
+    for v in PAIR_SATELLITE STUB SUBMIT KEEP_CHUNKS; do
         [[ ${!v} == 0 || ${!v} == 1 ]] || err "$v must be 0 or 1 (got '${!v}')"
     done
+    case $COMPRESS_TABLES in 1|gzip|0) ;; *) err "COMPRESS_TABLES must be 1, gzip or 0 (got '$COMPRESS_TABLES')" ;; esac
     case $GSL in auto|system|build) ;; *) err "GSL must be auto, system or build (got '$GSL')" ;; esac
     [[ $SCHEDULER == local || $SCHEDULER == slurm ]] || err "SCHEDULER must be local or slurm (got '$SCHEDULER')"
     case $CATALOGUE_DWARFS in besancon|empirical) ;; *) err "CATALOGUE_DWARFS must be besancon or empirical (got '$CATALOGUE_DWARFS')" ;; esac
@@ -685,10 +686,11 @@ $(git -C "$ROOT" status --short --untracked-files=no | head -20)"
 
     local pop flags n k nchunks plist=""
     for pop in $POPULATIONS; do
+        local plan=$P_RUN/$pop/plan.txt
+        # merged and the chunks deleted (KEEP_CHUNKS=0): nothing to simulate. Tested BEFORE chunks/ is (re)created.
+        if [[ $FORCE != 1 && -f $P_RUN/$pop/MERGED && ! -d $P_RUN/$pop/chunks ]]; then say "  skip   sim $pop (already merged; chunks removed)"; continue; fi
         mkdir -p "$P_RUN/$pop/chunks"
         flags=$(build_flags "$pop")
-        local plan=$P_RUN/$pop/plan.txt
-        if [[ -f $P_RUN/$pop/MERGED && ! -d $P_RUN/$pop/chunks ]]; then say "$pop: already merged (chunks removed); nothing to do"; continue; fi
         if [[ -f $plan ]]; then
             [[ $(plan_get "$plan" flags) == "$flags" && $(plan_get "$plan" chunk_size) == "$CHUNK_SIZE" ]] \
                 || die "$P_RUN/$pop was planned with other flags or CHUNK_SIZE ($(plan_get "$plan" flags), chunks of $(plan_get "$plan" chunk_size)). Use a new RUN_ROOT, or delete $P_RUN/$pop to start it over."
@@ -795,6 +797,43 @@ sim_slurm() {
     say "slurm: merge+analyze -> job ${jid%%;*} (runs when the arrays all succeed; if a chunk fails, fix it, rerun sim, and submit finish.sbatch yourself)"
 }
 
+# CPU seconds (user+system) of this shell's finished children so far.
+# `times` must run in this shell itself (not in $( )), so the result goes to CHILD_CPU.
+children_cpu() {
+    local tf; tf=$(mktemp "${TMPDIR:-/tmp}/times.XXXXXX"); times > "$tf"
+    CHILD_CPU=$(awk 'NR==2{ for (i=1;i<=2;i++){ split($i,a,/[ms]/); t+=a[1]*60+a[2] } printf "%.0f", t }' "$tf"); rm -f "$tf"
+}
+
+# Event tables of a directory: test<tag>.dat, not the detJ subset.
+plain_tables() { local f; for f in "$1"/test*.dat; do [[ -f $f && $f != *_detJ.dat ]] && echo "$f"; done; return 0; }
+
+# Compress every event table of a chunk directory to column-block xz (analysis/coltable.py). `coltable.py encode`
+# writes OUT.tmp, then decodes the WHOLE of it and compares it byte for byte with the WHOLE plain file; only if
+# that matches is the tmp fsynced and renamed (otherwise encode exits non-zero and removes its tmp). So no second
+# verify here: the plain file is deleted only after encode succeeded. A table not ending in a newline (cut
+# mid-row) is refused first. nice 19: the chunk's own slot is shared with a neighbour's ./roman.
+# Sets COMP_ROWS / COMP_ROW_BLOCKS / COMP_BYTES (encode's own statistics) for DONE.
+compress_chunk_tables() {   # compress_chunk_tables CHUNKDIR
+    local f n=0 nice_cmd="" out
+    COMP_ROWS=0; COMP_ROW_BLOCKS=0; COMP_BYTES=0
+    have nice && nice_cmd="nice -n 19"
+    for f in $(plain_tables "$1"); do
+        n=$((n + 1))
+        if [[ -s $f && -n $(tail -c1 "$f") ]]; then
+            warn "compress: $f does not end in a newline (cut mid-row?); kept, the chunk fails and is re-run"; return 1
+        fi
+        rm -f "$f.colxz.tmp"
+        # shellcheck disable=SC2086
+        out=$($nice_cmd "$PY" "$ROOT/analysis/coltable.py" encode "$f" "$f.colxz") \
+            || { rm -f "$f.colxz.tmp"; warn "compress: encoding $f failed (the plain file is kept)"; return 1; }
+        COMP_ROWS=$(printf '%s' "$out" | sed -n "s/.*'rows': \([0-9]*\).*/\1/p")
+        COMP_ROW_BLOCKS=$(printf '%s' "$out" | sed -n "s/.*'row_blocks': \([0-9]*\).*/\1/p")
+        COMP_BYTES=$(printf '%s' "$out" | sed -n "s/.*'bytes_out': \([0-9]*\).*/\1/p")
+        rm -f "$f" || return 1
+    done
+    (( n == 1 )) || { warn "compress: $1 holds $n event tables (expected 1)"; return 1; }
+}
+
 # One chunk, in its own run directory. Done = ./roman exited 0 (DONE is written then and only then).
 stage_chunk() {
     local pop=${1:-} k=${2:-}
@@ -818,15 +857,25 @@ stage_chunk() {
     # shellcheck disable=SC2086
     ( cd "$d" && $nice_cmd "$bin" $flags --start-index "$s" --end-index "$e" > run.log 2>&1 )
     rc=$?
-    local tf; tf=$(mktemp "${TMPDIR:-/tmp}/times.XXXXXX"); times > "$tf"
-    local cpu; cpu=$(awk 'NR==2{ for (i=1;i<=2;i++){ split($i,a,/[ms]/); t+=a[1]*60+a[2] } printf "%.0f", t }' "$tf"); rm -f "$tf"
+    local cpu; children_cpu; cpu=$CHILD_CPU
     local entered; entered=$(grep -c 'NEW STEP' "$d/run.log" 2>/dev/null || true)
     if (( rc != 0 )); then
         say "chunk $pop $k FAILED (exit $rc); see $d/run.log"; tail -5 "$d/run.log" | sed 's/^/   | /'
         echo "failed rc=$rc" > "$d/FAILED"; return 1
     fi
     (( entered == e - s )) || warn "chunk $pop $k: log shows $entered sightlines entered, expected $((e - s))"
-    { echo "start=$s"; echo "end=$e"; echo "rc=0"; echo "wall_s=$((SECONDS - t0))"; echo "cpu_s=$cpu"
+    # COMPRESS_TABLES=1: the chunk's event table becomes test<tag>.dat.colxz in this same job, before DONE, so a
+    # population's plain table never exists beyond one chunk. Failing here leaves no DONE: the chunk is re-run.
+    local comp_cpu=0
+    if [[ $COMPRESS_TABLES == 1 ]]; then
+        if ! compress_chunk_tables "$d"; then
+            say "chunk $pop $k FAILED (compressing its event table); rerun sim to redo it"
+            echo "failed: compress" > "$d/FAILED"; return 1
+        fi
+        children_cpu; comp_cpu=$(( CHILD_CPU - cpu ))
+    fi
+    { echo "start=$s"; echo "end=$e"; echo "rc=0"; echo "wall_s=$((SECONDS - t0))"; echo "cpu_s=$cpu"; echo "compress_cpu_s=$comp_cpu"
+      [[ $COMPRESS_TABLES == 1 ]] && { echo "compress_rows=$COMP_ROWS"; echo "compress_row_blocks=$COMP_ROW_BLOCKS"; echo "compress_bytes=$COMP_BYTES"; }
       echo "sightlines_entered=$entered"; echo "host=$(hostname)"; echo "finished=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"; } > "$d/DONE"
     say "chunk $pop $k [$s,$e) done in $(fmt_dur $((SECONDS - t0))) (cpu ${cpu}s)"
 }
@@ -834,19 +883,21 @@ stage_chunk() {
 # ------------------------------------------------------------------------------------------------
 # merge, analyze, status
 # ------------------------------------------------------------------------------------------------
-# The merged event table of a population: test<tag>.dat or, once compressed, test<tag>.dat.gz (old run roots
-# keep the plain one). Prints the plain name when neither exists.
+# The merged event table of a population: test<tag>.dat, test<tag>.dat.colxz (COMPRESS_TABLES=1) or test<tag>.dat.gz
+# (COMPRESS_TABLES=gzip; also what older run roots hold), in that order, like romanlib.resolve_table. Prints the
+# plain name when none exists.
 merged_table() {   # merged_table DIR TAG
     if [[ -f $1/test$2.dat ]]; then echo "$1/test$2.dat"
+    elif [[ -f $1/test$2.dat.colxz ]]; then echo "$1/test$2.dat.colxz"
     elif [[ -f $1/test$2.dat.gz ]]; then echo "$1/test$2.dat.gz"
     else echo "$1/test$2.dat"; fi
 }
 
-# gzip -6 the merged event table (COMPRESS_TABLES=1). The plain file is deleted only after gzip -t passes and the
+# gzip -6 the merged event table (COMPRESS_TABLES=gzip). The plain file is deleted only after gzip -t passes and the
 # decompressed line count equals the plain one's. Safe to repeat: no plain file = nothing to do; a plain file
 # beside an older .gz (a re-merge) replaces it. Chunk tables are never touched.
 compress_merged() {   # compress_merged POPDIR
-    [[ $COMPRESS_TABLES == 1 ]] || return 0
+    [[ $COMPRESS_TABLES == gzip ]] || return 0
     local f gz n1 n2
     for f in "$1"/test*.dat; do
         [[ -f $f && $f != *_detJ.dat ]] || continue
@@ -860,6 +911,38 @@ compress_merged() {   # compress_merged POPDIR
             rm -f "$gz.tmp"; warn "compress: check failed on $f (kept the plain file)"; return 1
         fi
     done
+}
+
+# A merged table must be the only form of itself in its directory: after a merge, delete the other forms (left by
+# an earlier merge of this root under another COMPRESS_TABLES). The detJ subset is not a table form.
+drop_stale_twins() {   # drop_stale_twins POPDIR
+    local f
+    for f in "$1"/test*.dat "$1"/test*.dat.colxz "$1"/test*.dat.gz; do
+        [[ -f $f && $f != *_detJ.dat ]] || continue
+        case $COMPRESS_TABLES in
+            1)    [[ $f == *.colxz ]] || rm -f "$f" ;;
+            gzip) [[ $f == *.colxz ]] && rm -f "$f" ;;
+            0)    [[ $f == *.dat ]] || rm -f "$f" ;;
+        esac
+    done
+    return 0
+}
+
+# Every DONE chunk of a population holds its event table in the form COMPRESS_TABLES says: exactly one
+# test<tag>.dat.colxz (1), or exactly one test<tag>.dat (gzip, 0); never both, never a stale .tmp.
+check_chunk_tables() {   # check_chunk_tables POP NCHUNKS
+    local k d nplain ncx ntmp bad=0 want
+    for (( k = 0; k < $2; k++ )); do
+        d=$(chunk_dir "$1" "$k"); [[ -f $d/DONE ]] || continue
+        nplain=$(plain_tables "$d" | wc -l)
+        ncx=$(find "$d" -maxdepth 1 -name 'test*.dat.colxz' | wc -l)
+        ntmp=$(find "$d" -maxdepth 1 -name 'test*.tmp' | wc -l)
+        if [[ $COMPRESS_TABLES == 1 ]]; then want="exactly one test*.dat.colxz and no plain test*.dat"; (( ncx == 1 && nplain == 0 && ntmp == 0 )) && continue
+        else want="exactly one plain test*.dat and no .colxz"; (( nplain == 1 && ncx == 0 && ntmp == 0 )) && continue; fi
+        echo "pipeline: merge: chunk $1 $(basename "$d") ($d) holds $nplain plain table(s), $ncx .colxz, $ntmp .tmp; with COMPRESS_TABLES=$COMPRESS_TABLES it must hold $want. Re-run it (delete its DONE and run sim), or merge with the COMPRESS_TABLES the chunks were made with." >&2
+        bad=1
+    done
+    return $bad
 }
 
 stage_merge() {
@@ -880,9 +963,11 @@ stage_merge() {
             "$PY" pipeline/merge_chunks.py "$d" || rc=1      # prints which chunks lack DONE
             continue
         fi
+        check_chunk_tables "$pop" "$nch" || { rc=1; continue; }
         if run_step "merge $pop" "$RUN_STAMPS/merge_$pop.stamp" "$P_RUN/logs/merge_$pop.log" "chunks=$nch" "$ins" "$d/MERGED" \
               "$PY" pipeline/merge_chunks.py "$d"; then
             sed 's/^/         /' "$P_RUN/logs/merge_$pop.log"
+            drop_stale_twins "$d"      # before the chunks go: a stale plain twin would shadow the new .colxz
             if [[ $KEEP_CHUNKS == 0 ]]; then rm -rf "$d/chunks"; say "  removed $d/chunks (KEEP_CHUNKS=0)"; fi
             compress_merged "$d" || rc=1
         else rc=1; fi
@@ -894,8 +979,8 @@ prov_get() { sed -n "s/^# *$2  *\([^ #]*\).*/\1/p" "$1" | head -1; }
 
 # Detection-only copy of a population's table: header kept, rows with detJ == 1; the column is found
 # from the header, not by a fixed index.
-make_detj() {   # make_detj TABLE OUT   (TABLE may be .gz)
-    { if [[ $1 == *.gz ]]; then gzip -dc "$1"; else cat "$1"; fi; } | awk 'NR==1 { print; h=$0; sub(/^#[ \t]*/, "", h); n=split(h, c, /[ \t]+/); for (i=1;i<=n;i++) if (c[i]=="detJ") j=i; if (!j) { print "no detJ column in the header" > "/dev/stderr"; exit 2 } next }
+make_detj() {   # make_detj TABLE OUT   (TABLE may be .gz or .colxz: decoded as a stream, never written out plain)
+    { case $1 in *.gz) gzip -dc "$1" ;; *.colxz) "$PY" "$ROOT/analysis/coltable.py" decode "$1" ;; *) cat "$1" ;; esac; } | awk 'NR==1 { print; h=$0; sub(/^#[ \t]*/, "", h); n=split(h, c, /[ \t]+/); for (i=1;i<=n;i++) if (c[i]=="detJ") j=i; if (!j) { print "no detJ column in the header" > "/dev/stderr"; exit 2 } next }
          /^#/ { print; next } $j == 1' > "$2.tmp" && mv "$2.tmp" "$2"
 }
 

@@ -94,8 +94,7 @@ class Run:
         # narrow: float32 storage, since production tables have up to ~12M rows; the per-draw
         # quantities computed below are held in float64.
         self.table = R.resolve_table(self.table)
-        with R.open_text(self.table) as fh:
-            has_pkeep = "pKeep" in fh.readline().split()
+        has_pkeep = "pKeep" in R.table_header(self.table)
         self.df = R.load_events(self.table, usecols=COLS + (["pKeep"] if has_pkeep else []),
                                 chunksize=chunksize,
                                 keep=R.keep_weightable(self.map, self.logs), narrow=True)

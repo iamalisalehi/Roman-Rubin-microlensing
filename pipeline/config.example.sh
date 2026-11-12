@@ -85,9 +85,18 @@ SLURM_OPTS_FINISH="--account=CHANGE_ME --partition=CHANGE_ME --time=08:00:00 --m
 SUBMIT=1
 # 1 = keep RUN_ROOT/<pop>/chunks after merging (the merged tables then exist twice on disk); 0 = delete them.
 KEEP_CHUNKS=1
-# 1 = after the merge, gzip -6 each merged test<tag>.dat to test<tag>.dat.gz (about 3x smaller; the plain file is
-# deleted only after gzip -t and a line-count match). The analysis reads either name. 0 = leave them plain.
-# Compress an existing run by hand with:  gzip -6 RUN/<pop>/test*.dat
+# How the per-event tables (test<tag>.dat, ~770 bytes per drawn star, ~53 GB plain for bulge+ns+bh) are stored:
+#   1    column-block xz (.colxz, analysis/coltable.py), lossless, ~0.21 of the plain size (0.64 of gzip -6; measured
+#        on a 244 MB bulge table): ~53 GB -> ~11 GB. Each chunk's table is compressed by the chunk's own job right after
+#        ./roman exits 0 (about 1 CPU-second per 1.2 MB of plain table, ~220 MB RAM, nice 19) and checked by decoding
+#        it against the plain file before that is deleted; the merge concatenates the chunks' .colxz files. No plain
+#        table of a whole population ever exists. Format: one xz stream of 25,000-row blocks, each stored column by
+#        column with the header lines. Decode by hand:
+#            .roman/bin/python analysis/coltable.py decode RUN/<pop>/test<tag>.dat.colxz > plain.dat
+#   gzip the former behaviour: chunks and the merge plain, then the merged table gzip -6 to .dat.gz (about 3x smaller).
+#   0    everything plain.
+# The analysis reads any of the three forms. The detection subset test<tag>_detJ.dat stays plain in every mode. Use
+# the value a run root was started with when you merge it (a root made before this option existed: gzip).
 COMPRESS_TABLES=1
 
 # ---- step 6: analysis ------------------------------------------------------------------------------

@@ -1930,10 +1930,13 @@ bool sameDouble(double a, double b) { return std::memcmp(&a, &b, sizeof a) == 0;
 // through tabEq. The tables are the numbers of the machine they were generated on: bit-exact there (FISHERTEST_EXACT=1 asks
 // for that), and elsewhere, where libm and the FMA code paths round the last bits differently, equal to a relative tolerance
 // of 1e-6 (the default), which every mutant of the per-band decisions exceeds by orders of magnitude. gTabDev is the largest
-// relative deviation a check saw, printed in its summary line.
+// relative deviation a check saw, printed in its summary line. The prior-off table holds near-singular matrices (condition
+// up to ~1e6 without the blend prior), which amplify the last-bit differences: GitHub's ubuntu runner measured 6.8e-6
+// there (7e-9 and 3e-7 in the other tables), so that table is compared to kTableTolIllCond.
 constexpr double kTableTol = 1e-6;
+constexpr double kTableTolIllCond = 1e-4;
 double gTabDev = 0.0;
-bool tabEq(double a, double b)
+bool tabEq(double a, double b, double tol = kTableTol)
 {
     static const bool exact = [] { const char* e = std::getenv("FISHERTEST_EXACT"); return e and std::string(e) == "1"; }();
     if (exact) return sameDouble(a, b);
@@ -1941,7 +1944,7 @@ bool tabEq(double a, double b)
     if (a == b) return true;                                   //also infinities
     const double dev = std::fabs(a - b) / std::max(std::fabs(b), 1e-300);
     if (not (dev <= gTabDev)) gTabDev = dev;                   //NaN-safe, keeps infinity
-    return dev <= kTableTol;
+    return dev <= tol;
 }
 
 // Every photometric output of two runs is identical to the last bit: the epoch counts, okA, condA and all of Era.
@@ -1978,8 +1981,8 @@ bool checkPriorOffReproducesToday()
             for (const auto& ref : kPriorOffRef) {
                 if (ref.espl != (model == SourceModel::ESPL ? 1 : 0) or std::strcmp(ref.name, ev.name) != 0) continue;
                 const int q = ref.q;
-                bool same = r.co->okA[q] == ref.ok and tabEq(r.co->condA[q], ref.cond);
-                for (int k = 0; k < 10; ++k) same = same and tabEq(r.co->Era[q][k], ref.era[k]);
+                bool same = r.co->okA[q] == ref.ok and tabEq(r.co->condA[q], ref.cond, kTableTolIllCond);
+                for (int k = 0; k < 10; ++k) same = same and tabEq(r.co->Era[q][k], ref.era[k], kTableTolIllCond);
                 for (int k = 10; k < Nx; ++k) same = same and r.co->Era[q][k] == -1.0;   // no other band, no sigma
                 ++n;
                 if (not same) {
@@ -1995,7 +1998,7 @@ bool checkPriorOffReproducesToday()
         std::cerr << "FAIL [prior-off] compared " << n << " rows, not every event/partition/model\n";
         ok = false;
     }
-    std::cout << "# prior-off reproduces the f9e9938 forecast (reference table; bit for bit with FISHERTEST_EXACT=1, else to " << kTableTol
+    std::cout << "# prior-off reproduces the f9e9938 forecast (reference table; bit for bit with FISHERTEST_EXACT=1, else to " << kTableTolIllCond
               << "): " << n << " rows, largest relative deviation " << gTabDev << ", " << (ok ? "ok\n" : "FAIL\n");
     return ok;
 }

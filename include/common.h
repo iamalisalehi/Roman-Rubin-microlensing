@@ -49,13 +49,16 @@ using std::cin;
 
 // Photometric Fisher parameters, in index order:
 //   0 u0   1 tE   2 fb0   3 piE   4 xi   5 t0   6 mbs0   7 fb1   8 mbs1   9 ln rho
-// fb0/mbs0 are Rubin's source-flux fraction and baseline magnitude; fb1/mbs1 are Roman's.
+//   10 fb_u  11 mbs_u  12 fb_g  13 mbs_g  14 fb_i  15 mbs_i  16 fb_z  17 mbs_z  18 fb_y  19 mbs_y
+// fb0/mbs0 are the blend fraction and baseline magnitude of Rubin's r band; fb1/mbs1 are Roman's F146. Each of Rubin's
+// other bands (u g i z y) with enough visits carries its own pair, 10-19 (fbIndexOfFilter / mbsIndexOfFilter in
+// fisher/fisher.h): the magnification is the same in every band, only the blending and the baseline differ.
 // fb is the fraction of aperture flux coming from the SOURCE, despite the name (see
 // src/events/source.cpp): F_src = fb * 10^(-0.4 mbs), F_bl = (1-fb) * 10^(-0.4 mbs).
 // ln rho is the log of the source radius in Einstein radii, a parameter of every partition's matrix that has data
 // under a finite source (with the prior RHO_PRIOR_SIGLN in config/parameters.h), never under a point source.
 // Indices 0-4 keep the meanings hard-coded throughout co.resu[].
-constexpr int Nx = 10;
+constexpr int Nx = 20;
 constexpr int Ny = 4;
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 

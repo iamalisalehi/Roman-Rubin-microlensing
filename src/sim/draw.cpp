@@ -53,7 +53,7 @@ EfficiencyBins drawEvent(SimContext& ctx, SightlineState& st, int prevNdw) {
     // the previous event's photometry. The untouched tail of tele[] is 0, not -1.
     for (int i = 0; i < prevNdw; ++i) {
         l.timn[i] = 0.0;  l.magn[i] = 0.0; l.soux[i] = 0.0;  l.souy[i] = 0.0;
-        l.errm[i] = 0.0;  l.erra[i] = 0.0; l.tele[i] = -1;
+        l.errm[i] = 0.0;  l.erra[i] = 0.0; l.tele[i] = -1; l.filt[i] = -1;
     }
 
     // The per-event accumulators (LightCurveStats, Detection) are fresh value structs, zeroed by their

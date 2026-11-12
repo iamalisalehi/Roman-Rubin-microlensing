@@ -66,6 +66,123 @@ def ms_flux(ms, idx, dl, alens, bands):
     return sum(10 ** (-0.4 * (row[f"Mab_{b}"] + mu + alens.get(b, 0.0))) for b in bands), float(row["mass"])
 
 
+# The dark-lens test as it was before the i and z bands (a verbatim copy of analysis/romanlib.py's
+# dark_lens_probability at 1efbdda; only the module prefix R. added to the names it calls). The new function
+# must reproduce it exactly on a table without the i/z columns, and never fall below it with them.
+def _dark_lens_probability_ref(df, partition, ms, n_samples=2000, seed=12345, ref_bands=None):
+    """P(dark) per event: the fraction of posterior samples in which the blend cannot hide the lens.
+
+    partition "joint" tests Rubin's reference band(s) (sigfb0_J > 0) and F146 (sigfb1_J > 0) with the
+    joint mass error relMl_J; "rubin" the reference band(s) with sigfb0_L and relMl_L; "roman" F146
+    with sigfb1_R and relMl_R. `ref_bands` are indices into R.FILTERS (default R.P.RUBIN_REF_BANDS);
+    Rubin's baseline mbs0 and the lens flux are both summed over those bands together.
+
+    Per sample: ln M ~ N(ln Ml, relMl); f_S ~ N(fb, sigfb) TRUNCATED to [0, 1] (the posterior under
+    the physical prior; clipping would pile the mass of a poorly measured f_S on f_S = 1, zero blend
+    light, and call every lens dark), independently per band (the joint fit's f_S correlation is
+    not carried); a sigfb that is effectively zero gives f_S = fb; blend flux = 10^(-0.4 mbs) (1 - f_S); a
+    main-sequence star of mass M at D_L has flux 10^(-0.4 (Mab(M) + 5 log10(D_L 100) + Alens)), Mab
+    linear in ln M, the top row above the table, and a sample below the table's lowest mass is NOT
+    excluded (a brown dwarf can hide anywhere). A sample is excluded when that flux exceeds the blend
+    flux in ANY tested band. D_L is held at its true value (an approximation: the forecast has no
+    distance error, and the mass error is the dominant one); the mass centre is the true Ml.
+
+    The relation is the event's own Galactic component's (column `struc`, 0 thin disc, 1 bulge, 2 thick
+    disc, 3 halo; the lens's component for every population, remnants included); an old-layout table
+    has one relation for all.
+
+    Float in [0, 1]; NaN (no verdict) when relMl <= 0 (the -1 sentinel), no band is tested, or a
+    tested band's inputs are not finite. Vectorised over events in chunks; deterministic for a seed.
+    """
+    spec = {"joint": ("relMl_J", "sigfb0_J", "sigfb1_J"), "rubin": ("relMl_L", "sigfb0_L", None),
+            "roman": ("relMl_R", None, "sigfb1_R")}
+    if partition not in spec:
+        raise ValueError(f"partition {partition!r}; expected one of {sorted(spec)}")
+    relcol, s0col, s1col = spec[partition]
+    rubin = list(R.P.RUBIN_REF_BANDS if ref_bands is None else ref_bands)
+    col = lambda c: df[c].to_numpy(float)
+    n = len(df)
+    rel = col(relcol)
+    lnM0 = np.log(col("Ml"))
+    mu = 5.0 * np.log10(col("Dl") * 100.0)
+    struc = col("struc")
+    # per tested band: (fb, sigma, baseline mag, [(table column, lens-extinction column)])
+    bands = []
+    if s0col:
+        bands.append((col("fb0"), col(s0col), col("mbs0"),
+                      [(f"Mab_{R.FILTERS[b]}", f"Alens_{R.FILTERS[b]}") for b in rubin]))
+    if s1col:
+        bands.append((col("fb1"), col(s1col), col("mbs1"), [("Mab_F146", "Alens_F146")]))
+    active = [b[1] > 0 for b in bands]
+    ok = (rel > 0) & np.isfinite(rel) & np.isfinite(lnM0) & np.isfinite(mu) & np.any(active, axis=0)
+    for (fb, sg, mbs, cols), act in zip(bands, active):
+        good = np.isfinite(fb) & np.isfinite(sg) & np.isfinite(mbs)
+        for _, ac in cols:
+            good &= np.isfinite(col(ac))
+        ok &= ~act | good
+    ok &= np.isin(struc, (0, 1, 2, 3))
+    rel_of = {c: R._ms_relation(ms, c) for c in (0, 1, 2, 3) if (ms["comp"] == -1).all() or (ms["comp"] == c).any()}
+    ok &= np.isin(struc, list(rel_of))
+    lnm_of = {c: np.log(g["mass"].to_numpy(float)) for c, g in rel_of.items()}
+    out = np.full(n, np.nan)
+    rng = np.random.default_rng(seed)
+    idx = np.flatnonzero(ok)
+    chunk = max(1, 4_000_000 // n_samples)
+    for lo in range(0, idx.size, chunk):
+        i = idx[lo:lo + chunk]
+        lnM = lnM0[i, None] + rel[i, None] * rng.standard_normal((i.size, n_samples))
+        excl = np.zeros(lnM.shape, bool)
+        for (fb, sg, mbs, cols), act in zip(bands, active):
+            t = act[i]
+            if not t.any():
+                continue
+            fs = R._truncnorm01(fb[i, None], np.where(t, sg[i], 0.0)[:, None], rng.random(lnM.shape))
+            blend = 10.0 ** (-0.4 * mbs[i, None]) * (1.0 - fs)
+            lens = 0.0
+            low = np.zeros(lnM.shape, bool)
+            for mc, ac in cols:
+                M = np.empty(lnM.shape)
+                for c, g in rel_of.items():       # each event's own component relation
+                    r = np.flatnonzero(struc[i] == c)
+                    if r.size:
+                        M[r] = np.interp(lnM[r], lnm_of[c], g[mc].to_numpy(float))
+                        low[r] = lnM[r] < lnm_of[c][0]
+                lens = lens + 10.0 ** (-0.4 * (M + mu[i, None] + col(ac)[i, None]))
+            excl |= t[:, None] & ~low & (lens > blend)
+        out[i] = excl.mean(axis=1)
+    return pd.Series(out, index=df.index, name=f"pdark_{partition}")
+
+
+IZ_COLS = ["sigfb_i_J", "sigfb_i_L", "sigfb_z_J", "sigfb_z_L"]
+
+
+def with_iz(df, si_J=-1.0, si_L=-1.0, sz_J=-1.0, sz_L=-1.0, mbs_i=21.0, mbs_z=21.0, blend_i=0.4, blend_z=0.4):
+    """A copy of `df` with the seven new columns (mbs_i, mbs_z, sigfb_{i,z}_{J,L}, nbandL) and the true i and z
+    source flux fractions (blend_i, blend_z); scalars or per-row arrays."""
+    d = df.copy()
+    d["mbs_i"], d["mbs_z"] = mbs_i, mbs_z
+    d["sigfb_i_J"], d["sigfb_i_L"], d["sigfb_z_J"], d["sigfb_z_L"] = si_J, si_L, sz_J, sz_L
+    d["nbandL"] = 2
+    d["blend_i"], d["blend_z"] = blend_i, blend_z
+    return d
+
+
+def mixed_frame():
+    """Several rows with mixed sentinels, one per situation (old-layout columns only)."""
+    rows = [dict(Ml=1.0, Dl=4.0, fb0=0.5, sigfb0_J=0.1, sigfb0_L=0.1, sigfb1_J=0.1, sigfb1_R=0.1),
+            dict(Ml=3.0, Dl=5.0, fb0=0.3, sigfb0_J=0.2, sigfb0_L=-1.0, sigfb1_J=-1.0, sigfb1_R=0.2),
+            dict(Ml=0.5, Dl=3.0, fb0=0.8, sigfb0_J=-1.0, sigfb0_L=0.05, sigfb1_J=0.05, sigfb1_R=-1.0),
+            dict(Ml=2.0, Dl=6.0, fb0=0.4, sigfb0_J=-1.0, sigfb0_L=-1.0, sigfb1_J=-1.0, sigfb1_R=-1.0),
+            dict(Ml=8.0, Dl=2.0, fb0=0.6, sigfb0_J=0.3, sigfb0_L=0.3, sigfb1_J=0.3, sigfb1_R=0.3, relMl_J=-1.0),
+            dict(Ml=1.5, Dl=7.0, fb0=0.2, sigfb0_J=5.0, sigfb0_L=5.0, sigfb1_J=5.0, sigfb1_R=5.0, relMl_L=5.0)]
+    return pd.concat([frame(**r) for r in rows], ignore_index=True)
+
+
+def same_series(a, b):
+    a, b = a.to_numpy(float), b.to_numpy(float)
+    return bool(np.array_equal(a, b, equal_nan=True))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ms", default=None, help="a real ms_hypothesis.dat to load-check")
@@ -195,6 +312,68 @@ def main():
     nr = R.blend_class(pd.DataFrame({"fb0": [0.9, 0.9], "fb1": [0.9, 0.1], "ndw_R": [0, 1]}))
     check(list(nr) == ["clean-rubin-no-roman"] * 2, "blend_class: Rubin clean without Roman data ignores fb1")
     check(R.BLEND_CLEAN_FS == 0.6 and R.DARK_P_MIN == 0.75, "constants 0.6 and 0.75")
+
+    # 8. i and z bands in the dark-lens test (rulings R-a to R-d)
+    mf = mixed_frame()
+    for part in ("joint", "rubin", "roman"):
+        check(same_series(R.dark_lens_probability(mf, part, ms), _dark_lens_probability_ref(mf, part, ms)),
+              f"(a) {part}: a table without the i/z columns reproduces the old function exactly")
+        check(same_series(R.dark_lens_probability(with_iz(mf), part, ms), _dark_lens_probability_ref(mf, part, ms)),
+              f"(d) {part}: the i/z columns present, all four sigmas -1: bit-identical to the old function")
+
+    # (b) r not fitted, i fitted: a verdict where the old function had none
+    fi, mi = ms_flux(ms, 20, 5.0, {}, ["i"])
+    fbi = 0.9
+
+    def i_row(ratio, **kw):
+        # blend flux in i = `ratio` x the lens's main-sequence flux in i at the event's mass (f_S,i = 0.9)
+        d = frame(Ml=mi, Dl=5.0, fb0=0.5, relMl_J=1e-3, relMl_L=1e-3, sigfb0_J=-1.0, sigfb0_L=-1.0, **kw)
+        return with_iz(d, si_J=1e-9, si_L=1e-9, mbs_i=-2.5 * np.log10(ratio * fi / (1 - fbi)), blend_i=fbi)
+
+    for part in ("rubin", "joint"):
+        d = i_row(0.5)
+        p, p_old = float(R.dark_lens_probability(d, part, ms).iloc[0]), float(_dark_lens_probability_ref(d, part, ms).iloc[0])
+        check(np.isfinite(p) and p == 1.0, f"(b) {part}: r unfitted, i fitted, lens twice the blend: P(dark) = {p} (finite, 1)")
+        check(np.isnan(p_old), f"(b) {part}: the old function has no verdict on this row ({p_old})")
+        p = float(R.dark_lens_probability(i_row(2.0), part, ms).iloc[0])
+        check(p == 0.0, f"(b) {part}: same row, blend twice the lens: P(dark) = {p} (the i band discriminates)")
+
+    # (c) r loose (sigma 10: f_S nearly uniform), i tight and too faint to hide the lens
+    fr20, _ = ms_flux(ms, 20, 5.0, {}, ["r"])
+    dc = frame(Ml=mi, Dl=5.0, fb0=0.5, relMl_J=1e-3, relMl_L=1e-3, sigfb0_J=10.0, sigfb0_L=10.0,
+               mbs0=-2.5 * np.log10(100 * fr20 / 0.5))
+    dci = with_iz(dc, si_J=1e-9, si_L=1e-9, mbs_i=-2.5 * np.log10(0.5 * fi / (1 - fbi)), blend_i=fbi)
+    for part in ("rubin", "joint"):
+        p_r = float(R.dark_lens_probability(dc, part, ms, ref_bands=[2]).iloc[0])
+        p_ri = float(R.dark_lens_probability(dci, part, ms, ref_bands=[2]).iloc[0])
+        check(p_ri - p_r > 0.9, f"(c) {part}: r loose, i tight and faint: P(dark) {p_r:.3f} (r alone) -> {p_ri:.3f} (r + i), gain > 0.9")
+
+    # (e) a random multi-row frame, i/z active on some rows: never below the old function, exactly
+    rg = np.random.default_rng(7)
+    n = 80
+    rnd = pd.concat([frame(Ml=float(np.exp(rg.uniform(np.log(0.15), np.log(20)))), Dl=float(rg.uniform(1.5, 8)),
+                           fb0=float(rg.uniform(0.05, 0.95)), fb1=float(rg.uniform(0.05, 0.95)),
+                           mbs0=float(rg.uniform(18, 24)), mbs1=float(rg.uniform(18, 24)),
+                           relMl_J=float(rg.choice([-1.0, 0.05, 0.3])), relMl_L=float(rg.choice([-1.0, 0.1, 0.4])),
+                           relMl_R=float(rg.choice([0.1, 0.5])),
+                           sigfb0_J=float(rg.choice([-1.0, 0.02, 0.2])), sigfb0_L=float(rg.choice([-1.0, 0.05, 0.3])),
+                           sigfb1_J=float(rg.choice([-1.0, 0.05])), sigfb1_R=float(rg.choice([-1.0, 0.1])))
+                     for _ in range(n)], ignore_index=True)
+    pick = lambda: rg.choice([-1.0, 0.01, 0.1, 0.5], size=n)
+    rz = with_iz(rnd, si_J=pick(), si_L=pick(), sz_J=pick(), sz_L=pick(), mbs_i=rg.uniform(18, 24, n),
+                 mbs_z=rg.uniform(18, 24, n), blend_i=rg.uniform(0.05, 0.95, n), blend_z=rg.uniform(0.05, 0.95, n))
+    for part in ("joint", "rubin", "roman"):
+        new = R.dark_lens_probability(rz, part, ms).to_numpy(float)
+        old = _dark_lens_probability_ref(rnd, part, ms).to_numpy(float)
+        fin = np.isfinite(old)
+        check(bool(np.isfinite(new[fin]).all()) and bool((new[fin] >= old[fin]).all()),
+              f"(e) {part}: {fin.sum()} rows with an old verdict, P_new >= P_old on every one, exactly")
+        if part != "roman":
+            check(int((new[fin] > old[fin]).sum()) > 3,
+                  f"(e) {part}: the i/z bands raise P(dark) on {(new[fin] > old[fin]).sum()} rows (the check is not vacuous)")
+        else:
+            check(same_series(R.dark_lens_probability(rz, part, ms), _dark_lens_probability_ref(rnd, part, ms)),
+                  "(e) roman: unchanged by the i/z columns")
 
     os.unlink(path)
     print()

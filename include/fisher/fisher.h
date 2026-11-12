@@ -7,6 +7,7 @@
 #include "types.h"
 #include "fisher/linalg.h"
 #include "events/vbm_model.h"
+#include <map>
 
 // ---------------------------------------------------------------------------------------------
 // Which subset of a single event's light curve a Fisher matrix was accumulated from.
@@ -36,21 +37,42 @@ inline int surveyOfTele(int tele) { return (tele == 0) ? SRUBIN : SROMAN; }
 // config/parameters.h), which FisherM records per partition in covarian::rhoFit. Whether the data MEASURE it is
 // covarian::rhoMeas (SIGLNRHO_MAX).
 
-inline std::vector<int> activePhotParams(int surv, int nRubinEpochs, int nRomanEpochs, bool rhoFree)
-{
-    const std::vector<int> shared = {0, 1, 3, 4, 5};  //u0, tE, piE, xi, t0
-    const std::vector<int> rubinFlux = {2, 6};        //fb0, mbs0
-    const std::vector<int> romanFlux = {7, 8};        //fb1, mbs1
+//
+// Rubin's flux pair is per band. The magnification A(t) is the same in every band, but the blend fraction f_S and the
+// baseline magnitude differ (the neighbours' colours differ from the source's), so each band that enters the fit is
+// given its own (fb, mbs) pair: m_b = mbs_b - 2.5 log10(fb_b A + 1 - fb_b). A band enters when it has at least
+// kMinTeleEpochs recorded visits (covarian::nRubinBand, 0 for a band left out); the parameter indices of the pairs are
+// fbIndexOfFilter / mbsIndexOfFilter, with r and F146 keeping the 2, 6 and 7, 8 they always had.
+inline constexpr int kRubinBands = 6;   //u g r i z y: the filters 0-5 of lens::filt (6 is Roman's F146)
 
-    std::vector<int> out = shared;
-    const bool wantRubin = (surv == SRUBIN) || (surv == SJOINT && nRubinEpochs > 0);
+inline int fbIndexOfFilter(int filt)
+{
+    static constexpr int kFb[7] = {10, 12, 2, 14, 16, 18, 7};   //u g r i z y F146
+    return kFb[filt];
+}
+inline int mbsIndexOfFilter(int filt)
+{
+    static constexpr int kMbs[7] = {11, 13, 6, 15, 17, 19, 8};
+    return kMbs[filt];
+}
+
+inline std::vector<int> activePhotParams(int surv, const std::array<int, kRubinBands>& nRubinBand, int nRomanEpochs,
+                                         bool rhoFree)
+{
+    std::vector<int> out = {0, 1, 3, 4, 5};           //u0, tE, piE, xi, t0
+    const bool wantRubin = (surv == SRUBIN) || (surv == SJOINT);
     const bool wantRoman = (surv == SROMAN) || (surv == SJOINT && nRomanEpochs > 0);
-    if (wantRubin) out.insert(out.end(), rubinFlux.begin(), rubinFlux.end());
-    if (wantRoman) out.insert(out.end(), romanFlux.begin(), romanFlux.end());
+    if (wantRubin)
+        for (int b = 0; b < kRubinBands; ++b)
+            if (nRubinBand[b] >= kMinTeleEpochs) { out.push_back(fbIndexOfFilter(b)); out.push_back(mbsIndexOfFilter(b)); }
+    if (wantRoman) { out.push_back(fbIndexOfFilter(6)); out.push_back(mbsIndexOfFilter(6)); }
     if (rhoFree)   out.push_back(9);                  //ln rho
     std::sort(out.begin(), out.end());
     return out;
 }
+
+// 1/sqrt(12): the width of the uniform distribution on [0, 1], the prior of --lens-light-prior uniform.
+inline constexpr double kLensLightUniformFrac = 0.28867513459481292;
 
 struct covarian {
     int    sign;
@@ -158,6 +180,27 @@ struct covarian {
     bool   rhoFixed = false;
     double rhoPriorSigLn = RHO_PRIOR_SIGLN;
     double sigLnRhoMax = SIGLNRHO_MAX;
+
+    // Rubin's bands in the photometric fit. nRubinBand[b] is the number of recorded visits of band b (u g r i z y) that
+    // enter the matrices: the band's visit count if it has at least kMinTeleEpochs of them, 0 if it is left out (a band
+    // with fewer visits cannot fix its own blend and baseline). Set by FisherM; activePhotParams reads it, so the
+    // joint and Rubin-only partitions carry a (fb, mbs) pair for every band with a non-zero count. fbPriorSig is the
+    // width of the Gaussian prior on each such band's source-flux fraction (FB_PRIOR_SIG, added once to every
+    // matrix holding the band, Roman's F146 included); infinite drops it, which a test uses to compare with the
+    // forecast made before the prior existed. It mirrors rhoPriorSigLn.
+    std::array<int, kRubinBands> nRubinBand{};
+    double fbPriorSig = FB_PRIOR_SIG;
+
+    // The lens's own light fraction in each band is an unknown of the astrometric fit (one per Rubin band with astrometric
+    // visits and one for Roman's F146, the same number in x and y) when lensLightFree; else (--lens-light known) it is held at
+    // its true value, so the lens's drift measures thetaE. This struct defaults to known (the fixture's reference tables are
+    // known-mode); RunConfig defaults to free, and main.cpp copies that into the covarian it builds. Its Gaussian prior is lensLightPriorFrac x (1 - f_S)
+    // wide: 1/sqrt(12) (uniform on [0, 1 - f_S], --lens-light-prior uniform) or 1 (--lens-light-prior blend). main.cpp sets both.
+    // lensLightFloor F (--lens-light-floor, default 0): sigma(f_L) = max(lensLightPriorFrac (1 - f_S), F); with F > 0 every band,
+    // an unblended F146 (f_S = 1) included, carries a fraction parameter.
+    bool   lensLightFree = false;
+    double lensLightPriorFrac = kLensLightUniformFrac;
+    double lensLightFloor = 0.0;
 
     // Multiplicative override on each photometric parameter's finite-difference step; 1.0 is the
     // production value. A runtime knob so the step-size sweep can run many values in one process.
@@ -283,7 +326,15 @@ inline int synergyClass(const covarian& co)
 // The active photometric parameters of partition `surv` of an event whose matrices are in `co`.
 inline std::vector<int> activePhotParams(const covarian& co, int surv)
 {
-    return activePhotParams(surv, co.nepochA[SRUBIN], co.nepochA[SROMAN], co.rhoFit[surv] != 0);
+    return activePhotParams(surv, co.nRubinBand, co.nepochA[SROMAN], co.rhoFit[surv] != 0);
+}
+
+// How many of Rubin's bands are in the fit of the event whose matrices are in `co`.
+inline int nRubinBandsFitted(const covarian& co)
+{
+    int n = 0;
+    for (int b = 0; b < kRubinBands; ++b) n += (co.nRubinBand[b] > 0) ? 1 : 0;
+    return n;
 }
 
 // The parameters of the lens-motion model lensMotion, in the order its covariance is given.
@@ -303,6 +354,88 @@ void   lensMotionPropagate(const MotionContext& c, const double p[NLM], const do
 // partition is then forecast with rho held at its true value) and how often the nine-parameter matrix failed too.
 long   rhoFallbackCount();
 long   rhoFallbackLostCount();
+
+namespace fisher_detail {
+
+// The weighted sums of one block of astrometric epochs, per sky coordinate: the four physical parameters' derivatives
+// (slots 0..Ny-1), in slot Ny the derivative with respect to the neighbours' offset, h, and in slot Ny + 1 the one
+// with respect to the lens's light fraction of the block's band, l (read only when the lens's light is a free parameter).
+constexpr int kAstD = Ny + 2;
+struct AstSums {
+    double Sw = 0.0;
+    std::array<std::array<double, kAstD>, 2>          Swd{};
+    std::array<std::array<double, kAstD * kAstD>, 2>  Swdd{};
+    int season = -1, roll = -1;
+    // nact: the slots accumulated (the lens-light slot Ny + 1 only when it is read, i.e. in free mode); the strides stay kAstD.
+    void add(double w, const std::array<double, kAstD>& dx, const std::array<double, kAstD>& dy, int nact = kAstD) {
+        Sw += w;
+        for (int c = 0; c < 2; ++c) {
+            const auto& d = c ? dy : dx;
+            for (int j = 0; j < nact; ++j) {
+                Swd[c][j] += w * d[j];
+                for (int k = 0; k < nact; ++k) Swdd[c][j * kAstD + k] += w * d[j] * d[k];
+            }
+        }
+    }
+};
+
+// A frame group: per coordinate, the sum of block matrices F and offset-vectors b, and c. nact as in AstSums::add.
+using AstPerCoord = std::array<std::array<double, kAstD * kAstD>, 2>;
+struct AstGroup {
+    AstPerCoord F{};
+    std::array<std::array<double, kAstD>, 2> b{};
+    double c = 0.0;
+    int nact = kAstD;
+    void fold(const AstSums& k, double sc) {              // one block, correlated at sigma_c = sc
+        constexpr int D = kAstD;
+        const double s2 = sc * sc, den = 1.0 + s2 * k.Sw;
+        for (int cc = 0; cc < 2; ++cc)
+            for (int j = 0; j < nact; ++j) {
+                b[cc][j] += k.Swd[cc][j] / den;
+                for (int m = 0; m < nact; ++m)
+                    F[cc][j * D + m] += k.Swdd[cc][j * D + m] - s2 * k.Swd[cc][j] * k.Swd[cc][m] / den;
+            }
+        c += k.Sw / den;
+    }
+    void marginaliseInto(AstPerCoord& out) const {        // free reference position
+        constexpr int D = kAstD;
+        for (int cc = 0; cc < 2; ++cc)
+            for (int j = 0; j < nact; ++j)
+                for (int m = 0; m < nact; ++m)
+                    out[cc][j * D + m] += F[cc][j * D + m] - (c > 0.0 ? b[cc][j] * b[cc][m] / c : 0.0);
+    }
+};
+
+// One telescope's per-coordinate matrices -> its Ny x Ny information on the physical parameters, with the blend offset
+// marginalised (Schur complement of slot Ny), ADDED to out. raw = that telescope's sum w h^2 per coordinate before any
+// marginalisation: when what is left after the offsets is a vanishing fraction of it, h was constant, the offset is
+// indistinguishable from the reference position and nothing is subtracted.
+void astPhysical(const AstPerCoord& G, const std::array<double, 2>& raw, std::array<double, Ny * Ny>& out);
+
+// Roman's information on the four astrometric parameters in one noise variant, ADDED to out, from its day sums: the days'
+// frame offsets correlated at sigma_c = sigc (AstGroup::fold), one free reference position per group (one group if
+// oneFrame, else one per roll, the days' .roll), the neighbours' offset out per coordinate (astPhysical's rule). With
+// flInfo >= 0 the lens's light fraction (slot Ny + 1) is a parameter too, kept through all of that, the two coordinates added,
+// the prior precision flInfo put on it, and then marginalised; flInfo < 0: no such parameter (slot Ny + 1 unread). NaN where
+// the fraction's precision is not positive.
+void romanInformation(const std::map<long, AstSums>& days, bool oneFrame, double sigc, double flInfo,
+                      std::array<double, Ny * Ny>& out);
+
+// Rubin's information on the four astrometric parameters from the sums of each of its bands (empty bands have Sw = 0),
+// ADDED to FL. Every band carries an offset of its own for the unresolved neighbours (taken out per coordinate), and the
+// bands share one reference position (taken out of what is left). Used when two or more bands have epochs.
+void rubinBandInformation(const std::array<AstSums, kRubinBands>& bands, std::array<double, Ny * Ny>& FL);
+
+// The same with the lens's light fraction of every band an unknown (slot Ny + 1 of the band's sums), ADDED to FL. flInfo[b] is
+// the precision 1/sigma^2 of band b's Gaussian prior on its fraction, or negative for a band with no such parameter
+// (no room for lens light). Per coordinate each band takes out its own offset (Schur complement of slot Ny, as
+// rubinBandInformation); the bands' fractions are kept, one each, beside the physical parameters, and the shared reference
+// position is taken out of the sum over bands. The two coordinates are added (the fractions are shared by x and y), the
+// priors added to the fractions' diagonal and the fractions marginalised. False if their block does not invert.
+bool rubinBandInformationLensFree(const std::array<AstSums, kRubinBands>& bands, const std::array<double, kRubinBands>& flInfo,
+                                  std::array<double, Ny * Ny>& FL);
+
+}  // namespace fisher_detail
 
 void   ErrorCal(covarian & co, lens &l, source &s);
 void   FisherM(source & s, lens & l, astromet & as,  covarian & co, int);

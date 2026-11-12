@@ -82,6 +82,7 @@ void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sight
     // are rebuilt from the enlarged blend; fLens records the lens's share, which pulls the
     // astrometric centroid toward the lens (evaluateTrack).
     s.fLens = {0.0, 0.0};
+    s.fLensF = {};
     // The dust in front of the lens is recorded for every lens (the dark-lens test places a hypothetical
     // main-sequence star at Dl); no random numbers are drawn.
     const double AvL = interpExtinctionAlongSightline(ex, sightlineIdx, l.Dl);
@@ -109,6 +110,12 @@ void func_lens(lens & l, source & s, const CMD & cm, const extin & ex, int sight
             s.mbs[1]   = s.magb[6];
             s.fLens[0] = fluxLensRubin / fluxTotRubin;
             s.fLens[1] = fluxL[6] / s.Fluxb[6];
+            // The lens's share of the baseline in every filter: what each Rubin visit's centroid is diluted with
+            // in the astrometric Fisher matrix (with RUBIN_REF_BANDS = {2}, fLensF[2] is fLens[0] to the bit).
+            for (int i = 0; i < M; ++i) {
+                s.fLensF[i] = fluxL[i] / s.Fluxb[i];
+                CHECK(s.blend[i] + s.fLensF[i] <= 1.000001);
+            }
             CHECK(s.fb[0] + s.fLens[0] <= 1.000001 and s.fb[1] + s.fLens[1] <= 1.000001);
         } else {
             l.luminous = false;

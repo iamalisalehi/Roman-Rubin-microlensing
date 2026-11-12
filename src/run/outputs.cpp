@@ -84,7 +84,12 @@ const char* eventTableHeader()
         // main-sequence star of the lens's mass is Mab(M) + 5 log10(D_L / 10 pc) + Alens.
         "Alens_u Alens_g Alens_r Alens_i Alens_z Alens_y Alens_F146 "
         // u0side: +1 or -1, the side of the lens the source passes (u0 is the positive distance of closest approach).
-        "u0side";
+        "u0side "
+        // Rubin's i and z, fitted each as a band of its own (the dark-lens test, comment C7): the baseline magnitude
+        // (mbs_<band>, as mbs0 is r's), the Fisher error of the band's f_S from the joint (_J) and the Rubin-only
+        // (_L) matrix (-1 = band not in the fit, or the partition not characterised), and nbandL, the number of
+        // Rubin bands in the fit (bands with fewer than kMinTeleEpochs visits are left out; 0 = no Rubin photometric matrix).
+        "mbs_i mbs_z sigfb_i_J sigfb_i_L sigfb_z_J sigfb_z_L nbandL";
 }
 
 int openOutputs(const RunConfig& cfg, RunOutputs& o) {
@@ -248,6 +253,8 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
         std::ostringstream sourceText;
         if (cfg.sourceModel == SourceModel::ESPL) sourceText << "ESPL (uniform disc, Tol " << VBM_TOL << ")";
         else                                      sourceText << "PSPL";
+        std::ostringstream floorText;               // ", floor F" on the lens_light line only when a floor is in use
+        if (cfg.lensLightFree and cfg.lensLightFloor > 0.0) floorText << ", floor " << cfg.lensLightFloor;
         std::ostringstream fitText;
         if (cfg.sourceModel == SourceModel::ESPL)
             fitText << "ln rho fitted in every partition with data, Gaussian prior sigma(ln rho) " << RHO_PRIOR_SIGLN
@@ -321,7 +328,12 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "# astrometric_noise   k/SNR (+) floor, SNR from the epoch's photometric error; Roman k "
              << ROMAN_AST_K << " mas, floor " << ROMAN_AST_FLOOR << " mas; Rubin kappa "
              << LSST_AST_KAPPA << " x visit FWHM_geom, floor " << LSST_AST_FLOOR << " mas; blend offset "
-             << (AST_BLEND_OFFSET_FREE ? "fitted (marginalised)" : "known") << "\n"
+             << (AST_BLEND_OFFSET_FREE ? "fitted (marginalised; one per Rubin band, one for Roman)" : "known") << "\n"
+             << "# lens_light          "
+             << (cfg.lensLightFree ? (cfg.lensLightPriorBlend ? "free (prior sigma(f_L) = 1 - f_S)"
+                                                              : "free (prior sigma(f_L) = (1 - f_S)/sqrt(12))")
+                                   : "known")
+             << floorText.str() << "\n"
              << "# lightcurve_model    VBMicrolensing 5.6.1 " << sourceText.str()
              << ", geocentric parallax (JPL ephemeris), Roman at L2 table\n"
              // The prior on ln rho, the bar for rho to count as measured, and the theta* uncertainty of the photometric thetaE.
@@ -365,7 +377,12 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "   # every-star: each source with a visible peak is kept; per-object: kept with probability = its "
                 "blend fraction (pKeep column). Detection aggregates (MapLMC, EfLMC, LpLMC, summary) count what is kept\n"
              << "# rubin_fisher_visits " << (cfg.rubinFisherRefOnly ? "reference band only" : "all bands")
-             << "   # Rubin visits in the Fisher matrices; each fitted with the reference band's model (RUBIN_REF_BANDS)\n"
+             << "   # Rubin visits in the Fisher matrices; reference band only: each fitted with the reference band's "
+                "model (RUBIN_REF_BANDS); all bands: each fitted in its own band (blend fraction and baseline per band; "
+                "bands with fewer than " << kMinTeleEpochs << " visits left out)\n"
+             << "# blend_prior         sigma(f_S) = " << FB_PRIOR_SIG
+             << " on every band in the fit (Rubin's and F146)   # Gaussian prior on each band's source-flux fraction, added once "
+                "to each photometric matrix that holds the band\n"
              << "# dchi_det            " << cfg.dchiDet
              << "   # fixed detection bar; every yield is conditioned on it\n";
         if (!cfg.dryRun) {   // a dry run must not overwrite the last run's provenance

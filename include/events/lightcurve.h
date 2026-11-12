@@ -75,14 +75,19 @@ struct ModelPoint {
     double A;             //magnification of the model (magnifOf(u) for a point source)
     double u;             //impact parameter [Einstein radii]
     double pos1c, pos2c;  //measured light centroid [mas]; only when the centroids are asked for
+    double lensDx, lensDy; //d(centroid)/d(f_L), the lens's own light fraction of the epoch's band [mas]: -thetaE u / (fs A + 1 - fs),
+                           //the neighbours' share not included (it lies along their offset's derivative); with the centroids
 };
 
 // The current event seen by observer `tele` (0 = Rubin on Earth, 1 = Roman) at the n epochs t[0..n-1]:
 // out[i] is the model at t[i]. The one place FisherM asks for the model. Without `centroids` the library
 // computes the photometric track only (the astrometric one, with the centroid of the images and the lens's
 // motion, costs more per epoch) and pos1c, pos2c are not set. See lightcurve.cpp.
+// `filt`, when given (Rubin's astrometric call), is the filter of each epoch: epoch i's centroid is then diluted with
+// that band's own fractions (s.blend, s.fLensF); null keeps the telescope's (s.fb, s.fLens). Photometry ignores it.
+// `lensDeriv` also fills lensDx, lensDy (the astrometric fit's lens-light derivative); otherwise they are 0.
 void   evaluateModel(const source & s, const lens & l, const astromet & as, int tele, const double* t, int n,
-                     bool centroids, ModelPoint* out);
+                     bool centroids, ModelPoint* out, const int* filt = nullptr, bool lensDeriv = false);
 
 // What every other caller reads from the model at one epoch: the lens-source geometry with and without
 // the microlensing parallax, the magnification, the centroid deflection, the source, centroid and lens

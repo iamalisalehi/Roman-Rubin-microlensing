@@ -22,6 +22,14 @@ struct RunConfig {
     double astSigcN    = AST_SIGC_N;
     double astSigcP    = AST_SIGC_P;
 
+    // The lens's own light fraction in each band in the astrometric fit: true (--lens-light free, the default) makes it an
+    // unknown of every band, with a Gaussian prior of sigma (1 - f_S) / sqrt(12) (--lens-light-prior uniform, the default) or
+    // (1 - f_S) (blend); false (--lens-light known) holds it at its true value, so the lens's drift measures theta_E -- an
+    // analysis does not know the lens's light, so known is kept only for comparison. Recorded in run_provenance.txt.
+    bool   lensLightFree        = true;
+    bool   lensLightPriorBlend  = false;
+    double lensLightFloor       = 0.0;   // --lens-light-floor F: sigma(f_L) >= F (0 = off)
+
     // Sightline grid inside Roman's footprint, in the same units. Roman covers ~2.6% of the
     // scan region, so a uniform grid spends most of its time where the joint fit is just
     // Rubin's. Sightlines within a GBTDS field's detector outline are visited on a
@@ -74,9 +82,10 @@ struct RunConfig {
     // fraction, i.e. one candidate per resolved object (Sajadian & Makler 2022).
     bool   blendThinning = false;
 
-    // Rubin's visits in the Fisher matrices. false (default): every recorded Rubin visit, each fitted with the reference
-    // band's model (RUBIN_REF_BANDS) and its own band's errors. true (--rubin-fisher-ref-only): only the visits taken
-    // in a reference band (option B of the per-band plan: consistent, pessimistic). Visibility, detection and the draws
+    // Rubin's visits in the Fisher matrices. false (default): every recorded Rubin visit, each in its own band's model
+    // (blend fraction, baseline) and errors; a band with fewer than kMinTeleEpochs visits is left out of the photometric
+    // matrices. true (--rubin-fisher-ref-only): only the visits taken in a reference band (option B of the per-band plan:
+    // consistent, pessimistic). Visibility, detection and the draws
     // are unchanged, so the two runs hold the same events in the same order; a sightline may run longer with it, since
     // it stops after a set number of characterised events (nerrTarget) and fewer events are characterised.
     bool   rubinFisherRefOnly = false;

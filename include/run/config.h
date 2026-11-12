@@ -22,11 +22,11 @@ struct RunConfig {
     double astSigcN    = AST_SIGC_N;
     double astSigcP    = AST_SIGC_P;
 
-    // The lens's own light fraction in each band in the astrometric fit: false (--lens-light known, the default) holds it at its
-    // true value, so the lens's drift measures theta_E; true (--lens-light free) makes it an unknown of every band, with a
-    // Gaussian prior of sigma (1 - f_S) / sqrt(12) (--lens-light-prior uniform, the default) or (1 - f_S) (blend).
-    // Recorded in run_provenance.txt.
-    bool   lensLightFree        = false;
+    // The lens's own light fraction in each band in the astrometric fit: true (--lens-light free, the default) makes it an
+    // unknown of every band, with a Gaussian prior of sigma (1 - f_S) / sqrt(12) (--lens-light-prior uniform, the default) or
+    // (1 - f_S) (blend); false (--lens-light known) holds it at its true value, so the lens's drift measures theta_E -- an
+    // analysis does not know the lens's light, so known is kept only for comparison. Recorded in run_provenance.txt.
+    bool   lensLightFree        = true;
     bool   lensLightPriorBlend  = false;
     double lensLightFloor       = 0.0;   // --lens-light-floor F: sigma(f_L) >= F (0 = off)
 

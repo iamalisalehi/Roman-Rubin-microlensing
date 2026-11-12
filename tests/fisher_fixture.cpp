@@ -28,6 +28,7 @@
 
 #include <random>
 #include <cstring>
+#include <cstdlib>
 #include <gsl/gsl_eigen.h>
 #include <gsl/gsl_integration.h>
 #include "common.h"
@@ -1841,6 +1842,7 @@ namespace {
 // precision (hexadecimal floats, exact), under the point source (espl 0) and the uniform disc (espl 1). Generated once
 // from that build; never regenerated to make a check pass.
 struct PriorOffRef { int espl; const char* name; int q; int ok; double cond; double era[10]; };
+// (The laptop's numbers: bit-exact there with FISHERTEST_EXACT=1, within 1e-6 on other machines; see tabEq.)
 const PriorOffRef kPriorOffRef[] = {
     {0, "short_inseason", 0, 1, 0x1.78c60cd6937a6p+13, {0x1.371feaad9edcap-6, 0x1.7d900dccb5102p-5, 0x1.144befe4a49c3p-5, 0x1.a756ef50c1716p+1, 0x1.031400ff13a23p+2, 0x1.1f3e68a7100d8p-6, 0x1.9eb5c168e70fcp-9, 0x1.de5a580d7ff5cp-7, 0x1.542b44caa3e36p-12, -0x1p+0}},
     {0, "short_inseason", 1, 1, 0x1.961e7df161309p+15, {0x1.9321abdc73a5ep-3, 0x1.7469948d57f02p+3, 0x1.add3c0dd61f2bp-2, 0x1.8aa39ccc0b1eep+11, 0x1.aa019bd6dd984p+11, 0x1.2fe9b49d47322p-3, 0x1.3d3c5d58120a1p-8, -0x1p+0, -0x1p+0, -0x1p+0}},
@@ -1924,6 +1926,24 @@ struct EventRun {
 
 bool sameDouble(double a, double b) { return std::memcmp(&a, &b, sizeof a) == 0; }
 
+// The checks against the hexadecimal-float reference tables (prior-off, astro-all-r, lens-light-known, chromatic-pinned) go
+// through tabEq. The tables are the numbers of the machine they were generated on: bit-exact there (FISHERTEST_EXACT=1 asks
+// for that), and elsewhere, where libm and the FMA code paths round the last bits differently, equal to a relative tolerance
+// of 1e-6 (the default), which every mutant of the per-band decisions exceeds by orders of magnitude. gTabDev is the largest
+// relative deviation a check saw, printed in its summary line.
+constexpr double kTableTol = 1e-6;
+double gTabDev = 0.0;
+bool tabEq(double a, double b)
+{
+    static const bool exact = [] { const char* e = std::getenv("FISHERTEST_EXACT"); return e and std::string(e) == "1"; }();
+    if (exact) return sameDouble(a, b);
+    if (std::isnan(a) or std::isnan(b)) return std::isnan(a) and std::isnan(b);
+    if (a == b) return true;                                   //also infinities
+    const double dev = std::fabs(a - b) / std::max(std::fabs(b), 1e-300);
+    if (not (dev <= gTabDev)) gTabDev = dev;                   //NaN-safe, keeps infinity
+    return dev <= kTableTol;
+}
+
 // Every photometric output of two runs is identical to the last bit: the epoch counts, okA, condA and all of Era.
 bool samePhotometry(const covarian& a, const covarian& b, const char* what, bool jointOnly)
 {
@@ -1945,6 +1965,7 @@ bool samePhotometry(const covarian& a, const covarian& b, const char* what, bool
 // the sparse accumulation and the shared flux-pair function change no number for an event with one Rubin band.
 bool checkPriorOffReproducesToday()
 {
+    gTabDev = 0.0;
     bool ok = true;
     const SourceModel keep = vbmSourceModel();
     int n = 0;
@@ -1957,13 +1978,13 @@ bool checkPriorOffReproducesToday()
             for (const auto& ref : kPriorOffRef) {
                 if (ref.espl != (model == SourceModel::ESPL ? 1 : 0) or std::strcmp(ref.name, ev.name) != 0) continue;
                 const int q = ref.q;
-                bool same = r.co->okA[q] == ref.ok and sameDouble(r.co->condA[q], ref.cond);
-                for (int k = 0; k < 10; ++k) same = same and sameDouble(r.co->Era[q][k], ref.era[k]);
+                bool same = r.co->okA[q] == ref.ok and tabEq(r.co->condA[q], ref.cond);
+                for (int k = 0; k < 10; ++k) same = same and tabEq(r.co->Era[q][k], ref.era[k]);
                 for (int k = 10; k < Nx; ++k) same = same and r.co->Era[q][k] == -1.0;   // no other band, no sigma
                 ++n;
                 if (not same) {
                     std::cerr << "FAIL [prior-off] " << ev.name << (model == SourceModel::ESPL ? " (espl)" : " (pspl)")
-                              << " partition " << q << " is not bit-identical to the pre-band forecast\n";
+                              << " partition " << q << " differs from the pre-band reference table beyond its tolerance\n";
                     ok = false;
                 }
             }
@@ -1974,7 +1995,8 @@ bool checkPriorOffReproducesToday()
         std::cerr << "FAIL [prior-off] compared " << n << " rows, not every event/partition/model\n";
         ok = false;
     }
-    std::cout << "# prior-off reproduces the f9e9938 forecast bit for bit: " << n << " rows, " << (ok ? "ok\n" : "FAIL\n");
+    std::cout << "# prior-off reproduces the f9e9938 forecast (reference table; bit for bit with FISHERTEST_EXACT=1, else to " << kTableTol
+              << "): " << n << " rows, largest relative deviation " << gTabDev << ", " << (ok ? "ok\n" : "FAIL\n");
     return ok;
 }
 
@@ -2150,6 +2172,7 @@ bool checkChromaticEvent()
 // fractions. Generated once from that build; never regenerated to make a check pass.
 struct AstroRefV { int ok; double cond; double erb[Ny]; };
 struct AstroRef { int espl; const char* name; int q; int ok; double cond; double erb[Ny]; AstroRefV v[NAVAR]; };
+// (The laptop's numbers: bit-exact there with FISHERTEST_EXACT=1, within 1e-6 on other machines; see tabEq.)
 const AstroRef kAstroRef[] = {
     {0, "short_inseason", 0, 1, 0x1.2df999ee5c1b6p+6, {0x1.23e360f1d3efap-6, 0x1.4713e488df562p-12, 0x1.c2668e2500c75p-12, 0x1.f087c7409d503p+2}, {{1, 0x1.2df999ee5c1b6p+6, {0x1.23e360f1d3efap-6, 0x1.4713e488df562p-12, 0x1.c2668e2500c75p-12, 0x1.f087c7409d503p+2}}, {1, 0x1.5871468ac3224p+2, {0x1.80d85e3ff3a9ap-3, 0x1.984975649aef6p-10, 0x1.b1acbd2ddafcep-10, 0x1.127e44111496ap+5}}, {1, 0x1.c7964c71a0af8p+0, {0x1.3845337fe58b2p-2, 0x1.e272f6e8ba22cp-10, 0x1.df1eb6319e0bfp-10, 0x1.17e6523087af6p+6}}}},
     {0, "short_inseason", 1, 1, 0x1.4b23148eb5accp+5, {0x1.08dd668c7f492p+0, 0x1.1e120a77fcf37p-8, 0x1.3ef6872526fcdp-8, 0x1.721bcba7dae17p+10}, {{1, 0x1.4b23148eb5accp+5, {0x1.08dd668c7f492p+0, 0x1.1e120a77fcf37p-8, 0x1.3ef6872526fcdp-8, 0x1.721bcba7dae17p+10}}, {1, 0x1.4b23148eb5accp+5, {0x1.08dd668c7f492p+0, 0x1.1e120a77fcf37p-8, 0x1.3ef6872526fcdp-8, 0x1.721bcba7dae17p+10}}, {1, 0x1.4b23148eb5accp+5, {0x1.08dd668c7f492p+0, 0x1.1e120a77fcf37p-8, 0x1.3ef6872526fcdp-8, 0x1.721bcba7dae17p+10}}}},
@@ -2219,6 +2242,7 @@ bool sameAstrometry(const covarian& a, const covarian& b, const char* what)
 // astrometry was diluted per band, bit for bit: one band takes today's path.
 bool checkAstroAllRUnchanged()
 {
+    gTabDev = 0.0;
     bool ok = true;
     const SourceModel keep = vbmSourceModel();
     int n = 0;
@@ -2231,16 +2255,16 @@ bool checkAstroAllRUnchanged()
                 if (ref.espl != (model == SourceModel::ESPL ? 1 : 0) or std::strcmp(ref.name, ev.name) != 0) continue;
                 const int q = ref.q;
                 const covarian& c = *r.co;
-                bool same = c.okB[q] == ref.ok and sameDouble(c.condB[q], ref.cond);
-                for (int k = 0; k < Ny; ++k) same = same and sameDouble(c.Erb[q][k], ref.erb[k]);
+                bool same = c.okB[q] == ref.ok and tabEq(c.condB[q], ref.cond);
+                for (int k = 0; k < Ny; ++k) same = same and tabEq(c.Erb[q][k], ref.erb[k]);
                 for (int v = 0; v < NAVAR; ++v) {
-                    same = same and c.okBV[v][q] == ref.v[v].ok and sameDouble(c.condBV[v][q], ref.v[v].cond);
-                    for (int k = 0; k < Ny; ++k) same = same and sameDouble(c.ErbV[v][q][k], ref.v[v].erb[k]);
+                    same = same and c.okBV[v][q] == ref.v[v].ok and tabEq(c.condBV[v][q], ref.v[v].cond);
+                    for (int k = 0; k < Ny; ++k) same = same and tabEq(c.ErbV[v][q][k], ref.v[v].erb[k]);
                 }
                 ++n;
                 if (not same) {
                     std::cerr << "FAIL [astro-all-r] " << ev.name << (model == SourceModel::ESPL ? " (espl)" : " (pspl)")
-                              << " partition " << q << " is not bit-identical to the 2ccd875 astrometric forecast\n";
+                              << " partition " << q << " differs from the 2ccd875 reference table beyond its tolerance\n";
                     ok = false;
                 }
             }
@@ -2251,7 +2275,8 @@ bool checkAstroAllRUnchanged()
         std::cerr << "FAIL [astro-all-r] compared " << n << " rows, not every event/partition/model\n";
         ok = false;
     }
-    std::cout << "# astrometry with every Rubin visit in r reproduces the 2ccd875 forecast bit for bit: " << n << " rows, "
+    std::cout << "# astrometry with every Rubin visit in r reproduces the 2ccd875 forecast (reference table; tolerance " << kTableTol
+              << " unless FISHERTEST_EXACT=1): " << n << " rows, largest relative deviation " << gTabDev << ", "
               << (ok ? "ok\n" : "FAIL\n");
     return ok;
 }
@@ -2862,6 +2887,7 @@ constexpr double kUniformFrac = kLensLightUniformFrac;
 
 // The chromatic events' astrometric forecast of the 5dd83b6 build, hexadecimal floats: dark and luminous, point source
 // (espl 0) and disc (1). Generated once from that build (a temporary mode of this file); never regenerated to make a check pass.
+// (The laptop's numbers: bit-exact there with FISHERTEST_EXACT=1, within 1e-6 on other machines; see tabEq.)
 const AstroRef kAstroRefChrom[] = {
     {0, "chrom_dark", 0, 1, 0x1.03e3de41f03b8p+2, {0x1.a5b9c5ee23f66p-7, 0x1.0088bdf6c4ef5p-15, 0x1.fc3ecbd9b9d87p-16, 0x1.3fa24f7f6a12fp-1}, {{1, 0x1.03e3de41f03b8p+2, {0x1.a5b9c5ee23f66p-7, 0x1.0088bdf6c4ef5p-15, 0x1.fc3ecbd9b9d87p-16, 0x1.3fa24f7f6a12fp-1}}, {1, 0x1.1ea99a669a882p+1, {0x1.3d916e4baa649p-3, 0x1.d7fa7c31ec548p-14, 0x1.dbd5016a0fb6ap-14, 0x1.24a1356d2a157p+2}}, {1, 0x1.1b4161c49dee6p+1, {0x1.4d2da1ad0b179p-2, 0x1.e3919a83528dap-14, 0x1.e51d88ea13889p-14, 0x1.49a069c182f53p+2}}}},
     {0, "chrom_dark", 1, 1, 0x1.459677648262p+1, {0x1.b9b2b839278cap-2, 0x1.ee47205023d29p-14, 0x1.ec5b9f631e031p-14, 0x1.53eab663a7f79p+2}, {{1, 0x1.459677648262p+1, {0x1.b9b2b839278cap-2, 0x1.ee47205023d29p-14, 0x1.ec5b9f631e031p-14, 0x1.53eab663a7f79p+2}}, {1, 0x1.459677648262p+1, {0x1.b9b2b839278cap-2, 0x1.ee47205023d29p-14, 0x1.ec5b9f631e031p-14, 0x1.53eab663a7f79p+2}}, {1, 0x1.459677648262p+1, {0x1.b9b2b839278cap-2, 0x1.ee47205023d29p-14, 0x1.ec5b9f631e031p-14, 0x1.53eab663a7f79p+2}}}},
@@ -2880,11 +2906,11 @@ const AstroRef kAstroRefChrom[] = {
 bool matchesRef(const covarian& c, const AstroRef& ref)
 {
     const int q = ref.q;
-    bool same = c.okB[q] == ref.ok and sameDouble(c.condB[q], ref.cond);
-    for (int k = 0; k < Ny; ++k) same = same and sameDouble(c.Erb[q][k], ref.erb[k]);
+    bool same = c.okB[q] == ref.ok and tabEq(c.condB[q], ref.cond);
+    for (int k = 0; k < Ny; ++k) same = same and tabEq(c.Erb[q][k], ref.erb[k]);
     for (int v = 0; v < NAVAR; ++v) {
-        same = same and c.okBV[v][q] == ref.v[v].ok and sameDouble(c.condBV[v][q], ref.v[v].cond);
-        for (int k = 0; k < Ny; ++k) same = same and sameDouble(c.ErbV[v][q][k], ref.v[v].erb[k]);
+        same = same and c.okBV[v][q] == ref.v[v].ok and tabEq(c.condBV[v][q], ref.v[v].cond);
+        for (int k = 0; k < Ny; ++k) same = same and tabEq(c.ErbV[v][q][k], ref.v[v].erb[k]);
     }
     return same;
 }
@@ -2894,6 +2920,7 @@ bool matchesRef(const covarian& c, const AstroRef& ref)
 // nothing the free mode touches leaks into the next.
 bool checkLensLightKnownUnchanged()
 {
+    gTabDev = 0.0;
     bool ok = true;
     const SourceModel keep = vbmSourceModel();
     int n = 0;
@@ -2913,7 +2940,7 @@ bool checkLensLightKnownUnchanged()
                 ++n;
                 if (not matchesRef(*r->co, ref)) {
                     std::cerr << "FAIL [lens-light-known] " << lensCaseName(c) << (espl ? " (espl)" : " (pspl)") << " partition "
-                              << ref.q << " is not bit-identical to the 5dd83b6 astrometric forecast\n";
+                              << ref.q << " differs from the 5dd83b6 reference table beyond its tolerance\n";
                     ok = false;
                 }
             }
@@ -2921,7 +2948,8 @@ bool checkLensLightKnownUnchanged()
     }
     vbmSetSourceModel(keep);
     if (n != 2 * NSURV * kLensCases) { std::cerr << "FAIL [lens-light-known] compared " << n << " rows\n"; ok = false; }
-    std::cout << "# --lens-light known: every astrometric output equals the 5dd83b6 one bit for bit: " << n << " rows, "
+    std::cout << "# --lens-light known: every astrometric output equals the 5dd83b6 one (reference table; tolerance " << kTableTol
+              << " unless FISHERTEST_EXACT=1): " << n << " rows, largest relative deviation " << gTabDev << ", "
               << (ok ? "ok\n" : "FAIL\n");
     return ok;
 }
@@ -3285,6 +3313,7 @@ bool checkLensLightFloor()
 // photometric rows are the aab9831 ones), hexadecimal floats, generated once from that source with a temporary mode of this file; never regenerated to
 // make a check pass. They pin each epoch's own band blend (not r's) in the photometry, the prior on every Rubin band's blend and
 // the width of each band's f_L prior (its own f_S, not r's).
+// (The laptop's numbers: bit-exact there with FISHERTEST_EXACT=1, within 1e-6 on other machines; see tabEq.)
 const AstroRef kAstroRefFree[] = {
     {0, "chrom_dark_uni", 0, 1, 0x1.a02bf29485c0fp+9, {0x1.57eeacbc25234p-6, 0x1.420717364bc38p-11, 0x1.153bfdacad27ap-11, 0x1.421c05e4b9434p-1}, {{1, 0x1.a02bf29485c0fp+9, {0x1.57eeacbc25234p-6, 0x1.420717364bc38p-11, 0x1.153bfdacad27ap-11, 0x1.421c05e4b9434p-1}}, {1, 0x1.05cbb4279e989p+7, {0x1.6f9b03c17cce1p-3, 0x1.fd67455d13ea8p-11, 0x1.a12726b146cd7p-11, 0x1.258af181f39d3p+2}}, {1, 0x1.894469f3d2983p+7, {0x1.55f8fcc1f2e63p-2, 0x1.3913f42cfb2c8p-10, 0x1.00b0a0a1c0f12p-10, 0x1.49b40f77de103p+2}}}},
     {0, "chrom_dark_uni", 1, 1, 0x1.c4185a4bfa8b8p+7, {0x1.bd59d301e8a5dp-2, 0x1.4f87c37165fap-10, 0x1.132246255d62ep-10, 0x1.541bfb3399c14p+2}, {{1, 0x1.c4185a4bfa8b8p+7, {0x1.bd59d301e8a5dp-2, 0x1.4f87c37165fap-10, 0x1.132246255d62ep-10, 0x1.541bfb3399c14p+2}}, {1, 0x1.c4185a4bfa8b8p+7, {0x1.bd59d301e8a5dp-2, 0x1.4f87c37165fap-10, 0x1.132246255d62ep-10, 0x1.541bfb3399c14p+2}}, {1, 0x1.c4185a4bfa8b8p+7, {0x1.bd59d301e8a5dp-2, 0x1.4f87c37165fap-10, 0x1.132246255d62ep-10, 0x1.541bfb3399c14p+2}}}},
@@ -3312,6 +3341,7 @@ const AstroRef kAstroRefFree[] = {
     {1, "chrom_lum_bl", 2, 1, 0x1.90a49eaebca78p+12, {0x1.6ea78b647f1e9p-5, 0x1.8ed43165100adp-10, 0x1.44c8ee862bbd1p-10, 0x1.5e713c1d8697dp-1}, {{1, 0x1.90a49eaebca78p+12, {0x1.6ea78b647f1e9p-5, 0x1.8ed43165100adp-10, 0x1.44c8ee862bbd1p-10, 0x1.5e713c1d8697dp-1}}, {1, 0x1.930dd7b680522p+3, {0x1.08ab85e8ec533p-2, 0x1.a774bd7e0f144p-9, 0x1.65ab4482a8242p-9, 0x1.0a2e73cd8ccd6p+4}}, {1, 0x1.a863e271074bcp+1, {0x1.3e9171f85548ep-1, 0x1.3fbb69422e266p-8, 0x1.24161aa5de44dp-8, 0x1.f14db8b8d3ab6p+4}}}},
 };
 struct PhotRef { int espl; const char* name; int q; int ok; int nep; double cond; double era[Nx]; };
+// (The laptop's numbers: bit-exact there with FISHERTEST_EXACT=1, within 1e-6 on other machines; see tabEq.)
 const PhotRef kPhotRefChrom[] = {
     {0, "chrom_dark", 0, 1, 1102, 0x1.6f469758f3fbbp+14, {0x1.bfe1a3434d1bap-8, 0x1.ae52db00ddbb2p-1, 0x1.5d8fbce74332ap-7, 0x1.dff4d6a5c0051p-1, 0x1.3388fe1ce3e26p+0, 0x1.1b159faeb95bp-7, 0x1.3294ff061b882p-9, 0x1.a747f0982dff6p-7, 0x1.07b134f262c5bp-12, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.c1afe18539ec4p-7, 0x1.362e73348bc35p-9, 0x1.ff7555dcdfe8ep-7, 0x1.3718fde01084cp-9, -0x1p+0, -0x1p+0}},
     {0, "chrom_dark", 1, 1, 238, 0x1.2cf7bc861ddb4p+13, {0x1.31cacea4251edp-4, 0x1.8c565dc65a45ep+3, 0x1.87a96e1e1f817p-4, 0x1.8c88ebf3a87ap+3, 0x1.f576c7f93e2b7p+3, 0x1.8d116432b2113p-3, 0x1.390dce83371b4p-9, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.4330547744c06p-3, 0x1.4687017b20365p-9, 0x1.86bbbf58c3e15p-3, 0x1.4eeab930e4598p-9, -0x1p+0, -0x1p+0}},
@@ -3329,6 +3359,7 @@ const PhotRef kPhotRefChrom[] = {
 
 bool checkChromaticPinned()
 {
+    gTabDev = 0.0;
     bool ok = true;
     const SourceModel keep = vbmSourceModel();
     int nAst = 0, nPhot = 0;
@@ -3344,7 +3375,7 @@ bool checkChromaticPinned()
                     ++nAst;
                     if (not matchesRef(*r->co, ref)) {
                         std::cerr << "FAIL [chromatic-pinned] astrometry " << nm << (espl ? " (espl)" : " (pspl)") << " partition " << ref.q
-                                  << " is not bit-identical to the aab9831 forecast\n";
+                                  << " differs from its reference table beyond the tolerance\n";
                         ok = false;
                     }
                 }
@@ -3353,11 +3384,11 @@ bool checkChromaticPinned()
                     if (ref.espl != espl or std::strcmp(ref.name, lum ? "chrom_lum" : "chrom_dark") != 0) continue;
                     ++nPhot;
                     const covarian& c = *r->co;
-                    bool same = c.okA[ref.q] == ref.ok and c.nepochA[ref.q] == ref.nep and sameDouble(c.condA[ref.q], ref.cond);
-                    for (int k = 0; k < Nx; ++k) same = same and sameDouble(c.Era[ref.q][k], ref.era[k]);
+                    bool same = c.okA[ref.q] == ref.ok and c.nepochA[ref.q] == ref.nep and tabEq(c.condA[ref.q], ref.cond);
+                    for (int k = 0; k < Nx; ++k) same = same and tabEq(c.Era[ref.q][k], ref.era[k]);
                     if (not same) {
                         std::cerr << "FAIL [chromatic-pinned] photometry " << ref.name << (espl ? " (espl)" : " (pspl)") << " partition " << ref.q
-                                  << " is not bit-identical to the aab9831 forecast\n";
+                                  << " differs from its reference table beyond the tolerance\n";
                         ok = false;
                     }
                 }
@@ -3365,8 +3396,9 @@ bool checkChromaticPinned()
     }
     vbmSetSourceModel(keep);
     if (nAst != 24 or nPhot != 12) { std::cerr << "FAIL [chromatic-pinned] compared " << nAst << " astrometric and " << nPhot << " photometric rows\n"; ok = false; }
-    std::cout << "# chromatic events, default free-mode astrometry (both priors) and photometry equal the aab9831 forecast bit for bit: "
-              << nAst << " + " << nPhot << " rows, " << (ok ? "ok\n" : "FAIL\n");
+    std::cout << "# chromatic events, default free-mode astrometry (both priors) and photometry equal the reference tables (tolerance "
+              << kTableTol << " unless FISHERTEST_EXACT=1): " << nAst << " + " << nPhot << " rows, largest relative deviation "
+              << gTabDev << ", " << (ok ? "ok\n" : "FAIL\n");
     return ok;
 }
 

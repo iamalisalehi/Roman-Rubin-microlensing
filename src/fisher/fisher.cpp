@@ -534,8 +534,9 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         f99data[q] = FA[q][9 * Nx + 9];
         if (co.rhoFit[q]) FA[q][9 * Nx + 9] += priorInfo;
     }
-    // The same for the blend fraction of every Rubin band in the fit, r included: sigma(f_S) = fbPriorSig, added once
-    // to each matrix that holds the band (the joint and the Rubin-only one; Roman's F146 has none). It leaves a band
+    // The same for the blend fraction of every Rubin band in the fit, r included, and for Roman's F146: sigma(f_S) = fbPriorSig,
+    // added once to each matrix that holds the band (the joint and the Rubin-only one for Rubin's; the joint and the
+    // Roman-only one for F146, when Roman is in the fit). It leaves a band
     // that never sees the bump (an empty fb row) invertible and moves the physical parameters not at all, since their
     // derivatives vanish at baseline as well; where the band does see the bump it is a weak 1/sigma^2 against the data.
     const double fbPriorInfo = std::isfinite(co.fbPriorSig) ? 1.0 / (co.fbPriorSig * co.fbPriorSig) : 0.0;
@@ -544,6 +545,11 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         const int jfb = fbIndexOfFilter(b);
         FA[SJOINT][jfb * Nx + jfb] += fbPriorInfo;
         FA[SRUBIN][jfb * Nx + jfb] += fbPriorInfo;
+    }
+    if (useR) {
+        const int jR = fbIndexOfFilter(6);
+        FA[SJOINT][jR * Nx + jR] += fbPriorInfo;
+        FA[SROMAN][jR * Nx + jR] += fbPriorInfo;
     }
     for (int q = 0; q < NSURV; ++q)
         for (int j = 0; j < Nx; ++j)

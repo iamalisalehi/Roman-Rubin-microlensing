@@ -606,13 +606,13 @@ constexpr double VBM_TOL = 1.0e-3;
 // sigma(ln rho) is the data's, and in between the other sigmas are inflated honestly by the unknown rho.
 constexpr double RHO_PRIOR_SIGLN = 1.0;
 
-// One-sigma width of the Gaussian prior on the source-flux fraction f_S of every active Rubin band, r included
-// (F[fb_b][fb_b] += 1 / RUBIN_FB_PRIOR_SIG^2, once per matrix, as for ln rho; Roman's F146 has none). f_S is a fraction,
+// One-sigma width of the Gaussian prior on the source-flux fraction f_S of every active band: Rubin's, r included, and
+// Roman's F146 (F[fb_b][fb_b] += 1 / FB_PRIOR_SIG^2, once per matrix that holds the band, as for ln rho). f_S is a fraction,
 // so it lies in [0,1] and a prior of width 1 says nothing about it where the data speak. It matters where they do not:
 // a band whose visits never see the bump (all at baseline, A = 1) has dm/df_S proportional to (A - 1) = 0, an empty row,
 // and the prior keeps the matrix invertible without touching the physical parameters (their derivatives vanish at
 // baseline too, so the band adds nothing to their rows either).
-constexpr double RUBIN_FB_PRIOR_SIG = 1.0;
+constexpr double FB_PRIOR_SIG = 1.0;
 
 // The largest DATA-ONLY sigma(ln rho) (the matrix's without the prior) at which a partition has measured the
 // source's size: rho to 30%, a ~3-sigma detection. Only then is the photometric thetaE = theta* / rho used (the

@@ -185,11 +185,11 @@ struct covarian {
     // enter the matrices: the band's visit count if it has at least kMinTeleEpochs of them, 0 if it is left out (a band
     // with fewer visits cannot fix its own blend and baseline). Set by FisherM; activePhotParams reads it, so the
     // joint and Rubin-only partitions carry a (fb, mbs) pair for every band with a non-zero count. fbPriorSig is the
-    // width of the Gaussian prior on each such band's source-flux fraction (RUBIN_FB_PRIOR_SIG, added once to every
-    // matrix holding the band, Roman's F146 excepted); infinite drops it, which a test uses to compare with the
+    // width of the Gaussian prior on each such band's source-flux fraction (FB_PRIOR_SIG, added once to every
+    // matrix holding the band, Roman's F146 included); infinite drops it, which a test uses to compare with the
     // forecast made before the prior existed. It mirrors rhoPriorSigLn.
     std::array<int, kRubinBands> nRubinBand{};
-    double fbPriorSig = RUBIN_FB_PRIOR_SIG;
+    double fbPriorSig = FB_PRIOR_SIG;
 
     // The lens's own light fraction in each band is an unknown of the astrometric fit (one per Rubin band with astrometric
     // visits and one for Roman's F146, the same number in x and y) when lensLightFree; else (--lens-light known) it is held at

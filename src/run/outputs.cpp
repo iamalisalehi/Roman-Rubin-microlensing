@@ -380,9 +380,9 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "   # Rubin visits in the Fisher matrices; reference band only: each fitted with the reference band's "
                 "model (RUBIN_REF_BANDS); all bands: each fitted in its own band (blend fraction and baseline per band; "
                 "bands with fewer than " << kMinTeleEpochs << " visits left out)\n"
-             << "# rubin_blend_prior   sigma(f_S) = " << RUBIN_FB_PRIOR_SIG
-             << " on every Rubin band in the fit   # Gaussian prior on each band's source-flux fraction, added once to the "
-                "joint and Rubin-only photometric matrices (Roman's F146 has none)\n"
+             << "# blend_prior         sigma(f_S) = " << FB_PRIOR_SIG
+             << " on every band in the fit (Rubin's and F146)   # Gaussian prior on each band's source-flux fraction, added once "
+                "to each photometric matrix that holds the band\n"
              << "# dchi_det            " << cfg.dchiDet
              << "   # fixed detection bar; every yield is conditioned on it\n";
         if (!cfg.dryRun) {   // a dry run must not overwrite the last run's provenance

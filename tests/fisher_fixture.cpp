@@ -16,7 +16,7 @@
 //        --astro-variants, --sweep-astro, --finite-source, --lens-motion, --blend)
 //
 // Rubin's bands: the default mode also checks the per-band fit (a blend fraction and baseline per Rubin band, indices
-// 10-19; sigma(f_S) = RUBIN_FB_PRIOR_SIG on every active Rubin band's blend fraction): prior off reproduces the
+// 10-19; sigma(f_S) = FB_PRIOR_SIG on every active band's blend fraction, F146's too): prior off reproduces the
 // single-band forecast bit for bit, a band at baseline or with fewer than kMinTeleEpochs visits changes no physical
 // sigma, and a chromatic r/i/z event keeps the joint no worse than either survey. --sweep adds that event.
 //
@@ -275,8 +275,9 @@ bool checkAdditivity(const covarian& co, const char* evName, int dim, bool photo
     double worst = 0.0;
     for (int j = 0; j < dim; ++j) {
         for (int k = 0; k < dim; ++k) {
-            // The photometric matrices carry the prior on ln rho once each (F[9][9]), and the joint and Rubin ones the
-            // prior on the blend fraction of every Rubin band in the fit (F[fb_b][fb_b]); the data parts are what add.
+            // The photometric matrices carry the prior on ln rho once each (F[9][9]), and each matrix that holds a band the prior
+            // on its blend fraction (F[fb_b][fb_b]): the joint and Rubin ones for Rubin's bands, the joint and Roman ones for
+            // F146; the data parts are what add.
             const auto prior = [&](int q) {
                 double p = 0.0;
                 if (photometric and j == 9 and k == 9 and co.rhoFit[q] and std::isfinite(co.rhoPriorSigLn))
@@ -284,6 +285,9 @@ bool checkAdditivity(const covarian& co, const char* evName, int dim, bool photo
                 if (photometric and j == k and q != SROMAN and std::isfinite(co.fbPriorSig))
                     for (int b = 0; b < kRubinBands; ++b)
                         if (co.nRubinBand[b] > 0 and j == fbIndexOfFilter(b)) p += 1.0 / (co.fbPriorSig * co.fbPriorSig);
+                if (photometric and j == k and q != SRUBIN and std::isfinite(co.fbPriorSig) and j == fbIndexOfFilter(6)
+                    and co.nepochA[SROMAN] >= kMinTeleEpochs)
+                    p += 1.0 / (co.fbPriorSig * co.fbPriorSig);                  //Roman's F146, in the joint and Roman matrices
                 return p;
             };
             const double joint = photometric
@@ -1823,8 +1827,8 @@ int runBlend()
 }
 
 // ---------------------------------------------------------------------------------------------
-// Rubin's bands (a blend fraction and a baseline magnitude per band, indices 10-19; sigma(f_S) = RUBIN_FB_PRIOR_SIG on
-// every active Rubin band's blend fraction).
+// Rubin's bands (a blend fraction and a baseline magnitude per band, indices 10-19; sigma(f_S) = FB_PRIOR_SIG on
+// every active band's blend fraction, Roman's F146 included).
 //
 // The light-curve magnification is the same in every band; only m_b = mbs_b - 2.5 log10(fb_b A + 1 - fb_b) differs. The
 // checks below hold the per-band machinery to what it must do: leave the single-band (r) forecast of an event as it was
@@ -1975,7 +1979,7 @@ bool checkPriorOffReproducesToday()
 }
 
 // Five u-band visits far from the peak (A - 1 < 1e-6): the band's baseline is measured, its blend fraction is not (the
-// prior holds it at sigma = RUBIN_FB_PRIOR_SIG), and no physical parameter moves.
+// prior holds it at sigma = FB_PRIOR_SIG), and no physical parameter moves.
 bool checkBandAtBaseline()
 {
     bool ok = true;
@@ -2001,7 +2005,7 @@ bool checkBandAtBaseline()
     }
     // sigma(f_S,u) is the prior's, sigma(mbs_u) the five visits' own: 0.02 mag / sqrt(5)
     for (const int q : {SJOINT, SRUBIN}) {
-        if (not (std::fabs(c.Era[q][10] - RUBIN_FB_PRIOR_SIG) < 1e-3 * RUBIN_FB_PRIOR_SIG)) {
+        if (not (std::fabs(c.Era[q][10] - FB_PRIOR_SIG) < 1e-3 * FB_PRIOR_SIG)) {
             std::cerr << "FAIL [band-at-baseline] partition " << q << " sigma(fb_u) = " << c.Era[q][10] << ", not the prior's\n";
             ok = false;
         }
@@ -3276,8 +3280,9 @@ bool checkLensLightFloor()
 
 // ---- the per-band decisions, pinned ----
 
-// The chromatic events' forecast of the aab9831 source (default free-mode astrometry under both priors, and the photometric
-// Era/condA), hexadecimal floats, generated once from that source with a temporary mode of this file; never regenerated to
+// The chromatic events' forecast (default free-mode astrometry under both priors from the aab9831 source, and the photometric
+// Era/condA of the joint and Roman matrices regenerated once from the commit that put the blend prior on F146 too; Rubin's
+// photometric rows are the aab9831 ones), hexadecimal floats, generated once from that source with a temporary mode of this file; never regenerated to
 // make a check pass. They pin each epoch's own band blend (not r's) in the photometry, the prior on every Rubin band's blend and
 // the width of each band's f_L prior (its own f_S, not r's).
 const AstroRef kAstroRefFree[] = {
@@ -3308,18 +3313,18 @@ const AstroRef kAstroRefFree[] = {
 };
 struct PhotRef { int espl; const char* name; int q; int ok; int nep; double cond; double era[Nx]; };
 const PhotRef kPhotRefChrom[] = {
-    {0, "chrom_dark", 0, 1, 1102, 0x1.6f519f240622p+14, {0x1.bfe4822dfb542p-8, 0x1.ae59f50f6c8eap-1, 0x1.5d8ff67741613p-7, 0x1.dffb68e3983c2p-1, 0x1.338d35b439a9dp+0, 0x1.1b1667f02ced6p-7, 0x1.32950316a392ep-9, 0x1.a750fb46072dfp-7, 0x1.07b13f573d143p-12, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.c1b01d1cbccdcp-7, 0x1.362e790b23126p-9, 0x1.ff75b09070862p-7, 0x1.37190671e950fp-9, -0x1p+0, -0x1p+0}},
+    {0, "chrom_dark", 0, 1, 1102, 0x1.6f469758f3fbbp+14, {0x1.bfe1a3434d1bap-8, 0x1.ae52db00ddbb2p-1, 0x1.5d8fbce74332ap-7, 0x1.dff4d6a5c0051p-1, 0x1.3388fe1ce3e26p+0, 0x1.1b159faeb95bp-7, 0x1.3294ff061b882p-9, 0x1.a747f0982dff6p-7, 0x1.07b134f262c5bp-12, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.c1afe18539ec4p-7, 0x1.362e73348bc35p-9, 0x1.ff7555dcdfe8ep-7, 0x1.3718fde01084cp-9, -0x1p+0, -0x1p+0}},
     {0, "chrom_dark", 1, 1, 238, 0x1.2cf7bc861ddb4p+13, {0x1.31cacea4251edp-4, 0x1.8c565dc65a45ep+3, 0x1.87a96e1e1f817p-4, 0x1.8c88ebf3a87ap+3, 0x1.f576c7f93e2b7p+3, 0x1.8d116432b2113p-3, 0x1.390dce83371b4p-9, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.4330547744c06p-3, 0x1.4687017b20365p-9, 0x1.86bbbf58c3e15p-3, 0x1.4eeab930e4598p-9, -0x1p+0, -0x1p+0}},
-    {0, "chrom_dark", 2, 1, 864, 0x1.97d3353c64177p+16, {0x1.c3dc452ce149fp-7, 0x1.c2cd8481885d2p+0, -0x1p+0, 0x1.fae4f3e365e7p+0, 0x1.44638247d11cp+1, 0x1.752b44fc18868p-7, -0x1p+0, 0x1.7af7aa9c5afbep-6, 0x1.2456a828383edp-12, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
-    {0, "chrom_lum", 0, 1, 1102, 0x1.6f519f240622p+14, {0x1.bfe4822dfb542p-8, 0x1.ae59f50f6c8eap-1, 0x1.5d8ff67741613p-7, 0x1.dffb68e3983c2p-1, 0x1.338d35b439a9dp+0, 0x1.1b1667f02ced6p-7, 0x1.32950316a392ep-9, 0x1.a750fb46072dfp-7, 0x1.07b13f573d143p-12, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.c1b01d1cbccdcp-7, 0x1.362e790b23126p-9, 0x1.ff75b09070862p-7, 0x1.37190671e950fp-9, -0x1p+0, -0x1p+0}},
+    {0, "chrom_dark", 2, 1, 864, 0x1.97a0a258c66e8p+16, {0x1.c3c4c3b88a847p-7, 0x1.c2b0e465799ep+0, -0x1p+0, 0x1.fac626871c221p+0, 0x1.444fca3a55374p+1, 0x1.751f0757378aep-7, -0x1p+0, 0x1.7addb97cc0c4cp-6, 0x1.2453733b4b083p-12, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {0, "chrom_lum", 0, 1, 1102, 0x1.6f469758f3fbbp+14, {0x1.bfe1a3434d1bap-8, 0x1.ae52db00ddbb2p-1, 0x1.5d8fbce74332ap-7, 0x1.dff4d6a5c0051p-1, 0x1.3388fe1ce3e26p+0, 0x1.1b159faeb95bp-7, 0x1.3294ff061b882p-9, 0x1.a747f0982dff6p-7, 0x1.07b134f262c5bp-12, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.c1afe18539ec4p-7, 0x1.362e73348bc35p-9, 0x1.ff7555dcdfe8ep-7, 0x1.3718fde01084cp-9, -0x1p+0, -0x1p+0}},
     {0, "chrom_lum", 1, 1, 238, 0x1.2cf7bc861ddb4p+13, {0x1.31cacea4251edp-4, 0x1.8c565dc65a45ep+3, 0x1.87a96e1e1f817p-4, 0x1.8c88ebf3a87ap+3, 0x1.f576c7f93e2b7p+3, 0x1.8d116432b2113p-3, 0x1.390dce83371b4p-9, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.4330547744c06p-3, 0x1.4687017b20365p-9, 0x1.86bbbf58c3e15p-3, 0x1.4eeab930e4598p-9, -0x1p+0, -0x1p+0}},
-    {0, "chrom_lum", 2, 1, 864, 0x1.97d3353c64177p+16, {0x1.c3dc452ce149fp-7, 0x1.c2cd8481885d2p+0, -0x1p+0, 0x1.fae4f3e365e7p+0, 0x1.44638247d11cp+1, 0x1.752b44fc18868p-7, -0x1p+0, 0x1.7af7aa9c5afbep-6, 0x1.2456a828383edp-12, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
-    {1, "chrom_dark", 0, 1, 1102, 0x1.6f52b540f294cp+14, {0x1.bfe43c834053cp-8, 0x1.ae597449a53d9p-1, 0x1.5d8fe73d19214p-7, 0x1.dffae0c8d975cp-1, 0x1.338cde883447dp+0, 0x1.1b1632519e7f9p-7, 0x1.329502c1df473p-9, 0x1.a7506e6d1f1abp-7, 0x1.07b13a8383a18p-12, 0x1.ffffffffc9d79p-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.c1b00ee89d0e7p-7, 0x1.362e78d0d7f9cp-9, 0x1.ff75aa09e5305p-7, 0x1.3719065b5c27p-9, -0x1p+0, -0x1p+0}},
+    {0, "chrom_lum", 2, 1, 864, 0x1.97a0a258c66e8p+16, {0x1.c3c4c3b88a847p-7, 0x1.c2b0e465799ep+0, -0x1p+0, 0x1.fac626871c221p+0, 0x1.444fca3a55374p+1, 0x1.751f0757378aep-7, -0x1p+0, 0x1.7addb97cc0c4cp-6, 0x1.2453733b4b083p-12, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {1, "chrom_dark", 0, 1, 1102, 0x1.6f47ad7698a7fp+14, {0x1.bfe15d9afc115p-8, 0x1.ae525a428e925p-1, 0x1.5d8fadad2054fp-7, 0x1.dff44e923c83ap-1, 0x1.3388a6f581fccp+0, 0x1.1b156a111bec3p-7, 0x1.3294feb1599bap-9, 0x1.a74763c84c839p-7, 0x1.07b1301ec576fp-12, 0x1.ffffffffc9cb6p-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.c1afd3511aaep-7, 0x1.362e72fa44693p-9, 0x1.ff754f5650a01p-7, 0x1.3718fdc988592p-9, -0x1p+0, -0x1p+0}},
     {1, "chrom_dark", 1, 1, 238, 0x1.2cf7a2176893ep+13, {0x1.31ca4cdaa433bp-4, 0x1.8c5636dac04f1p+3, 0x1.87a91f1b0946ap-4, 0x1.8c88d24526a8ap+3, 0x1.f576a7962d1fbp+3, 0x1.8d1121f5bcc3ap-3, 0x1.390dce76ae163p-9, -0x1p+0, -0x1p+0, 0x1.ffffffffffddfp-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.4330115d83628p-3, 0x1.468700384c237p-9, 0x1.86bb703825c32p-3, 0x1.4eeab8c1fa49p-9, -0x1p+0, -0x1p+0}},
-    {1, "chrom_dark", 2, 1, 864, 0x1.97d4f25cd525ap+16, {0x1.c3dc536372597p-7, 0x1.c2cd4764b3573p+0, -0x1p+0, 0x1.fae4b8b9ceed2p+0, 0x1.44635c3de0465p+1, 0x1.752b11747f9f1p-7, -0x1p+0, 0x1.7af750bcab465p-6, 0x1.2456a270a92c4p-12, 0x1.fffffffffc511p-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
-    {1, "chrom_lum", 0, 1, 1102, 0x1.6f52b540f294cp+14, {0x1.bfe43c834053cp-8, 0x1.ae597449a53d9p-1, 0x1.5d8fe73d19214p-7, 0x1.dffae0c8d975cp-1, 0x1.338cde883447dp+0, 0x1.1b1632519e7f9p-7, 0x1.329502c1df473p-9, 0x1.a7506e6d1f1abp-7, 0x1.07b13a8383a18p-12, 0x1.ffffffffc9d79p-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.c1b00ee89d0e7p-7, 0x1.362e78d0d7f9cp-9, 0x1.ff75aa09e5305p-7, 0x1.3719065b5c27p-9, -0x1p+0, -0x1p+0}},
+    {1, "chrom_dark", 2, 1, 864, 0x1.97a25f5b1ac23p+16, {0x1.c3c4d1f7da13fp-7, 0x1.c2b0a75a587cap+0, -0x1p+0, 0x1.fac5eb70079b3p+0, 0x1.444fa43c40b9bp+1, 0x1.751ed3d6afba9p-7, -0x1p+0, 0x1.7add5faf855f2p-6, 0x1.24536d85dbce6p-12, 0x1.fffffffffc4f5p-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {1, "chrom_lum", 0, 1, 1102, 0x1.6f47ad7698a7fp+14, {0x1.bfe15d9afc115p-8, 0x1.ae525a428e925p-1, 0x1.5d8fadad2054fp-7, 0x1.dff44e923c83ap-1, 0x1.3388a6f581fccp+0, 0x1.1b156a111bec3p-7, 0x1.3294feb1599bap-9, 0x1.a74763c84c839p-7, 0x1.07b1301ec576fp-12, 0x1.ffffffffc9cb6p-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.c1afd3511aaep-7, 0x1.362e72fa44693p-9, 0x1.ff754f5650a01p-7, 0x1.3718fdc988592p-9, -0x1p+0, -0x1p+0}},
     {1, "chrom_lum", 1, 1, 238, 0x1.2cf7a2176893ep+13, {0x1.31ca4cdaa433bp-4, 0x1.8c5636dac04f1p+3, 0x1.87a91f1b0946ap-4, 0x1.8c88d24526a8ap+3, 0x1.f576a7962d1fbp+3, 0x1.8d1121f5bcc3ap-3, 0x1.390dce76ae163p-9, -0x1p+0, -0x1p+0, 0x1.ffffffffffddfp-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.4330115d83628p-3, 0x1.468700384c237p-9, 0x1.86bb703825c32p-3, 0x1.4eeab8c1fa49p-9, -0x1p+0, -0x1p+0}},
-    {1, "chrom_lum", 2, 1, 864, 0x1.97d4f25cd525ap+16, {0x1.c3dc536372597p-7, 0x1.c2cd4764b3573p+0, -0x1p+0, 0x1.fae4b8b9ceed2p+0, 0x1.44635c3de0465p+1, 0x1.752b11747f9f1p-7, -0x1p+0, 0x1.7af750bcab465p-6, 0x1.2456a270a92c4p-12, 0x1.fffffffffc511p-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {1, "chrom_lum", 2, 1, 864, 0x1.97a25f5b1ac23p+16, {0x1.c3c4d1f7da13fp-7, 0x1.c2b0a75a587cap+0, -0x1p+0, 0x1.fac5eb70079b3p+0, 0x1.444fa43c40b9bp+1, 0x1.751ed3d6afba9p-7, -0x1p+0, 0x1.7add5faf855f2p-6, 0x1.24536d85dbce6p-12, 0x1.fffffffffc4f5p-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
 };
 
 bool checkChromaticPinned()
@@ -3397,8 +3402,9 @@ bool checkRubinBandBlendUsed()
     return ok;
 }
 
-// The prior on the blend fraction (sigma = RUBIN_FB_PRIOR_SIG) adds exactly 1/sigma^2 to the fb diagonal of every Rubin band
-// in the fit, r included, in the joint and Rubin-only matrices, and nothing to Roman's F146 in any matrix.
+// The prior on the blend fraction (sigma = FB_PRIOR_SIG) adds exactly 1/sigma^2 to the fb diagonal of every Rubin band
+// in the fit, r included, in the joint and Rubin-only matrices, and to Roman's F146 in the joint and Roman-only ones; and
+// nothing to a band in a matrix that does not hold it.
 bool checkBlendPriorEveryBand()
 {
     bool ok = true;
@@ -3406,7 +3412,7 @@ bool checkBlendPriorEveryBand()
     for (EventRun* e : {&on, &off}) makeChromatic(*e->s, *e->l, e->ndw);
     off.co->fbPriorSig = std::numeric_limits<double>::infinity();
     on.run();  off.run();
-    const double want = 1.0 / (RUBIN_FB_PRIOR_SIG * RUBIN_FB_PRIOR_SIG);
+    const double want = 1.0 / (FB_PRIOR_SIG * FB_PRIOR_SIG);
     int nb = 0;
     for (int b = 0; b < kRubinBands; ++b) {
         if (on.co->nRubinBand[b] == 0) continue;
@@ -3421,13 +3427,25 @@ bool checkBlendPriorEveryBand()
         }
     }
     const int jR = fbIndexOfFilter(6);
-    for (const int q : {SJOINT, SROMAN})
-        if (gsl_matrix_get(on.co->inputA[q].get(), jR, jR) != gsl_matrix_get(off.co->inputA[q].get(), jR, jR)) {
-            std::cerr << "FAIL [blend-prior] partition " << q << ": the prior changed Roman's F146 blend diagonal\n";
+    for (const int q : {SJOINT, SROMAN}) {
+        const double d = gsl_matrix_get(on.co->inputA[q].get(), jR, jR) - gsl_matrix_get(off.co->inputA[q].get(), jR, jR);
+        if (not (std::fabs(d - want) <= 1e-12 * want)) {
+            std::cerr << "FAIL [blend-prior] F146 partition " << q << ": prior adds " << d << ", not " << want << "\n";
             ok = false;
         }
+    }
+    // a band in a matrix that does not hold it: Rubin's bands in the Roman matrix, F146 in the Rubin one
+    for (int b = 0; b < kRubinBands; ++b) {
+        const int j = fbIndexOfFilter(b);
+        if (gsl_matrix_get(on.co->inputA[SROMAN].get(), j, j) != gsl_matrix_get(off.co->inputA[SROMAN].get(), j, j)) {
+            std::cerr << "FAIL [blend-prior] the prior changed Rubin band " << b << "'s diagonal in the Roman matrix\n";  ok = false;
+        }
+    }
+    if (gsl_matrix_get(on.co->inputA[SRUBIN].get(), jR, jR) != gsl_matrix_get(off.co->inputA[SRUBIN].get(), jR, jR)) {
+        std::cerr << "FAIL [blend-prior] the prior changed F146's diagonal in the Rubin matrix\n";  ok = false;
+    }
     if (nb != 3) { std::cerr << "FAIL [blend-prior] " << nb << " bands in the fit, not r, i, z\n"; ok = false; }
-    std::cout << "# the blend prior adds 1/sigma^2 to r, i, z in J and L and nothing to F146" << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    std::cout << "# the blend prior adds 1/sigma^2 to r, i, z in J and L, to F146 in J and R, and nothing elsewhere" << (ok ? "  -> ok\n" : "  -> FAIL\n");
     return ok;
 }
 

@@ -65,8 +65,13 @@ void printUsage(const char* prog) {
         << "                 per Rubin band and for Roman), the same in x and y, with the prior\n"
         << "                 of --lens-light-prior. Recorded in run_provenance.txt.\n"
         << "  --lens-light-prior uniform|blend\n"
-        << "                 only with --lens-light free: sigma of that prior on f_L = (1 - f_S)/sqrt(12)\n"
-        << "                 (uniform on [0, 1 - f_S], default) or (1 - f_S) (blend).\n"
+        << "                 only with --lens-light free (ignored, with a warning, under known): sigma of\n"
+        << "                 that prior on f_L = (1 - f_S)/sqrt(12) (uniform on [0, 1 - f_S], default)\n"
+        << "                 or (1 - f_S) (blend).\n"
+        << "  --lens-light-floor F\n"
+        << "                 only with --lens-light free (ignored, with a warning, under known): sigma(f_L)\n"
+        << "                 = max(prior sigma, F), F in [0, 1] (default 0 = off). With F > 0 every band,\n"
+        << "                 an unblended F146 included, carries an f_L parameter of at least that width.\n"
         << "  --stride-roman N  sightline grid step inside Roman's footprint, same units\n"
         << "                 (default: same as --stride, i.e. an unstratified scan). Must\n"
         << "                 divide --stride. Sightlines outside the footprint keep the\n"
@@ -109,7 +114,7 @@ void printUsage(const char* prog) {
 }
 
 bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
-    bool strideGiven = false;
+    bool strideGiven = false, priorGiven = false, floorGiven = false;
     for (int a = 1; a < argc; ++a) {
         const std::string arg = argv[a];
         auto need = [&](const char* what) -> const char* {
@@ -143,12 +148,17 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
         }
         else if (arg == "--lens-light-prior") {
             const std::string v = need("--lens-light-prior");
+            priorGiven = true;
             if      (v == "uniform") cfg.lensLightPriorBlend = false;
             else if (v == "blend")   cfg.lensLightPriorBlend = true;
             else {
                 std::cerr << "ERROR: --lens-light-prior takes uniform or blend, not '" << v << "'\n";
                 exitCode = 1; return false;
             }
+        }
+        else if (arg == "--lens-light-floor") {
+            cfg.lensLightFloor = std::atof(need("--lens-light-floor"));
+            floorGiven = true;
         }
         else if (arg == "--events")  cfg.iconTarget  = std::atoi(need("--events"));
         else if (arg == "--lenses")  cfg.nlensTarget = std::atoi(need("--lenses"));
@@ -198,6 +208,13 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
     }
     // The stub patch is 0.1x0.1 deg; the default stride of 10 (0.20 deg) would step over it,
     // so --stub without an explicit --stride uses the native dd grid.
+    if (not (cfg.lensLightFloor >= 0.0 and cfg.lensLightFloor <= 1.0)) {
+        std::cerr << "ERROR: --lens-light-floor (" << cfg.lensLightFloor << ") must be in [0, 1]\n";
+        exitCode = 1; return false;
+    }
+    if (not cfg.lensLightFree and (priorGiven or floorGiven))
+        std::cerr << "WARNING: " << (priorGiven ? "--lens-light-prior" : "") << (priorGiven and floorGiven ? " and " : "")
+                  << (floorGiven ? "--lens-light-floor" : "") << " ignored (read only with --lens-light free)\n";
     if (cfg.stubPatch and not strideGiven) cfg.stride = 1;
 
     if (cfg.pairSat and cfg.noSatPar) {

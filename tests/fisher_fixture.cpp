@@ -2854,7 +2854,7 @@ std::unique_ptr<EventRun> makeLensCase(int c, bool lensFree, double priorFrac)
     return r;
 }
 
-constexpr double kUniformFrac = 0.28867513459481288;   // 1/sqrt(12)
+constexpr double kUniformFrac = kLensLightUniformFrac;
 
 // The chromatic events' astrometric forecast of the 5dd83b6 build, hexadecimal floats: dark and luminous, point source
 // (espl 0) and disc (1). Generated once from that build (a temporary mode of this file); never regenerated to make a check pass.
@@ -3042,7 +3042,7 @@ bool checkLensLightDerivative()
             // the bands tested: Rubin's r, i, z (the epochs with filt == b) and F146 (all of Roman's)
             for (const int b : (tele == 0 ? std::vector<int>{2, 3, 4} : std::vector<int>{6})) {
                 std::vector<ModelPoint> ref(n), up(n), dn(n);
-                evaluateModel(s, *r.l, *r.as, tele, t.data(), n, true, ref.data(), fp);
+                evaluateModel(s, *r.l, *r.as, tele, t.data(), n, true, ref.data(), fp, true);
                 const double d = 1e-3;
                 const auto setFL = [&](double v) { s.fLensF[b] = v;  if (b == 2) s.fLens[0] = v;  if (b == 6) s.fLens[1] = v; };
                 const double keepFL = s.fLensF[b];
@@ -3082,6 +3082,195 @@ bool checkLensLightDerivative()
     }
     vbmSetSourceModel(keep);
     std::cout << "# d(centroid)/d(f_L) against a central difference" << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
+// ---- Roman's reduction with the lens's light fraction free, on synthetic day sums ----
+
+// Synthetic Roman epochs: ndays days of perDay epochs, the days' rolls alternating; per epoch a magnification track, the
+// neighbours' share h (same in x and y), random physical derivatives and the lens-light derivative l = -0.6 u / den
+// (u = 0.3 + t in x, -0.2 t in y). The lists keep what the brute force needs.
+struct RomanEpoch { int day; double w, h; std::array<double, kD> dx, dy; };
+
+std::vector<RomanEpoch> syntheticRoman(int ndays, int perDay)
+{
+    std::mt19937 gen(11);
+    std::uniform_real_distribution<double> uni(0.0, 1.0);
+    std::normal_distribution<double> nrm(0.0, 1.0);
+    std::vector<RomanEpoch> out;
+    for (int day = 0; day < ndays; ++day)
+        for (int e = 0; e < perDay; ++e) {
+            const double t = -3.0 + 6.0 * uni(gen);
+            const double A = 1.0 + 2.0 / (1.0 + t * t), fs = 0.4, fL = 0.2, den = fs * A + 1.0 - fs;
+            RomanEpoch ep{day, 0.5 + 1.5 * uni(gen), (1.0 - fs - fL) / den, {}, {}};
+            for (int c = 0; c < 2; ++c) {
+                auto& d = c ? ep.dy : ep.dx;
+                for (int j = 0; j < Ny; ++j) d[j] = nrm(gen);
+                d[1 + c] = t;
+                d[Ny] = ep.h;
+                d[Ny + 1] = -0.6 * (c ? -0.2 * t : 0.3 + t) / den;
+            }
+            out.push_back(ep);
+        }
+    return out;
+}
+
+// The brute force: parameters (physical, f_L if withL, then per coordinate one reference per roll group, one offset per
+// day with prior precision 1/s2 (the frame errors), and the neighbours' offset), all but the physical ones marginalised
+// by a direct solve; f_L carries the prior precision flInfo.
+std::array<double, Ny * Ny> bruteRoman(const std::vector<RomanEpoch>& eps, int ndays, int nroll, double s2, bool withL, double flInfo)
+{
+    const int per = nroll + ndays + 1, nl = withL ? 1 : 0, n = Ny + nl + 2 * per;
+    std::vector<double> F(n * n, 0.0);
+    for (const auto& ep : eps)
+        for (int c = 0; c < 2; ++c) {
+            std::vector<double> g(n, 0.0);
+            const auto& d = c ? ep.dy : ep.dx;
+            for (int j = 0; j < Ny; ++j) g[j] = d[j];
+            if (withL) g[Ny] = d[Ny + 1];
+            const int base = Ny + nl + c * per;
+            g[base + (nroll == 1 ? 0 : ep.day % 2)] = 1.0;
+            g[base + nroll + ep.day] = 1.0;
+            g[base + nroll + ndays] = d[Ny];
+            for (int a = 0; a < n; ++a) for (int b = 0; b < n; ++b) F[a * n + b] += ep.w * g[a] * g[b];
+        }
+    if (s2 > 0.0)
+        for (int c = 0; c < 2; ++c)
+            for (int day = 0; day < ndays; ++day) { const int i = Ny + nl + c * per + nroll + day;  F[i * n + i] += 1.0 / s2; }
+    if (withL) F[Ny * n + Ny] += flInfo;
+    const std::vector<double> R = schurOut(F, n, n - Ny);
+    std::array<double, Ny * Ny> out{};
+    for (int i = 0; i < Ny * Ny; ++i) out[i] = R[i];
+    return out;
+}
+
+bool checkLensLightRoman()
+{
+    bool ok = true;
+    const int nd = 12;
+    const auto eps = syntheticRoman(nd, 8);
+    std::map<long, AstSums> days;
+    for (const auto& ep : eps) {
+        AstSums& k = days[ep.day];
+        if (k.season < 0) { k.season = 0;  k.roll = ep.day % 2; }
+        k.add(ep.w, ep.dx, ep.dy);
+    }
+    std::cout << "# Roman's reduction with f_L free, on synthetic day sums (day frames at sigma_c, a free reference per roll, the offset, f_L shared by x and y)\n";
+    const auto expectClose = [&](const char* what, const std::array<double, Ny * Ny>& got, const std::array<double, Ny * Ny>& want) {
+        const double w = worstRelative(got, want);
+        const bool good = std::isfinite(w) and w < 1e-12;
+        std::cout << "#   " << what << ": worst relative difference " << w << (good ? "  -> ok\n" : "  -> FAIL\n");
+        if (not good) { std::cerr << "FAIL [lens-light-roman] " << what << ": " << w << "\n"; ok = false; }
+    };
+    for (const double s2 : {0.09, 1.0})
+        for (const double prior : {0.6, 0.6 * kLensLightUniformFrac})
+            for (const bool oneFrame : {false, true}) {
+                std::array<double, Ny * Ny> got{};
+                fisher_detail::romanInformation(days, oneFrame, std::sqrt(s2), 1.0 / (prior * prior), got);
+                char buf[128];
+                std::snprintf(buf, sizeof buf, "sigma_c^2 %.2g, prior sigma %.3f, %s", s2, prior, oneFrame ? "one frame" : "frame per roll");
+                expectClose(buf, got, bruteRoman(eps, nd, oneFrame ? 1 : 2, s2, true, 1.0 / (prior * prior)));
+            }
+    {   // no f_L parameter (flInfo < 0): today's reduction
+        std::array<double, Ny * Ny> got{};
+        fisher_detail::romanInformation(days, false, 0.3, -1.0, got);
+        expectClose("no f_L parameter, sigma_c 0.3", got, bruteRoman(eps, nd, 2, 0.09, false, 0.0));
+    }
+    {   // sigma_c = 0, one frame: the one-band closed form (offset, one reference, f_L) on the same epochs
+        AstSums all;
+        for (const auto& ep : eps) all.add(ep.w, ep.dx, ep.dy);
+        std::array<AstSums, kRubinBands> one{};
+        one[2] = all;
+        std::array<double, kRubinBands> info = {-1.0, -1.0, 25.0, -1.0, -1.0, -1.0};
+        std::array<double, Ny * Ny> got{};
+        fisher_detail::romanInformation(days, true, 0.0, 25.0, got);
+        expectClose("sigma_c = 0, one frame, against bruteForceLensFree on the same epochs", got, bruteForceLensFree(one, info));
+    }
+    return ok;
+}
+
+// ---- the branches of rubinBandInformationLensFree the four-band test does not reach ----
+bool checkLensLightFreeBranches()
+{
+    bool ok = true;
+    const auto expectClose = [&](const char* what, const std::array<double, Ny * Ny>& got, const std::array<double, Ny * Ny>& want) {
+        const double w = worstRelative(got, want);
+        const bool good = std::isfinite(w) and w < 1e-12;
+        std::cout << "#   lens-light function, " << what << ": worst relative difference " << w << (good ? "  -> ok\n" : "  -> FAIL\n");
+        if (not good) { std::cerr << "FAIL [lens-light-branches] " << what << ": " << w << "\n"; ok = false; }
+    };
+    const auto lOf = [](double s0) { return [s0](int m) { return 0.4 * std::sin(0.13 * m + s0) + 0.3; }; };
+    {   // a band with no neighbours' light (h = 0, Swhh = 0): no offset, the others as the brute force
+        std::array<AstSums, kRubinBands> bands{};
+        bands[2] = syntheticBandL(40, 0.1, [](int m) { return 0.6 / (1.0 + 0.2 * m); }, lOf(0.3));
+        bands[3] = syntheticBandL(25, 0.9, [](int) { return 0.0; }, lOf(1.1));
+        bands[4] = syntheticBandL(31, 1.7, [](int m) { return 0.3 / (1.0 + 0.05 * m * m); }, lOf(2.5));
+        const std::array<double, kRubinBands> info = {-1.0, -1.0, 12.0, 50.0, 3.0, -1.0};
+        std::array<double, Ny * Ny> got{};
+        fisher_detail::rubinBandInformationLensFree(bands, info, got);
+        expectClose("a band with h = 0", got, bruteForceLensFree(bands, info));
+    }
+    {   // h constant in every band: each band's offset takes its own mean out, the reference is degenerate and not subtracted
+        std::array<AstSums, kRubinBands> bands{};
+        bands[2] = syntheticBandL(40, 0.1, [](int) { return 0.45; }, lOf(0.3));
+        bands[3] = syntheticBandL(25, 0.9, [](int) { return 0.30; }, lOf(1.1));
+        bands[4] = syntheticBandL(31, 1.7, [](int) { return 0.20; }, lOf(2.5));
+        const std::array<double, kRubinBands> info = {-1.0, -1.0, 12.0, 50.0, 3.0, -1.0};
+        // want: per coordinate, the sum over bands of Swdd - Swd Swd^T / Sw on (physical, f_L), the priors, f_L out
+        const int nk = Ny + 3;
+        std::vector<double> T(nk * nk, 0.0);
+        for (int cc = 0; cc < 2; ++cc)
+            for (int bi = 0; bi < 3; ++bi) {
+                const AstSums& S = bands[2 + bi];
+                int comp[Ny + 1], emb[Ny + 1];
+                for (int j = 0; j < Ny; ++j) { comp[j] = j;  emb[j] = j; }
+                comp[Ny] = Ny + 1;  emb[Ny] = Ny + bi;
+                for (int a = 0; a <= Ny; ++a)
+                    for (int m = 0; m <= Ny; ++m)
+                        T[emb[a] * nk + emb[m]] += S.Swdd[cc][comp[a] * kD + comp[m]] - S.Swd[cc][comp[a]] * S.Swd[cc][comp[m]] / S.Sw;
+            }
+        for (int bi = 0; bi < 3; ++bi) T[(Ny + bi) * nk + Ny + bi] += info[2 + bi];
+        const std::vector<double> R = schurOut(T, nk, 3);
+        std::array<double, Ny * Ny> want{}, got{};
+        for (int i = 0; i < Ny * Ny; ++i) want[i] = R[i];
+        fisher_detail::rubinBandInformationLensFree(bands, info, got);
+        expectClose("h constant in every band (reference degenerate)", got, want);
+    }
+    return ok;
+}
+
+// ---- --lens-light-floor ----
+// A dark event whose F146 has no blend (f_S = 1): with no floor Roman has no f_L parameter and its sigma is the known one, bit for
+// bit; with a floor F it carries one of at least that width, and Roman's thetaE gets worse as F grows;.
+bool checkLensLightFloor()
+{
+    bool ok = true;
+    const SourceModel keep = vbmSourceModel();
+    for (const SourceModel model : {SourceModel::PSPL, SourceModel::ESPL}) {
+        vbmSetSourceModel(model);
+        const auto run = [&](bool free, double floorF) {
+            EventRun r(kEvents[2]);
+            r.s->fb[1] = 1.0;  r.s->blend[6] = 1.0;
+            r.co->lensLightFree = free;  r.co->lensLightFloor = floorF;
+            r.run();
+            return r;
+        };
+        const EventRun known = run(false, 0.0), f0 = run(true, 0.0), f1 = run(true, 0.01), f2 = run(true, 0.1), tiny = run(true, 1e-12);
+        bool same = true;
+        for (int k = 0; k < Ny; ++k) same = same and sameDouble(f0.co->Erb[SROMAN][k], known.co->Erb[SROMAN][k]);
+        const double a = f1.co->Erb[SROMAN][0] / known.co->Erb[SROMAN][0], b = f2.co->Erb[SROMAN][0] / known.co->Erb[SROMAN][0];
+        const double t = tiny.co->Erb[SROMAN][0] / known.co->Erb[SROMAN][0];
+        if (not same) { std::cerr << "FAIL [lens-light-floor] floor 0: Roman's sigma is not the known one for an unblended F146\n";  ok = false; }
+        if (not (a > 1.001 and b > a)) {
+            std::cerr << "FAIL [lens-light-floor] Roman sigma(thetaE) free/known " << a << " (floor 0.01), " << b << " (floor 0.1): not 1.001 < a < b\n";
+            ok = false;
+        }
+        if (not (std::fabs(t - 1.0) < 1e-6)) { std::cerr << "FAIL [lens-light-floor] a floor of 1e-12 moves Roman's sigma by " << t - 1.0 << "\n";  ok = false; }
+        std::cout << "#   " << (model == SourceModel::ESPL ? "espl" : "pspl") << ": Roman sigma(thetaE) free/known, unblended F146: floor 0 identical, 0.01 -> " << a
+                  << ", 0.1 -> " << b << ", 1e-12 -> " << t << "\n";
+    }
+    vbmSetSourceModel(keep);
+    std::cout << "# --lens-light-floor gives an unblended F146 an f_L parameter" << (ok ? "  -> ok\n" : "  -> FAIL\n");
     return ok;
 }
 
@@ -3197,6 +3386,9 @@ int main(int argc, char** argv)
     if (!checkLensLightFreeNoGain())     ++failures;
     if (!checkLensLightPriorMonotone())  ++failures;
     if (!checkLensLightAdditivity())     ++failures;
+    if (!checkLensLightRoman())          ++failures;
+    if (!checkLensLightFreeBranches())   ++failures;
+    if (!checkLensLightFloor())          ++failures;
 
     if (model == SourceModel::ESPL)
         std::cout << "# SOURCE MODEL espl: a uniform disc of radius rho = " << kRho << " Einstein radii\n";

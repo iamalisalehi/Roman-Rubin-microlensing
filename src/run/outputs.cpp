@@ -253,6 +253,8 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
         std::ostringstream sourceText;
         if (cfg.sourceModel == SourceModel::ESPL) sourceText << "ESPL (uniform disc, Tol " << VBM_TOL << ")";
         else                                      sourceText << "PSPL";
+        std::ostringstream floorText;               // ", floor F" on the lens_light line only when a floor is in use
+        if (cfg.lensLightFree and cfg.lensLightFloor > 0.0) floorText << ", floor " << cfg.lensLightFloor;
         std::ostringstream fitText;
         if (cfg.sourceModel == SourceModel::ESPL)
             fitText << "ln rho fitted in every partition with data, Gaussian prior sigma(ln rho) " << RHO_PRIOR_SIGLN
@@ -330,7 +332,8 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "# lens_light          "
              << (cfg.lensLightFree ? (cfg.lensLightPriorBlend ? "free (prior sigma(f_L) = 1 - f_S)"
                                                               : "free (prior sigma(f_L) = (1 - f_S)/sqrt(12))")
-                                   : "known") << "\n"
+                                   : "known")
+             << floorText.str() << "\n"
              << "# lightcurve_model    VBMicrolensing 5.6.1 " << sourceText.str()
              << ", geocentric parallax (JPL ephemeris), Roman at L2 table\n"
              // The prior on ln rho, the bar for rho to count as measured, and the theta* uncertainty of the photometric thetaE.

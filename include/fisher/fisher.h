@@ -7,6 +7,7 @@
 #include "types.h"
 #include "fisher/linalg.h"
 #include "events/vbm_model.h"
+#include <map>
 
 // ---------------------------------------------------------------------------------------------
 // Which subset of a single event's light curve a Fisher matrix was accumulated from.
@@ -69,6 +70,9 @@ inline std::vector<int> activePhotParams(int surv, const std::array<int, kRubinB
     std::sort(out.begin(), out.end());
     return out;
 }
+
+// 1/sqrt(12): the width of the uniform distribution on [0, 1], the prior of --lens-light-prior uniform.
+inline constexpr double kLensLightUniformFrac = 0.28867513459481292;
 
 struct covarian {
     int    sign;
@@ -191,8 +195,11 @@ struct covarian {
     // visits and one for Roman's F146, the same number in x and y) when lensLightFree; else (the default, --lens-light known)
     // it is held at its true value, so the lens's drift measures thetaE. Its Gaussian prior is lensLightPriorFrac x (1 - f_S)
     // wide: 1/sqrt(12) (uniform on [0, 1 - f_S], --lens-light-prior uniform) or 1 (--lens-light-prior blend). main.cpp sets both.
+    // lensLightFloor F (--lens-light-floor, default 0): sigma(f_L) = max(lensLightPriorFrac (1 - f_S), F); with F > 0 every band,
+    // an unblended F146 (f_S = 1) included, carries a fraction parameter.
     bool   lensLightFree = false;
-    double lensLightPriorFrac = 0.28867513459481288;   //1/sqrt(12)
+    double lensLightPriorFrac = kLensLightUniformFrac;
+    double lensLightFloor = 0.0;
 
     // Multiplicative override on each photometric parameter's finite-difference step; 1.0 is the
     // production value. A runtime knob so the step-size sweep can run many values in one process.
@@ -358,17 +365,60 @@ struct AstSums {
     std::array<std::array<double, kAstD>, 2>          Swd{};
     std::array<std::array<double, kAstD * kAstD>, 2>  Swdd{};
     int season = -1, roll = -1;
-    void add(double w, const std::array<double, kAstD>& dx, const std::array<double, kAstD>& dy) {
+    // nact: the slots accumulated (the lens-light slot Ny + 1 only when it is read, i.e. in free mode); the strides stay kAstD.
+    void add(double w, const std::array<double, kAstD>& dx, const std::array<double, kAstD>& dy, int nact = kAstD) {
         Sw += w;
         for (int c = 0; c < 2; ++c) {
             const auto& d = c ? dy : dx;
-            for (int j = 0; j < kAstD; ++j) {
+            for (int j = 0; j < nact; ++j) {
                 Swd[c][j] += w * d[j];
-                for (int k = 0; k < kAstD; ++k) Swdd[c][j * kAstD + k] += w * d[j] * d[k];
+                for (int k = 0; k < nact; ++k) Swdd[c][j * kAstD + k] += w * d[j] * d[k];
             }
         }
     }
 };
+
+// A frame group: per coordinate, the sum of block matrices F and offset-vectors b, and c. nact as in AstSums::add.
+using AstPerCoord = std::array<std::array<double, kAstD * kAstD>, 2>;
+struct AstGroup {
+    AstPerCoord F{};
+    std::array<std::array<double, kAstD>, 2> b{};
+    double c = 0.0;
+    int nact = kAstD;
+    void fold(const AstSums& k, double sc) {              // one block, correlated at sigma_c = sc
+        constexpr int D = kAstD;
+        const double s2 = sc * sc, den = 1.0 + s2 * k.Sw;
+        for (int cc = 0; cc < 2; ++cc)
+            for (int j = 0; j < nact; ++j) {
+                b[cc][j] += k.Swd[cc][j] / den;
+                for (int m = 0; m < nact; ++m)
+                    F[cc][j * D + m] += k.Swdd[cc][j * D + m] - s2 * k.Swd[cc][j] * k.Swd[cc][m] / den;
+            }
+        c += k.Sw / den;
+    }
+    void marginaliseInto(AstPerCoord& out) const {        // free reference position
+        constexpr int D = kAstD;
+        for (int cc = 0; cc < 2; ++cc)
+            for (int j = 0; j < nact; ++j)
+                for (int m = 0; m < nact; ++m)
+                    out[cc][j * D + m] += F[cc][j * D + m] - (c > 0.0 ? b[cc][j] * b[cc][m] / c : 0.0);
+    }
+};
+
+// One telescope's per-coordinate matrices -> its Ny x Ny information on the physical parameters, with the blend offset
+// marginalised (Schur complement of slot Ny), ADDED to out. raw = that telescope's sum w h^2 per coordinate before any
+// marginalisation: when what is left after the offsets is a vanishing fraction of it, h was constant, the offset is
+// indistinguishable from the reference position and nothing is subtracted.
+void astPhysical(const AstPerCoord& G, const std::array<double, 2>& raw, std::array<double, Ny * Ny>& out);
+
+// Roman's information on the four astrometric parameters in one noise variant, ADDED to out, from its day sums: the days'
+// frame offsets correlated at sigma_c = sigc (AstGroup::fold), one free reference position per group (one group if
+// oneFrame, else one per roll, the days' .roll), the neighbours' offset out per coordinate (astPhysical's rule). With
+// flInfo >= 0 the lens's light fraction (slot Ny + 1) is a parameter too, kept through all of that, the two coordinates added,
+// the prior precision flInfo put on it, and then marginalised; flInfo < 0: no such parameter (slot Ny + 1 unread). NaN where
+// the fraction's precision is not positive.
+void romanInformation(const std::map<long, AstSums>& days, bool oneFrame, double sigc, double flInfo,
+                      std::array<double, Ny * Ny>& out);
 
 // Rubin's information on the four astrometric parameters from the sums of each of its bands (empty bands have Sw = 0),
 // ADDED to FL. Every band carries an offset of its own for the unresolved neighbours (taken out per coordinate), and the

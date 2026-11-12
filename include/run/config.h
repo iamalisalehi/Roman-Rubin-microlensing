@@ -28,6 +28,7 @@ struct RunConfig {
     // Recorded in run_provenance.txt.
     bool   lensLightFree        = false;
     bool   lensLightPriorBlend  = false;
+    double lensLightFloor       = 0.0;   // --lens-light-floor F: sigma(f_L) >= F (0 = off)
 
     // Sightline grid inside Roman's footprint, in the same units. Roman covers ~2.6% of the
     // scan region, so a uniform grid spends most of its time where the joint fit is just

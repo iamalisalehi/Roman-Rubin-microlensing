@@ -54,7 +54,8 @@ int main(int argc, char** argv) {
         c->astSigc[AV_N] = cfg.astSigcN;
         c->astSigc[AV_P] = cfg.astSigcP;
         c->lensLightFree = cfg.lensLightFree;                              // the lens's light fraction in the astrometric fit
-        c->lensLightPriorFrac = cfg.lensLightPriorBlend ? 1.0 : 1.0 / std::sqrt(12.0);
+        c->lensLightPriorFrac = cfg.lensLightPriorBlend ? 1.0 : kLensLightUniformFrac;
+        c->lensLightFloor = cfg.lensLightFloor;
     }
 
     // satScale selects Roman's orbit in the model (evaluateModel): 1 = at L2, 0 = at the centre of the Earth.

@@ -103,6 +103,56 @@ void fisher_detail::rubinBandInformation(const std::array<AstSums, kRubinBands>&
     }
 }
 
+void fisher_detail::astPhysical(const AstPerCoord& G, const std::array<double, 2>& raw, std::array<double, Ny * Ny>& out)
+{
+    constexpr int D = kAstD;
+    for (int cc = 0; cc < 2; ++cc) {
+        const double hh = G[cc][Ny * D + Ny];
+        const bool   fit = AST_BLEND_OFFSET_FREE and raw[cc] > 0.0 and hh > 1.0e-9 * raw[cc];
+        for (int j = 0; j < Ny; ++j)
+            for (int m = 0; m < Ny; ++m)
+                out[j * Ny + m] += G[cc][j * D + m] - (fit ? G[cc][j * D + Ny] * G[cc][m * D + Ny] / hh : 0.0);
+    }
+}
+
+void fisher_detail::romanInformation(const std::map<long, AstSums>& days, bool oneFrame, double sigc, double flInfo,
+                                     std::array<double, Ny * Ny>& out)
+{
+    constexpr int D = kAstD;
+    const bool lensFree = flInfo >= 0.0;
+    std::array<double, 2> raw{};
+    for (const auto& [day, k] : days)
+        for (int cc = 0; cc < 2; ++cc) raw[cc] += k.Swdd[cc][Ny * D + Ny];
+    std::vector<AstGroup> groups(oneFrame ? 1 : 2);        // W: one frame; N, P: one per roll
+    for (auto& g : groups) g.nact = lensFree ? D : D - 1;
+    for (const auto& [day, k] : days)
+        groups[oneFrame ? 0 : k.roll].fold(k, sigc);
+    AstPerCoord G{};
+    for (const auto& g : groups) g.marginaliseInto(G);
+    if (not lensFree) { astPhysical(G, raw, out);  return; }
+
+    // The offset out as in astPhysical, keeping (physical, f_L); the two coordinates added, the prior on f_L added, and f_L
+    // out (a scalar Schur complement).
+    constexpr int E = Ny + 1;
+    std::array<double, E * E> T{};
+    int idx[E];
+    for (int j = 0; j < Ny; ++j) idx[j] = j;
+    idx[Ny] = Ny + 1;                                          //the sums' slot of f_L
+    for (int cc = 0; cc < 2; ++cc) {
+        const double hh = G[cc][Ny * D + Ny];
+        const bool   fit = AST_BLEND_OFFSET_FREE and raw[cc] > 0.0 and hh > 1.0e-9 * raw[cc];
+        for (int a = 0; a < E; ++a)
+            for (int m = 0; m < E; ++m)
+                T[a * E + m] += G[cc][idx[a] * D + idx[m]] - (fit ? G[cc][idx[a] * D + Ny] * G[cc][idx[m] * D + Ny] / hh : 0.0);
+    }
+    T[Ny * E + Ny] += flInfo;
+    const double tff = T[Ny * E + Ny];
+    const bool good = tff > 0.0 and std::isfinite(tff);
+    for (int j = 0; j < Ny; ++j)
+        for (int m = 0; m < Ny; ++m)
+            out[j * Ny + m] += good ? T[j * E + m] - T[j * E + Ny] * T[Ny * E + m] / tff : std::numeric_limits<double>::quiet_NaN();
+}
+
 // The same with the lens's light fraction of every band a parameter beside the four physical ones (slot Ny + 1 of the
 // band's sums; each band has sums of its own, so that slot is always that band's fraction). Per coordinate: the band's
 // offset is taken out of the band's (physical, fraction) block exactly as above, the blocks are embedded in the kept space
@@ -582,11 +632,12 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     constexpr int D = fisher_detail::kAstD;
     using fisher_detail::AstSums;
     std::array<AstSums, kRubinBands> rubinBand;
+    const int nact = co.lensLightFree ? D : D - 1;               //the lens-light slot is accumulated in free mode only
     std::map<long, AstSums> romanDays;
 
     // Per epoch i, ddx[i][j] and ddy[i][j]: the derivatives of the centroid's x and y, by the
-    // central stencil sig for all four astrometric parameters, and in slot Ny the neighbours' share
-    // h. As for the photometry, the reference and each of the 2*Ny perturbed models are evaluated
+    // central stencil sig for all four astrometric parameters, in slot Ny the neighbours' share
+    // h and in slot Ny + 1 the lens's light fraction's derivative l (the reference's, free mode only). As for the photometry, the reference and each of the 2*Ny perturbed models are evaluated
     // once over a telescope's epochs: 1 + 2*4 = 9 model evaluations per epoch. Roman's every epoch enters,
     // Rubin's those of the bands of the photometric fit (inFit).
     std::vector<std::array<double, D>> ddx(ndw), ddy(ndw);
@@ -628,7 +679,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         };
 
         // Reference and perturbations use the observer that produced these data.
-        evaluateModel(s, l, as, tt, t, n, true, ref.data(), fp);
+        evaluateModel(s, l, as, tt, t, n, true, ref.data(), fp, co.lensLightFree);
         for (int m = 0; m < n; ++m) {
             double nbx0, nby0;
             ddx[ix[m]][Ny] = ddy[ix[m]][Ny] = nbrShare(m, ref[m], nbx0, nby0);
@@ -667,59 +718,25 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         CHECK(l.erra[i] > 0.0);
         const double w = 1.0 / (l.erra[i] * l.erra[i]);       // per coordinate
         if (int(l.tele[i]) == 0) {
-            if (inFit[i]) rubinBand[l.filt[i]].add(w, ddx[i], ddy[i]);   //a band left out of the photometry is out here too
+            if (inFit[i]) rubinBand[l.filt[i]].add(w, ddx[i], ddy[i], nact);   //a band left out of the photometry is out here too
         } else {
             CHECK(l.rseas[i] >= 0 and l.rseas[i] < AST_MAX_SEASONS);
             CHECK(l.rroll[i] == 0 or l.rroll[i] == 1);
             AstSums& d = romanDays[long(std::floor(l.timn[i]))];
             if (d.season < 0) { d.season = l.rseas[i]; d.roll = l.rroll[i]; }
             CHECK(d.season == l.rseas[i] and d.roll == l.rroll[i]);
-            d.add(w, ddx[i], ddy[i]);
+            d.add(w, ddx[i], ddy[i], nact);
         }
     }
-
-    // A frame group: per coordinate, the sum of block matrices and offset-vectors b, and c.
-    using PerCoord = std::array<std::array<double, D * D>, 2>;
-    struct Group {
-        PerCoord F{};
-        std::array<std::array<double, D>, 2> b{};
-        double c = 0.0;
-        void fold(const AstSums& k, double sc) {          // one block, correlated at sigma_c = sc
-            const double s2 = sc * sc, den = 1.0 + s2 * k.Sw;
-            for (int cc = 0; cc < 2; ++cc)
-                for (int j = 0; j < D; ++j) {
-                    b[cc][j] += k.Swd[cc][j] / den;
-                    for (int m = 0; m < D; ++m)
-                        F[cc][j * D + m] += k.Swdd[cc][j * D + m] - s2 * k.Swd[cc][j] * k.Swd[cc][m] / den;
-                }
-            c += k.Sw / den;
-        }
-        void marginaliseInto(PerCoord& out) const {       // free offset
-            for (int cc = 0; cc < 2; ++cc)
-                for (int jm = 0; jm < D * D; ++jm)
-                    out[cc][jm] += F[cc][jm] - (c > 0.0 ? b[cc][jm / D] * b[cc][jm % D] / c : 0.0);
-        }
-    };
-    // One telescope's per-coordinate matrices -> its Ny x Ny information on the physical parameters,
-    // with the blend offset marginalised (Schur complement of slot Ny). raw = that telescope's
-    // sum w h^2 per coordinate before any marginalisation: when what is left after the offsets is a
-    // vanishing fraction of it, h was constant (no magnification while observed), the blend offset is
-    // indistinguishable from the reference position and carries no cross-information, so nothing is
-    // subtracted.
-    auto physical = [](const PerCoord& G, const std::array<double, 2>& raw, std::array<double, Ny * Ny>& out) {
-        for (int cc = 0; cc < 2; ++cc) {
-            const double hh = G[cc][Ny * D + Ny];
-            const bool   fit = AST_BLEND_OFFSET_FREE and raw[cc] > 0.0 and hh > 1.0e-9 * raw[cc];
-            for (int j = 0; j < Ny; ++j)
-                for (int m = 0; m < Ny; ++m)
-                    out[j * Ny + m] += G[cc][j * D + m] - (fit ? G[cc][j * D + Ny] * G[cc][m * D + Ny] / hh : 0.0);
-        }
-    };
 
     // The precision of the Gaussian prior on a band's lens-light fraction, 1 / (frac (1 - f_S))^2, or -1 where the band has
     // no room for lens light (no such parameter). Read in free mode only.
     const auto lensLightInfo = [&](double fS) {
         const double room = 1.0 - fS;
+        if (co.lensLightFloor > 0.0) {                              //a floor on sigma: every band carries the parameter
+            const double sig = std::max(co.lensLightPriorFrac * std::max(room, 0.0), co.lensLightFloor);
+            return 1.0 / (sig * sig);
+        }
         return room >= 1.0e-6 ? 1.0 / (co.lensLightPriorFrac * room * co.lensLightPriorFrac * room) : -1.0;
     };
     constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
@@ -738,46 +755,15 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
         } else {                                                    //no band, or one: its offset and the reference
             const AstSums none;
             const AstSums& rubin = (kAst == 1) ? rubinBand[only] : none;
-            Group g; g.fold(rubin, 0.0);
-            PerCoord G{}; g.marginaliseInto(G);
-            physical(G, {rubin.Swdd[0][Ny * D + Ny], rubin.Swdd[1][Ny * D + Ny]}, FL);
+            fisher_detail::AstGroup g;  g.nact = nact;  g.fold(rubin, 0.0);
+            fisher_detail::AstPerCoord G{}; g.marginaliseInto(G);
+            fisher_detail::astPhysical(G, {rubin.Swdd[0][Ny * D + Ny], rubin.Swdd[1][Ny * D + Ny]}, FL);
         }
     }
-    std::array<double, 2> rawR{};
-    for (const auto& [day, k] : romanDays)
-        for (int cc = 0; cc < 2; ++cc) rawR[cc] += k.Swdd[cc][Ny * D + Ny];
-    // Roman's F146 fraction free: the offset out as in physical(), keeping (physical, f_L); the two coordinates added, the
-    // prior on f_L added, and f_L out (a scalar Schur complement). No room for lens light: as physical().
-    const double romanFlInfo = lensLightInfo(s.fb[1]);
-    auto physicalLensFree = [&](const PerCoord& G, const std::array<double, 2>& raw, std::array<double, Ny * Ny>& out) {
-        constexpr int E = Ny + 1;
-        std::array<double, E * E> T{};
-        int idx[E];
-        for (int j = 0; j < Ny; ++j) idx[j] = j;
-        idx[Ny] = Ny + 1;                                          //the sums' slot of f_L
-        for (int cc = 0; cc < 2; ++cc) {
-            const double hh = G[cc][Ny * D + Ny];
-            const bool   fit = AST_BLEND_OFFSET_FREE and raw[cc] > 0.0 and hh > 1.0e-9 * raw[cc];
-            for (int a = 0; a < E; ++a)
-                for (int m = 0; m < E; ++m)
-                    T[a * E + m] += G[cc][idx[a] * D + idx[m]] - (fit ? G[cc][idx[a] * D + Ny] * G[cc][idx[m] * D + Ny] / hh : 0.0);
-        }
-        T[Ny * E + Ny] += romanFlInfo;
-        const double tff = T[Ny * E + Ny];
-        const bool good = tff > 0.0 and std::isfinite(tff);
-        for (int j = 0; j < Ny; ++j)
-            for (int m = 0; m < Ny; ++m)
-                out[j * Ny + m] += good ? T[j * E + m] - T[j * E + Ny] * T[Ny * E + m] / tff : kNaN;
-    };
+    const double romanFlInfo = co.lensLightFree ? lensLightInfo(s.fb[1]) : -1.0;   //-1: no f_L parameter in Roman's fit
     for (int v = 0; v < NAVAR; ++v) {
-        std::vector<Group> groups(v == AV_W ? 1 : 2);          // W: one frame; N, P: one per roll
-        for (const auto& [day, k] : romanDays)
-            groups[v == AV_W ? 0 : k.roll].fold(k, co.astSigc[v]);
-        PerCoord G{};
-        for (const auto& g : groups) g.marginaliseInto(G);
         std::array<double, Ny * Ny> FR{};
-        if (co.lensLightFree and romanFlInfo >= 0.0) physicalLensFree(G, rawR, FR);
-        else physical(G, rawR, FR);
+        fisher_detail::romanInformation(romanDays, v == AV_W, co.astSigc[v], romanFlInfo, FR);
         for (int jm = 0; jm < Ny * Ny; ++jm) {
             co.FBV[v][SRUBIN][jm] = FL[jm];
             co.FBV[v][SROMAN][jm] = FR[jm];

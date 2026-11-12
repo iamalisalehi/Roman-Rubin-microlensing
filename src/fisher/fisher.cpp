@@ -622,7 +622,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     // source brightens; it is marginalised below, per telescope or Rubin band and per coordinate (it appears
     // in no other telescope's, band's or coordinate's data), when AST_BLEND_OFFSET_FREE.
     // The lens's own light (fraction f_L of the band's baseline, at the lens, -thetaE u from the source) is held at its
-    // true value (co.lensLightFree false, the default), so its drift with the lens-source motion measures thetaE; or it is
+    // true value (co.lensLightFree false: --lens-light known), so its drift with the lens-source motion measures thetaE; or it is
     // a parameter of the fit, slot Ny + 1: one per Rubin band with astrometric visits (each band's sums are its own) and
     // one for Roman's F146, the same number in x and y. Its derivative is l = dcentroid/df_L = -thetaE u / (fs A + 1 - fs)
     // (ModelPoint::lensDx, lensDy at the reference; the neighbours' part -blendOff/den lies along the offset's derivative
@@ -632,7 +632,18 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     constexpr int D = fisher_detail::kAstD;
     using fisher_detail::AstSums;
     std::array<AstSums, kRubinBands> rubinBand;
+    // The precision of the Gaussian prior on a band's lens-light fraction, 1 / (frac (1 - f_S))^2, or -1 where the band has
+    // no room for lens light (no such parameter). Read in free mode only.
+    const auto lensLightInfo = [&](double fS) {
+        const double room = 1.0 - fS;
+        if (co.lensLightFloor > 0.0) {                              //a floor on sigma: every band carries the parameter
+            const double sig = std::max(co.lensLightPriorFrac * std::max(room, 0.0), co.lensLightFloor);
+            return 1.0 / (sig * sig);
+        }
+        return room >= 1.0e-6 ? 1.0 / (co.lensLightPriorFrac * room * co.lensLightPriorFrac * room) : -1.0;
+    };
     const int nact = co.lensLightFree ? D : D - 1;               //the lens-light slot is accumulated in free mode only
+    const int nactRoman = (co.lensLightFree and lensLightInfo(s.fb[1]) >= 0.0) ? D : D - 1;   //and for Roman only if F146 has the parameter
     std::map<long, AstSums> romanDays;
 
     // Per epoch i, ddx[i][j] and ddy[i][j]: the derivatives of the centroid's x and y, by the
@@ -644,13 +655,14 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
     std::vector<double> sx0, sy0;  //reference centroid without the neighbours' share, per epoch
     const std::array<double*, Ny> astPar{&l.tetE, &s.mus1, &s.mus2, &l.piE};
 
+    std::vector<int> filt;
     for (int tt = 0; tt < 2; ++tt) {
         // Roman: every epoch. Rubin: the epochs of the bands in the photometric fit, each with its own filter.
         const int n = (tt == 0) ? nPh[0] : nTele[1];
         if (n == 0) continue;
         const int*    ix = (tt == 0) ? pix[0].data() : epo[1].data();
         const double* t  = (tt == 0) ? pt[0].data()  : tim[1].data();
-        std::vector<int> filt;                                   //Rubin's epoch bands
+        filt.clear();                                            //Rubin's epoch bands
         if (tt == 0) for (int m = 0; m < n; ++m) filt.push_back(l.filt[ix[m]]);
         const int* fp = (tt == 0) ? filt.data() : nullptr;
         ref.resize(n);  pert.resize(n);  sx0.resize(n);  sy0.resize(n);
@@ -725,20 +737,10 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
             AstSums& d = romanDays[long(std::floor(l.timn[i]))];
             if (d.season < 0) { d.season = l.rseas[i]; d.roll = l.rroll[i]; }
             CHECK(d.season == l.rseas[i] and d.roll == l.rroll[i]);
-            d.add(w, ddx[i], ddy[i], nact);
+            d.add(w, ddx[i], ddy[i], nactRoman);
         }
     }
 
-    // The precision of the Gaussian prior on a band's lens-light fraction, 1 / (frac (1 - f_S))^2, or -1 where the band has
-    // no room for lens light (no such parameter). Read in free mode only.
-    const auto lensLightInfo = [&](double fS) {
-        const double room = 1.0 - fS;
-        if (co.lensLightFloor > 0.0) {                              //a floor on sigma: every band carries the parameter
-            const double sig = std::max(co.lensLightPriorFrac * std::max(room, 0.0), co.lensLightFloor);
-            return 1.0 / (sig * sig);
-        }
-        return room >= 1.0e-6 ? 1.0 / (co.lensLightPriorFrac * room * co.lensLightPriorFrac * room) : -1.0;
-    };
     constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
     std::array<double, Ny * Ny> FL{};
     {

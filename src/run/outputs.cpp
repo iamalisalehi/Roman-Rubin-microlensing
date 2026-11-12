@@ -88,7 +88,7 @@ const char* eventTableHeader()
         // Rubin's i and z, fitted each as a band of its own (the dark-lens test, comment C7): the baseline magnitude
         // (mbs_<band>, as mbs0 is r's), the Fisher error of the band's f_S from the joint (_J) and the Rubin-only
         // (_L) matrix (-1 = band not in the fit, or the partition not characterised), and nbandL, the number of
-        // Rubin bands in the fit (bands with fewer than 3 visits are left out; 0 = no Rubin photometric matrix).
+        // Rubin bands in the fit (bands with fewer than kMinTeleEpochs visits are left out; 0 = no Rubin photometric matrix).
         "mbs_i mbs_z sigfb_i_J sigfb_i_L sigfb_z_J sigfb_z_L nbandL";
 }
 
@@ -379,7 +379,10 @@ int writeRunProvenance(const RunConfig& cfg, const GbtdsLayout& gl, const GridSt
              << "# rubin_fisher_visits " << (cfg.rubinFisherRefOnly ? "reference band only" : "all bands")
              << "   # Rubin visits in the Fisher matrices; reference band only: each fitted with the reference band's "
                 "model (RUBIN_REF_BANDS); all bands: each fitted in its own band (blend fraction and baseline per band; "
-                "bands with fewer than 3 visits left out)\n"
+                "bands with fewer than " << kMinTeleEpochs << " visits left out)\n"
+             << "# rubin_blend_prior   sigma(f_S) = " << RUBIN_FB_PRIOR_SIG
+             << " on every Rubin band in the fit   # Gaussian prior on each band's source-flux fraction, added once to the "
+                "joint and Rubin-only photometric matrices (Roman's F146 has none)\n"
              << "# dchi_det            " << cfg.dchiDet
              << "   # fixed detection bar; every yield is conditioned on it\n";
         if (!cfg.dryRun) {   // a dry run must not overwrite the last run's provenance

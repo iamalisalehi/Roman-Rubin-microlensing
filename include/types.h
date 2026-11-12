@@ -248,7 +248,7 @@ struct EventRecord {
     // Largest separation reached at an epoch where both images were detectable [mas].
     // -1 means that never happened (sentinel); it must not enter a mean or a histogram.
     double dsepMax_L, dsepMax_R;
-    double u0side = 1.0;        //side of the lens the source passes (+1 or -1); last column of the table
+    double u0side = 1.0;        //side of the lens the source passes (+1 or -1); a column of the event table
 };
 
 #endif // ROMAN_TYPES_H

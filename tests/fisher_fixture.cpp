@@ -2017,7 +2017,7 @@ bool checkBandAtBaseline()
 }
 
 // Two g-band visits at the peak are too few to fit the band: they are left out of the photometric matrices and
-// nothing about the photometric forecast changes. (The astrometric matrices take every epoch, as before.)
+// nothing about the photometric forecast changes. (The astrometric matrices leave the band out too: Task 3.)
 bool checkFewBandVisits()
 {
     const auto& ev = kEvents[2];
@@ -2885,7 +2885,7 @@ bool matchesRef(const covarian& c, const AstroRef& ref)
     return same;
 }
 
-// In known mode (the default) every astrometric output is the 5dd83b6 one, bit for bit: the kEvents events against the
+// In known mode (the covarian default; the run default is free) every astrometric output is the 5dd83b6 one, bit for bit: the kEvents events against the
 // table of the Task 3 check and the chromatic events against theirs. A free-mode run before each known one checks that
 // nothing the free mode touches leaks into the next.
 bool checkLensLightKnownUnchanged()
@@ -3274,6 +3274,163 @@ bool checkLensLightFloor()
     return ok;
 }
 
+// ---- the per-band decisions, pinned ----
+
+// The chromatic events' forecast of the aab9831 source (default free-mode astrometry under both priors, and the photometric
+// Era/condA), hexadecimal floats, generated once from that source with a temporary mode of this file; never regenerated to
+// make a check pass. They pin each epoch's own band blend (not r's) in the photometry, the prior on every Rubin band's blend and
+// the width of each band's f_L prior (its own f_S, not r's).
+const AstroRef kAstroRefFree[] = {
+    {0, "chrom_dark_uni", 0, 1, 0x1.a02bf29485c0fp+9, {0x1.57eeacbc25234p-6, 0x1.420717364bc38p-11, 0x1.153bfdacad27ap-11, 0x1.421c05e4b9434p-1}, {{1, 0x1.a02bf29485c0fp+9, {0x1.57eeacbc25234p-6, 0x1.420717364bc38p-11, 0x1.153bfdacad27ap-11, 0x1.421c05e4b9434p-1}}, {1, 0x1.05cbb4279e989p+7, {0x1.6f9b03c17cce1p-3, 0x1.fd67455d13ea8p-11, 0x1.a12726b146cd7p-11, 0x1.258af181f39d3p+2}}, {1, 0x1.894469f3d2983p+7, {0x1.55f8fcc1f2e63p-2, 0x1.3913f42cfb2c8p-10, 0x1.00b0a0a1c0f12p-10, 0x1.49b40f77de103p+2}}}},
+    {0, "chrom_dark_uni", 1, 1, 0x1.c4185a4bfa8b8p+7, {0x1.bd59d301e8a5dp-2, 0x1.4f87c37165fap-10, 0x1.132246255d62ep-10, 0x1.541bfb3399c14p+2}, {{1, 0x1.c4185a4bfa8b8p+7, {0x1.bd59d301e8a5dp-2, 0x1.4f87c37165fap-10, 0x1.132246255d62ep-10, 0x1.541bfb3399c14p+2}}, {1, 0x1.c4185a4bfa8b8p+7, {0x1.bd59d301e8a5dp-2, 0x1.4f87c37165fap-10, 0x1.132246255d62ep-10, 0x1.541bfb3399c14p+2}}, {1, 0x1.c4185a4bfa8b8p+7, {0x1.bd59d301e8a5dp-2, 0x1.4f87c37165fap-10, 0x1.132246255d62ep-10, 0x1.541bfb3399c14p+2}}}},
+    {0, "chrom_dark_uni", 2, 1, 0x1.0d29b90549583p+10, {0x1.7e19249b1cd86p-6, 0x1.79d3371db7a5bp-11, 0x1.46671501a3b9fp-11, 0x1.457635e19d84ap-1}, {{1, 0x1.0d29b90549583p+10, {0x1.7e19249b1cd86p-6, 0x1.79d3371db7a5bp-11, 0x1.46671501a3b9fp-11, 0x1.457635e19d84ap-1}}, {1, 0x1.1ce3bdc147694p+3, {0x1.01e6dfbe1d662p-2, 0x1.fee0cb0249dc4p-10, 0x1.a73c2ee13645dp-10, 0x1.7a78028cef00fp+3}}, {1, 0x1.6ba536d93613p+2, {0x1.508d17c252f85p-1, 0x1.2c042a101be81p-8, 0x1.14ca9e50cd0dap-8, 0x1.8680cc735368ep+4}}}},
+    {0, "chrom_dark_bl", 0, 1, 0x1.27330225590cbp+11, {0x1.f84bedb1ca4b3p-6, 0x1.0f25fc9c421f9p-10, 0x1.d2bd2164712b6p-11, 0x1.45b04695b1b09p-1}, {{1, 0x1.27330225590cbp+11, {0x1.f84bedb1ca4b3p-6, 0x1.0f25fc9c421f9p-10, 0x1.d2bd2164712b6p-11, 0x1.45b04695b1b09p-1}}, {1, 0x1.cd62ef41b2a8bp+9, {0x1.948ebc68bd5ecp-3, 0x1.519c03720258cp-9, 0x1.1430764cd9983p-9, 0x1.26475952bd364p+2}}, {1, 0x1.3bb4fe4b1c15cp+10, {0x1.6a99133c7b263p-2, 0x1.8c463bdf13c85p-9, 0x1.444d521b42028p-9, 0x1.4a363d4d55433p+2}}}},
+    {0, "chrom_dark_bl", 1, 1, 0x1.2db2306f01ccdp+11, {0x1.c171cf285f1c6p-2, 0x1.11cf0e3026c3dp-8, 0x1.c0367031a85aap-9, 0x1.55d7e1b7489ddp+2}, {{1, 0x1.2db2306f01ccdp+11, {0x1.c171cf285f1c6p-2, 0x1.11cf0e3026c3dp-8, 0x1.c0367031a85aap-9, 0x1.55d7e1b7489ddp+2}}, {1, 0x1.2db2306f01ccdp+11, {0x1.c171cf285f1c6p-2, 0x1.11cf0e3026c3dp-8, 0x1.c0367031a85aap-9, 0x1.55d7e1b7489ddp+2}}, {1, 0x1.2db2306f01ccdp+11, {0x1.c171cf285f1c6p-2, 0x1.11cf0e3026c3dp-8, 0x1.c0367031a85aap-9, 0x1.55d7e1b7489ddp+2}}}},
+    {0, "chrom_dark_bl", 2, 1, 0x1.4b3d78bcaffdp+11, {0x1.0f144faaf3086p-5, 0x1.28523033df257p-10, 0x1.ffe4166a21e3fp-11, 0x1.499be55091f45p-1}, {{1, 0x1.4b3d78bcaffdp+11, {0x1.0f144faaf3086p-5, 0x1.28523033df257p-10, 0x1.ffe4166a21e3fp-11, 0x1.499be55091f45p-1}}, {1, 0x1.220304f36a51cp+4, {0x1.0f0f3e03ffa98p-2, 0x1.d2667fff58b01p-9, 0x1.7b64ec692c3dap-9, 0x1.7a9263de1befp+3}}, {1, 0x1.6eccc7cb9d1efp+2, {0x1.540a125904c15p-1, 0x1.69afd1ed9acf9p-8, 0x1.3ffc84d46711ep-8, 0x1.86a149f9b0aefp+4}}}},
+    {0, "chrom_lum_uni", 0, 1, 0x1.265de6ca4ec06p+10, {0x1.5e40cbac7d344p-6, 0x1.50eebd112ec5bp-11, 0x1.187679142f301p-11, 0x1.7327a87542a2bp-2}, {{1, 0x1.265de6ca4ec06p+10, {0x1.5e40cbac7d344p-6, 0x1.50eebd112ec5bp-11, 0x1.187679142f301p-11, 0x1.7327a87542a2bp-2}}, {1, 0x1.2165b3fb7520dp+7, {0x1.553369d9122ap-3, 0x1.d7c49ea5723dcp-11, 0x1.863904296a861p-11, 0x1.4693612e3a725p+0}}, {1, 0x1.f926d2dcfb5b4p+7, {0x1.421b1098779d3p-2, 0x1.374b92aa9f329p-10, 0x1.0152391aa5fe9p-10, 0x1.497070ef02514p+0}}}},
+    {0, "chrom_lum_uni", 1, 1, 0x1.52338cb2e32a1p+8, {0x1.a0f212f54c2dep-2, 0x1.677fc422bfe64p-10, 0x1.29461f0acd7b9p-10, 0x1.4a381f141ea1dp+0}, {{1, 0x1.52338cb2e32a1p+8, {0x1.a0f212f54c2dep-2, 0x1.677fc422bfe64p-10, 0x1.29461f0acd7b9p-10, 0x1.4a381f141ea1dp+0}}, {1, 0x1.52338cb2e32a1p+8, {0x1.a0f212f54c2dep-2, 0x1.677fc422bfe64p-10, 0x1.29461f0acd7b9p-10, 0x1.4a381f141ea1dp+0}}, {1, 0x1.52338cb2e32a1p+8, {0x1.a0f212f54c2dep-2, 0x1.677fc422bfe64p-10, 0x1.29461f0acd7b9p-10, 0x1.4a381f141ea1dp+0}}}},
+    {0, "chrom_lum_uni", 2, 1, 0x1.9f2017f461661p+10, {0x1.95a70c507f795p-6, 0x1.95b606d1fcf12p-11, 0x1.4c3137f2618cdp-11, 0x1.1a2bc5224105p-1}, {{1, 0x1.9f2017f461661p+10, {0x1.95a70c507f795p-6, 0x1.95b606d1fcf12p-11, 0x1.4c3137f2618cdp-11, 0x1.1a2bc5224105p-1}}, {1, 0x1.4b68763819086p+2, {0x1.f0b1cba3394f3p-3, 0x1.9d4a46e48a1a5p-10, 0x1.78f5cc414e70bp-10, 0x1.08e845c45b02ep+4}}, {1, 0x1.89c96a017e77ap+1, {0x1.3ad45cad0b3f8p-1, 0x1.02c8f69edc7cap-8, 0x1.f017cd24d3d53p-9, 0x1.f0c4df08650a9p+4}}}},
+    {0, "chrom_lum_bl", 0, 1, 0x1.3a58b999b99c4p+12, {0x1.419d980619693p-5, 0x1.5c39abec19cefp-10, 0x1.211052988673fp-10, 0x1.c25da6c7c6c28p-2}, {{1, 0x1.3a58b999b99c4p+12, {0x1.419d980619693p-5, 0x1.5c39abec19cefp-10, 0x1.211052988673fp-10, 0x1.c25da6c7c6c28p-2}}, {1, 0x1.159c8ef4ebfffp+10, {0x1.7cc01245c59f8p-3, 0x1.43b36d6114ca5p-9, 0x1.0b9d246dbfceep-9, 0x1.48bda8754d243p+0}}, {1, 0x1.7d6a897f3f14bp+10, {0x1.5d565d63eae88p-2, 0x1.7c95f6590c303p-9, 0x1.3a85f687431bfp-9, 0x1.4c0d40449590ep+0}}}},
+    {0, "chrom_lum_bl", 1, 1, 0x1.872ed570c22e9p+11, {0x1.b38284810d9fdp-2, 0x1.107cd1c21a795p-8, 0x1.c263754f3794bp-9, 0x1.4fe49eba0af89p+0}, {{1, 0x1.872ed570c22e9p+11, {0x1.b38284810d9fdp-2, 0x1.107cd1c21a795p-8, 0x1.c263754f3794bp-9, 0x1.4fe49eba0af89p+0}}, {1, 0x1.872ed570c22e9p+11, {0x1.b38284810d9fdp-2, 0x1.107cd1c21a795p-8, 0x1.c263754f3794bp-9, 0x1.4fe49eba0af89p+0}}, {1, 0x1.872ed570c22e9p+11, {0x1.b38284810d9fdp-2, 0x1.107cd1c21a795p-8, 0x1.c263754f3794bp-9, 0x1.4fe49eba0af89p+0}}}},
+    {0, "chrom_lum_bl", 2, 1, 0x1.90a580548e674p+12, {0x1.6ea7d07360191p-5, 0x1.8ed4a6588abbfp-10, 0x1.44c94fbdc62ffp-10, 0x1.5e7168e6ed505p-1}, {{1, 0x1.90a580548e674p+12, {0x1.6ea7d07360191p-5, 0x1.8ed4a6588abbfp-10, 0x1.44c94fbdc62ffp-10, 0x1.5e7168e6ed505p-1}}, {1, 0x1.930dd5dbf855p+3, {0x1.08ab63187e27bp-2, 0x1.a774c2fce3316p-9, 0x1.65ab47dda75cfp-9, 0x1.0a2e4b8982405p+4}}, {1, 0x1.a863c38f6902dp+1, {0x1.3e91395b7047dp-1, 0x1.3fbb6bb255b0ap-8, 0x1.24161ca802087p-8, 0x1.f14d53ff90b66p+4}}}},
+    {1, "chrom_dark_uni", 0, 1, 0x1.a02bcea79c982p+9, {0x1.57eec790eb00ap-6, 0x1.420707315b208p-11, 0x1.153bede4afaf8p-11, 0x1.421c0a0d2b2dcp-1}, {{1, 0x1.a02bcea79c982p+9, {0x1.57eec790eb00ap-6, 0x1.420707315b208p-11, 0x1.153bede4afaf8p-11, 0x1.421c0a0d2b2dcp-1}}, {1, 0x1.05cbb52f76f0ap+7, {0x1.6f9b22a9b83c3p-3, 0x1.fd67461ed6e36p-11, 0x1.a127271354223p-11, 0x1.258af67b63cb5p+2}}, {1, 0x1.89446aa109ef1p+7, {0x1.55f9136f27fe4p-2, 0x1.3913f44f1127fp-10, 0x1.00b0a0b699ebap-10, 0x1.49b413010c301p+2}}}},
+    {1, "chrom_dark_uni", 1, 1, 0x1.c4185a7f9a78cp+7, {0x1.bd59e1d6eb754p-2, 0x1.4f87c37198315p-10, 0x1.132246288e2bap-10, 0x1.541bfc76787p+2}, {{1, 0x1.c4185a7f9a78cp+7, {0x1.bd59e1d6eb754p-2, 0x1.4f87c37198315p-10, 0x1.132246288e2bap-10, 0x1.541bfc76787p+2}}, {1, 0x1.c4185a7f9a78cp+7, {0x1.bd59e1d6eb754p-2, 0x1.4f87c37198315p-10, 0x1.132246288e2bap-10, 0x1.541bfc76787p+2}}, {1, 0x1.c4185a7f9a78cp+7, {0x1.bd59e1d6eb754p-2, 0x1.4f87c37198315p-10, 0x1.132246288e2bap-10, 0x1.541bfc76787p+2}}}},
+    {1, "chrom_dark_uni", 2, 1, 0x1.0d2993f6aa71cp+10, {0x1.7e193b3636283p-6, 0x1.79d31a54cadc2p-11, 0x1.4666f99e6f447p-11, 0x1.457638c511cc8p-1}, {{1, 0x1.0d2993f6aa71cp+10, {0x1.7e193b3636283p-6, 0x1.79d31a54cadc2p-11, 0x1.4666f99e6f447p-11, 0x1.457638c511cc8p-1}}, {1, 0x1.1ce3de4f3a55ep+3, {0x1.01e7001b7ec4bp-2, 0x1.fee0e228671aep-10, 0x1.a73c2bec685ebp-10, 0x1.7a7823a15c0a2p+3}}, {1, 0x1.6ba5a7a086d68p+2, {0x1.508d593ba9072p-1, 0x1.2c04401ab49ccp-8, 0x1.14ca9cf37e4a2p-8, 0x1.86810ab832d36p+4}}}},
+    {1, "chrom_dark_bl", 0, 1, 0x1.2732aea316de5p+11, {0x1.f84bebebba9f2p-6, 0x1.0f25d47865a03p-10, 0x1.d2bcd8f67f8ddp-11, 0x1.45b0457182c34p-1}, {{1, 0x1.2732aea316de5p+11, {0x1.f84bebebba9f2p-6, 0x1.0f25d47865a03p-10, 0x1.d2bcd8f67f8ddp-11, 0x1.45b0457182c34p-1}}, {1, 0x1.cd62e91e2f632p+9, {0x1.948edee75bd9p-3, 0x1.519c00ff51efcp-9, 0x1.14307440f11acp-9, 0x1.26475e75db9bfp+2}}, {1, 0x1.3bb4fd026e5efp+10, {0x1.6a992ba4d99e2p-2, 0x1.8c463ae337c03p-9, 0x1.444d51488c5afp-9, 0x1.4a3640cc7ae41p+2}}}},
+    {1, "chrom_dark_bl", 1, 1, 0x1.2db22ff4c8c1bp+11, {0x1.c171de54eebb4p-2, 0x1.11cf0dea238a1p-8, 0x1.c0366fc156d64p-9, 0x1.55d7e3028427fp+2}, {{1, 0x1.2db22ff4c8c1bp+11, {0x1.c171de54eebb4p-2, 0x1.11cf0dea238a1p-8, 0x1.c0366fc156d64p-9, 0x1.55d7e3028427fp+2}}, {1, 0x1.2db22ff4c8c1bp+11, {0x1.c171de54eebb4p-2, 0x1.11cf0dea238a1p-8, 0x1.c0366fc156d64p-9, 0x1.55d7e3028427fp+2}}, {1, 0x1.2db22ff4c8c1bp+11, {0x1.c171de54eebb4p-2, 0x1.11cf0dea238a1p-8, 0x1.c0366fc156d64p-9, 0x1.55d7e3028427fp+2}}}},
+    {1, "chrom_dark_bl", 2, 1, 0x1.4b3cfd5475307p+11, {0x1.0f1443778ca22p-5, 0x1.2851f6d2db68bp-10, 0x1.ffe3af5bb6c87p-11, 0x1.499be165526f4p-1}, {{1, 0x1.4b3cfd5475307p+11, {0x1.0f1443778ca22p-5, 0x1.2851f6d2db68bp-10, 0x1.ffe3af5bb6c87p-11, 0x1.499be165526f4p-1}}, {1, 0x1.22030c2c525fap+4, {0x1.0f0f5fc1d5c64p-2, 0x1.d266852f42f4fp-9, 0x1.7b64e776f5c69p-9, 0x1.7a928524022fap+3}}, {1, 0x1.6ecd2142376ecp+2, {0x1.540a541830b03p-1, 0x1.69afe57b6f195p-8, 0x1.3ffc825254c5ap-8, 0x1.86a1887af951ap+4}}}},
+    {1, "chrom_lum_uni", 0, 1, 0x1.265dccf71fa45p+10, {0x1.5e40dcb13162fp-6, 0x1.50eeaa29547f6p-11, 0x1.1876681c27a85p-11, 0x1.7327a5baf9db2p-2}, {{1, 0x1.265dccf71fa45p+10, {0x1.5e40dcb13162fp-6, 0x1.50eeaa29547f6p-11, 0x1.1876681c27a85p-11, 0x1.7327a5baf9db2p-2}}, {1, 0x1.2165b1ba521cfp+7, {0x1.553386221eaeap-3, 0x1.d7c49ca383503p-11, 0x1.863902d0cd4c8p-11, 0x1.469361af23e8dp+0}}, {1, 0x1.f926d7203a18ap+7, {0x1.421b250ef3ba6p-2, 0x1.374b93dd19db7p-10, 0x1.01523a3237c28p-10, 0x1.4970713aab8ddp+0}}}},
+    {1, "chrom_lum_uni", 1, 1, 0x1.523390313797ap+8, {0x1.a0f220c829b96p-2, 0x1.677fc5d1f246p-10, 0x1.294620a03668cp-10, 0x1.4a381f53bf614p+0}, {{1, 0x1.523390313797ap+8, {0x1.a0f220c829b96p-2, 0x1.677fc5d1f246p-10, 0x1.294620a03668cp-10, 0x1.4a381f53bf614p+0}}, {1, 0x1.523390313797ap+8, {0x1.a0f220c829b96p-2, 0x1.677fc5d1f246p-10, 0x1.294620a03668cp-10, 0x1.4a381f53bf614p+0}}, {1, 0x1.523390313797ap+8, {0x1.a0f220c829b96p-2, 0x1.677fc5d1f246p-10, 0x1.294620a03668cp-10, 0x1.4a381f53bf614p+0}}}},
+    {1, "chrom_lum_uni", 2, 1, 0x1.9f1fe27afd422p+10, {0x1.95a716b51ad88p-6, 0x1.95b5e7f78a00cp-11, 0x1.4c311caa8bdfdp-11, 0x1.1a2bc3378dcdcp-1}, {{1, 0x1.9f1fe27afd422p+10, {0x1.95a716b51ad88p-6, 0x1.95b5e7f78a00cp-11, 0x1.4c311caa8bdfdp-11, 0x1.1a2bc3378dcdcp-1}}, {1, 0x1.4b68943404bbbp+2, {0x1.f0b20b88bf475p-3, 0x1.9d4a441774005p-10, 0x1.78f5c90980a7ep-10, 0x1.08e86ce99e6d8p+4}}, {1, 0x1.89c9d1fb26e34p+1, {0x1.3ad494b3a384fp-1, 0x1.02c8f59fc11f2p-8, 0x1.f017ca382e0e3p-9, 0x1.f0c54308a503fp+4}}}},
+    {1, "chrom_lum_bl", 0, 1, 0x1.3a582c1388231p+12, {0x1.419d6ef064e2dp-5, 0x1.5c395946201ddp-10, 0x1.21100cb6aa32cp-10, 0x1.c25d76040ff0ep-2}, {{1, 0x1.3a582c1388231p+12, {0x1.419d6ef064e2dp-5, 0x1.5c395946201ddp-10, 0x1.21100cb6aa32cp-10, 0x1.c25d76040ff0ep-2}}, {1, 0x1.159c897ee3beap+10, {0x1.7cc031fee3821p-3, 0x1.43b36a21bef25p-9, 0x1.0b9d21ccaa9e3p-9, 0x1.48bda8f3e6a93p+0}}, {1, 0x1.7d6a869903f71p+10, {0x1.5d567496b0ffep-2, 0x1.7c95f4ddfddffp-9, 0x1.3a85f55426ae7p-9, 0x1.4c0d40874f05ap+0}}}},
+    {1, "chrom_lum_bl", 1, 1, 0x1.872ed47568dc9p+11, {0x1.b38293c75a5e3p-2, 0x1.107cd165d9c23p-8, 0x1.c26374bbf8f36p-9, 0x1.4fe49ee7e7f5dp+0}, {{1, 0x1.872ed47568dc9p+11, {0x1.b38293c75a5e3p-2, 0x1.107cd165d9c23p-8, 0x1.c26374bbf8f36p-9, 0x1.4fe49ee7e7f5dp+0}}, {1, 0x1.872ed47568dc9p+11, {0x1.b38293c75a5e3p-2, 0x1.107cd165d9c23p-8, 0x1.c26374bbf8f36p-9, 0x1.4fe49ee7e7f5dp+0}}, {1, 0x1.872ed47568dc9p+11, {0x1.b38293c75a5e3p-2, 0x1.107cd165d9c23p-8, 0x1.c26374bbf8f36p-9, 0x1.4fe49ee7e7f5dp+0}}}},
+    {1, "chrom_lum_bl", 2, 1, 0x1.90a49eaebca78p+12, {0x1.6ea78b647f1e9p-5, 0x1.8ed43165100adp-10, 0x1.44c8ee862bbd1p-10, 0x1.5e713c1d8697dp-1}, {{1, 0x1.90a49eaebca78p+12, {0x1.6ea78b647f1e9p-5, 0x1.8ed43165100adp-10, 0x1.44c8ee862bbd1p-10, 0x1.5e713c1d8697dp-1}}, {1, 0x1.930dd7b680522p+3, {0x1.08ab85e8ec533p-2, 0x1.a774bd7e0f144p-9, 0x1.65ab4482a8242p-9, 0x1.0a2e73cd8ccd6p+4}}, {1, 0x1.a863e271074bcp+1, {0x1.3e9171f85548ep-1, 0x1.3fbb69422e266p-8, 0x1.24161aa5de44dp-8, 0x1.f14db8b8d3ab6p+4}}}},
+};
+struct PhotRef { int espl; const char* name; int q; int ok; int nep; double cond; double era[Nx]; };
+const PhotRef kPhotRefChrom[] = {
+    {0, "chrom_dark", 0, 1, 1102, 0x1.6f519f240622p+14, {0x1.bfe4822dfb542p-8, 0x1.ae59f50f6c8eap-1, 0x1.5d8ff67741613p-7, 0x1.dffb68e3983c2p-1, 0x1.338d35b439a9dp+0, 0x1.1b1667f02ced6p-7, 0x1.32950316a392ep-9, 0x1.a750fb46072dfp-7, 0x1.07b13f573d143p-12, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.c1b01d1cbccdcp-7, 0x1.362e790b23126p-9, 0x1.ff75b09070862p-7, 0x1.37190671e950fp-9, -0x1p+0, -0x1p+0}},
+    {0, "chrom_dark", 1, 1, 238, 0x1.2cf7bc861ddb4p+13, {0x1.31cacea4251edp-4, 0x1.8c565dc65a45ep+3, 0x1.87a96e1e1f817p-4, 0x1.8c88ebf3a87ap+3, 0x1.f576c7f93e2b7p+3, 0x1.8d116432b2113p-3, 0x1.390dce83371b4p-9, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.4330547744c06p-3, 0x1.4687017b20365p-9, 0x1.86bbbf58c3e15p-3, 0x1.4eeab930e4598p-9, -0x1p+0, -0x1p+0}},
+    {0, "chrom_dark", 2, 1, 864, 0x1.97d3353c64177p+16, {0x1.c3dc452ce149fp-7, 0x1.c2cd8481885d2p+0, -0x1p+0, 0x1.fae4f3e365e7p+0, 0x1.44638247d11cp+1, 0x1.752b44fc18868p-7, -0x1p+0, 0x1.7af7aa9c5afbep-6, 0x1.2456a828383edp-12, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {0, "chrom_lum", 0, 1, 1102, 0x1.6f519f240622p+14, {0x1.bfe4822dfb542p-8, 0x1.ae59f50f6c8eap-1, 0x1.5d8ff67741613p-7, 0x1.dffb68e3983c2p-1, 0x1.338d35b439a9dp+0, 0x1.1b1667f02ced6p-7, 0x1.32950316a392ep-9, 0x1.a750fb46072dfp-7, 0x1.07b13f573d143p-12, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.c1b01d1cbccdcp-7, 0x1.362e790b23126p-9, 0x1.ff75b09070862p-7, 0x1.37190671e950fp-9, -0x1p+0, -0x1p+0}},
+    {0, "chrom_lum", 1, 1, 238, 0x1.2cf7bc861ddb4p+13, {0x1.31cacea4251edp-4, 0x1.8c565dc65a45ep+3, 0x1.87a96e1e1f817p-4, 0x1.8c88ebf3a87ap+3, 0x1.f576c7f93e2b7p+3, 0x1.8d116432b2113p-3, 0x1.390dce83371b4p-9, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.4330547744c06p-3, 0x1.4687017b20365p-9, 0x1.86bbbf58c3e15p-3, 0x1.4eeab930e4598p-9, -0x1p+0, -0x1p+0}},
+    {0, "chrom_lum", 2, 1, 864, 0x1.97d3353c64177p+16, {0x1.c3dc452ce149fp-7, 0x1.c2cd8481885d2p+0, -0x1p+0, 0x1.fae4f3e365e7p+0, 0x1.44638247d11cp+1, 0x1.752b44fc18868p-7, -0x1p+0, 0x1.7af7aa9c5afbep-6, 0x1.2456a828383edp-12, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {1, "chrom_dark", 0, 1, 1102, 0x1.6f52b540f294cp+14, {0x1.bfe43c834053cp-8, 0x1.ae597449a53d9p-1, 0x1.5d8fe73d19214p-7, 0x1.dffae0c8d975cp-1, 0x1.338cde883447dp+0, 0x1.1b1632519e7f9p-7, 0x1.329502c1df473p-9, 0x1.a7506e6d1f1abp-7, 0x1.07b13a8383a18p-12, 0x1.ffffffffc9d79p-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.c1b00ee89d0e7p-7, 0x1.362e78d0d7f9cp-9, 0x1.ff75aa09e5305p-7, 0x1.3719065b5c27p-9, -0x1p+0, -0x1p+0}},
+    {1, "chrom_dark", 1, 1, 238, 0x1.2cf7a2176893ep+13, {0x1.31ca4cdaa433bp-4, 0x1.8c5636dac04f1p+3, 0x1.87a91f1b0946ap-4, 0x1.8c88d24526a8ap+3, 0x1.f576a7962d1fbp+3, 0x1.8d1121f5bcc3ap-3, 0x1.390dce76ae163p-9, -0x1p+0, -0x1p+0, 0x1.ffffffffffddfp-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.4330115d83628p-3, 0x1.468700384c237p-9, 0x1.86bb703825c32p-3, 0x1.4eeab8c1fa49p-9, -0x1p+0, -0x1p+0}},
+    {1, "chrom_dark", 2, 1, 864, 0x1.97d4f25cd525ap+16, {0x1.c3dc536372597p-7, 0x1.c2cd4764b3573p+0, -0x1p+0, 0x1.fae4b8b9ceed2p+0, 0x1.44635c3de0465p+1, 0x1.752b11747f9f1p-7, -0x1p+0, 0x1.7af750bcab465p-6, 0x1.2456a270a92c4p-12, 0x1.fffffffffc511p-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
+    {1, "chrom_lum", 0, 1, 1102, 0x1.6f52b540f294cp+14, {0x1.bfe43c834053cp-8, 0x1.ae597449a53d9p-1, 0x1.5d8fe73d19214p-7, 0x1.dffae0c8d975cp-1, 0x1.338cde883447dp+0, 0x1.1b1632519e7f9p-7, 0x1.329502c1df473p-9, 0x1.a7506e6d1f1abp-7, 0x1.07b13a8383a18p-12, 0x1.ffffffffc9d79p-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.c1b00ee89d0e7p-7, 0x1.362e78d0d7f9cp-9, 0x1.ff75aa09e5305p-7, 0x1.3719065b5c27p-9, -0x1p+0, -0x1p+0}},
+    {1, "chrom_lum", 1, 1, 238, 0x1.2cf7a2176893ep+13, {0x1.31ca4cdaa433bp-4, 0x1.8c5636dac04f1p+3, 0x1.87a91f1b0946ap-4, 0x1.8c88d24526a8ap+3, 0x1.f576a7962d1fbp+3, 0x1.8d1121f5bcc3ap-3, 0x1.390dce76ae163p-9, -0x1p+0, -0x1p+0, 0x1.ffffffffffddfp-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, 0x1.4330115d83628p-3, 0x1.468700384c237p-9, 0x1.86bb703825c32p-3, 0x1.4eeab8c1fa49p-9, -0x1p+0, -0x1p+0}},
+    {1, "chrom_lum", 2, 1, 864, 0x1.97d4f25cd525ap+16, {0x1.c3dc536372597p-7, 0x1.c2cd4764b3573p+0, -0x1p+0, 0x1.fae4b8b9ceed2p+0, 0x1.44635c3de0465p+1, 0x1.752b11747f9f1p-7, -0x1p+0, 0x1.7af750bcab465p-6, 0x1.2456a270a92c4p-12, 0x1.fffffffffc511p-1, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0, -0x1p+0}},
+};
+
+bool checkChromaticPinned()
+{
+    bool ok = true;
+    const SourceModel keep = vbmSourceModel();
+    int nAst = 0, nPhot = 0;
+    for (const SourceModel model : {SourceModel::PSPL, SourceModel::ESPL}) {
+        vbmSetSourceModel(model);
+        const int espl = model == SourceModel::ESPL ? 1 : 0;
+        for (const int lum : {0, 1})
+            for (const int blend : {0, 1}) {
+                const auto r = makeLensCase(kLensCases - 2 + lum, true, blend ? 1.0 : kLensLightUniformFrac);
+                const std::string nm = std::string(lum ? "chrom_lum" : "chrom_dark") + (blend ? "_bl" : "_uni");
+                for (const auto& ref : kAstroRefFree) {
+                    if (ref.espl != espl or nm != ref.name) continue;
+                    ++nAst;
+                    if (not matchesRef(*r->co, ref)) {
+                        std::cerr << "FAIL [chromatic-pinned] astrometry " << nm << (espl ? " (espl)" : " (pspl)") << " partition " << ref.q
+                                  << " is not bit-identical to the aab9831 forecast\n";
+                        ok = false;
+                    }
+                }
+                if (blend) continue;                                  // the photometry does not read the lens-light prior
+                for (const auto& ref : kPhotRefChrom) {
+                    if (ref.espl != espl or std::strcmp(ref.name, lum ? "chrom_lum" : "chrom_dark") != 0) continue;
+                    ++nPhot;
+                    const covarian& c = *r->co;
+                    bool same = c.okA[ref.q] == ref.ok and c.nepochA[ref.q] == ref.nep and sameDouble(c.condA[ref.q], ref.cond);
+                    for (int k = 0; k < Nx; ++k) same = same and sameDouble(c.Era[ref.q][k], ref.era[k]);
+                    if (not same) {
+                        std::cerr << "FAIL [chromatic-pinned] photometry " << ref.name << (espl ? " (espl)" : " (pspl)") << " partition " << ref.q
+                                  << " is not bit-identical to the aab9831 forecast\n";
+                        ok = false;
+                    }
+                }
+            }
+    }
+    vbmSetSourceModel(keep);
+    if (nAst != 24 or nPhot != 12) { std::cerr << "FAIL [chromatic-pinned] compared " << nAst << " astrometric and " << nPhot << " photometric rows\n"; ok = false; }
+    std::cout << "# chromatic events, default free-mode astrometry (both priors) and photometry equal the aab9831 forecast bit for bit: "
+              << nAst << " + " << nPhot << " rows, " << (ok ? "ok\n" : "FAIL\n");
+    return ok;
+}
+
+// Every Rubin visit in i with i's own blend fraction and baseline (and r's left different) is the all-r event whose r pair is
+// those numbers (to rounding): each epoch reads its band's pair, not r's.
+bool checkRubinBandBlendUsed()
+{
+    bool ok = true;
+    const SourceModel keep = vbmSourceModel();
+    for (const SourceModel model : {SourceModel::PSPL, SourceModel::ESPL}) {
+        vbmSetSourceModel(model);
+        EventRun a(kEvents[2]), b(kEvents[2]);
+        a.s->blend[2] = 0.35;  a.s->magb[2] = 20.2;  a.s->fb[0] = 0.35;  a.s->mbs[0] = 20.2;
+        b.s->blend[3] = 0.35;  b.s->magb[3] = 20.2;                       // r keeps 0.50 and its baseline
+        for (int i = 0; i < b.ndw; ++i) if (b.l->tele[i] == 0) b.l->filt[i] = 3;
+        a.run();  b.run();
+        for (const int q : {SJOINT, SRUBIN}) {
+            // Equal to rounding (the two fits order their parameters differently, so the inversion's last bits differ, ~1e-13).
+            const auto close = [](double x, double y) { return std::fabs(x - y) <= 1e-9 * std::fabs(y); };
+            bool same = a.co->okA[q] == b.co->okA[q];
+            for (const int k : {0, 1, 3, 4, 5, 9}) same = same and close(a.co->Era[q][k], b.co->Era[q][k]);
+            same = same and close(a.co->Era[q][fbIndexOfFilter(2)], b.co->Era[q][fbIndexOfFilter(3)])
+                        and close(a.co->Era[q][mbsIndexOfFilter(2)], b.co->Era[q][mbsIndexOfFilter(3)]);
+            if (not same or not a.co->okA[q]) {
+                std::cerr << "FAIL [band-blend-used] partition " << q << (model == SourceModel::ESPL ? " (espl)" : " (pspl)")
+                          << ": all visits in i with i's pair differ from the all-r event with that pair\n";
+                ok = false;
+            }
+        }
+    }
+    vbmSetSourceModel(keep);
+    std::cout << "# all Rubin visits in i (own blend) = the all-r event with that pair (to 1e-9)" << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
+// The prior on the blend fraction (sigma = RUBIN_FB_PRIOR_SIG) adds exactly 1/sigma^2 to the fb diagonal of every Rubin band
+// in the fit, r included, in the joint and Rubin-only matrices, and nothing to Roman's F146 in any matrix.
+bool checkBlendPriorEveryBand()
+{
+    bool ok = true;
+    EventRun on(kEvents[2]), off(kEvents[2]);
+    for (EventRun* e : {&on, &off}) makeChromatic(*e->s, *e->l, e->ndw);
+    off.co->fbPriorSig = std::numeric_limits<double>::infinity();
+    on.run();  off.run();
+    const double want = 1.0 / (RUBIN_FB_PRIOR_SIG * RUBIN_FB_PRIOR_SIG);
+    int nb = 0;
+    for (int b = 0; b < kRubinBands; ++b) {
+        if (on.co->nRubinBand[b] == 0) continue;
+        ++nb;
+        const int j = fbIndexOfFilter(b);
+        for (const int q : {SJOINT, SRUBIN}) {
+            const double d = gsl_matrix_get(on.co->inputA[q].get(), j, j) - gsl_matrix_get(off.co->inputA[q].get(), j, j);
+            if (not (std::fabs(d - want) <= 1e-12 * want)) {
+                std::cerr << "FAIL [blend-prior] band " << b << " partition " << q << ": prior adds " << d << ", not " << want << "\n";
+                ok = false;
+            }
+        }
+    }
+    const int jR = fbIndexOfFilter(6);
+    for (const int q : {SJOINT, SROMAN})
+        if (gsl_matrix_get(on.co->inputA[q].get(), jR, jR) != gsl_matrix_get(off.co->inputA[q].get(), jR, jR)) {
+            std::cerr << "FAIL [blend-prior] partition " << q << ": the prior changed Roman's F146 blend diagonal\n";
+            ok = false;
+        }
+    if (nb != 3) { std::cerr << "FAIL [blend-prior] " << nb << " bands in the fit, not r, i, z\n"; ok = false; }
+    std::cout << "# the blend prior adds 1/sigma^2 to r, i, z in J and L and nothing to F146" << (ok ? "  -> ok\n" : "  -> FAIL\n");
+    return ok;
+}
+
 // In free mode the joint matrix is still the Rubin one plus the Roman one in every variant (each telescope's fractions are
 // its own nuisance parameters), and the joint sigma is no worse than either.
 bool checkLensLightAdditivity()
@@ -3386,6 +3543,9 @@ int main(int argc, char** argv)
     if (!checkLensLightFreeNoGain())     ++failures;
     if (!checkLensLightPriorMonotone())  ++failures;
     if (!checkLensLightAdditivity())     ++failures;
+    if (!checkChromaticPinned())         ++failures;
+    if (!checkRubinBandBlendUsed())      ++failures;
+    if (!checkBlendPriorEveryBand())     ++failures;
     if (!checkLensLightRoman())          ++failures;
     if (!checkLensLightFreeBranches())   ++failures;
     if (!checkLensLightFloor())          ++failures;

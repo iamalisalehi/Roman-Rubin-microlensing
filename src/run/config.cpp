@@ -206,8 +206,6 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
             exitCode = 2; return false;
         }
     }
-    // The stub patch is 0.1x0.1 deg; the default stride of 10 (0.20 deg) would step over it,
-    // so --stub without an explicit --stride uses the native dd grid.
     if (not (cfg.lensLightFloor >= 0.0 and cfg.lensLightFloor <= 1.0)) {
         std::cerr << "ERROR: --lens-light-floor (" << cfg.lensLightFloor << ") must be in [0, 1]\n";
         exitCode = 1; return false;
@@ -215,6 +213,8 @@ bool parseCommandLine(int argc, char** argv, RunConfig& cfg, int& exitCode) {
     if (not cfg.lensLightFree and (priorGiven or floorGiven))
         std::cerr << "WARNING: " << (priorGiven ? "--lens-light-prior" : "") << (priorGiven and floorGiven ? " and " : "")
                   << (floorGiven ? "--lens-light-floor" : "") << " ignored (read only with --lens-light free)\n";
+    // The stub patch is 0.1x0.1 deg; the default stride of 10 (0.20 deg) would step over it,
+    // so --stub without an explicit --stride uses the native dd grid.
     if (cfg.stubPatch and not strideGiven) cfg.stride = 1;
 
     if (cfg.pairSat and cfg.noSatPar) {

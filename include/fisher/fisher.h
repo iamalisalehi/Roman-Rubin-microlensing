@@ -192,8 +192,9 @@ struct covarian {
     double fbPriorSig = RUBIN_FB_PRIOR_SIG;
 
     // The lens's own light fraction in each band is an unknown of the astrometric fit (one per Rubin band with astrometric
-    // visits and one for Roman's F146, the same number in x and y) when lensLightFree; else (the default, --lens-light known)
-    // it is held at its true value, so the lens's drift measures thetaE. Its Gaussian prior is lensLightPriorFrac x (1 - f_S)
+    // visits and one for Roman's F146, the same number in x and y) when lensLightFree; else (--lens-light known) it is held at
+    // its true value, so the lens's drift measures thetaE. This struct defaults to known (the fixture's reference tables are
+    // known-mode); RunConfig defaults to free, and main.cpp copies that into the covarian it builds. Its Gaussian prior is lensLightPriorFrac x (1 - f_S)
     // wide: 1/sqrt(12) (uniform on [0, 1 - f_S], --lens-light-prior uniform) or 1 (--lens-light-prior blend). main.cpp sets both.
     // lensLightFloor F (--lens-light-floor, default 0): sigma(f_L) = max(lensLightPriorFrac (1 - f_S), F); with F > 0 every band,
     // an unblended F146 (f_S = 1) included, carries a fraction parameter.

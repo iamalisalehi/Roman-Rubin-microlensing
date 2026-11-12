@@ -12,8 +12,9 @@ Two rules:
 
 Two indexing systems that look alike:
 - `magb_*` / `blend_*` are per FILTER: u g r i z y are Rubin's, F146 is Roman's.
-- `mbs0` / `fb0` are Rubin (r-band); `mbs1` / `fb1` are Roman (F146). These are per TELESCOPE and
-  are what the Fisher matrix fits.
+- `mbs0` / `fb0` are Rubin's r band; `mbs1` / `fb1` are Roman (F146). These are per TELESCOPE. The
+  Fisher matrix fits a (fb, mbs) pair for every Rubin band with enough visits (r's is mbs0/fb0; the
+  others are the sigfb_*/mbs_* columns) and Roman's F146 pair.
 """
 
 from __future__ import annotations

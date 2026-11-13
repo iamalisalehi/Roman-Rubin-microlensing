@@ -12,8 +12,9 @@
 // from the previous sightline, the cache switched off, a table reload (which must empty the cache), a
 // descending (binary-search) access order, and grid times outside the Sun and Roman tables.
 //
-// Needs Baseline/BulgeBaseline.dat and Baseline/RomanBaseline.dat (git-ignored inputs) and the vendored files;
-// run from the repo root:   make vbmcachetest && ./vbmcachetest
+// Uses Baseline/BulgeBaseline.dat and Baseline/RomanBaseline.dat (git-ignored inputs) when they exist; otherwise
+// a synthetic grid (daily Rubin epochs, 15-minute Roman stretches) built from nothing but the vendored files and
+// the committed ephemeris tables, so the test runs in CI. Run from the repo root:   make vbmcachetest && ./vbmcachetest
 // Exit status 0 iff every comparison was identical and the cache hit and missed where it should.
 #include "parameters.h"
 #include "VBMicrolensingLibrary.h"
@@ -237,11 +238,26 @@ static void sweepEvents(VBMicrolensing& plain, VBMicrolensing& cached, const std
 }
 
 int main() {
-    for (const char* p : {PATH_VBM_ESPL_TABLE, PATH_VBM_SUN_TABLE, PATH_VBM_TARGET_FILE, PATH_BULGE_BASELINE, PATH_ROMAN_BASELINE}) {
+    for (const char* p : {PATH_VBM_ESPL_TABLE, PATH_VBM_SUN_TABLE, PATH_VBM_TARGET_FILE}) {
         std::ifstream f(p);
         if (!f) { std::printf("cannot read %s (run from the repository root)\n", p); return 1; }
     }
-    const std::vector<double> rubin = readColumn(PATH_BULGE_BASELINE, 5), roman = readColumn(PATH_ROMAN_BASELINE, 5);
+    // The visit times: the real ones when the git-ignored Baseline files are here, else a synthetic stand-in
+    // (the committed Sun and Roman tables are all the cases below need), so that CI runs the test too.
+    const bool real = std::ifstream(PATH_BULGE_BASELINE).good() and std::ifstream(PATH_ROMAN_BASELINE).good();
+    std::vector<double> rubin, roman;
+    if (real) {
+        rubin = readColumn(PATH_BULGE_BASELINE, 5);
+        roman = readColumn(PATH_ROMAN_BASELINE, 5);
+    } else {
+        // Rubin: one epoch a day over the window. Roman: dense stretches, one epoch per 15 minutes for 60 days,
+        // inside the range of its table (simulation days -141.8 to 4059).
+        for (double d = 0.0; d <= Tobs; d += 1.0) rubin.push_back(d);
+        for (double start : {200.0, 900.0, 1700.0, 2600.0})
+            for (int i = 0; i < 60 * 96; ++i) roman.push_back(start + i / 96.0);
+    }
+    std::printf("visit times: %s (%zu Rubin, %zu Roman epochs)\n", real ? "the real Baseline files" : "SYNTHETIC grid (Baseline files absent)",
+                rubin.size(), roman.size());
 
     auto plain = makeInstance();
     auto cached = makeInstance();
@@ -292,6 +308,33 @@ int main() {
             expect(nBad == bad0, what);
             cached->SetObserverGrid(grids[1].data(), int(grids[1].size()));
         }
+    }
+
+    // (1b) every 7th time of a grid, in increasing order, with t0 on the grid too: every lookup of the call is
+    // on the grid, so every one must hit (the in-order gallop with multi-step moves, as Roman's thinned
+    // epochs and FisherM's re-evaluations take it).
+    {
+        const long long bad0 = nBad;
+        const std::vector<double>& g = grids[0];
+        std::vector<double> t;
+        for (std::size_t i = 0; i < g.size(); i += 7) t.push_back(g[i]);
+        std::vector<Event> ev = makeEvents(rng, 3, g.front(), g.back());
+        long long hits = 0, misses = 0;
+        setTarget(*plain, targets[0]);
+        setTarget(*cached, targets[0]);
+        cached->SetObserverGrid(g.data(), int(g.size()));
+        for (std::size_t k = 0; k < ev.size(); ++k) {
+            ev[k].t0 = g[g.size() / 2 + k];   // an on-grid peak time
+            for (int sat = 0; sat <= 1; ++sat)
+                for (int kind = 0; kind < NKIND; ++kind)
+                    compareCall(*plain, *cached, Kind(kind), ev[k], ev[k].t0, sat, t, hits, misses, "every 7th grid time");
+        }
+        char what[160];
+        std::snprintf(what, sizeof what, "every 7th grid time in order (%zu of %zu): identical, hits %lld, misses %lld (must be 0)", t.size(), g.size(), hits, misses);
+        expect(nBad == bad0 and hits > 0 and misses == 0, what);
+        cached->SetObserverGrid(grids[2].data(), int(grids[2].size()));   // as after (1)
+        setTarget(*plain, targets[2]);
+        setTarget(*cached, targets[2]);
     }
 
     // (2) the cache switched off with a grid set: no hit at all, same outputs.

@@ -1,4 +1,5 @@
 // VBMicrolensing v5.6 (2026) 
+// LOCAL ADDITION 2 (2026-11-13): this file carries added blocks marked LOCAL ADDITION 2 (the observers' positions cached once per sightline epoch); see README.md in this directory. No upstream line is changed.
 //
 // This code has been developed by Valerio Bozza (University of Salerno) and collaborators.
 // Check the repository at https://github.com/valboz/VBMicrolensing

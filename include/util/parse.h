@@ -29,4 +29,8 @@ private:
     size_t pos_ = 0, len_ = 0;
 };
 
+// True if the fast from_chars path is compiled in (the compiler's libstdc++ has floating-point from_chars);
+// false means every token is read through an istringstream: identical values, slower.
+bool textReaderFastPath();
+
 #endif // ROMAN_UTIL_PARSE_H

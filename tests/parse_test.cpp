@@ -345,6 +345,10 @@ static void testSynthetic()
 
 int main()
 {
+    // The fast from_chars path must be the one under test: without it every token goes through istringstream
+    // and this test would compare istream with itself. Fail where the compiler has no floating-point from_chars.
+    std::printf("TextReader compiled with the %s path\n", textReaderFastPath() ? "from_chars fast" : "istringstream fallback (slow)");
+    expect(textReaderFastPath(), "from_chars fast path is compiled in (needs libstdc++ with floating-point from_chars, GCC 11+)");
     testSynthetic();
 
     testFileTokens(PATH_CMD_HALO,  N4);

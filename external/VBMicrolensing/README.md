@@ -60,6 +60,12 @@ the two added blocks, the only changed upstream lines being one sentence of addi
 Two additions, made for the Roman-Rubin simulator; the data files are as upstream. Addition 1 is in the header only,
 addition 2 is in the header and, as added lines around upstream's, in the `.cpp`.
 
+The LGPL v3 incorporates the GPL v3, whose section 5(a) asks a modified work to carry prominent notices stating that
+it was modified and giving a relevant date. For both additions those notices are: the comment blocks in the header
+(addition 1, 2026-10-11; addition 2, 2026-11-13), the blocks and lines in `VBMicrolensingLibrary.cpp` marked
+`LOCAL ADDITION 2` (with the date; the file's second line says that it carries them), and this section. Both
+additions are under the library's licence, like the rest of the directory.
+
 ### Addition 1 (2026-10-11): `EarthVelocityOnSky`
 
 | What | Where |
@@ -74,10 +80,6 @@ v_E,perp * pi_rel); without the method `vt0` is out of reach, and re-deriving it
 duplicate the ephemeris interpolation the light curve uses. The method invalidates the parallax caches
 before and after and restores `t0_par_fixed` and `t0_par`, so it changes no result of any existing
 function (`tests/vbm_test.cpp` passes unchanged). Only `src/events/vbm_model.cpp` calls it.
-
-The LGPL v3 incorporates the GPL v3, whose section 5(a) asks a modified work to carry prominent notices
-stating that it was modified and giving a relevant date: the comment block in the header and this section
-are those notices. The method is under the library's licence, like the rest of the directory.
 
 ### Addition 2 (2026-11-13): the observers' positions once per sightline epoch
 
@@ -109,9 +111,9 @@ whenever they change.
 
 ## Build and test
 
-The `Makefile` compiles `VBMicrolensingLibrary.cpp` with its own flags (`-O2 -g -std=c++17 -w`: our
-optimisation, never `-ffast-math`, and no warnings for code we do not edit) and links it into `./roman`
-and the test programs. Our code includes the header as a system header (`-isystem`), so `-Wall -Wextra`
+The `Makefile` compiles `VBMicrolensingLibrary.cpp` with its own flags (`-O3 -g -std=c++17 -w -ffp-contract=off`,
+plus `$(ARCH_FLAGS)` and `$(PGO_FLAGS)` when those are set: exactly the optimisation flags our own objects get, never
+`-ffast-math`, and no warnings for code we do not edit) and links it into `./roman` and the test programs. Our code includes the header as a system header (`-isystem`), so `-Wall -Wextra`
 apply to our code only. The data paths are `PATH_VBM_ESPL_TABLE` and `PATH_VBM_SUN_TABLE` in
 `config/parameters.h`; like every data path they are relative to the repository root.
 
@@ -126,10 +128,13 @@ make vbmtest && ./vbmtest
 
 ## Updating
 
-1. Copy the same five files from the newer upstream commit, then re-apply the local addition to the header
-   (the block shown by the `diff` command above) and update its comment if upstream changed `ComputeParallax`.
-2. Run `make vbmtest && ./vbmtest`, `make modeltest && ./modeltest` (which checks the Earth velocity against
-   astropy) and the other tests. Do not regenerate `tests/vbm_reference.h` to
+1. Copy the same five files from the newer upstream commit, then re-apply BOTH local additions: addition 1 in the
+   header; addition 2 in the header and, as added lines (CRLF, every one marked `LOCAL ADDITION 2`, no upstream line
+   edited), in the `.cpp` (the `diff` commands above show every block). Update the comments if upstream changed
+   `ComputeParallax`. A re-vendoring that drops the `.cpp` hooks does not fail loudly: the cache is simply never
+   consulted (slower, same bytes); `vbmcachetest` catches it through its hit counts.
+2. Run `make vbmtest && ./vbmtest`, `make vbmcachetest && ./vbmcachetest`, `make modeltest && ./modeltest` (which
+   checks the Earth velocity against astropy) and the other tests. Do not regenerate `tests/vbm_reference.h` to
    make an update pass: the references are independent of the library, so a failure means its answers
    moved, which has to be understood first.
 3. Record the new commit hash, date and version above.

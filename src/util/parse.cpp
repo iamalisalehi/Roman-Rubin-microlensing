@@ -5,6 +5,22 @@
 #include <sstream>
 #include <string>
 
+// Floating-point std::from_chars: libstdc++ defines __cpp_lib_to_chars only once it has it (GCC 11; GCC 8-10 have
+// the integer overloads only and do not define the macro). Without it every token takes the istringstream
+// path below: the same values, slower. tests/parse_test.cpp fails if the fast path is not compiled in.
+#if defined(__cpp_lib_to_chars)
+#define ROMAN_FAST_FROM_CHARS 1
+#endif
+
+bool textReaderFastPath()
+{
+#ifdef ROMAN_FAST_FROM_CHARS
+    return true;
+#else
+    return false;
+#endif
+}
+
 // istream's skipws in the C locale.
 static inline bool isWs(char c)
 {
@@ -76,6 +92,7 @@ bool TextReader::next(double& out)
     const char* p = buf_.data() + pos_;
     const char* end = buf_.data() + e;
 
+#ifdef ROMAN_FAST_FROM_CHARS
     // Fast path: a plain decimal token that from_chars consumes whole.
     const char c0 = *p;
     bool plain = (c0 >= '0' and c0 <= '9') or c0 == '-' or c0 == '.';
@@ -90,6 +107,7 @@ bool TextReader::next(double& out)
             return true;
         }
     }
+#endif
 
     // Slow path: what `>>` does, and it leaves the rest of the token unread, as `>>` does.
     std::istringstream ss(std::string(p, end));

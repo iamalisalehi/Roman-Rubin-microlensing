@@ -3,6 +3,7 @@
 #include "events/vbm_model.h"
 #include "events/lightcurve.h"      // magnifOf
 #include "VBMicrolensingLibrary.h"
+#include <cstdio>
 
 namespace {
 
@@ -197,9 +198,18 @@ void vbmSetObserverGrid(const double* tSimDay, int n) {
     vbmInit();
     // The very expression vbmEvaluate converts a time with: the library finds a time on its grid by the bits.
     std::vector<double> jd(tSimDay, tSimDay + n);
+    bool increasing = true;
     for (int i = 0; i < n; ++i) {
         jd[i] = tSimDay[i] + SIM_DAY0_JD2450000;
-        CHECK(i == 0 or tSimDay[i] > tSimDay[i - 1]);
+        if (i > 0 and !(tSimDay[i] > tSimDay[i - 1])) increasing = false;
+    }
+    if (!increasing) {
+        // The cache only needs a sorted grid for its lookups; no result depends on it. An empty grid makes every
+        // lookup miss, i.e. the library's own path: slower, same bytes. One line on stderr, nothing on stdout.
+        std::fprintf(stderr, "vbmSetObserverGrid: the %d epochs are not strictly increasing; parallax cache left empty "
+                             "(slower, results unchanged)\n", n);
+        vbm().SetObserverGrid(jd.data(), 0);
+        return;
     }
     vbm().SetObserverGrid(jd.data(), n);
 }

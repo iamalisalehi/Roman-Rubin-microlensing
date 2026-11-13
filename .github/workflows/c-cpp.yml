@@ -18,7 +18,10 @@ jobs:
     - name: Build
       run: make
     - name: Default build carries no CPU-specific flag
-      run: "! make -n -B roman | grep -E -- ' -m(arch|tune|avx|fma|sse|bmi)'"
+      run: |
+        make -n -B roman > make_plan.txt
+        grep -q 'g++' make_plan.txt || { echo "make -n printed no compile line"; exit 1; }
+        ! grep -E -- ' -m[a-z0-9]' make_plan.txt
     - name: Fisher-matrix regression test
       run: make fishertest && ./fishertest
     - name: Extinction-law unit test
@@ -27,6 +30,8 @@ jobs:
       run: make noisetest && ./noisetest
     - name: VBMicrolensing unit test
       run: make vbmtest && ./vbmtest
+    - name: VBMicrolensing parallax-cache test (synthetic grid without the Baseline files)
+      run: make vbmcachetest && ./vbmcachetest
     - name: Light-curve model sky-geometry test
       run: make modeltest && ./modeltest
     - name: Python syntax check

@@ -7,15 +7,21 @@ CXX = g++
 # Fisher sums and silently change the forecast. -flto was measured and gives nothing on top of -O3 (and
 # slows the star-list parser), so it is not used. -g keeps CHECK() aborts backtraceable.
 CXXFLAGS = -O3 -g -Wall -Wextra -std=c++17 -Iinclude -Iconfig
-# CPU-specific flags, opt-in and empty by default so the default build runs on any x86-64, e.g. the
-# laptop's ARCH_FLAGS="-mavx2 -ffp-contract=off". Any flag that enables FMA (-mfma, -march=haswell,
-# -march=native, -march=x86-64-v3) must come with -ffp-contract=off: the VBM observer cache's bit identity
-# relies on vbm_model.o and the VBM object compiling the same interpolation alike. Check any new flag set
-# with tests/identity_check.sh. make does not track flags, so `make clean` before changing them.
+# CPU-specific flags: an opt-in mechanism, empty by default so the build runs on any x86-64. NOT recommended:
+# ARCH_FLAGS="-mavx2 -ffp-contract=off" was measured head to head against plain `make pgo` (5 alternating pairs,
+# sightline 795: bulge 0.991 with range 0.986-1.006, bh 0.991 with 0.970-1.003, both ranges crossing 1.0), so it
+# gave no gain beyond noise. Check any flag set with tests/identity_check.sh. make does not track flags, so
+# `make clean` before changing them.
 ARCH_FLAGS ?=
 CXXFLAGS += $(ARCH_FLAGS)
+# Never let the compiler fuse a multiply and an add (no-op without FMA in the target, as in the default build):
+# the VBM observer cache's two copies of the interpolation (vbm_model.o and the VBM object) and every sum then
+# stay unfused whatever ARCH_FLAGS adds. Last, so that nothing in ARCH_FLAGS can switch it back on.
+CXXFLAGS += -ffp-contract=off
 # Profile-guided optimisation, driven by the `pgo` target below; PGO_MODE is internal and empty by default.
 PGO_DIR ?= $(CURDIR)/build-pgo
+override PGO_DIR := $(abspath $(PGO_DIR))
+PGO_GEN_BIN = $(PGO_DIR)/roman-gen
 PGO_GEN_FLAGS = -fprofile-generate=$(PGO_DIR)/profile -fprofile-update=single
 PGO_USE_FLAGS = -fprofile-use=$(PGO_DIR)/profile -fprofile-partial-training -Wno-missing-profile
 ifeq ($(PGO_MODE),gen)
@@ -83,7 +89,7 @@ build/run/outputs.o: $(GIT_STAMP)
 # parallax. Its own flags: the same -O3 and -std=c++17 as ours and never -ffast-math (tests/vbm_test.cpp
 # checks that its point-source magnification is bit-identical to ours), but -w: warnings in code we do
 # not edit are noise.
-VBM_CXXFLAGS = -O3 -g -std=c++17 -w $(ARCH_FLAGS) $(PGO_FLAGS)
+VBM_CXXFLAGS = -O3 -g -std=c++17 -w $(ARCH_FLAGS) -ffp-contract=off $(PGO_FLAGS)
 
 $(VBM_OBJ): external/VBMicrolensing/VBMicrolensingLibrary.cpp external/VBMicrolensing/VBMicrolensingLibrary.h
 	@mkdir -p $(dir $@)
@@ -171,8 +177,9 @@ $(VBM_TARGET): build/tests/vbm_test.o $(VBM_OBJ)
 # LOCAL ADDITION 2 of the vendored library: the observers' positions computed once per sightline epoch.
 # Two library objects set up as the adapter does, one with the cache; every output array and the
 # extrapolation flag of the light curves compared with memcmp, over three sightlines' epoch grids built
-# from Baseline/BulgeBaseline.dat and RomanBaseline.dat, with off-grid times, a stale grid, a table reload.
-# Needs those two git-ignored inputs; run from the repo root:
+# from Baseline/BulgeBaseline.dat and RomanBaseline.dat (or a synthetic stand-in), with off-grid times, a stale grid, a table reload.
+# Without those two git-ignored inputs it builds a synthetic grid from the committed tables (CI runs it that
+# way); run from the repo root:
 #     make vbmcachetest && ./vbmcachetest
 # ---------------------------------------------------------------------------
 VBMCACHE_TARGET = vbmcachetest
@@ -208,23 +215,35 @@ check-data:
 -include $(OBJS:.o=.d) build/tests/fisher_fixture.d build/tests/extinction_test.d build/tests/noise_test.d build/tests/vbm_test.d build/tests/vbm_cache_test.d build/tests/model_test.d build/tests/parse_test.d
 
 # ---------------------------------------------------------------------------
-# Profile-guided production build:  make clean && make -j2 pgo [ARCH_FLAGS="..."]
+# Profile-guided production build:  make clean && make -j2 pgo     (the production command)
 #
-# Always starts clean: builds an instrumented roman, runs tools/pgo_train.sh (the stub plus bulge and bh
-# sightline 795 at production settings, fixed seeds; profile in $(PGO_DIR)/profile, runs in
-# $(PGO_DIR)/train), then rebuilds roman and fishertest with the profile. If any step fails, ./roman is
-# removed: an instrumented or stale binary must not look current to the pipeline's `make -q roman`.
-# Output bytes do not change (checked with tests/identity_check.sh); the build is about 4-8% faster.
+# Always starts clean: builds an instrumented binary at $(PGO_GEN_BIN), never at ./roman, runs
+# tools/pgo_train.sh with it (the stub plus bulge and bh sightline 795 at production settings, fixed seeds;
+# profile in $(PGO_DIR)/profile, runs in $(PGO_DIR)/train), checks that a profile was written, then rebuilds
+# roman and fishertest with it. ./roman does not exist until the very last step, so an interrupted or failed
+# `make pgo` leaves none (the pipeline's `make -q roman` then fails, as it should). A trap and the failure
+# handler also remove build/ and the instrumented binary; if even that is cut short (power loss), build/ may
+# hold instrumented objects: a plain `make roman` then fails loudly at link time (undefined __gcov_* symbols).
+# After an interrupted `make pgo`, run `make clean`.
+# Output bytes do not change (checked with tests/identity_check.sh). Against the -O3 default the build is
+# about x0.955 in CPU time (sightline 795, bulge; 0.923 against 0.966 relative to the -O2 base); outside the
+# training sightlines x0.959 (bulge 796) and x0.964 (ns 795).
 # ---------------------------------------------------------------------------
 pgo:
-	rm -rf build $(TARGET) $(PGO_DIR)/profile
-	$(MAKE) PGO_MODE=gen $(TARGET) || { rm -rf build $(TARGET); exit 1; }
-	tools/pgo_train.sh $(CURDIR)/$(TARGET) $(PGO_DIR)/train || { rm -rf build $(TARGET); exit 1; }
-	rm -rf build $(TARGET)
-	$(MAKE) PGO_MODE=use $(TARGET) $(FIXTURE_TARGET) || { rm -rf build $(TARGET); exit 1; }
+	rm -rf build $(TARGET) $(PGO_DIR)/profile $(PGO_DIR)/train $(PGO_GEN_BIN)
+	mkdir -p $(PGO_DIR)
+	trap 'rm -rf build $(PGO_GEN_BIN); exit 130' INT TERM HUP; \
+	fail() { rm -rf build $(TARGET) $(PGO_GEN_BIN); exit 1; }; \
+	$(MAKE) PGO_MODE=gen TARGET=$(PGO_GEN_BIN) $(PGO_GEN_BIN) || fail; \
+	tools/pgo_train.sh $(PGO_GEN_BIN) $(PGO_DIR)/train || fail; \
+	[ -n "$$(find $(PGO_DIR)/profile -name '*.gcda' 2>/dev/null | head -n 1)" ] \
+	    || { echo "make pgo: training wrote no profile (*.gcda) in $(PGO_DIR)/profile" >&2; fail; }; \
+	rm -rf build $(PGO_GEN_BIN); \
+	$(MAKE) PGO_MODE=use $(TARGET) $(FIXTURE_TARGET) || fail
 
 .PHONY: pgo
 
-# Clean
+# Clean: only what this Makefile made (PGO_DIR may be set by the user, so the directory itself goes only if empty).
 clean:
-	rm -rf build $(PGO_DIR) $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET) $(NOISE_TARGET) $(VBM_TARGET) $(VBMCACHE_TARGET) $(MODEL_TARGET) $(PARSE_TARGET)
+	rm -rf build $(PGO_DIR)/profile $(PGO_DIR)/train $(PGO_GEN_BIN) $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET) $(NOISE_TARGET) $(VBM_TARGET) $(VBMCACHE_TARGET) $(MODEL_TARGET) $(PARSE_TARGET)
+	-rmdir $(PGO_DIR) 2>/dev/null

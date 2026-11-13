@@ -87,6 +87,9 @@ int readRomanErrorTable(roman& ro) {
         std::cout << "**** File sigma_roman.txt was read: Penny+2019 5-sigma point " << m5
                   << " AB shifted by " << shift << " mag to " << ROMAN_DEPTH5_AB << " ****\n";
     }
+    // errRomanM interpolates log(err); take the logs once, from the final (anchored) err.
+    ro.logErr.resize(NaRoman);
+    for (int i = 0; i < NaRoman; ++i) ro.logErr[i] = std::log(ro.err[i]);
     return 0;
 }
 

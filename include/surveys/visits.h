@@ -30,6 +30,7 @@ struct lsst {
 struct roman {
     std::vector<double> mag;   // NaRoman: mag-vs-error lookup (sigma_roman.txt)
     std::vector<double> err;   // NaRoman
+    std::vector<double> logErr; // NaRoman: log(err), filled by readRomanErrorTable after the anchoring
 
     // Per-visit epoch bookkeeping, mirrors lsst's fields.
     std::vector<int> ct;        // NlRoman -- visible-epoch indices for the current sightline.

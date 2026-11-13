@@ -1,5 +1,6 @@
 // Per-sightline stages of the Monte Carlo: setup before the draws, aggregation after them.
 #include "sim/sightline.h"
+#include "sim/observe.h"
 #include "util/random.h"
 #include "galaxy/density.h"
 #include "galaxy/extinction.h"
@@ -103,6 +104,13 @@ SightlineStart setupSightline(SimContext& ctx, SightlineState& st, const Sightli
     // Point the light-curve model at this sightline: the parallax of an event is the Earth's orbit as seen
     // from here, and the model's frames follow the axes (e_l, e_b) at this (l, b).
     vbmSetSightline(s.lon, s.lat);
+    // The epochs every event's time loop evaluates are the same on the whole sightline: let the model work out
+    // the observers' positions at them once.
+    // (A sightline with no Rubin visit has no grid: the time loop's own bounds read ls.ct[-1] there.)
+    {
+        const std::vector<double> epochs = st.ndd > 0 ? sightlineEpochTimes(st, ls, ro) : std::vector<double>();
+        vbmSetObserverGrid(epochs.data(), int(epochs.size()));
+    }
 
     Disk_model(s, 1);
     st.sightlineIdx = nearestSightline(ex, s.lon, s.lat);

@@ -16,11 +16,24 @@
 #include "run/inputs.h"
 #include <cstdio>
 #include <cmath>
+#include <cstring>
+#include <random>
 
 static int nfail = 0;
 static void expect(bool ok, const char* what, double got, double want) {
     std::printf("%-58s got %9.4f  want %9.4f  %s\n", what, got, want, ok ? "ok" : "FAIL");
     if (!ok) ++nfail;
+}
+
+// The oracle: errRomanM exactly as it was before the table logs were stored (Plan B, Task 2). Kept
+// verbatim on purpose; the optimised errRomanM must return the same bits.
+static double errRomanM_ref(const roman& ro, double mag)
+{
+    if (mag <= ro.mag[0]) return ro.err[0];
+    int i = 1;
+    while (i < NaRoman - 1 and ro.mag[i] < mag) ++i;
+    const double f = (mag - ro.mag[i - 1]) / (ro.mag[i] - ro.mag[i - 1]);
+    return std::exp(std::log(ro.err[i - 1]) + f * (std::log(ro.err[i]) - std::log(ro.err[i - 1])));
 }
 
 int main() {
@@ -86,6 +99,33 @@ int main() {
         const double got = errlsstA(errlsstM(ms[i], 2, m5), fw);
         char what[80]; std::snprintf(what, sizeof what, "Rubin r errlsstA independent of the photometric floor at %s", lab[i]);
         expect(std::fabs(got / want - 1.0) < 1e-9, what, got, want);
+    }
+
+    // (5) errRomanM with stored table logs is bit-identical to the pre-change body.
+    {
+        bool inc = true, logsOk = (ro.logErr.size() == ro.err.size());
+        for (int i = 1; i < NaRoman; ++i) if (!(ro.mag[i] > ro.mag[i - 1])) inc = false;
+        for (int i = 0; logsOk and i < NaRoman; ++i) {
+            const double want = std::log(ro.err[i]);
+            if (std::memcmp(&ro.logErr[i], &want, sizeof want) != 0) logsOk = false;
+        }
+        expect(inc, "Roman table magnitudes strictly increasing", inc, 1.0);
+        expect(logsOk, "Roman logErr[i] == log(err[i]) bitwise", logsOk, 1.0);
+        long n = 0, bad = 0;
+        auto cmp = [&](double m) {
+            const double a = errRomanM(ro, m), b = errRomanM_ref(ro, m);
+            ++n;
+            if (std::memcmp(&a, &b, sizeof a) != 0) ++bad;
+        };
+        for (int i = 0; i < NaRoman; ++i) {
+            cmp(ro.mag[i]);
+            if (i + 1 < NaRoman) cmp(0.5 * (ro.mag[i] + ro.mag[i + 1]));
+        }
+        std::mt19937_64 gen(20261113);
+        std::uniform_real_distribution<double> U(ro.mag[0] - 2.0, ro.mag[NaRoman - 1] + 2.0);
+        for (int k = 0; k < 1000000; ++k) cmp(U(gen));
+        std::printf("errRomanM vs reference: %ld comparisons, %ld differ\n", n, bad);
+        expect(bad == 0, "errRomanM bit-identical to the pre-change body", (double)bad, 0.0);
     }
 
     std::printf("%s (%d failed)\n", nfail ? "FAILED" : "all held", nfail);

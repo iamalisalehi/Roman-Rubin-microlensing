@@ -3,6 +3,7 @@
 #include "events/vbm_model.h"
 #include "events/lightcurve.h"      // magnifOf
 #include "VBMicrolensingLibrary.h"
+#include <cstdio>
 
 namespace {
 
@@ -131,6 +132,9 @@ void vbmInit() {
     // Times are JD - 2450000 as given, not heliocentric (the library would subtract the light-travel time
     // to the Sun and then evaluate the ephemeris there).
     v->t_in_HJD = false;
+    // The observers' positions at the epochs of vbmSetObserverGrid are computed once (LOCAL ADDITION 2): the
+    // results are bit for bit the library's own, and a time off the grid takes its own path.
+    v->SetParallaxCache(true);
     v->Tol = VBM_TOL;
     v->a1 = 0.0;      // a uniform disc: the library's finite-source functions then use its table directly
 
@@ -188,6 +192,26 @@ SkyFrame vbmSetSightline(double lDeg, double bDeg) {
     gSightlineSet = true;
     gFrame = f;
     return f;
+}
+
+void vbmSetObserverGrid(const double* tSimDay, int n) {
+    vbmInit();
+    // The very expression vbmEvaluate converts a time with: the library finds a time on its grid by the bits.
+    std::vector<double> jd(tSimDay, tSimDay + n);
+    bool increasing = true;
+    for (int i = 0; i < n; ++i) {
+        jd[i] = tSimDay[i] + SIM_DAY0_JD2450000;
+        if (i > 0 and !(tSimDay[i] > tSimDay[i - 1])) increasing = false;
+    }
+    if (!increasing) {
+        // The cache only needs a sorted grid for its lookups; no result depends on it. An empty grid makes every
+        // lookup miss, i.e. the library's own path: slower, same bytes. One line on stderr, nothing on stdout.
+        std::fprintf(stderr, "vbmSetObserverGrid: the %d epochs are not strictly increasing; parallax cache left empty "
+                             "(slower, results unchanged)\n", n);
+        vbm().SetObserverGrid(jd.data(), 0);
+        return;
+    }
+    vbm().SetObserverGrid(jd.data(), n);
 }
 
 void vbmSetSourceModel(SourceModel m) { gSourceModel = m; }

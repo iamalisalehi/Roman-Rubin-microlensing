@@ -156,6 +156,29 @@ minutes for two populations on two cores): a new `RUN_ROOT` and
 `STUB=1 STRIDE=1 STRIDE_ROMAN=1 EVENTS=10 LENSES=2 MAXDRAWS=3000 CHUNK_SIZE=10` (the 0.1x0.1 deg patch is 36
 sightlines; the stub fails with the production strides).
 
+## Building for production
+
+`make clean && make -j2 pgo`: a profile-guided build (about 3 minutes on two cores: an instrumented binary in
+`build-pgo/`, three short training runs, final build; needs the input files). Elsewhere, or without the inputs, a
+plain `make` is enough: `-O3`, no CPU-specific flags. Against the plain `make` the PGO build takes about x0.955 of
+the CPU time (bulge, sightline 795), x0.959 on a sightline outside the training (bulge 796) and x0.964 (ns 795). The
+output bytes are the same in all of them. `ARCH_FLAGS="-mavx2 -ffp-contract=off"` exists as an opt-in but gave no gain
+beyond noise (measured head to head against plain `make pgo`), so it is not recommended. `make pgo` never leaves an
+instrumented binary at `./roman`: it is built in `build-pgo/` and `./roman` appears only at the very end, so an
+interrupted `make pgo` leaves none; run `make clean` after one.
+
+After `make pgo` the pipeline's build stage finds `./roman` current and keeps it. Re-run `make pgo` after any commit
+and before a launch: a new commit restamps `run/outputs.o`, and the pipeline's plain `make roman` would then relink a
+binary that is partly not PGO (same bytes, but not the binary that was checked). Before a production launch, run
+`tests/identity_check.sh` against a plain `make` build of the same commit. `make` does not track flags: `make clean`
+before changing them.
+
+**Compiler.** The CMD star-list reader uses `std::from_chars` for `double`, which libstdc++ has from GCC 11 (the
+`__cpp_lib_to_chars` feature-test macro, which `<charconv>` defines only together with the floating-point overloads;
+established from libstdc++'s headers, GCC 16 here, and its release notes: GCC 8-10 have the integer overloads only). With
+an older or another compiler the code still builds and reads every token through `istringstream`: identical values,
+slower at start-up, and `parsetest` fails, so the fallback cannot go unnoticed. For the fast path use g++ 11 or newer.
+
 ## Slurm example
 
 The compute nodes must see the clone (a shared file system). `setup`, `fetch` and `prep` are serial and need

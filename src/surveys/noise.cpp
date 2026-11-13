@@ -62,8 +62,10 @@ double errRomanA(double errPhotMag)
 double errRomanM(const roman& ro, double mag)
 {
     if (mag <= ro.mag[0]) return ro.err[0];
-    int i = 1;
-    while (i < NaRoman - 1 and ro.mag[i] < mag) ++i;
+    CHECK(ro.logErr.size() == ro.err.size());   // the table went through readRomanErrorTable
+    // First node >= mag among 1..NaRoman-2, else NaRoman-1 (the table is strictly increasing).
+    const int i = int(std::lower_bound(ro.mag.begin() + 1, ro.mag.begin() + (NaRoman - 1), mag) - ro.mag.begin());
     const double f = (mag - ro.mag[i - 1]) / (ro.mag[i] - ro.mag[i - 1]);
-    return std::exp(std::log(ro.err[i - 1]) + f * (std::log(ro.err[i]) - std::log(ro.err[i - 1])));
+    const double logA = ro.logErr[i - 1], logB = ro.logErr[i];
+    return std::exp(logA + f * (logB - logA));
 }

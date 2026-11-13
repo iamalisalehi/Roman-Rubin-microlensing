@@ -183,7 +183,8 @@ public:
 	// ====================================================================================================
 	// LOCAL ADDITION to VBMicrolensing v5.6.1 (upstream commit db4f95267d74): NOT part of the library as
 	// distributed by its authors. Added 2026-10-11 for the Roman-Rubin simulator, which vendors this copy.
-	// This is the only change to the upstream files; remove the method and the library is unmodified.
+	// This is one of two local changes to the upstream files (the other is LOCAL ADDITION 2, below); remove the
+	// method and that part of the library is unmodified.
 	//
 	// EarthVelocityOnSky(t0, v) returns in v[0], v[1] the Earth's velocity at time t0 projected on the sky
 	// at the target set by SetObjectCoordinates, along celestial South and West, in AU/day (t0 in the
@@ -212,6 +213,144 @@ public:
 		v[0] = vt0[0]; v[1] = vt0[1];	// South, West [AU/day]
 		t0old = t0parold = 1.e200;
 	}
+	// ====================================================================================================
+	// ====================================================================================================
+	// LOCAL ADDITION 2 (2026-11-13) to VBMicrolensing v5.6.1: NOT part of the library as distributed by its
+	// authors. Added for the Roman-Rubin simulator, which vendors this copy. Only lines were added; none of
+	// upstream's was changed or removed (external/VBMicrolensing/README.md, "Local modifications").
+	//
+	// ComputeParallax(t, t0) works out, at every call, where the observers are at time t: the Earth's
+	// ecliptic position Ear(t), interpolated linearly in the daily Sun table, and, for a satellite, its
+	// position Spit(t), found by a binary search of its table and interpolated. Neither depends on the
+	// target or on the event (t0, tE, ...), only on t and on the loaded tables, and a simulation evaluates
+	// the same epochs thousands of times. SetObserverGrid(t, n) computes them once for n strictly increasing
+	// times t[] (JD - 2450000, the units of the light curves), by the very expressions ComputeParallax uses,
+	// and stores them with the value those expressions would give parallaxextrapolation (1: outside the Sun
+	// table, 2: outside the satellite's). ComputeParallax then, when t is a grid time bit for bit, writes
+	// the stored doubles where it would have computed them and runs every other line unchanged and in its
+	// order (the light-travel term, the projections on rad and tang, the geocentric-frame offsets Et): the
+	// results are identical, bit for bit. A t that is not on the grid takes upstream's lines.
+	//
+	// Used only when SetParallaxCache(true) has been called (off by default: the library is then upstream's),
+	// parallaxephemeris is set and t_in_HJD is false. LoadSunTable and the two-argument SetObjectCoordinates
+	// (which reload the tables) empty the grid; a change of target does not, nothing stored depends on it.
+	// An unsorted or non-finite t[] leaves the grid empty. Not thread-safe, like the rest of the library.
+	// pc_hits and pc_misses count the lookups, for tests.
+	// ====================================================================================================
+	long long pc_hits = 0, pc_misses = 0;
+	void SetParallaxCache(bool on) { pc_on = on; }
+	void SetObserverGrid(const double* t, int n) {
+		PCClear();
+		if (n <= 0) return;
+		for (int i = 0; i < n; i++) {
+			if (!(t[i] - t[i] == 0.0)) return;			// NaN or infinite
+			if (i > 0 && !(t[i] > t[i - 1])) return;	// not strictly increasing
+		}
+		if (!suntable) LoadSunTable(Suntablefile);	// as ComputeParallax does
+		if (!suntable) return;
+		pc_t.assign(t, t + n);
+		pc_ear.assign(3 * (size_t)n, 0.0);
+		pc_flagE.assign((size_t)n, 0);
+		for (int k = 0; k < n; k++) {
+			// Exactly the Earth's interpolation of ComputeParallax, clamps included.
+			double ty = (t[k] - startEar) / stepEar;
+			int ic = (int)floor(ty);
+			ty -= ic;
+			if (ic < 0) { pc_flagE[k] = 1; ic = 0; ty = 0; }
+			if (ic >= ndataEar) { pc_flagE[k] = 1; ic = ndataEar - 1; ty = 1; }
+			for (int i = 0; i < 3; i++) pc_ear[3 * (size_t)k + i] = posEar[ic][i] * (1 - ty) + posEar[ic + 1][i] * ty;
+		}
+		pc_sp.assign((size_t)nsat, std::vector<double>());
+		pc_flagS.assign((size_t)nsat, std::vector<unsigned char>());
+		for (int s = 0; s < nsat; s++) {
+			if (ndatasat[s] <= 2) continue;	// ComputeParallax skips such a satellite
+			pc_sp[s].assign(3 * (size_t)n, 0.0);
+			pc_flagS[s].assign((size_t)n, 0);
+			for (int k = 0; k < n; k++) {
+				// Exactly the satellite's search and interpolation of ComputeParallax.
+				int ic, left, right;
+				if (t[k] < tsat[s][0]) {
+					ic = 0;
+					pc_flagS[s][k] = 1;
+				}
+				else {
+					if (t[k] > tsat[s][ndatasat[s] - 1]) {
+						ic = ndatasat[s] - 2;
+						pc_flagS[s][k] = 1;
+					}
+					else {
+						left = 0;
+						right = ndatasat[s] - 1;
+						while (right - left > 1) {
+							ic = (right + left) / 2;
+							if (tsat[s][ic] > t[k]) {
+								right = ic;
+							}
+							else {
+								left = ic;
+							}
+						}
+						ic = left;
+					}
+				}
+				double ty = (t[k] - tsat[s][ic]) / (tsat[s][ic + 1] - tsat[s][ic]);
+				for (int i = 0; i < 3; i++) pc_sp[s][3 * (size_t)k + i] = possat[s][ic][i] * (1 - ty) + possat[s][ic + 1][i] * ty;
+			}
+		}
+		pc_cur.assign((size_t)nsat + 1, 0);
+		pc_n = n;
+	}
+private:
+	bool pc_on = false;
+	int pc_n = 0;						// number of grid times; 0 = no grid
+	std::vector<double> pc_t, pc_ear;	// grid times; Ear(t) of each, 3 per time
+	std::vector<unsigned char> pc_flagE;	// 1 where the Earth's interpolation was clamped (parallaxextrapolation = 1)
+	std::vector<std::vector<double> > pc_sp;	// per satellite: Spit(t) of each grid time, 3 per time
+	std::vector<std::vector<unsigned char> > pc_flagS;	// 1 where the satellite's table was extrapolated (= 2)
+	std::vector<int> pc_cur;			// per observer (0 = Earth, k = satellite k): the last grid index found
+	void PCClear() {
+		pc_n = 0;
+		pc_t.clear(); pc_ear.clear(); pc_flagE.clear(); pc_sp.clear(); pc_flagS.clear(); pc_cur.clear();
+	}
+	static bool PCSame(double a, double b) {
+		unsigned long long x, y;
+		memcpy(&x, &a, sizeof x);
+		memcpy(&y, &b, sizeof y);
+		return x == y;
+	}
+	// The grid index of the time t, found by the equality of its bits, or -1. The next grid time after the
+	// last one found (the order of a time loop) costs one comparison; a later time is found by galloping
+	// forward from there; an earlier one by bisection of everything before.
+	int PCFind(double t, int observer) {
+		if (pc_n == 0 || observer < 0 || observer >= (int)pc_cur.size()) { pc_misses++; return -1; }
+		const double* g = pc_t.data();
+		const int n = pc_n;
+		const int cur = pc_cur[observer];
+		int lo, hi;
+		if (t >= g[cur]) {
+			if (PCSame(g[cur], t)) { pc_hits++; return cur; }
+			if (cur + 1 < n && PCSame(g[cur + 1], t)) { pc_hits++; return pc_cur[observer] = cur + 1; }
+			lo = cur;
+			int step = 1;
+			hi = cur + 1;
+			while (hi < n && g[hi] < t) { lo = hi; step *= 2; hi = lo + step; }
+			if (hi > n) hi = n;
+		}
+		else {
+			lo = 0;
+			hi = cur;
+		}
+		// the first index in [lo, hi) with g >= t, or hi (for a NaN t every comparison fails: lo)
+		while (lo < hi) {
+			const int mid = lo + (hi - lo) / 2;
+			if (g[mid] < t) lo = mid + 1; else hi = mid;
+		}
+		if (lo < n && PCSame(g[lo], t)) { pc_hits++; return pc_cur[observer] = lo; }
+		pc_misses++;
+		return -1;
+	}
+public:
+	// END LOCAL ADDITION 2
 	// ====================================================================================================
 	// Skowron & Gould root calculation
 	void cmplx_roots_gen(complex*, complex*, int, bool, bool);

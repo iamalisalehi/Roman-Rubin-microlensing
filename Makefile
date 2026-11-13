@@ -117,7 +117,7 @@ $(NOISE_TARGET): build/tests/noise_test.o $(LIB_OBJS)
 #
 # Pins the buffered from_chars reader (src/util/parse.cpp) and read_cmd against std::istream: every
 # token of the four CMD component files, the whole CMD struct against a verbatim copy of the istream
-# read_cmd, and synthetic token forms. Reads the CMD star lists (~630 MB, a few minutes of CPU; two
+# read_cmd, and synthetic token forms. Reads the CMD star lists (~630 MB, about a minute of CPU; two
 # CMD structs are read one after the other, ~700 MB each); run from the repo root:
 #     make parsetest && ./parsetest
 # ---------------------------------------------------------------------------

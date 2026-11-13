@@ -319,6 +319,20 @@ static void testSynthetic()
         g.close();
         expect(lockstep(path, 4, nullptr), "(c) header only, then EOF");
     }
+    // A last token with no trailing whitespace, straddling a refill or not; whitespace-only and empty files.
+    {
+        const char* bodies[] = {"hdr\n11 22 33 4444", "hdr\n11 22 33 4444.5e-3", "hdr\n7", "hdr\n  \t 12345678901234567",
+                                "hdr\n1 2", "hdr\n   \n  \r\n\t ", "hdr\n", "hdr", "", "\n\n  "};
+        int bad = 0;
+        for (const char* body : bodies)
+            for (size_t bsz : {size_t(4), size_t(5), size_t(8), size_t(9), size_t(16), size_t(1) << 20}) {
+                std::ofstream f(path, std::ios::binary);
+                f << body;
+                f.close();
+                if (!lockstep(path, bsz, nullptr)) ++bad;
+            }
+        expect(bad == 0, "(c) last token without trailing whitespace, whitespace-only, empty files (" + std::to_string(bad) + " mismatches)");
+    }
     // A long token (longer than the buffer) is read whole.
     {
         std::string longTok = "0." + std::string(200, '1');

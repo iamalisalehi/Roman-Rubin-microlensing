@@ -69,8 +69,9 @@ bool TextReader::next(double& out)
         while (e < len_ and !isWs(buf_[e])) ++e;
         if (e < len_) break;
         const size_t tokLen = e - pos_;
-        if (!more()) break;               // end of file ends the token
-        e = pos_ + tokLen;                // more() moved the token to the front
+        const bool got = more();
+        e = pos_ + tokLen;                // more() moved the token to the front, even when it read nothing
+        if (!got) break;                  // end of file ends the token
     }
     const char* p = buf_.data() + pos_;
     const char* end = buf_.data() + e;

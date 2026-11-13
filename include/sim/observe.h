@@ -10,4 +10,10 @@
 // and the sample-dump buffer. Fills the light-curve arrays of `l` up to the returned ndw. Draws random numbers.
 LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st);
 
+// The epochs of the time loop on this sightline, strictly increasing [simulation days]: the times simulateLightCurve
+// lays out for every event (the grid depends only on what setupSightline matched for the sightline, not on the event),
+// and the times the Fisher matrices then see (they are copies of them). Needs ls and ro matched to the sightline.
+// setupSightline hands them to the light-curve model (vbmSetObserverGrid).
+std::vector<double> sightlineEpochTimes(const SightlineState& st, const lsst& ls, const roman& ro);
+
 #endif // ROMAN_SIM_OBSERVE_H

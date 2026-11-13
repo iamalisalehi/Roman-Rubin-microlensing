@@ -59,8 +59,8 @@ build/tests/%.o: tests/%.cpp
 # run/outputs.o prints GIT_COMMIT into run_provenance.txt; rebuild it when the stamp changes.
 build/run/outputs.o: $(GIT_STAMP)
 
-# VBMicrolensing (external/VBMicrolensing/, LGPL-3.0, copied from upstream with one local addition to the
-# header, see its README): finite-source magnification, astrometric centroids and ephemeris-based
+# VBMicrolensing (external/VBMicrolensing/, LGPL-3.0, copied from upstream with two local additions, see its README):
+# finite-source magnification, astrometric centroids and ephemeris-based
 # parallax. Its own flags: the same -O2 and -std=c++17 as ours and never -ffast-math (tests/vbm_test.cpp
 # checks that its point-source magnification is bit-identical to ours), but -w: warnings in code we do
 # not edit are noise.
@@ -69,6 +69,10 @@ VBM_CXXFLAGS = -O2 -g -std=c++17 -w
 $(VBM_OBJ): external/VBMicrolensing/VBMicrolensingLibrary.cpp external/VBMicrolensing/VBMicrolensingLibrary.h
 	@mkdir -p $(dir $@)
 	$(CXX) $(VBM_CXXFLAGS) -c $< -o $@
+
+# The header is included with -isystem, which -MMD leaves out of the .d files, and it holds inline code
+# (LOCAL ADDITION 1 and 2): say here which objects depend on it.
+build/events/vbm_model.o build/tests/vbm_test.o build/tests/vbm_cache_test.o build/tests/model_test.o: external/VBMicrolensing/VBMicrolensingLibrary.h
 
 # ---------------------------------------------------------------------------
 # Fisher-matrix regression fixture (tests/fisher_fixture.cpp)
@@ -143,6 +147,21 @@ $(VBM_TARGET): build/tests/vbm_test.o $(VBM_OBJ)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 # ---------------------------------------------------------------------------
+# Test of the VBMicrolensing parallax cache (tests/vbm_cache_test.cpp)
+#
+# LOCAL ADDITION 2 of the vendored library: the observers' positions computed once per sightline epoch.
+# Two library objects set up as the adapter does, one with the cache; every output array and the
+# extrapolation flag of the light curves compared with memcmp, over three sightlines' epoch grids built
+# from Baseline/BulgeBaseline.dat and RomanBaseline.dat, with off-grid times, a stale grid, a table reload.
+# Needs those two git-ignored inputs; run from the repo root:
+#     make vbmcachetest && ./vbmcachetest
+# ---------------------------------------------------------------------------
+VBMCACHE_TARGET = vbmcachetest
+
+$(VBMCACHE_TARGET): build/tests/vbm_cache_test.o $(VBM_OBJ)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+# ---------------------------------------------------------------------------
 # Sky-geometry unit test of the light-curve model (tests/model_test.cpp)
 #
 # Pins the adapter to VBMicrolensing (src/events/vbm_model.cpp) and the Galactic axes of the kinematics
@@ -167,8 +186,8 @@ check-data:
 .PHONY: check-data
 
 # Header dependencies written by -MMD
--include $(OBJS:.o=.d) build/tests/fisher_fixture.d build/tests/extinction_test.d build/tests/noise_test.d build/tests/vbm_test.d build/tests/model_test.d build/tests/parse_test.d
+-include $(OBJS:.o=.d) build/tests/fisher_fixture.d build/tests/extinction_test.d build/tests/noise_test.d build/tests/vbm_test.d build/tests/vbm_cache_test.d build/tests/model_test.d build/tests/parse_test.d
 
 # Clean
 clean:
-	rm -rf build $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET) $(NOISE_TARGET) $(VBM_TARGET) $(MODEL_TARGET) $(PARSE_TARGET)
+	rm -rf build $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET) $(NOISE_TARGET) $(VBM_TARGET) $(VBMCACHE_TARGET) $(MODEL_TARGET) $(PARSE_TARGET)

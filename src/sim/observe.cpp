@@ -117,6 +117,16 @@ void buildTimeGrid(const SightlineState& st, const lsst& ls, const roman& ro, st
 
 } // namespace
 
+std::vector<double> sightlineEpochTimes(const SightlineState& st, const lsst& ls, const roman& ro)
+{
+    std::vector<TimeStep> grid;
+    buildTimeGrid(st, ls, ro, grid);
+    std::vector<double> t;
+    t.reserve(grid.size());
+    for (const TimeStep& step : grid) t.push_back(step.tim);
+    return t;
+}
+
 LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
     source& s = ctx.s;
     lens& l = ctx.l;

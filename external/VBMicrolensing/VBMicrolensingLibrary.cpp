@@ -6486,6 +6486,7 @@ void VBMicrolensing::LoadSunTable(char* filename) {
 	FILE* f;
 	double RA, Dec, dis, phiprec;
 
+	PCClear();	// LOCAL ADDITION 2: the tables change, the observers' grid is void
 	if ((f = fopen(filename, "r")) != 0) {
 		if (suntable) {
 			// Removing existing table if any
@@ -6602,6 +6603,7 @@ void VBMicrolensing::SetObjectCoordinates(char* modelfile, char* sateltabledir) 
 		fscanf(f, "%[^\n]s", CoordinateString);
 		fclose(f);
 		SetObjectCoordinates(CoordinateString);
+		PCClear();	// LOCAL ADDITION 2: the satellite tables are reloaded below, the observers' grid is void
 
 		// Removing any preiovusly loaded satellite table files
 		if (nsat) {
@@ -6776,6 +6778,9 @@ void VBMicrolensing::ComputeParallax(double t, double t0) {
 	static double x1, y1, vx, vy, Ear[3], vEar[3];
 	static double r, sp, ty, Spit, dLtof;
 	int c = 0, ic;
+	// LOCAL ADDITION 2 (2026-11-13): index of t on the observers' grid (SetObserverGrid), -1 if not used.
+	int pc_k = -1;
+	// END LOCAL ADDITION 2
 
 	if (!coordinates_set) {
 		printf("\nUse SetObjectCoordinates to input target coordinates");
@@ -6873,12 +6878,20 @@ void VBMicrolensing::ComputeParallax(double t, double t0) {
 
 
 
+		// LOCAL ADDITION 2 (2026-11-13): on the observers' grid, the stored Ear(t) (and the flag its clamps
+		// would set) instead of the interpolation below. ty and ic are dead after this block.
+		if (pc_on && !t_in_HJD && (pc_k = PCFind(t, satellite)) >= 0) {
+			for (int i = 0; i < 3; i++) Ear[i] = pc_ear[3 * (size_t)pc_k + i];
+			if (pc_flagE[pc_k]) parallaxextrapolation = 1;
+		} else {
+		// END LOCAL ADDITION 2
 		ty = (t - startEar) / stepEar;
 		ic = (int)floor(ty);
 		ty -= ic;
 		if (ic < 0) { parallaxextrapolation = 1; ic = 0; ty = 0; }
 		if (ic >= ndataEar) { parallaxextrapolation = 1; ic = ndataEar - 1; ty = 1; }
 		for (int i = 0; i < 3; i++) Ear[i] = posEar[ic][i] * (1 - ty) + posEar[ic + 1][i] * ty;
+		}	// LOCAL ADDITION 2
 		lighttravel = 0;
 		for (int i = 0; i < 3; i++) lighttravel += Ear[i] * Obj[i];
 		lighttravel *= au_c;
@@ -7116,6 +7129,16 @@ void VBMicrolensing::ComputeParallax(double t, double t0) {
 
 	if (satellite > 0 && satellite <= nsat) {
 		if (ndatasat[satellite - 1] > 2) {
+			// LOCAL ADDITION 2 (2026-11-13): on the grid, the stored Spit(t) and flag instead of the search below.
+			if (pc_k >= 0) {
+				if (pc_flagS[satellite - 1][pc_k]) parallaxextrapolation = 2;
+				for (int i = 0; i < 3; i++) {
+					Spit = pc_sp[satellite - 1][3 * (size_t)pc_k + i];
+					Et[0] += Spit * rad[i];
+					Et[1] += Spit * tang[i];
+				}
+			} else {
+			// END LOCAL ADDITION 2
 			int left, right;
 			if (t < tsat[satellite - 1][0]) {
 				ic = 0;
@@ -7147,6 +7170,7 @@ void VBMicrolensing::ComputeParallax(double t, double t0) {
 				Et[0] += Spit * rad[i];
 				Et[1] += Spit * tang[i];
 			}
+			}	// LOCAL ADDITION 2
 		}
 	}
 }

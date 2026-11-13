@@ -52,6 +52,12 @@ void vbmInit();
 // The frame stays available to the rest of the code through vbmSkyFrame until the next call.
 SkyFrame vbmSetSightline(double lDeg, double bDeg);
 
+// Hands the library the epochs [simulation days, strictly increasing] that the light curves of the current sightline
+// will be evaluated at, again and again: it then computes the observers' positions at them once (VBMicrolensing's
+// LOCAL ADDITION 2) instead of at every call. Results are bit for bit those without it; a time not on the grid, or
+// a grid never set, only costs the old time. Replaces the previous grid. Calls vbmInit if needed.
+void vbmSetObserverGrid(const double* tSimDay, int n);
+
 // The current sightline's sky frame; throws if no sightline has been set.
 const SkyFrame& vbmSkyFrame();
 

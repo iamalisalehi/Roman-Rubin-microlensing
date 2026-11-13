@@ -33,6 +33,7 @@ bin/
 /noisetest
 /parsetest
 /vbmtest
+/vbmcachetest
 /modeltest
 .git_stamp
 *.log

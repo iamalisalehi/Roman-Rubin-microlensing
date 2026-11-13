@@ -17,6 +17,8 @@ jobs:
         sudo apt-get install -y libgsl-dev
     - name: Build
       run: make
+    - name: Default build carries no CPU-specific flag
+      run: "! make -n -B roman | grep -E -- ' -m(arch|tune|avx|fma|sse|bmi)'"
     - name: Fisher-matrix regression test
       run: make fishertest && ./fishertest
     - name: Extinction-law unit test

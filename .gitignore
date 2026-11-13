@@ -73,3 +73,4 @@ CLAUDE.md
 !external/VBMicrolensing/data/SunEphemeris.txt
 !files/ephemeris/satellite1.txt
 !files/ephemeris/target.txt
+/build-pgo/

@@ -1,10 +1,29 @@
 # Compiler and flags
 CXX = g++
-# -O2 is required: without it the Monte Carlo runs ~5x slower. Results are unchanged
-# because GCC does not reorder floating-point arithmetic without -ffast-math; -O3 gives no
-# further gain. Do NOT add -ffast-math: it would let the compiler reassociate the chi-squared
-# and Fisher sums and silently change the forecast. -g keeps CHECK() aborts backtraceable.
-CXXFLAGS = -O2 -g -Wall -Wextra -std=c++17 -Iinclude -Iconfig
+# -O3 is byte-identical to -O2 (tests/identity_check.sh, 2026-11-13) and about 3% faster; without
+# optimisation the Monte Carlo runs ~5x slower. GCC does not reorder floating-point arithmetic without
+# -ffast-math, so the results are unchanged. NEVER add -ffast-math, -Ofast, -funsafe-math-optimizations,
+# -fassociative-math or -freciprocal-math: they would let the compiler reassociate the chi-squared and
+# Fisher sums and silently change the forecast. -flto was measured and gives nothing on top of -O3 (and
+# slows the star-list parser), so it is not used. -g keeps CHECK() aborts backtraceable.
+CXXFLAGS = -O3 -g -Wall -Wextra -std=c++17 -Iinclude -Iconfig
+# CPU-specific flags, opt-in and empty by default so the default build runs on any x86-64, e.g. the
+# laptop's ARCH_FLAGS="-mavx2 -ffp-contract=off". Any flag that enables FMA (-mfma, -march=haswell,
+# -march=native, -march=x86-64-v3) must come with -ffp-contract=off: the VBM observer cache's bit identity
+# relies on vbm_model.o and the VBM object compiling the same interpolation alike. Check any new flag set
+# with tests/identity_check.sh. make does not track flags, so `make clean` before changing them.
+ARCH_FLAGS ?=
+CXXFLAGS += $(ARCH_FLAGS)
+# Profile-guided optimisation, driven by the `pgo` target below; PGO_MODE is internal and empty by default.
+PGO_DIR ?= $(CURDIR)/build-pgo
+PGO_GEN_FLAGS = -fprofile-generate=$(PGO_DIR)/profile -fprofile-update=single
+PGO_USE_FLAGS = -fprofile-use=$(PGO_DIR)/profile -fprofile-partial-training -Wno-missing-profile
+ifeq ($(PGO_MODE),gen)
+PGO_FLAGS = $(PGO_GEN_FLAGS)
+else ifeq ($(PGO_MODE),use)
+PGO_FLAGS = $(PGO_USE_FLAGS)
+endif
+CXXFLAGS += $(PGO_FLAGS)
 # The vendored VBMicrolensing header is included as a system header: our -Wall -Wextra apply to our
 # code, not to third-party code we do not edit.
 CXXFLAGS += -isystem external/VBMicrolensing
@@ -61,10 +80,10 @@ build/run/outputs.o: $(GIT_STAMP)
 
 # VBMicrolensing (external/VBMicrolensing/, LGPL-3.0, copied from upstream with two local additions, see its README):
 # finite-source magnification, astrometric centroids and ephemeris-based
-# parallax. Its own flags: the same -O2 and -std=c++17 as ours and never -ffast-math (tests/vbm_test.cpp
+# parallax. Its own flags: the same -O3 and -std=c++17 as ours and never -ffast-math (tests/vbm_test.cpp
 # checks that its point-source magnification is bit-identical to ours), but -w: warnings in code we do
 # not edit are noise.
-VBM_CXXFLAGS = -O2 -g -std=c++17 -w
+VBM_CXXFLAGS = -O3 -g -std=c++17 -w $(ARCH_FLAGS) $(PGO_FLAGS)
 
 $(VBM_OBJ): external/VBMicrolensing/VBMicrolensingLibrary.cpp external/VBMicrolensing/VBMicrolensingLibrary.h
 	@mkdir -p $(dir $@)
@@ -188,6 +207,24 @@ check-data:
 # Header dependencies written by -MMD
 -include $(OBJS:.o=.d) build/tests/fisher_fixture.d build/tests/extinction_test.d build/tests/noise_test.d build/tests/vbm_test.d build/tests/vbm_cache_test.d build/tests/model_test.d build/tests/parse_test.d
 
+# ---------------------------------------------------------------------------
+# Profile-guided production build:  make clean && make -j2 pgo [ARCH_FLAGS="..."]
+#
+# Always starts clean: builds an instrumented roman, runs tools/pgo_train.sh (the stub plus bulge and bh
+# sightline 795 at production settings, fixed seeds; profile in $(PGO_DIR)/profile, runs in
+# $(PGO_DIR)/train), then rebuilds roman and fishertest with the profile. If any step fails, ./roman is
+# removed: an instrumented or stale binary must not look current to the pipeline's `make -q roman`.
+# Output bytes do not change (checked with tests/identity_check.sh); the build is about 4-8% faster.
+# ---------------------------------------------------------------------------
+pgo:
+	rm -rf build $(TARGET) $(PGO_DIR)/profile
+	$(MAKE) PGO_MODE=gen $(TARGET) || { rm -rf build $(TARGET); exit 1; }
+	tools/pgo_train.sh $(CURDIR)/$(TARGET) $(PGO_DIR)/train || { rm -rf build $(TARGET); exit 1; }
+	rm -rf build $(TARGET)
+	$(MAKE) PGO_MODE=use $(TARGET) $(FIXTURE_TARGET) || { rm -rf build $(TARGET); exit 1; }
+
+.PHONY: pgo
+
 # Clean
 clean:
-	rm -rf build $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET) $(NOISE_TARGET) $(VBM_TARGET) $(VBMCACHE_TARGET) $(MODEL_TARGET) $(PARSE_TARGET)
+	rm -rf build $(PGO_DIR) $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET) $(NOISE_TARGET) $(VBM_TARGET) $(VBMCACHE_TARGET) $(MODEL_TARGET) $(PARSE_TARGET)

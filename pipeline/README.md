@@ -156,6 +156,15 @@ minutes for two populations on two cores): a new `RUN_ROOT` and
 `STUB=1 STRIDE=1 STRIDE_ROMAN=1 EVENTS=10 LENSES=2 MAXDRAWS=3000 CHUNK_SIZE=10` (the 0.1x0.1 deg patch is 36
 sightlines; the stub fails with the production strides).
 
+## Building for production
+
+On the laptop: `make clean && make -j2 pgo ARCH_FLAGS="-mavx2 -ffp-contract=off"`, a profile-guided build
+(about 3 minutes on two cores: instrumented build, three short training runs, final build; needs the input
+files). Elsewhere a plain `make` is enough: `-O3`, no CPU-specific flags (`ARCH_FLAGS` is empty by default). The
+output bytes are the same in all of them. After `make pgo` the pipeline's build stage finds `./roman`
+current and keeps it. Before a production launch, run `tests/identity_check.sh` against a plain `make` build of
+the same commit. `make` does not track flags: `make clean` before changing them.
+
 ## Slurm example
 
 The compute nodes must see the clone (a shared file system). `setup`, `fetch` and `prep` are serial and need

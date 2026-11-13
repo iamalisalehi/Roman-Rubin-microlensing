@@ -1,5 +1,6 @@
 // Reading the CMD component files and the lens mass-luminosity table.
 #include "galaxy/catalogue.h"
+#include "util/parse.h"
 
 // Stellar radius [Rsun] from the bolometric magnitude and log10 Teff: L/Lsun = 10^(-0.4 (Mbol - MbolSun))
 // and L = 4 pi R^2 sigma Teff^4 give R/Rsun = 10^(-0.2 (Mbol - MbolSun)) (TeffSun / Teff)^2. The same
@@ -16,30 +17,29 @@ void read_cmd(CMD & cm)
 // 0     1     2     3    4    5           6       7       8       9       10      11      12  13
     double Mbol, Pop;
     double dummy;
-    std::string header;
 
     // ================================ THIN DISK =============================
-    std::ifstream fp2(PATH_CMD_THIN);
-    if (!fp2.is_open()) {
+    TextReader rd(PATH_CMD_THIN);
+    if (!rd.isOpen()) {
         throw std::runtime_error(std::string("cannot read ") + PATH_CMD_THIN);
     }
 
-    std::getline(fp2, header);   // Skip the header line
+    rd.skipLine();   // Skip the header line
     for (size_t j = 0; j < N1; ++j) {
-          if (!(fp2 >> cm.mass_thin[j]
-                    >> cm.logT_thin[j]
-                    >> Mbol
-                    >> cm.age_thin[j]
-                    >> Pop
-                    >> cm.Mab_thin[j][6]
-                    >> cm.Mab_thin[j][0]
-                    >> cm.Mab_thin[j][1]
-                    >> cm.Mab_thin[j][2]
-                    >> cm.Mab_thin[j][3]
-                    >> cm.Mab_thin[j][4]
-                    >> cm.Mab_thin[j][5]
-                    >> cm.cl_thin[j]
-                    >> cm.typ_thin[j])) {
+          if (!(rd.next(cm.mass_thin[j])
+                    and rd.next(cm.logT_thin[j])
+                    and rd.next(Mbol)
+                    and rd.next(cm.age_thin[j])
+                    and rd.next(Pop)
+                    and rd.next(cm.Mab_thin[j][6])
+                    and rd.next(cm.Mab_thin[j][0])
+                    and rd.next(cm.Mab_thin[j][1])
+                    and rd.next(cm.Mab_thin[j][2])
+                    and rd.next(cm.Mab_thin[j][3])
+                    and rd.next(cm.Mab_thin[j][4])
+                    and rd.next(cm.Mab_thin[j][5])
+                    and rd.next(cm.cl_thin[j])
+                    and rd.next(cm.typ_thin[j]))) {
               throw std::runtime_error("Unexpected end of thin_disk.dat");
           }
         cm.Rstar_thin[j] = stellarRadius(Mbol, cm.logT_thin[j]);
@@ -55,31 +55,30 @@ void read_cmd(CMD & cm)
       }
 
     // Make sure there's no extra data.
-    CHECK(!(fp2 >> dummy));
-    fp2.close();
+    CHECK(!rd.next(dummy));
 
     // ================================ BULGE ==================================
-    fp2.open(PATH_CMD_BULGE);
-    if (!fp2.is_open()) {
+    rd.open(PATH_CMD_BULGE);
+    if (!rd.isOpen()) {
         throw std::runtime_error(std::string("cannot read ") + PATH_CMD_BULGE);
     }
 
-    std::getline(fp2, header);   // Skip the header line
+    rd.skipLine();   // Skip the header line
     for (size_t j = 0; j < N2; ++j) {
-          if (!(fp2 >> cm.mass_bulge[j]
-                    >> cm.logT_bulge[j]
-                    >> Mbol
-                    >> cm.age_bulge[j]
-                    >> Pop
-                    >> cm.Mab_bulge[j][6]
-                    >> cm.Mab_bulge[j][0]
-                    >> cm.Mab_bulge[j][1]
-                    >> cm.Mab_bulge[j][2]
-                    >> cm.Mab_bulge[j][3]
-                    >> cm.Mab_bulge[j][4]
-                    >> cm.Mab_bulge[j][5]
-                    >> cm.cl_bulge[j]
-                    >> cm.typ_bulge[j])) {
+          if (!(rd.next(cm.mass_bulge[j])
+                    and rd.next(cm.logT_bulge[j])
+                    and rd.next(Mbol)
+                    and rd.next(cm.age_bulge[j])
+                    and rd.next(Pop)
+                    and rd.next(cm.Mab_bulge[j][6])
+                    and rd.next(cm.Mab_bulge[j][0])
+                    and rd.next(cm.Mab_bulge[j][1])
+                    and rd.next(cm.Mab_bulge[j][2])
+                    and rd.next(cm.Mab_bulge[j][3])
+                    and rd.next(cm.Mab_bulge[j][4])
+                    and rd.next(cm.Mab_bulge[j][5])
+                    and rd.next(cm.cl_bulge[j])
+                    and rd.next(cm.typ_bulge[j]))) {
               throw std::runtime_error("Unexpected end of bulge.dat");
           }
         cm.Rstar_bulge[j] = stellarRadius(Mbol, cm.logT_bulge[j]);
@@ -93,31 +92,30 @@ void read_cmd(CMD & cm)
         CHECK(std::isfinite(cm.Rstar_bulge[j]) and cm.Rstar_bulge[j] > 0.0);
     }
 
-    CHECK(!(fp2 >> dummy));
-    fp2.close();
+    CHECK(!rd.next(dummy));
 
     // ================================ THICK DISK =============================
-    fp2.open(PATH_CMD_THICK);
-    if (!fp2.is_open()) {
+    rd.open(PATH_CMD_THICK);
+    if (!rd.isOpen()) {
         throw std::runtime_error(std::string("cannot read ") + PATH_CMD_THICK);
     }
 
-    std::getline(fp2, header);   // Skip the header line
+    rd.skipLine();   // Skip the header line
     for (size_t j = 0; j < N3; ++j) {
-          if (!(fp2 >> cm.mass_thick[j]
-                    >> cm.logT_thick[j]
-                    >> Mbol
-                    >> cm.age_thick[j]
-                    >> Pop
-                    >> cm.Mab_thick[j][6]
-                    >> cm.Mab_thick[j][0]
-                    >> cm.Mab_thick[j][1]
-                    >> cm.Mab_thick[j][2]
-                    >> cm.Mab_thick[j][3]
-                    >> cm.Mab_thick[j][4]
-                    >> cm.Mab_thick[j][5]
-                    >> cm.cl_thick[j]
-                    >> cm.typ_thick[j])) {
+          if (!(rd.next(cm.mass_thick[j])
+                    and rd.next(cm.logT_thick[j])
+                    and rd.next(Mbol)
+                    and rd.next(cm.age_thick[j])
+                    and rd.next(Pop)
+                    and rd.next(cm.Mab_thick[j][6])
+                    and rd.next(cm.Mab_thick[j][0])
+                    and rd.next(cm.Mab_thick[j][1])
+                    and rd.next(cm.Mab_thick[j][2])
+                    and rd.next(cm.Mab_thick[j][3])
+                    and rd.next(cm.Mab_thick[j][4])
+                    and rd.next(cm.Mab_thick[j][5])
+                    and rd.next(cm.cl_thick[j])
+                    and rd.next(cm.typ_thick[j]))) {
               throw std::runtime_error("Unexpected end of thick_disk.dat");
           }
         cm.Rstar_thick[j] = stellarRadius(Mbol, cm.logT_thick[j]);
@@ -131,31 +129,30 @@ void read_cmd(CMD & cm)
         CHECK(std::isfinite(cm.Rstar_thick[j]) and cm.Rstar_thick[j] > 0.0);
     }
 
-    CHECK(!(fp2 >> dummy));
-    fp2.close();
+    CHECK(!rd.next(dummy));
 
     // ================================ STELLAR HALO ===========================
-    fp2.open(PATH_CMD_HALO);
-    if (!fp2.is_open()) {
+    rd.open(PATH_CMD_HALO);
+    if (!rd.isOpen()) {
         throw std::runtime_error(std::string("cannot read ") + PATH_CMD_HALO);
     }
 
-    std::getline(fp2, header);   // Skip the header line
+    rd.skipLine();   // Skip the header line
     for (size_t j = 0; j < N4; ++j) {
-          if (!(fp2 >> cm.mass_halo[j]
-                    >> cm.logT_halo[j]
-                    >> Mbol
-                    >> cm.age_halo[j]
-                    >> Pop
-                    >> cm.Mab_halo[j][6]
-                    >> cm.Mab_halo[j][0]
-                    >> cm.Mab_halo[j][1]
-                    >> cm.Mab_halo[j][2]
-                    >> cm.Mab_halo[j][3]
-                    >> cm.Mab_halo[j][4]
-                    >> cm.Mab_halo[j][5]
-                    >> cm.cl_halo[j]
-                    >> cm.typ_halo[j])) {
+          if (!(rd.next(cm.mass_halo[j])
+                    and rd.next(cm.logT_halo[j])
+                    and rd.next(Mbol)
+                    and rd.next(cm.age_halo[j])
+                    and rd.next(Pop)
+                    and rd.next(cm.Mab_halo[j][6])
+                    and rd.next(cm.Mab_halo[j][0])
+                    and rd.next(cm.Mab_halo[j][1])
+                    and rd.next(cm.Mab_halo[j][2])
+                    and rd.next(cm.Mab_halo[j][3])
+                    and rd.next(cm.Mab_halo[j][4])
+                    and rd.next(cm.Mab_halo[j][5])
+                    and rd.next(cm.cl_halo[j])
+                    and rd.next(cm.typ_halo[j]))) {
               throw std::runtime_error("Unexpected end of halo.dat");
           }
         cm.Rstar_halo[j] = stellarRadius(Mbol, cm.logT_halo[j]);
@@ -169,8 +166,7 @@ void read_cmd(CMD & cm)
         CHECK(std::isfinite(cm.Rstar_halo[j]) and cm.Rstar_halo[j] > 0.0);
     }
 
-    CHECK(!(fp2 >> dummy));
-    fp2.close();
+    CHECK(!rd.next(dummy));
 
     std::cout << ">>>>>>>>>>>>>>>>>> END OF CMD READING <<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl;
 }

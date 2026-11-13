@@ -113,6 +113,20 @@ $(NOISE_TARGET): build/tests/noise_test.o $(LIB_OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 # ---------------------------------------------------------------------------
+# Input-reader unit test (tests/parse_test.cpp)
+#
+# Pins the buffered from_chars reader (src/util/parse.cpp) and read_cmd against std::istream: every
+# token of the four CMD component files, the whole CMD struct against a verbatim copy of the istream
+# read_cmd, and synthetic token forms. Reads the CMD star lists (~630 MB, a few minutes of CPU; two
+# CMD structs are read one after the other, ~700 MB each); run from the repo root:
+#     make parsetest && ./parsetest
+# ---------------------------------------------------------------------------
+PARSE_TARGET = parsetest
+
+$(PARSE_TARGET): build/tests/parse_test.o $(LIB_OBJS)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+# ---------------------------------------------------------------------------
 # VBMicrolensing unit test (tests/vbm_test.cpp)
 #
 # Pins the vendored library against independent references: finite-source magnification against
@@ -153,8 +167,8 @@ check-data:
 .PHONY: check-data
 
 # Header dependencies written by -MMD
--include $(OBJS:.o=.d) build/tests/fisher_fixture.d build/tests/extinction_test.d build/tests/noise_test.d build/tests/vbm_test.d build/tests/model_test.d
+-include $(OBJS:.o=.d) build/tests/fisher_fixture.d build/tests/extinction_test.d build/tests/noise_test.d build/tests/vbm_test.d build/tests/model_test.d build/tests/parse_test.d
 
 # Clean
 clean:
-	rm -rf build $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET) $(NOISE_TARGET) $(VBM_TARGET) $(MODEL_TARGET)
+	rm -rf build $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET) $(NOISE_TARGET) $(VBM_TARGET) $(MODEL_TARGET) $(PARSE_TARGET)

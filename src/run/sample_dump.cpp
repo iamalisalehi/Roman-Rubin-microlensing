@@ -126,8 +126,8 @@ bool parseSampleSpec(const std::string& path, SampleSpec& spec)
 //   <class>_<id>_model.dat   a dense noise-free model curve, in BOTH observer frames
 //   <class>_<id>_params.dat  the event's true parameters and its forecast sigmas
 //
-// The dense curve is regenerated here rather than taken from the time loop, whose adaptive
-// step goes coarse in the wings. It asks the model for the whole grid, once per observer frame,
+// The dense curve is regenerated here rather than taken from the time loop, which evaluates only at the
+// visits; the dump has its own dense grid. It asks the model for the whole grid, once per observer frame,
 // and consumes no RNG.
 void writeSampleEvent(const SampleSpec& spec, const std::string& cls,
                              const std::string& id, const std::vector<DumpEpoch>& buf,

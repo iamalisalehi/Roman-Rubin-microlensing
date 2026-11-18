@@ -142,6 +142,19 @@ $(NOISE_TARGET): build/tests/noise_test.o $(LIB_OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 # ---------------------------------------------------------------------------
+# Time-grid unit test (tests/timegrid_test.cpp)
+#
+# Pins buildTimeGrid (src/sim/timegrid.cpp): the merged union of the two surveys' matched visit times,
+# coincident visits, one-survey sightlines, and every visit appearing once. Needs no data files; run
+# from the repo root:
+#     make timegridtest && ./timegridtest
+# ---------------------------------------------------------------------------
+TIMEGRID_TARGET = timegridtest
+
+$(TIMEGRID_TARGET): build/tests/timegrid_test.o $(LIB_OBJS)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+# ---------------------------------------------------------------------------
 # Input-reader unit test (tests/parse_test.cpp)
 #
 # Pins the buffered from_chars reader (src/util/parse.cpp) and read_cmd against std::istream: every
@@ -212,7 +225,7 @@ check-data:
 .PHONY: check-data
 
 # Header dependencies written by -MMD
--include $(OBJS:.o=.d) build/tests/fisher_fixture.d build/tests/extinction_test.d build/tests/noise_test.d build/tests/vbm_test.d build/tests/vbm_cache_test.d build/tests/model_test.d build/tests/parse_test.d
+-include $(OBJS:.o=.d) build/tests/fisher_fixture.d build/tests/extinction_test.d build/tests/noise_test.d build/tests/vbm_test.d build/tests/vbm_cache_test.d build/tests/model_test.d build/tests/parse_test.d build/tests/timegrid_test.d
 
 # ---------------------------------------------------------------------------
 # Profile-guided production build:  make clean && make -j2 pgo     (the production command)
@@ -245,5 +258,5 @@ pgo:
 
 # Clean: only what this Makefile made (PGO_DIR may be set by the user, so the directory itself goes only if empty).
 clean:
-	rm -rf build $(PGO_DIR)/profile $(PGO_DIR)/train $(PGO_GEN_BIN) $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET) $(NOISE_TARGET) $(VBM_TARGET) $(VBMCACHE_TARGET) $(MODEL_TARGET) $(PARSE_TARGET)
+	rm -rf build $(PGO_DIR)/profile $(PGO_DIR)/train $(PGO_GEN_BIN) $(TARGET) $(FIXTURE_TARGET) $(EXT_TARGET) $(NOISE_TARGET) $(TIMEGRID_TARGET) $(VBM_TARGET) $(VBMCACHE_TARGET) $(MODEL_TARGET) $(PARSE_TARGET)
 	-rmdir $(PGO_DIR) 2>/dev/null

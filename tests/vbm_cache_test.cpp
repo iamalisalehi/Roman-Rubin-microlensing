@@ -95,9 +95,10 @@ static void tableRange(const char* path, double& first, double& last) {
     }
 }
 
-// An epoch grid the way the simulator lays one out (src/sim/observe.cpp): strictly increasing simulation
-// days, here in the library's clock (t + SIM_DAY0_JD2450000, the expression vbmEvaluate uses). Rubin's visit
-// days and Roman's epochs, thinned differently for each sightline, plus the padding steps either side.
+// A synthetic epoch grid, in the spirit of the simulator's (visits plus padding points, a superset of what
+// the time loop evaluates): strictly increasing simulation days, here in the library's clock
+// (t + SIM_DAY0_JD2450000, the expression vbmEvaluate uses). Rubin's visit days and Roman's epochs, thinned
+// differently for each sightline, plus padding points either side. It still exercises the cache.
 static std::vector<double> makeGrid(const std::vector<double>& rubin, const std::vector<double>& roman, int k) {
     std::vector<double> t;
     for (double x : {-100.0, -40.0, 20.0}) t.push_back(x);

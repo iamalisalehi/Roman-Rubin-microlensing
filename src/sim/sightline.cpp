@@ -106,9 +106,8 @@ SightlineStart setupSightline(SimContext& ctx, SightlineState& st, const Sightli
     vbmSetSightline(s.lon, s.lat);
     // The epochs every event's time loop evaluates are the same on the whole sightline: let the model work out
     // the observers' positions at them once.
-    // (A sightline with no Rubin visit has no grid: the time loop's own bounds read ls.ct[-1] there.)
     {
-        const std::vector<double> epochs = st.ndd > 0 ? sightlineEpochTimes(st, ls, ro) : std::vector<double>();
+        const std::vector<double> epochs = sightlineEpochTimes(st, ls, ro);
         vbmSetObserverGrid(epochs.data(), int(epochs.size()));
     }
 

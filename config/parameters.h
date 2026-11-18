@@ -205,9 +205,10 @@ constexpr double EXT_SCATTER_TRUNC_NSIGMA = 1.0;
 // consecutive epochs are flagged (and more than 2 epochs have been taken).
 constexpr double OUTLIER_FLAG_NSIGMA = 3.0;
 constexpr double OUTLIER_RUN_THRESHOLD = 2.0;
-// Light-curve time-loop step [days] outside the Rubin visit window (the loop advances by
-// min(this, Roman's cadence); inside the window it follows the local visit spacing).
-constexpr double TIME_STEP_OUTSIDE_LSST_DAYS = 3.0;
+// The time grid's one point before the first visit [days]: it seeds the source-velocity diagnostic's previous
+// deflection (the velocity at a visit is a difference of consecutive epochs' deflections), and is the only epoch
+// that is not a visit's own time.
+constexpr double GRID_SEED_LEAD_DAYS = 3.0;
 
 // Rubin's saturation relative to each visit's own 5-sigma depth: saturation = fiveSigmaDepth -
 // RUBIN_SATU_BELOW_M5. Ivezic et al. 2019 give a saturation limit at r ~ 16 for a 24.35 design depth.

@@ -17,8 +17,9 @@ SourceModel gSourceModel = SourceModel::ESPL;
 // position and velocity from rows around the requested time without checking the range.
 double gSunFirst = 0.0, gSunLast = 0.0;
 
-// The time loop starts 100 days before the survey and ends 100 days after it (src/sim/observe.cpp), and the
-// sample dump's grid spans the same days; the ephemerides must cover them, with a little to spare.
+// The time grid runs from GRID_SEED_LEAD_DAYS before the first matched visit to the last one
+// (src/sim/timegrid.cpp), but the sample dump's grid (src/run/sample_dump.cpp) still spans 100 days before
+// the survey to 100 days after it; the ephemerides must cover those days, with a little to spare.
 constexpr double MODEL_PAD_DAYS = 120.0;
 
 // The library's Julian year, the unit of the proper motions in its astrometric parameters [mas/yr]. Not the

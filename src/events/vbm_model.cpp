@@ -106,7 +106,7 @@ void vbmInit() {
     requireReadable(targetPath, "the placeholder target; python tools/make_roman_l2_ephemeris.py writes it");
     requireReadable(romanPath, "Roman's ephemeris; python tools/make_roman_l2_ephemeris.py writes it");
 
-    // The ephemerides must cover the simulation, [0, Tobs] days and the padding the time loop adds. The library extrapolates silently past a
+    // The ephemerides must cover the simulation, [0, Tobs] days and the padding of the sample dump's -100..+100 d grid (the time loop adds none). The library extrapolates silently past a
     // satellite table, and reads outside the Sun table, which holds the rows around the time it is asked
     // for (up to two beyond it).
     double sunFirst, sunLast, romanFirst, romanLast;

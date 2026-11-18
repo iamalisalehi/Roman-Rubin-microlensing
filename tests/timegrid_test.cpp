@@ -115,11 +115,11 @@ static void seasonStartsExact()
 static void romanOnlySightline()
 {
     const char* name = "romanOnlySightline";
-    const std::vector<int> emptyCt;
-    const std::vector<double> emptyTim;                // a correct builder never indexes these
+    const std::vector<int> poisonCt = {0};             // ndd = 0: a correct builder never indexes these;
+    const std::vector<double> poisonTim = {-1.0e9};    // one that did would put the seed near -1e9
     const List b = makeList({306.0, 306.0084});
     std::vector<TimeStep> g;
-    buildTimeGrid(0, emptyCt, emptyTim, b.n(), b.ct, b.tim, g);
+    buildTimeGrid(0, poisonCt, poisonTim, b.n(), b.ct, b.tim, g);
     if (g.size() != 3) { fail(name, "size " + std::to_string(g.size())); return; }
     const double tim[3] = {303.0, 306.0, 306.0084};
     for (int i = 0; i < 3; ++i) {
@@ -127,6 +127,26 @@ static void romanOnlySightline()
         if (g[i].rubin or g[i].sq != -1) { fail(name, "Rubin flag/index at " + std::to_string(i)); return; }
     }
     if (g[0].roman or not g[1].roman or not g[2].roman) { fail(name, "Roman flags"); return; }
+    std::string why;
+    if (not allStepsPositive(g, why)) { fail(name, why); return; }
+    pass(name);
+}
+
+static void romanFirstBothSurveys()
+{
+    const char* name = "romanFirstBothSurveys";
+    const List a = makeList({10.0}), b = makeList({4.0});
+    const auto g = build(a, b);
+    if (g.size() != 3) { fail(name, "size " + std::to_string(g.size())); return; }
+    const double tim[3] = {1.0, 4.0, 10.0};
+    const int    rub[3] = {0, 0, 1};
+    const int    rom[3] = {0, 1, 0};
+    const double dt[3]  = {3.0, 3.0, 6.0};
+    for (int i = 0; i < 3; ++i) {
+        if (g[i].tim != tim[i]) { fail(name, "tim at " + std::to_string(i)); return; }
+        if (g[i].rubin != bool(rub[i]) or g[i].roman != bool(rom[i])) { fail(name, "flags at " + std::to_string(i)); return; }
+        if (std::fabs(g[i].dt - dt[i]) > 1e-12) { fail(name, "dt at " + std::to_string(i)); return; }
+    }
     std::string why;
     if (not allStepsPositive(g, why)) { fail(name, why); return; }
     pass(name);
@@ -194,6 +214,7 @@ int main()
     coincidentVisits();
     seasonStartsExact();
     romanOnlySightline();
+    romanFirstBothSurveys();
     rubinOnlySightline();
     emptySightline();
     everyVisitOnce();

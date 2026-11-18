@@ -225,7 +225,7 @@ check-data:
 .PHONY: check-data
 
 # Header dependencies written by -MMD
--include $(OBJS:.o=.d) build/tests/fisher_fixture.d build/tests/extinction_test.d build/tests/noise_test.d build/tests/vbm_test.d build/tests/vbm_cache_test.d build/tests/model_test.d build/tests/parse_test.d
+-include $(OBJS:.o=.d) build/tests/fisher_fixture.d build/tests/extinction_test.d build/tests/noise_test.d build/tests/vbm_test.d build/tests/vbm_cache_test.d build/tests/model_test.d build/tests/parse_test.d build/tests/timegrid_test.d
 
 # ---------------------------------------------------------------------------
 # Profile-guided production build:  make clean && make -j2 pgo     (the production command)

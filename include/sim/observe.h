@@ -5,7 +5,7 @@
 
 #include "sim/state.h"
 
-// Steps the event through time, taking Rubin and Roman epochs as they fall due, drawing the noisy
+// Walks the event through the sightline's epoch grid (the visits' own times), drawing the noisy
 // photometry and astrometry and accumulating the chi-squared sums, epoch counts, resolution tallies
 // and the sample-dump buffer. Fills the light-curve arrays of `l` up to the returned ndw. Draws random numbers.
 LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st);

@@ -28,6 +28,8 @@ jobs:
       run: make extinctiontest && ./extinctiontest
     - name: Astrometric error-model unit test
       run: make noisetest && ./noisetest
+    - name: Time-grid unit test
+      run: make timegridtest && ./timegridtest
     - name: VBMicrolensing unit test
       run: make vbmtest && ./vbmtest
     - name: VBMicrolensing parallax-cache test (synthetic grid without the Baseline files)

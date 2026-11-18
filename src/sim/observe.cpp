@@ -1,14 +1,15 @@
 // The light curve as the two surveys record it: the time loop over epochs, with Rubin's ugrizy block,
-// Roman's F146 block and the adaptive step size. The hot path -- ~10^5 epochs per draw in the
+// Roman's F146 block and the merged time grid. The hot path -- ~10^5 epochs per draw in the
 // Roman footprint -- so the accounting loop's working variables are locals of this function (set to the
 // LightCurveStats defaults on entry, copied into the returned struct on exit) rather than members
 // reached through a reference.
 //
 // The loop runs in three phases, because the model is meant to come from a library that computes whole
 // light curves and the time grid does not depend on the model:
-//   1. the time grid: every epoch, with the visit each survey would take there. The step length comes
-//      only from the two visit cadences, and the visit pointers advance whether or not a visit passes
-//      the magnitude gate, so the grid is the same for any model and is laid out first (buildTimeGrid);
+//   1. the time grid: the merge of the two surveys' matched visit lists, every epoch being a visit's own
+//      time (coincident visits share one epoch), plus a seed point just before the first. The grid comes
+//      only from the visit lists, whether or not a visit later passes the magnitude gate, so it is the
+//      same for any model and is laid out first (buildTimeGrid, src/sim/timegrid.cpp);
 //   2. the model: the grid handed over in blocks, as arrays of epochs, one observer per call --
 //      Rubin's frame at every epoch, Roman's at the epochs where Roman takes a visit (evaluateTrack),
 //      with the absolute positions only when the sample dump will write them;
@@ -17,6 +18,7 @@
 //      values phase 2 produced.
 // The random numbers are drawn only in phase 3, in the order of the epochs.
 #include "sim/observe.h"
+#include "sim/timegrid.h"
 #include "util/random.h"
 #include "events/lightcurve.h"
 #include "surveys/noise.h"
@@ -32,15 +34,6 @@ bool isRubinRefBand(int fi)
     return false;
 }
 
-// One epoch of the time grid, and what the two surveys do there.
-struct TimeStep {
-    double tim;         // [days]
-    double dt;          // the step length in force at this epoch (chosen at the previous one) [days]
-    int    sq, sqR;     // the next visit due in Rubin's / Roman's list; sqR = -1 if Roman has none left
-    bool   rubin;       // Rubin's branch takes the visit sq here
-    bool   roman;       // Roman's branch takes the visit sqR here
-};
-
 // Epochs handed to the model per call. Large enough that a library's per-call overhead is negligible,
 // small enough that the model values (~150 bytes an epoch) stay in cache until the accounting reads them.
 constexpr std::size_t MODEL_BLOCK = 1024;
@@ -52,75 +45,12 @@ struct TimeLoopBuffers {
     std::vector<TrackPoint> atRubin, atRoman;     // the model at those epochs
 };
 
-// Phase 1. Walks the event's clock from 100 days before the survey to 100 days after, a step at a time,
-// the step being the sooner of the two surveys' next-visit gaps (60 days outside the survey). Records
-// each epoch with the visit each survey takes there.
-void buildTimeGrid(const SightlineState& st, const lsst& ls, const roman& ro, std::vector<TimeStep>& grid)
-{
-    const int    ndd = st.ndd, nddR = st.nddR;
-    const double minc = st.minc, mincR = st.mincR;
-    const double initial = 0.0;   // legacy padding of the time window [days]; always 0
-
-    double dt = 60.0;///days
-    double cade = 0.0, cadeR = 0.0;
-    int    gi = 0, giR = 0;       // the next visit due in each survey's matched list
-
-    grid.clear();
-    for (double tim = float(0.0 * year - 100.0 - initial);  tim < float(10.0 * year + 100.0 + initial); tim = tim + dt) {
-        TimeStep step;
-        step.tim = tim;
-        step.dt  = dt;
-        step.sq  = int(ls.ct[gi]);
-        step.sqR = (nddR > 0 and giR < nddR) ? int(ro.ct[giR]) : -1;
-        const int sq = step.sq, sqR = step.sqR;
-
-        step.rubin = (tim >= 0.0 and tim <= Tobs and tim >= ls.tim[int(ls.ct[0])] and tim <= ls.tim[int(ls.ct[ndd - 1])] and
-                      gi < ndd and sq >= 0 and sq <= static_cast<int>(Nl) and tim >= ls.tim[sq]);
-        step.roman = (nddR > 0 and tim >= 0.0 and tim <= Tobs and
-                      tim >= ro.tim[int(ro.ct[0])] and tim <= ro.tim[int(ro.ct[nddR - 1])] and
-                      giR < nddR and sqR >= 0 and sqR <= static_cast<int>(NlRoman) and tim >= ro.tim[sqR]);
-        // A survey's pointer moves past its visit when it takes it, whether or not the visit then passes
-        // the magnitude gate.
-        if (step.rubin) { gi  += 1; CHECK(gi  <= ndd);  }
-        if (step.roman) { giR += 1; CHECK(giR <= nddR); }
-        grid.push_back(step);
-
-        // ---------------- Adaptive step size ----------------
-        // dt must respect whichever instrument's next epoch is sooner; LSST's cadence alone
-        // would step over Roman's much denser epochs.
-        if ( tim < -50.0 or tim > (10.0 * year + 50.0)) {
-            dt = 60.0; //days
-        }
-
-        else {
-            bool lsstInWindow  = (tim >= ls.tim[int(ls.ct[0])] and tim <= ls.tim[int(ls.ct[ndd - 1])]);
-            bool romanInWindow = (nddR > 0 and tim >= ro.tim[int(ro.ct[0])] and tim <= ro.tim[int(ro.ct[nddR - 1])]);
-
-            if (lsstInWindow) {
-                if (gi > 0 and gi < ndd) cade = float(ls.tim[int(ls.ct[gi])] - ls.tim[int(ls.ct[gi - 1])]); //days
-                else cade = minc;
-            } else {
-                cade = TIME_STEP_OUTSIDE_LSST_DAYS; //days
-            }
-
-            if (romanInWindow) {
-                if (giR > 0 and giR < nddR) cadeR = float(ro.tim[int(ro.ct[giR])] - ro.tim[int(ro.ct[giR - 1])]); //days
-                else cadeR = mincR;
-            } else {
-                cadeR = cade; // Roman not active right now — don't let it constrain dt
-            }
-
-            dt = double(std::min(cade, cadeR));
-        }
-    }
-}
-
 } // namespace
 
 std::vector<double> sightlineEpochTimes(const SightlineState& st, const lsst& ls, const roman& ro)
 {
     std::vector<TimeStep> grid;
-    buildTimeGrid(st, ls, ro, grid);
+    buildTimeGrid(st.ndd, ls.ct, ls.tim, st.nddR, ro.ct, ro.tim, grid);
     std::vector<double> t;
     t.reserve(grid.size());
     for (const TimeStep& step : grid) t.push_back(step.tim);
@@ -172,8 +102,8 @@ LightCurveStats simulateLightCurve(SimContext& ctx, const SightlineState& st) {
     cout << "************** DETECTABLE!!!!!! ********" << endl;
     s.nsdet[s.nums] += 1.0;
 
-    // Phase 1: the time grid.
-    buildTimeGrid(st, ls, ro, grid);
+    // Phase 1: the time grid, the two surveys' matched visits merged (include/sim/timegrid.h).
+    buildTimeGrid(st.ndd, ls.ct, ls.tim, st.nddR, ro.ct, ro.tim, grid);
 
     // The absolute positions of source, lens and centroid (a second library call, the astrometric track,
     // about as costly as the photometric one) are read by the sample dump and by the astrometric

@@ -67,13 +67,29 @@ class Run:
         self.logs = [os.path.join(directory, f) for f in ("run.log", "run2.log")
                      if os.path.exists(os.path.join(directory, f))]
         extra = [c for c in R.keep_columns(self.table, self.map, convention) if c not in COLS]
-        self.df = R.load_events(self.table, usecols=COLS + extra, chunksize=chunksize,
-                                keep=R.keep_weightable(self.map, self.logs))
+        # Every figure here is over detected (or characterised) events, so only those rows are kept:
+        # all three populations' draws together (56M rows on the 2026-11-19 production run) do not fit
+        # in a laptop's memory. A row's weight comes from the map file, not from the other rows, so the
+        # detected rows' weights are unchanged. The sky map's grid spans every weightable draw's
+        # (lon, lat), so that range is recorded while reading.
+        weightable = R.keep_weightable(self.map, self.logs)
+        self.lon_range, self.lat_range = [np.inf, -np.inf], [np.inf, -np.inf]
+
+        def keep(c):
+            m = (np.ones(len(c), bool) if weightable is None
+                 else np.asarray(weightable(c), bool))
+            if m.any():
+                for col, rng in (("lon", self.lon_range), ("lat", self.lat_range)):
+                    v = c[col].to_numpy(float)[m]
+                    rng[0], rng[1] = min(rng[0], v.min()), max(rng[1], v.max())
+            return m & ((c["detL"] == 1) | (c["detR"] == 1) | (c["detJ"] == 1)).to_numpy()
+
+        self.df = R.load_events(self.table, usecols=COLS + extra, chunksize=chunksize, keep=keep)
         w, self.wlabel = R.attach_weight(self.df, self.map, self.logs,
                                          convention=convention)
         self.df["W"] = w
         self.neff = R.kish_neff(w)
-        print(f"  {name}: {len(self.df):,} draws, "
+        print(f"  {name}: {len(self.df):,} detected draws, "
               f"{int((self.df.detJ == 1).sum()):,} joint detections, N_eff={self.neff:,.0f}")
 
     @property
@@ -274,8 +290,8 @@ def fig_sky(runs, out):
     good &= (d["sigtE_J"].to_numpy(float) / d["tE"].to_numpy(float) < 0.1)
 
     nb = 26
-    lb = np.linspace(lon.min(), lon.max(), nb + 1)
-    bb = np.linspace(lat.min(), lat.max(), nb + 1)
+    lb = np.linspace(r.lon_range[0], r.lon_range[1], nb + 1)   # every weightable draw's extent
+    bb = np.linspace(r.lat_range[0], r.lat_range[1], nb + 1)
     yield_, _, _ = np.histogram2d(lon[det], lat[det], bins=[lb, bb], weights=w[det])
     nchar, _, _ = np.histogram2d(lon[good], lat[good], bins=[lb, bb], weights=w[good])
     cnt, _, _ = np.histogram2d(lon[det], lat[det], bins=[lb, bb])

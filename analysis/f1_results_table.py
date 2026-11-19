@@ -40,6 +40,8 @@ DEFAULT_EDGES = "10,30,100,300,inf"
 # conventions. Reading only these keeps every row in memory but ~1/8 of the columns: the 2026-11-19
 # production tables (14-24M rows) were OOM-killed when read whole on a 7.8 GB laptop. A column missing
 # from this list fails loudly (KeyError), never silently.
+# The columns are stored narrow (float32/int32; lon and lat stay float64 for the sightline match): with
+# usecols alone the bulge table (23.7M rows) still swapped a 7.8 GB laptop to its limit.
 COLUMNS = ["Ds", "Ml", "Vt", "detJ", "detL", "detR", "lat", "lon", "ndw_R", "okA_J", "okA_L", "okA_R",
            "pKeep", "piE", "sigpiE_J", "sigpiE_R", "sigtE_J", "sigtE_R", "t0zone", "tE", "w_area"]
 
@@ -137,7 +139,7 @@ def main():
     # Stream the table and drop rows of barren sightlines (no nsim, weight 0, no detection) as
     # they are read; reading it whole can exhaust memory on a small machine.
     df = R.load_events(a.events, keep=R.keep_weightable(a.map, a.log), chunksize=a.chunksize,
-                       usecols=COLUMNS)
+                       usecols=COLUMNS, narrow=True)
     w, wn, wlabel = R.attach_weights(df, a.map, a.log, a.unweighted, convention=a.convention)
     df["W"], df["Wn"] = w, wn
     print(f"weighting: {wlabel}")

@@ -364,17 +364,19 @@ def sanity_checks(p, ep, mo):
     if smax > cap * (1.0 + 1e-6):
         raise AssertionError(f"centroid shift {smax} exceeds thetaE/(2 sqrt 2) = {cap}")
 
-    # 3. Parallax gauge: lightcurve() measures the observer's displacement from Earth's position
-    #    at t = 0, so u and u_noplx must coincide there in the Earth frame; in the L2 frame the
-    #    residual is the satellite-parallax offset, ~1e-3.
-    i0 = int(np.argmin(np.abs(m0["t"])))
-    i1 = int(np.argmin(np.abs(m1["t"])))
+    # 3. Parallax gauge: since VBMicrolensing light curves (Deviation 109) the dumped u_noplx is the
+    #    straight line through the event in VBM's geocentric frame, which touches the parallax
+    #    trajectory at t0 (src/events/lightcurve.cpp, uNoPlx). So u and u_noplx coincide at t0 in the
+    #    Earth frame; in the L2 frame the residual is the satellite-parallax offset (~1e-4).
+    t0 = float(p["t0"])
+    i0 = int(np.argmin(np.abs(m0["t"] - t0)))
+    i1 = int(np.argmin(np.abs(m1["t"] - t0)))
     g0 = abs(m0["u"][i0] - m0["u0"][i0])
     g1 = abs(m1["u"][i1] - m1["u0"][i1])
-    lines.append(f"gauge at t=0: |u - u_noplx| = {g0:.2e} (Earth, must be ~0), "
+    lines.append(f"gauge at t0: |u - u_noplx| = {g0:.2e} (Earth, must be ~0), "
                  f"{g1:.2e} (L2, the satellite offset)")
-    if m0["t"][i0] == 0.0 and g0 > 1e-9:
-        raise AssertionError(f"parallax gauge broken: |u - u0| = {g0} at t = 0 (Earth)")
+    if abs(m0["t"][i0] - t0) < 1e-6 and g0 > 1e-6:
+        raise AssertionError(f"parallax gauge broken: |u - u_noplx| = {g0} at t0 (Earth)")
     return lines
 
 

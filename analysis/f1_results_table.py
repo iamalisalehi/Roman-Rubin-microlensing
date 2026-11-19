@@ -35,6 +35,14 @@ import gbtds_geometry as G
 
 DEFAULT_EDGES = "10,30,100,300,inf"
 
+# The event-table columns this script reads (summarise, assign_field, romanlib's detection, ratio,
+# characterisation and weight helpers, and keep_weightable), traced on the 2026-11-18 smoke tables in both
+# conventions. Reading only these keeps every row in memory but ~1/8 of the columns: the 2026-11-19
+# production tables (14-24M rows) were OOM-killed when read whole on a 7.8 GB laptop. A column missing
+# from this list fails loudly (KeyError), never silently.
+COLUMNS = ["Ds", "Ml", "Vt", "detJ", "detL", "detR", "lat", "lon", "ndw_R", "okA_J", "okA_L", "okA_R",
+           "pKeep", "piE", "sigpiE_J", "sigpiE_R", "sigtE_J", "sigtE_R", "t0zone", "tE", "w_area"]
+
 
 def assign_field(df, visits):
     """Field label per event, from its sightline (gbtds_geometry.field_label)."""
@@ -128,7 +136,8 @@ def main():
 
     # Stream the table and drop rows of barren sightlines (no nsim, weight 0, no detection) as
     # they are read; reading it whole can exhaust memory on a small machine.
-    df = R.load_events(a.events, keep=R.keep_weightable(a.map, a.log), chunksize=a.chunksize)
+    df = R.load_events(a.events, keep=R.keep_weightable(a.map, a.log), chunksize=a.chunksize,
+                       usecols=COLUMNS)
     w, wn, wlabel = R.attach_weights(df, a.map, a.log, a.unweighted, convention=a.convention)
     df["W"], df["Wn"] = w, wn
     print(f"weighting: {wlabel}")

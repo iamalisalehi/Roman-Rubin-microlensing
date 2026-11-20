@@ -847,8 +847,8 @@ static double combineRel(double a, double b)
 // The data of the two matrices are independent (the photometric/astrometric split: each holds the other's own
 // parameters at their true values), so their information on x ADDS: I = I_A + I_B, C = I^-1. Without rho the
 // photometric matrix informs ln piE only, I_A = diag(0, 1 / rpi_ph^2). x is measured where I is positive definite.
-// The combined estimate is x = W_A x_A + W_B x_B with W_A = C I_A, W_B = C I_B (lensMotionCovariance carries these
-// weights into the lens's motion). Every block of the joint partition holds at least the information of the same
+// (lensMotionCovariance does the same sum over all six parameters of the lens's motion; its (thetaE, piE) marginal is
+// this C.) Every block of the joint partition holds at least the information of the same
 // block of a single survey, so C_joint <= C_single and sigma_joint <= sigma_single for ANY combination of x: the
 // lens mass, the distance and the lens's motion. (Until Deviation 148 one piE route was picked per partition by
 // the smaller sigma(piE) alone, which broke that: the joint partition could switch route and lose the
@@ -857,8 +857,6 @@ struct ThetaPiCombo {
   bool   ok = false;              //x measured: I positive definite
   bool   rho = false;             //the photometric thetaE (theta* / rho) enters
   double C[2][2]  = {{0.0, 0.0}, {0.0, 0.0}};   //covariance of x
-  double WA[2][2] = {{0.0, 0.0}, {0.0, 0.0}};   //weight of the photometric (ln thetaE_ph, ln piE_ph) in x
-  double WB[2][2] = {{0.0, 0.0}, {0.0, 0.0}};   //weight of the astrometric (ln thetaE_ast, ln piE_ast) in x
   double varLnM()     const { return C[0][0] + C[1][1] - 2.0 * C[0][1]; }
   double varLnPirel() const { return C[0][0] + C[1][1] + 2.0 * C[0][1]; }
 };
@@ -893,11 +891,6 @@ static ThetaPiCombo combineThetaPi(bool astOk, double vT, double vP, double cTP,
   double I[2][2];
   for (int i = 0; i < 2; ++i) for (int j = 0; j < 2; ++j) I[i][j] = IA[i][j] + IB[i][j];
   if (!invertSym2(I[0][0], I[0][1], I[1][1], r.C)) return r;   //I is the information: its inverse is C
-  for (int i = 0; i < 2; ++i)
-      for (int j = 0; j < 2; ++j) {
-          r.WA[i][j] = r.C[i][0] * IA[0][j] + r.C[i][1] * IA[1][j];
-          r.WB[i][j] = r.C[i][0] * IB[0][j] + r.C[i][1] * IB[1][j];
-      }
   r.ok = true;
   return r;
 }
@@ -918,20 +911,41 @@ static ThetaPiCombo thetaPiOf(const covarian& co, const lens& l, int q)
 
 // ---------------------------------------------------------------------------------------------------------
 // The lens's motion on the sky and its error (lensMotion, events/vbm_model.h). The six parameters of the model,
-// p = (tE, xi, piE, thetaE, mus1, mus2), are not fitted together: the photometric matrix gives tE, xi, piE (and ln
-// rho), the astrometric one thetaE, mus1, mus2, piE, and each holds the other's parameters fixed, so the two
-// matrices are independent blocks. p is a linear map of independent variables,
-//     a = (tE, xi, piE_phot, ln rho)  from inverA[q],   b = (thetaE_ast, mus1, mus2, piE_ast)  from inverB[q],
-//     e = the error of ln theta*  (variance THETASTAR_SIGLN^2),
-// and its covariance is L Sigma L^T. The pieces of L:
-//   - thetaE and piE are the combination x = W_A x_A + W_B x_B of the two matrices' (ln thetaE, ln piE) that relMl
-//     takes (combineThetaPi): x_A = (-ln rho + e, ln piE_phot) (its thetaE only where rho is measured), x_B =
-//     (ln thetaE_ast, ln piE_ast). So thetaE and piE carry the covariances of thetaE_ast and piE_ast with mus from
-//     the astrometric matrix, and those of ln rho and piE_phot with tE and xi from the photometric one;
-//   - mus1, mus2 are the astrometric ones.
-// The (thetaE, piE) block of the result is the combination's C exactly (W_A C_A W_A^T + W_B C_B W_B^T = C (I_A + I_B) C):
-// Sigma(thetaE)/thetaE^2 comes out as relTetEc^2, the variance of ln thetaE - ln piE as relMl^2 and that of
-// ln thetaE + ln piE as (rel_Dl / (1 - D_L/D_S))^2, which the fixture asserts.
+// p = (tE, xi, piE, thetaE, mus1, mus2), are not fitted together: the photometric matrix gives (tE, xi, piE) and,
+// where the light curve measures rho, thetaE = theta* / rho; the astrometric one (thetaE, mus1, mus2, piE). Each holds
+// the other's own parameters fixed, so their data are independent and their information on p ADDS:
+//     I_p = embed(Cov_A^-1) + embed(Cov_B^-1),   S = I_p^-1,
+// Cov_A the photometric inverse on (tE, xi, piE[, thetaE_ph]) with thetaE_ph = thetaE (ln theta* - ln rho) linearised
+// (cov(thetaE_ph, .) = -thetaE cov(ln rho, .), var = thetaE^2 (var(ln rho) + THETASTAR_SIGLN^2)), Cov_B the
+// astrometric inverse. The other parameters of each matrix (u0, t0, the fluxes; nothing in B) are already marginalised
+// in its inverse. This is the best estimate of all six from both matrices: never worse than any other combination of
+// them, for every function of p (the mass, the distance, mu_L, v_L), and monotone (a joint partition's blocks hold at
+// least a single survey's information). Its (thetaE, piE) marginal is exactly combineThetaPi's C (the nuisance parameters
+// tE, xi of A and mus of B are separate, so the Schur complements add): Sigma(thetaE)/thetaE^2 = relTetEc^2,
+// var(ln thetaE - ln piE) = relMl^2, var(ln thetaE + ln piE) = (rel_Dl / (1 - D_L/D_S))^2, which the fixture asserts.
+
+// The inverse of the n x n symmetric positive-definite M (row major, stride NLM), by Cholesky on the matrix scaled to unit
+// diagonal; false unless positive definite.
+static bool spdInverse(const double M[NLM][NLM], int n, double out[NLM][NLM])
+{
+  double d[NLM];
+  for (int i = 0; i < n; ++i) {
+      if (!(M[i][i] > 0.0) or !std::isfinite(M[i][i])) return false;
+      d[i] = 1.0 / std::sqrt(M[i][i]);
+  }
+  gsl_matrix* A = gsl_matrix_alloc(n, n);
+  for (int i = 0; i < n; ++i)
+      for (int j = 0; j < n; ++j) gsl_matrix_set(A, i, j, M[i][j] * d[i] * d[j]);
+  gsl_error_handler_t* old = gsl_set_error_handler_off();
+  const bool ok = gsl_linalg_cholesky_decomp1(A) == GSL_SUCCESS and gsl_linalg_cholesky_invert(A) == GSL_SUCCESS;
+  gsl_set_error_handler(old);
+  if (ok)
+      for (int i = 0; i < n; ++i)
+          for (int j = 0; j < n; ++j) out[i][j] = gsl_matrix_get(A, i, j) * d[i] * d[j];
+  gsl_matrix_free(A);
+  return ok;
+}
+
 bool lensMotionCovariance(const covarian& co, const lens& l, int q, double S[NLM][NLM])
 {
   for (int i = 0; i < NLM; ++i) for (int j = 0; j < NLM; ++j) S[i][j] = 0.0;
@@ -943,42 +957,25 @@ bool lensMotionCovariance(const covarian& co, const lens& l, int q, double S[NLM
   if (!x.ok) return false;
   const bool rho = x.rho;                                           //the photometric thetaE is used
 
-  // Sigma of (a[0..3], b[4..7], e[8]).
-  static const int ia[4] = {1, 4, 3, 9};
-  constexpr int NB = 9;
-  double Sb[NB][NB] = {};
+  // Photometric block on (tE, xi, piE[, thetaE_ph]); astrometric block on (thetaE, mus1, mus2, piE).
+  static const int ia[4] = {1, 4, 3, 9}, toA[4] = {LM_TE, LM_XI, LM_PIE, LM_TETE};
+  static const int toB[Ny] = {LM_TETE, LM_MUS1, LM_MUS2, LM_PIE};
   const int na = rho ? 4 : 3;
+  double CA[NLM][NLM] = {}, CB[NLM][NLM] = {}, IA[NLM][NLM] = {}, IB[NLM][NLM] = {}, I[NLM][NLM] = {};
   for (int i = 0; i < na; ++i)
-      for (int j = 0; j < na; ++j) Sb[i][j] = gsl_matrix_get(co.inverA[q].get(), ia[i], ia[j]);
-  for (int i = 0; i < Ny; ++i)
-      for (int j = 0; j < Ny; ++j) Sb[4 + i][4 + j] = gsl_matrix_get(co.inverB[q].get(), i, j);
-  Sb[8][8] = THETASTAR_SIGLN * THETASTAR_SIGLN;
-
-  // d thetaE = thetaE d x0, d piE = piE d x1; d ln thetaE_ast = d b4 / thetaE, d ln piE_ast = d b7 / piE,
-  // d ln piE_ph = d a2 / piE, d ln thetaE_ph = -d a3 + d e8.
-  const double T = l.tetE, P = l.piE;
-  const double val[2] = {T, P};
-  const int    row[2] = {LM_TETE, LM_PIE};
-  double L[NLM][NB] = {};
-  L[LM_TE][0] = 1.0;
-  L[LM_XI][1] = 1.0;
-  for (int i = 0; i < 2; ++i) {
-      L[row[i]][4] = val[i] * x.WB[i][0] / T;
-      L[row[i]][7] = val[i] * x.WB[i][1] / P;
-      L[row[i]][2] = val[i] * x.WA[i][1] / P;
-      if (rho) { L[row[i]][3] = -val[i] * x.WA[i][0];  L[row[i]][8] = val[i] * x.WA[i][0]; }
+      for (int j = 0; j < na; ++j) CA[i][j] = gsl_matrix_get(co.inverA[q].get(), ia[i], ia[j]);
+  if (rho) {
+      for (int j = 0; j < 3; ++j) CA[3][j] = CA[j][3] = -l.tetE * CA[3][j];
+      CA[3][3] = l.tetE * l.tetE * (gsl_matrix_get(co.inverA[q].get(), 9, 9) + THETASTAR_SIGLN * THETASTAR_SIGLN);
   }
-  L[LM_MUS1][5] = 1.0;
-  L[LM_MUS2][6] = 1.0;
-
-  double LS[NLM][NB] = {};
-  for (int i = 0; i < NLM; ++i)
-      for (int k = 0; k < NB; ++k)
-          for (int m = 0; m < NB; ++m) LS[i][k] += L[i][m] * Sb[m][k];
-  for (int i = 0; i < NLM; ++i)
-      for (int j = 0; j < NLM; ++j)
-          for (int k = 0; k < NB; ++k) S[i][j] += LS[i][k] * L[j][k];
-  return true;
+  for (int i = 0; i < Ny; ++i)
+      for (int j = 0; j < Ny; ++j) CB[i][j] = gsl_matrix_get(co.inverB[q].get(), i, j);
+  if (!spdInverse(CA, na, IA) or !spdInverse(CB, Ny, IB)) return false;
+  for (int i = 0; i < na; ++i)
+      for (int j = 0; j < na; ++j) I[toA[i]][toA[j]] += IA[i][j];
+  for (int i = 0; i < Ny; ++i)
+      for (int j = 0; j < Ny; ++j) I[toB[i]][toB[j]] += IB[i][j];
+  return spdInverse(I, NLM, S);
 }
 
 void lensMotionPropagate(const MotionContext& c, const double p[NLM], const double S[NLM][NLM],

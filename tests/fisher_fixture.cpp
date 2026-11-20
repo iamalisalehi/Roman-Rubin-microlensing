@@ -776,9 +776,9 @@ bool checkSentinelDiscipline()
 // dropped the correlation and made the joint mass error 3.4x Roman's. Rebuilt here by hand (diagonal photometric
 // inverse, a correlated astrometric thetaE-piE block): asserted relMl[J] <= relMl[R] and both equal to the two
 // blocks' information on (ln thetaE, ln piE) added, inverted here independently (GSL LU); the old rule's numbers
-// are printed for the record. Then 2,000 random partitions, rho measured in a third of them, in which the joint
-// matrices hold Roman's information plus a random positive-definite Rubin share: relMl, relTetEc, relMuL monotone
-// (joint <= each survey) in every draw, and relMl, relTetEc equal to the independent sum.
+// are printed for the record. Then 2,000 random partitions, rho measured in a third of them, each survey's two blocks
+// full covariances with random correlations and the joint the inverse of their information summed: relMl, relTetEc,
+// relMuL and sigVL monotone (joint <= each survey) in every draw, and relMl, relTetEc equal to the independent sum.
 // ---------------------------------------------------------------------------------------------
 
 // var(ln thetaE - ln piE) from the astrometric block (vT, vP, cTP; absent if vT <= 0) and the photometric one (vPph =
@@ -890,52 +890,95 @@ bool checkMassRouteSwitch()
         ++fails;
     }
 
-    // Random partitions: Roman's blocks drawn, Rubin's information drawn, the joint = their information summed.
+    // Random partitions: each survey's two blocks drawn as full covariances with random correlations -- photometric on
+    // (tE, xi, piE[, ln rho]), astrometric on (thetaE, mus1, mus2, piE) -- and the joint = the inverse of their information
+    // summed, block by block. So thetaE and piE are correlated with tE, xi and mus, which the lens's motion reads.
     std::mt19937_64 rng(20261120ULL);
     std::uniform_real_distribution<double> U(0.0, 1.0);
+    std::normal_distribution<double> G(0.0, 1.0);
     auto logU = [&](double a, double b) { return a * std::pow(b / a, U(rng)); };
-    auto cov2 = [&](double s1, double s2) { const double r = 0.98 * (2.0 * U(rng) - 1.0); return std::array<double, 3>{s1 * s1, r * s1 * s2, s2 * s2}; };
-    auto inv2 = [](const std::array<double, 3>& c) { const double d = c[0] * c[2] - c[1] * c[1]; return std::array<double, 3>{c[2] / d, -c[1] / d, c[0] / d}; };
-    auto add2 = [](const std::array<double, 3>& a, const std::array<double, 3>& b) { return std::array<double, 3>{a[0] + b[0], a[1] + b[1], a[2] + b[2]}; };
-    int nDraw = 2000, nViol = 0, nMis = 0, nMass = 0;
-    double worst = 0.0;
+    using Mat = std::vector<double>;                       //n x n, row major
+    auto inv = [](const Mat& m, int n) {
+        gsl_matrix* A = gsl_matrix_alloc(n, n); gsl_matrix* Ai = gsl_matrix_alloc(n, n); gsl_permutation* pm = gsl_permutation_alloc(n);
+        for (int i = 0; i < n; ++i) for (int j = 0; j < n; ++j) gsl_matrix_set(A, i, j, m[i * n + j]);
+        int sg = 0; gsl_linalg_LU_decomp(A, pm, &sg); gsl_linalg_LU_invert(A, pm, Ai);
+        Mat o(n * n);
+        for (int i = 0; i < n; ++i) for (int j = 0; j < n; ++j) o[i * n + j] = 0.5 * (gsl_matrix_get(Ai, i, j) + gsl_matrix_get(Ai, j, i));
+        gsl_matrix_free(A); gsl_matrix_free(Ai); gsl_permutation_free(pm);
+        return o;
+    };
+    auto randCov = [&](const std::vector<double>& sig) {    //random correlation (G G^T + I, normalised), scaled
+        const int n = int(sig.size());
+        Mat g(n * n), c(n * n);
+        for (auto& x : g) x = G(rng);
+        for (int i = 0; i < n; ++i) for (int j = 0; j < n; ++j) {
+            double v = (i == j) ? 0.3 : 0.0;
+            for (int k = 0; k < n; ++k) v += g[i * n + k] * g[j * n + k];
+            c[i * n + j] = v;
+        }
+        Mat o(n * n);
+        for (int i = 0; i < n; ++i) for (int j = 0; j < n; ++j)
+            o[i * n + j] = c[i * n + j] / std::sqrt(c[i * n + i] * c[j * n + j]) * sig[i] * sig[j];
+        return o;
+    };
+    auto joint = [&](const Mat& r, const Mat& u, int n) { Mat a = inv(r, n), b = inv(u, n); for (int k = 0; k < n * n; ++k) a[k] += b[k]; return inv(a, n); };
+    static const int kIa[4] = {1, 4, 3, 9};                 //photometric block's indices in inverA: tE, xi, piE, ln rho
+    auto setFull = [&](int q, const Mat& A, int na, const Mat& B, int rho) {
+        co->okA[q] = 1;  co->okB[q] = 1;  co->nepochA[q] = 100;  co->rhoMeas[q] = rho;  co->rhoFit[q] = rho;
+        gsl_matrix_set_zero(co->inverA[q].get());
+        for (int k = 0; k < Nx; ++k) gsl_matrix_set(co->inverA[q].get(), k, k, 1e-4);
+        for (int i = 0; i < na; ++i) for (int j = 0; j < na; ++j) gsl_matrix_set(co->inverA[q].get(), kIa[i], kIa[j], A[i * na + j]);
+        for (int i = 0; i < Ny; ++i) for (int j = 0; j < Ny; ++j) gsl_matrix_set(co->inverB[q].get(), i, j, B[i * Ny + j]);
+    };
+    auto hand = [&](const Mat& A, int na, const Mat& B, int rho) {   //the 2x2 pieces the independent mass sum needs
+        HandPartition h; h.rho = rho;
+        h.vT = B[0]; h.cTP = B[3]; h.vP = B[15];
+        h.vPph = A[2 * na + 2];
+        if (rho) { h.vLnRho = A[3 * na + 3]; h.cRhoPi = A[3 * na + 2]; }
+        return h;
+    };
+    int nDraw = 2000, nViol = 0, nMis = 0, nMass = 0, nMotion = 0;
+    double worst = 0.0, worstV = 0.0;
     for (int i = 0; i < nDraw; ++i) {
-        const int rho = (U(rng) < 1.0 / 3.0);
-        // Covariances: astrometric (thetaE, piE) [absolute]; photometric (piE, ln rho) or piE alone.
-        const auto aR = cov2(logU(0.02, 1.0) * T, logU(0.05, 3.0) * P), aL = cov2(logU(0.05, 5.0) * T, logU(0.1, 10.0) * P);
-        const auto pR = cov2(logU(0.02, 3.0) * P, logU(0.05, 0.4)), pL = cov2(logU(0.05, 10.0) * P, logU(0.05, 2.0));
-        const auto aJ = inv2(add2(inv2(aR), inv2(aL)));
-        const auto pJ = rho ? inv2(add2(inv2(pR), inv2(pL))) : std::array<double, 3>{1.0 / (1.0 / pR[0] + 1.0 / pL[0]), 0.0, 0.0};
-        auto mk = [&](const std::array<double, 3>& a, const std::array<double, 3>& p) {
-            HandPartition h; h.rho = rho;
-            h.vT = a[0]; h.cTP = a[1]; h.vP = a[2];
-            h.vPph = p[0];
-            if (rho) { h.cRhoPi = p[1]; h.vLnRho = p[2]; }
-            return h;
+        const int rho = (U(rng) < 1.0 / 3.0), na = rho ? 4 : 3;
+        auto sigA = [&](double f) {
+            std::vector<double> v = {logU(0.001, 0.3) * l->tE * f, logU(0.001, 0.5) * f, logU(0.02, 3.0) * P * f};
+            if (rho) v.push_back(logU(0.05, 0.4) * f);
+            return v;
         };
-        const HandPartition hJ = mk(aJ, pJ), hR = mk(aR, pR), hL = mk(aL, pL);
-        setHandPartition(*co, SJOINT, hJ);  setHandPartition(*co, SROMAN, hR);  setHandPartition(*co, SRUBIN, hL);
+        auto sigB = [&](double f) { return std::vector<double>{logU(0.02, 1.0) * T * f, logU(1e-4, 1e-2) * f, logU(1e-4, 1e-2) * f, logU(0.05, 3.0) * P * f}; };
+        const Mat AR = randCov(sigA(1.0)), AL = randCov(sigA(3.0)), BR = randCov(sigB(1.0)), BL = randCov(sigB(5.0));
+        const Mat AJ = joint(AR, AL, na), BJ = joint(BR, BL, Ny);
+        setFull(SJOINT, AJ, na, BJ, rho);  setFull(SROMAN, AR, na, BR, rho);  setFull(SRUBIN, AL, na, BL, rho);
         ErrorCal(*co, *l, *s);
-        const HandPartition* hs[NSURV];
-        hs[SJOINT] = &hJ; hs[SROMAN] = &hR; hs[SRUBIN] = &hL;
+        const HandPartition hs[NSURV] = {hand(AJ, na, BJ, rho), hand(AL, na, BL, rho), hand(AR, na, BR, rho)};
+        static_assert(SJOINT == 0 and SRUBIN == 1 and SROMAN == 2, "partition order");
         for (int q = 0; q < NSURV; ++q) {
             double vt = -1.0;
-            const double w = handMassVar(*hs[q], T, P, &vt);
+            const double w = handMassVar(hs[q], T, P, &vt);
             if (!(w > 0.0) or std::fabs(co->relMl[q] / std::sqrt(w) - 1.0) > 1e-9
                 or !(vt > 0.0) or std::fabs(co->relTetEc[q] / std::sqrt(vt) - 1.0) > 1e-9) ++nMis;
         }
         for (int q : {SROMAN, SRUBIN}) {
             ++nMass;
             const double rM = co->relMl[SJOINT] / co->relMl[q], rT = co->relTetEc[SJOINT] / co->relTetEc[q];
-            const double rV = (co->relMuL[SJOINT] >= 0.0 and co->relMuL[q] > 0.0) ? co->relMuL[SJOINT] / co->relMuL[q] : 0.0;
             worst = std::max({worst, rM, rT});
-            if (rM > 1.0 + 1e-9 or rT > 1.0 + 1e-9 or rV > 1.0 + 1e-6) ++nViol;
+            if (rM > 1.0 + 1e-9 or rT > 1.0 + 1e-9) ++nViol;
+            if (co->relMuL[q] > 0.0 and co->sigVL[q] > 0.0) {
+                ++nMotion;
+                if (!(co->relMuL[SJOINT] > 0.0 and co->sigVL[SJOINT] > 0.0)) { ++nViol; continue; }
+                const double rV = std::max(co->relMuL[SJOINT] / co->relMuL[q], co->sigVL[SJOINT] / co->sigVL[q]);
+                worstV = std::max(worstV, rV);
+                if (rV > 1.0 + 1e-6) ++nViol;
+            }
         }
     }
     std::cout << "# random partitions: " << nDraw << " draws, " << nMass << " joint/single pairs, largest joint/single "
-              << "relMl or relTetEc " << worst << ", violations " << nViol << ", relMl or relTetEc off the independent sum " << nMis << "\n";
-    if (nViol or nMis) {
-        std::cerr << "FAIL [mass-route] " << nViol << " monotonicity violations, " << nMis << " relMl off the independent sum\n";
+              << "relMl or relTetEc " << worst << ", relMuL or sigVL " << worstV << " (" << nMotion << " pairs), violations "
+              << nViol << ", relMl or relTetEc off the independent sum " << nMis << "\n";
+    if (nViol or nMis or nMotion < nMass / 2) {
+        std::cerr << "FAIL [mass-route] " << nViol << " monotonicity violations, " << nMis << " off the independent sum, "
+                  << nMotion << " lens-motion pairs\n";
         ++fails;
     }
     return fails == 0;

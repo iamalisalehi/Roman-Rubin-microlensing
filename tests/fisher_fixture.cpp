@@ -655,7 +655,8 @@ int runEigen(double scale)
 // test for it before arithmetic. ErrorCal once took MIN(photometric, astrometric) piE, which
 // prefers -1 over any real sigma when the astrometric matrix is singular. Each case sets the
 // partition flags and sigmas by hand and checks what ErrorCal makes of them. The discriminating
-// case: photometry good and astrometry singular must give a POSITIVE resu[3].
+// case: photometry good and astrometry singular must give a POSITIVE resu[3]. With both routes, resu[3] is the two
+// combined (Deviation 148), below either.
 // ---------------------------------------------------------------------------------------------
 bool checkSentinelDiscipline()
 {
@@ -733,11 +734,15 @@ bool checkSentinelDiscipline()
                       << " but neither parallax route was available\n";
             ++fails;
         }
-        // Case 1: MIN must pick the SMALLER of the two available routes, not merely one of them.
-        if (c.okA && c.okB && std::fabs(co->resu[3] - c.eraPiE / std::fabs(l->piE)) > 1e-12) {
-            std::cerr << "FAIL [sentinel/" << c.name << "] resu[3] = " << co->resu[3]
-                      << " did not take the better of the two parallax routes\n";
-            ++fails;
+        // Case 1: with both routes the piE is the two combined (Deviation 148). The matrices here are diagonal, so the
+        // two piE are uncorrelated with thetaE and the combination is plain inverse variance: below EITHER route.
+        if (c.okA && c.okB) {
+            const double want = 1.0 / std::sqrt(1.0 / (c.eraPiE * c.eraPiE) + 1.0 / (c.erbPiE * c.erbPiE)) / std::fabs(l->piE);
+            if (std::fabs(co->resu[3] / want - 1.0) > 1e-12 or !(co->resu[3] < std::min(c.eraPiE, c.erbPiE) / std::fabs(l->piE))) {
+                std::cerr << "FAIL [sentinel/" << c.name << "] resu[3] = " << co->resu[3]
+                          << " is not the two parallax routes combined (" << want << ")\n";
+                ++fails;
+            }
         }
         // The mass needs BOTH ingredients; missing either means -1.
         const bool massOK = (co->resu[9] > 0.0);
@@ -758,6 +763,223 @@ bool checkSentinelDiscipline()
                       << co->relMl[SJOINT] << ", expected the -1 sentinel\n";
             ++fails;
         }
+    }
+    return fails == 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The lens mass from the two matrices of a partition (Deviation 148).
+//
+// Production row bh 75194 (runs of 2026-11-19): Roman's astrometric thetaE and piE are each poor (43%, 40%) but
+// strongly correlated, so their ratio -- the mass -- is good; the joint photometric piE (29%) beats the astrometric
+// one, so the old rule (ONE piE route per partition, the smaller sigma(piE)) switched the joint partition to it,
+// dropped the correlation and made the joint mass error 3.4x Roman's. Rebuilt here by hand (diagonal photometric
+// inverse, a correlated astrometric thetaE-piE block): asserted relMl[J] <= relMl[R] and both equal to the two
+// blocks' information on (ln thetaE, ln piE) added, inverted here independently (GSL LU); the old rule's numbers
+// are printed for the record. Then 2,000 random partitions, rho measured in a third of them, each survey's two blocks
+// full covariances with random correlations and the joint the inverse of their information summed: relMl, relTetEc,
+// relMuL and sigVL monotone (joint <= each survey) in every draw, and relMl, relTetEc equal to the independent sum.
+// ---------------------------------------------------------------------------------------------
+
+// var(ln thetaE - ln piE) from the astrometric block (vT, vP, cTP; absent if vT <= 0) and the photometric one (vPph =
+// var(piE), absent if <= 0; with rho: vRh = var(ln thetaE_ph), cRhP = cov(ln thetaE_ph, piE)), by adding the two
+// information matrices on (ln thetaE, ln piE) with GSL. -1 if they do not determine both.
+static double massVarIndependent(double vT, double vP, double cTP, double vPph, double vRh, double cRhP,
+                                 double T, double P, double* vLnT = nullptr)
+{
+    gsl_matrix* I = gsl_matrix_calloc(2, 2);
+    gsl_matrix* M = gsl_matrix_alloc(2, 2);
+    gsl_matrix* Mi = gsl_matrix_alloc(2, 2);
+    gsl_permutation* pm = gsl_permutation_alloc(2);
+    auto addInverse = [&](double a, double b, double d) {
+        gsl_matrix_set(M, 0, 0, a); gsl_matrix_set(M, 0, 1, b); gsl_matrix_set(M, 1, 0, b); gsl_matrix_set(M, 1, 1, d);
+        int sg = 0;
+        gsl_linalg_LU_decomp(M, pm, &sg);
+        gsl_linalg_LU_invert(M, pm, Mi);
+        gsl_matrix_add(I, Mi);
+    };
+    if (vT > 0.0) addInverse(vT / (T * T), cTP / (T * P), vP / (P * P));
+    if (vPph > 0.0) {
+        if (vRh > 0.0) addInverse(vRh, cRhP / P, vPph / (P * P));
+        else gsl_matrix_set(I, 1, 1, gsl_matrix_get(I, 1, 1) + P * P / vPph);
+    }
+    double out = -1.0;
+    const double det = gsl_matrix_get(I, 0, 0) * gsl_matrix_get(I, 1, 1) - gsl_matrix_get(I, 0, 1) * gsl_matrix_get(I, 1, 0);
+    if (det > 0.0) {
+        int sg = 0;
+        gsl_matrix_memcpy(M, I);
+        gsl_linalg_LU_decomp(M, pm, &sg);
+        gsl_linalg_LU_invert(M, pm, Mi);
+        out = gsl_matrix_get(Mi, 0, 0) + gsl_matrix_get(Mi, 1, 1) - 2.0 * gsl_matrix_get(Mi, 0, 1);
+        if (vLnT) *vLnT = gsl_matrix_get(Mi, 0, 0);
+    }
+    gsl_matrix_free(I); gsl_matrix_free(M); gsl_matrix_free(Mi); gsl_permutation_free(pm);
+    return out;
+}
+
+// One partition's hand-set inverses: photometric (piE at 3, ln rho at 9) and astrometric (thetaE at 0, piE at 3); every
+// other parameter uncorrelated at 1e-4.
+struct HandPartition {
+    int    okA = 1, okB = 1, rho = 0;
+    double vPph = 0.0, vLnRho = 0.0, cRhoPi = 0.0;    //photometric: var(piE), var(ln rho), cov(ln rho, piE)
+    double vT = 0.0, vP = 0.0, cTP = 0.0;              //astrometric: var(thetaE), var(piE), cov
+};
+
+static void setHandPartition(covarian& co, int q, const HandPartition& h)
+{
+    co.okA[q] = h.okA;  co.okB[q] = h.okB;  co.nepochA[q] = 100;  co.rhoMeas[q] = h.rho;  co.rhoFit[q] = h.rho;
+    gsl_matrix_set_zero(co.inverA[q].get());
+    for (int k = 0; k < Nx; ++k) gsl_matrix_set(co.inverA[q].get(), k, k, 1e-4);
+    gsl_matrix_set(co.inverA[q].get(), 3, 3, h.vPph);
+    if (h.rho) {
+        gsl_matrix_set(co.inverA[q].get(), 9, 9, h.vLnRho);
+        gsl_matrix_set(co.inverA[q].get(), 9, 3, h.cRhoPi);
+        gsl_matrix_set(co.inverA[q].get(), 3, 9, h.cRhoPi);
+    }
+    gsl_matrix_set_zero(co.inverB[q].get());
+    for (int k = 0; k < Ny; ++k) gsl_matrix_set(co.inverB[q].get(), k, k, 1e-4);
+    gsl_matrix_set(co.inverB[q].get(), 0, 0, h.vT);
+    gsl_matrix_set(co.inverB[q].get(), 3, 3, h.vP);
+    gsl_matrix_set(co.inverB[q].get(), 0, 3, h.cTP);
+    gsl_matrix_set(co.inverB[q].get(), 3, 0, h.cTP);
+}
+
+static double handMassVar(const HandPartition& h, double T, double P, double* vLnT = nullptr)
+{
+    const double vRh = h.rho ? h.vLnRho + THETASTAR_SIGLN * THETASTAR_SIGLN : -1.0;
+    return massVarIndependent(h.okB ? h.vT : -1.0, h.vP, h.cTP, h.okA ? h.vPph : -1.0, vRh, -h.cRhoPi, T, P, vLnT);
+}
+
+bool checkMassRouteSwitch()
+{
+    int fails = 0;
+    std::cout << "\n# --- The lens mass from both matrices (Deviation 148) ---\n";
+    auto s  = std::make_unique<source>();
+    auto l  = std::make_unique<lens>();
+    auto co = std::make_unique<covarian>();
+    setupStatic(*s, *l);
+    co->nRubinBand[2] = 100;
+    l->u0 = 0.30; l->tE = 300.0;
+    const double T = 6.69271, P = 0.208478;      //production row bh 75194
+    l->tetE = T; l->piE = P;
+
+    // Roman: astrometric thetaE 43%, piE 40%, correlation 0.937; photometric piE 155%. Joint: the astrometric block
+    // x0.96 in variance (Rubin's astrometry), photometric piE 29%. Rubin: weak astrometry, photometric piE 160%.
+    const double sT = 2.90615, sPa = 0.40 * P, rhoTP = 0.937;
+    HandPartition R, J, L;
+    R.vT = sT * sT;  R.vP = sPa * sPa;  R.cTP = rhoTP * sT * sPa;  R.vPph = std::pow(0.32384, 2);
+    J.vT = 0.96 * R.vT;  J.vP = 0.96 * R.vP;  J.cTP = 0.96 * R.cTP;  J.vPph = std::pow(0.060995, 2);
+    L.vT = 25.0 * R.vT;  L.vP = 25.0 * R.vP;  L.cTP = 0.0;  L.vPph = std::pow(1.6 * P, 2);
+    setHandPartition(*co, SJOINT, J);  setHandPartition(*co, SROMAN, R);  setHandPartition(*co, SRUBIN, L);
+    ErrorCal(*co, *l, *s);
+
+    auto oldRule = [&](const HandPartition& h) {          //one route, the smaller sigma(piE)
+        const double rt = std::sqrt(h.vT) / T, rp1 = std::sqrt(h.vPph) / P, rp2 = std::sqrt(h.vP) / P;
+        return (rp1 < rp2) ? std::hypot(rt, rp1) : std::sqrt(rt * rt + rp2 * rp2 - 2.0 * h.cTP / (T * P));
+    };
+    const double wJ = std::sqrt(handMassVar(J, T, P)), wR = std::sqrt(handMassVar(R, T, P));
+    std::cout << "# row bh 75194: relMl joint " << co->relMl[SJOINT] << " roman " << co->relMl[SROMAN]
+              << "  (independent " << wJ << ", " << wR << ";  old rule " << oldRule(J) << ", " << oldRule(R) << ")\n";
+    if (!(co->relMl[SJOINT] <= co->relMl[SROMAN] * (1.0 + 1e-12))) {
+        std::cerr << "FAIL [mass-route] joint relMl " << co->relMl[SJOINT] << " > Roman's " << co->relMl[SROMAN] << "\n";
+        ++fails;
+    }
+    if (std::fabs(co->relMl[SJOINT] / wJ - 1.0) > 1e-9 or std::fabs(co->relMl[SROMAN] / wR - 1.0) > 1e-9
+        or co->resu[9] != co->relMl[SJOINT]) {
+        std::cerr << "FAIL [mass-route] relMl differs from the information sum formed here\n";
+        ++fails;
+    }
+
+    // Random partitions: each survey's two blocks drawn as full covariances with random correlations -- photometric on
+    // (tE, xi, piE[, ln rho]), astrometric on (thetaE, mus1, mus2, piE) -- and the joint = the inverse of their information
+    // summed, block by block. So thetaE and piE are correlated with tE, xi and mus, which the lens's motion reads.
+    std::mt19937_64 rng(20261120ULL);
+    std::uniform_real_distribution<double> U(0.0, 1.0);
+    std::normal_distribution<double> G(0.0, 1.0);
+    auto logU = [&](double a, double b) { return a * std::pow(b / a, U(rng)); };
+    using Mat = std::vector<double>;                       //n x n, row major
+    auto inv = [](const Mat& m, int n) {
+        gsl_matrix* A = gsl_matrix_alloc(n, n); gsl_matrix* Ai = gsl_matrix_alloc(n, n); gsl_permutation* pm = gsl_permutation_alloc(n);
+        for (int i = 0; i < n; ++i) for (int j = 0; j < n; ++j) gsl_matrix_set(A, i, j, m[i * n + j]);
+        int sg = 0; gsl_linalg_LU_decomp(A, pm, &sg); gsl_linalg_LU_invert(A, pm, Ai);
+        Mat o(n * n);
+        for (int i = 0; i < n; ++i) for (int j = 0; j < n; ++j) o[i * n + j] = 0.5 * (gsl_matrix_get(Ai, i, j) + gsl_matrix_get(Ai, j, i));
+        gsl_matrix_free(A); gsl_matrix_free(Ai); gsl_permutation_free(pm);
+        return o;
+    };
+    auto randCov = [&](const std::vector<double>& sig) {    //random correlation (G G^T + I, normalised), scaled
+        const int n = int(sig.size());
+        Mat g(n * n), c(n * n);
+        for (auto& x : g) x = G(rng);
+        for (int i = 0; i < n; ++i) for (int j = 0; j < n; ++j) {
+            double v = (i == j) ? 0.3 : 0.0;
+            for (int k = 0; k < n; ++k) v += g[i * n + k] * g[j * n + k];
+            c[i * n + j] = v;
+        }
+        Mat o(n * n);
+        for (int i = 0; i < n; ++i) for (int j = 0; j < n; ++j)
+            o[i * n + j] = c[i * n + j] / std::sqrt(c[i * n + i] * c[j * n + j]) * sig[i] * sig[j];
+        return o;
+    };
+    auto joint = [&](const Mat& r, const Mat& u, int n) { Mat a = inv(r, n), b = inv(u, n); for (int k = 0; k < n * n; ++k) a[k] += b[k]; return inv(a, n); };
+    static const int kIa[4] = {1, 4, 3, 9};                 //photometric block's indices in inverA: tE, xi, piE, ln rho
+    auto setFull = [&](int q, const Mat& A, int na, const Mat& B, int rho) {
+        co->okA[q] = 1;  co->okB[q] = 1;  co->nepochA[q] = 100;  co->rhoMeas[q] = rho;  co->rhoFit[q] = rho;
+        gsl_matrix_set_zero(co->inverA[q].get());
+        for (int k = 0; k < Nx; ++k) gsl_matrix_set(co->inverA[q].get(), k, k, 1e-4);
+        for (int i = 0; i < na; ++i) for (int j = 0; j < na; ++j) gsl_matrix_set(co->inverA[q].get(), kIa[i], kIa[j], A[i * na + j]);
+        for (int i = 0; i < Ny; ++i) for (int j = 0; j < Ny; ++j) gsl_matrix_set(co->inverB[q].get(), i, j, B[i * Ny + j]);
+    };
+    auto hand = [&](const Mat& A, int na, const Mat& B, int rho) {   //the 2x2 pieces the independent mass sum needs
+        HandPartition h; h.rho = rho;
+        h.vT = B[0]; h.cTP = B[3]; h.vP = B[15];
+        h.vPph = A[2 * na + 2];
+        if (rho) { h.vLnRho = A[3 * na + 3]; h.cRhoPi = A[3 * na + 2]; }
+        return h;
+    };
+    int nDraw = 2000, nViol = 0, nMis = 0, nMass = 0, nMotion = 0;
+    double worst = 0.0, worstV = 0.0;
+    for (int i = 0; i < nDraw; ++i) {
+        const int rho = (U(rng) < 1.0 / 3.0), na = rho ? 4 : 3;
+        auto sigA = [&](double f) {
+            std::vector<double> v = {logU(0.001, 0.3) * l->tE * f, logU(0.001, 0.5) * f, logU(0.02, 3.0) * P * f};
+            if (rho) v.push_back(logU(0.05, 0.4) * f);
+            return v;
+        };
+        auto sigB = [&](double f) { return std::vector<double>{logU(0.02, 1.0) * T * f, logU(1e-4, 1e-2) * f, logU(1e-4, 1e-2) * f, logU(0.05, 3.0) * P * f}; };
+        const Mat AR = randCov(sigA(1.0)), AL = randCov(sigA(3.0)), BR = randCov(sigB(1.0)), BL = randCov(sigB(5.0));
+        const Mat AJ = joint(AR, AL, na), BJ = joint(BR, BL, Ny);
+        setFull(SJOINT, AJ, na, BJ, rho);  setFull(SROMAN, AR, na, BR, rho);  setFull(SRUBIN, AL, na, BL, rho);
+        ErrorCal(*co, *l, *s);
+        const HandPartition hs[NSURV] = {hand(AJ, na, BJ, rho), hand(AL, na, BL, rho), hand(AR, na, BR, rho)};
+        static_assert(SJOINT == 0 and SRUBIN == 1 and SROMAN == 2, "partition order");
+        for (int q = 0; q < NSURV; ++q) {
+            double vt = -1.0;
+            const double w = handMassVar(hs[q], T, P, &vt);
+            if (!(w > 0.0) or std::fabs(co->relMl[q] / std::sqrt(w) - 1.0) > 1e-9
+                or !(vt > 0.0) or std::fabs(co->relTetEc[q] / std::sqrt(vt) - 1.0) > 1e-9) ++nMis;
+        }
+        for (int q : {SROMAN, SRUBIN}) {
+            ++nMass;
+            const double rM = co->relMl[SJOINT] / co->relMl[q], rT = co->relTetEc[SJOINT] / co->relTetEc[q];
+            worst = std::max({worst, rM, rT});
+            if (rM > 1.0 + 1e-9 or rT > 1.0 + 1e-9) ++nViol;
+            if (co->relMuL[q] > 0.0 and co->sigVL[q] > 0.0) {
+                ++nMotion;
+                if (!(co->relMuL[SJOINT] > 0.0 and co->sigVL[SJOINT] > 0.0)) { ++nViol; continue; }
+                const double rV = std::max(co->relMuL[SJOINT] / co->relMuL[q], co->sigVL[SJOINT] / co->sigVL[q]);
+                worstV = std::max(worstV, rV);
+                if (rV > 1.0 + 1e-6) ++nViol;
+            }
+        }
+    }
+    std::cout << "# random partitions: " << nDraw << " draws, " << nMass << " joint/single pairs, largest joint/single "
+              << "relMl or relTetEc " << worst << ", relMuL or sigVL " << worstV << " (" << nMotion << " pairs), violations "
+              << nViol << ", relMl or relTetEc off the independent sum " << nMis << "\n";
+    if (nViol or nMis or nMotion < nMass / 2) {
+        std::cerr << "FAIL [mass-route] " << nViol << " monotonicity violations, " << nMis << " off the independent sum, "
+                  << nMotion << " lens-motion pairs\n";
+        ++fails;
     }
     return fails == 0;
 }
@@ -889,7 +1111,8 @@ bool checkSeasonClustering()
 // correlated within a day to W, and P adds season offsets and a larger sigma_c; neither extra
 // parameters nor positively correlated noise can add information, so a violation is a bug. Also asserted:
 // relMlV of every variant against the lens-mass error formed here from an independent inversion of the variant's
-// matrix (route, thetaE-piE or ln rho-piE covariance; see lnCovTetPi), and relMlV[W] == relMl.
+// matrix, its (thetaE, piE) information added to the photometric one (massVarIndependent; Deviation 148), relMlV[W] ==
+// relMl, and relMlV joint <= either survey's in every variant.
 // ---------------------------------------------------------------------------------------------
 
 // One stray epoch from a telescope must not make the joint photometric matrix singular. Take an
@@ -1000,10 +1223,9 @@ int runAstroVariants()
                           << ((w0 > 0.0 && co->ErbV[v][q][0] > 0.0) ? co->ErbV[v][q][0] / w0 : -1.0)
                           << std::defaultfloat << '\n';
             // Independent check of the lens-mass error of every variant: invert FBV[v][q] here (GSL LU, not the
-            // production invertNormalized), take rt (the astrometric thetaE of this variant combined with the
-            // photometric one by inverse variance) and the better piE route, form c by the rule (photometric piE:
-            // -wp cov(ln rho, ln piE); astrometric piE: (1 - wp) cov(thetaE, piE) / (thetaE piE)), and compare
-            // sqrt(rt^2 + rpi^2 - 2c) with relMlV. Variant W is the main result: relMlV[AV_W] == relMl exactly.
+            // production invertNormalized), add its (thetaE, piE) information to the photometric matrix's (piE, and
+            // theta* / rho where rho is measured) with GSL (massVarIndependent), and compare var(ln thetaE - ln piE)
+            // with relMlV. Variant W is the main result: relMlV[AV_W] == relMl exactly.
             if (co->relMlV[AV_W][q] != co->relMl[q]) {
                 std::cout << "#   FAIL " << ev.name << " " << qn << ": relMlV[W] " << co->relMlV[AV_W][q]
                           << " != relMl " << co->relMl[q] << "\n";
@@ -1019,25 +1241,23 @@ int runAstroVariants()
                 int sgn = 0;
                 gsl_linalg_LU_decomp(M, perm, &sgn);
                 gsl_linalg_LU_invert(M, perm, Minv);
-                const double sT = std::sqrt(gsl_matrix_get(Minv, 0, 0)), sP = std::sqrt(gsl_matrix_get(Minv, 3, 3));
+                const double vT = gsl_matrix_get(Minv, 0, 0), vP = gsl_matrix_get(Minv, 3, 3);
                 const double cTP = gsl_matrix_get(Minv, 0, 3);
                 gsl_matrix_free(M); gsl_matrix_free(Minv); gsl_permutation_free(perm);
-                const double ra = sT / l->tetE, rph = co->relTetEph[q];
-                const double rt = (rph >= 0.0) ? ra * rph / std::hypot(ra, rph) : ra;
-                const double wp = (rph >= 0.0) ? rt * rt / (rph * rph) : 0.0;
-                const double rp1 = (co->Era[q][3] >= 0.0) ? co->Era[q][3] / l->piE : -1.0, rp2 = sP / l->piE;
-                const bool   phot = (rp1 >= 0.0 and rp1 < rp2);
-                const double rpi = phot ? rp1 : rp2;
-                const double c = phot ? -wp * gsl_matrix_get(co->inverA[q].get(), 9, 3) / l->piE * double(co->rhoMeas[q])
-                                      : (1.0 - wp) * cTP / (l->tetE * l->piE);
-                const double want = std::sqrt(rt * rt + rpi * rpi - 2.0 * c);
+                const bool   phOk = co->okA[q] and co->Era[q][3] > 0.0;
+                const double vPph = phOk ? gsl_matrix_get(co->inverA[q].get(), 3, 3) : -1.0;
+                const double rph = co->relTetEph[q];
+                const double vRh = (phOk and rph >= 0.0) ? rph * rph : -1.0;
+                const double cRh = (vRh > 0.0) ? -gsl_matrix_get(co->inverA[q].get(), 9, 3) : 0.0;
+                const double want = std::sqrt(massVarIndependent(vT, vP, cTP, vPph, vRh, cRh, l->tetE, l->piE));
+                const bool   astShare = !(vPph > 0.0) or (1.0 / vP) >= 0.05 * (1.0 / vP + 1.0 / vPph);
                 if (!(std::fabs(co->relMlV[v][q] / want - 1.0) <= 1e-6)) {
                     std::cout << "#   FAIL " << ev.name << " " << qn << " " << vn[v] << ": relMlV " << co->relMlV[v][q]
-                              << " vs independent " << want << (phot ? " (phot piE)" : " (ast piE)") << "\n";
+                              << " vs independent " << want << "\n";
                     ++bad;
                 }
                 ++nMassChecked;
-                if (!phot) ++nMassAst;
+                if (astShare) ++nMassAst;
             }
             for (int v = 1; v < NAVAR; ++v) {
                 const double a0 = co->ErbV[v - 1][q][0], a1 = co->ErbV[v][q][0];
@@ -1048,9 +1268,18 @@ int runAstroVariants()
                 }
             }
         }
+        // The joint partition's mass error is at most either survey's, in every variant (Deviation 148).
+        for (int v = 0; v < NAVAR; ++v)
+            for (int q : {SRUBIN, SROMAN})
+                if (co->relMlV[v][SJOINT] >= 0.0 and co->relMlV[v][q] >= 0.0
+                    and co->relMlV[v][SJOINT] > co->relMlV[v][q] * (1.0 + 1e-9)) {
+                    std::cout << "#   FAIL " << ev.name << " " << vn[v] << ": relMl joint " << co->relMlV[v][SJOINT]
+                              << " > " << (q == SRUBIN ? "rubin " : "roman ") << co->relMlV[v][q] << "\n";
+                    ++bad;
+                }
     }
     std::cout << "# relMlV checked against an independent inversion: " << nMassChecked << " cases, " << nMassAst
-              << " on the astrometric piE route\n";
+              << " with the astrometric piE carrying >= 5% of piE's information\n";
     std::cout << (bad ? "# FAIL -- variant ordering violated\n" : "# PASS -- sigma_W <= sigma_N <= sigma_P everywhere\n");
     return bad ? 1 : 0;
 }
@@ -1412,7 +1641,10 @@ int runFiniteSource()
                         ++failures;
                     }
                 } else {
-                    if (prod.relPh[q] != -1.0 or (relA > 0.0 and std::fabs(prod.relC[q] / relA - 1.0) > 1e-12)) {
+                    // No theta* / rho; the combined thetaE (Deviation 148) is the astrometric one sharpened only by the
+                    // photometric piE through the astrometric thetaE-piE covariance: never worse (its value is checked
+                    // against an independent information sum in checkMassRouteSwitch).
+                    if (prod.relPh[q] != -1.0 or (relA > 0.0 and !(prod.relC[q] > 0.0 and prod.relC[q] <= relA * (1.0 + 1e-12)))) {
                         std::cerr << "FAIL " << tag << "rho not measured but a photometric thetaE is used: rel_ph " << prod.relPh[q]
                                   << ", rel_c " << prod.relC[q] << ", rel_a " << relA << "\n";
                         ++failures;
@@ -1457,12 +1689,13 @@ int runFiniteSource()
 // resu[13] (old) and the old formula with the sign of the tE-xi cross term of the mu_1 term corrected (old+),
 // which show what the sign and the thetaE-mus correlations change.
 // Asserted: the identity above (to 1e-9); relMuL and sigVL are the -1 sentinel exactly where a partition lacks a
-// matrix or relMl; Sigma(thetaE) / thetaE^2 is relTetEc^2; on BOTH piE routes the variance of ln thetaE - ln piE is
+// matrix or relMl; Sigma(thetaE) / thetaE^2 is relTetEc^2; the variance of ln thetaE - ln piE is
 // relMl^2 and, for the joint partition, that of ln thetaE + ln piE times (1 - D_L/D_S)^2 is rel_Dl^2 (resu[10]), to
-// 1e-9 (relMass, lnCovTetPi: c = cov(ln thetaE, ln piE) of the combined thetaE with the route's piE). The same two
+// 1e-9 (combineThetaPi: the two matrices' information on (ln thetaE, ln piE) added; Deviation 148). The same two
 // are also sampled in the Monte Carlo (the columns "ln M", "ln pi_rel", mc/lin at the full and the scaled errors; the
-// scaled ones asserted within 3%); the route and the correlation c / (rt rpi) are printed per row, and at least one
-// row must take the astrometric route with |c / (rt rpi)| above 0.05, so the astrometric term is exercised.
+// scaled ones asserted within 3%); the astrometric share of piE's information and the correlation c / (rt rpi) are
+// printed per row, and at least one row must have that share >= 5% with |c / (rt rpi)| above 0.05, so the astrometric
+// covariance is exercised.
 // ---------------------------------------------------------------------------------------------
 constexpr int kLmDraws = 200000;
 
@@ -1537,7 +1770,7 @@ int runLensMotion()
         std::cout << std::left << std::setw(10) << "# survey" << std::right << std::setw(4) << "ok"
                   << std::setw(11) << "relMuL" << std::setw(11) << "mc/lin" << std::setw(11) << "sigVL" << std::setw(11) << "mc/lin"
                   << std::setw(10) << "rel_v" << std::setw(8) << "scale" << std::setw(9) << "mc/lin" << std::setw(9) << "mc/lin"
-                  << std::setw(8) << "ln rho" << std::setw(8) << "piE" << std::setw(13) << "dlnMl-relMl"
+                  << std::setw(8) << "ln rho" << std::setw(8) << "astPiE" << std::setw(13) << "dlnMl-relMl"
                   << std::setw(9) << "c/rt.rpi" << std::setw(9) << "lnM" << std::setw(9) << "lnPirel" << std::setw(9) << "lnM" << std::setw(9) << "lnPirel" << "\n";
         static const char* kName[NSURV] = {"joint", "rubin", "roman"};
         for (int q = 0; q < NSURV; ++q) {
@@ -1565,7 +1798,8 @@ int runLensMotion()
             const double tt = l->tetE, pp = l->piE;
             const double rp1 = (co->Era[q][3] >= 0.0) ? co->Era[q][3] / (std::fabs(l->piE) + eps) : -1.0;
             const double rp2 = (co->Erb[q][3] >= 0.0) ? co->Erb[q][3] / (std::fabs(l->piE) + eps) : -1.0;
-            const bool photPi = (rp1 >= 0.0 and (rp2 < 0.0 or rp1 < rp2));
+            // The astrometric share of piE's information (correlations aside): the rows that exercise its covariance.
+            const double astShare = (rp2 > 0.0) ? (rp1 > 0.0 ? (1.0 / (rp2 * rp2)) / (1.0 / (rp1 * rp1) + 1.0 / (rp2 * rp2)) : 1.0) : 0.0;
             const double vTet = S[LM_TETE][LM_TETE] / (tt * tt);
             const double vLnMl = vTet + S[LM_PIE][LM_PIE] / (pp * pp) - 2.0 * S[LM_TETE][LM_PIE] / (tt * pp);
             if (std::fabs(vTet / (co->relTetEc[q] * co->relTetEc[q]) - 1.0) > 1e-9) {
@@ -1575,7 +1809,7 @@ int runLensMotion()
             }
             const double vLnPi = vTet + S[LM_PIE][LM_PIE] / (pp * pp) + 2.0 * S[LM_TETE][LM_PIE] / (tt * pp);
             const double cRho = S[LM_TETE][LM_PIE] / (tt * pp) / std::sqrt(vTet * S[LM_PIE][LM_PIE] / (pp * pp));   // c / (rt rpi)
-            if (!photPi and std::fabs(cRho) > 0.05) ++nAstCorr;
+            if (astShare >= 0.05 and std::fabs(cRho) > 0.05) ++nAstCorr;
             const double dMl = vLnMl / (co->relMl[q] * co->relMl[q]) - 1.0;
             if (q == SJOINT) {
                 const double rd = (1.0 - l->Dl / s->Ds) * (1.0 - l->Dl / s->Ds) * vLnPi / (co->resu[10] * co->resu[10]) - 1.0;
@@ -1668,7 +1902,7 @@ int runLensMotion()
                       << std::fixed << std::setprecision(3) << std::setw(11) << rV1
                       << std::setprecision(3) << std::setw(10) << co->sigVL[q] / v0
                       << std::setprecision(4) << std::setw(8) << fSmall << std::setprecision(3) << std::setw(9) << rMu2 << std::setw(9) << rV2
-                      << std::setw(8) << (co->rhoMeas[q] ? "yes" : "no") << std::setw(8) << (photPi ? "phot" : "ast")
+                      << std::setw(8) << (co->rhoMeas[q] ? "yes" : "no") << std::fixed << std::setprecision(3) << std::setw(8) << astShare
                       << std::scientific << std::setprecision(2) << std::setw(13) << dMl << std::fixed << std::setprecision(3)
                       << std::setw(9) << cRho << std::setw(9) << rM1 << std::setw(9) << rP1 << std::setw(9) << rM2 << std::setw(9) << rP2 << "\n";
         }
@@ -1696,7 +1930,7 @@ int runLensMotion()
             }
         }
     }
-    std::cout << "\n# rows on the astrometric piE route with |c / (rt rpi)| > 0.05: " << nAstCorr << "\n";
+    std::cout << "\n# rows whose astrometric piE carries >= 5% of piE's information, with |c / (rt rpi)| > 0.05: " << nAstCorr << "\n";
     if (nAstCorr == 0) {
         std::cerr << "FAIL [lens-motion] no fixture row takes the astrometric route with a non-negligible c: the astrometric term is untested\n";
         ++failures;
@@ -3571,6 +3805,7 @@ int main(int argc, char** argv)
 
     // Data-free unit checks, run first so a failure is seen before the long event table.
     if (!checkSentinelDiscipline()) ++failures;
+    if (!checkMassRouteSwitch())    ++failures;
     if (!checkSeasonClustering())   ++failures;
     if (!checkFewEpochTelescope())  ++failures;
     std::cout << "\n# --- Rubin's bands ---\n";

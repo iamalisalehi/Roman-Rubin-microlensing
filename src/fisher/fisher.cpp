@@ -827,7 +827,7 @@ void FisherM(source & s, lens & l, astromet & as,  covarian & co, int ndw)
 ///&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&//
 // The fractional 1-sigma of one quantity measured two independent ways, from the two: the inverse-variance
 // combination 1 / sqrt(1/a^2 + 1/b^2). -1 = not measured; with one route absent the other is returned
-// untouched, and with both absent -1.
+// untouched, and with both absent -1. Used only where the two-parameter combination below is not defined.
 static double combineRel(double a, double b)
 {
   if (a >= 0.0 and b >= 0.0) {
@@ -838,109 +838,144 @@ static double combineRel(double a, double b)
 }
 
 // The lens mass Ml = thetaE / (kappa piE) and the relative parallax pi_rel = thetaE piE are products of the same
-// two measured quantities: ln Ml = ln thetaE - ln piE + const, ln pi_rel = ln thetaE + ln piE, so with rt, rpi
-// the fractional errors of the thetaE and the piE used and c = cov(ln thetaE, ln piE),
-//     var(ln Ml) = rt^2 + rpi^2 - 2c,     var(ln pi_rel) = rt^2 + rpi^2 + 2c.
-// Both enter the output, with the same c of opposite sign: a positive c shrinks the mass error and grows the distance
-// error, a negative one the reverse. On the astrometric piE route c is mostly negative (sightline 795: 74% of the
-// joint events on that route), so there the mass error is larger and the distance error smaller than in quadrature.
-// The thetaE used is the inverse-variance combination of the astrometric and the photometric (theta* / rho) one,
-// ln thetaE_c = (1 - wp) ln thetaE_astr + wp ln thetaE_phot, wp = rt^2 / rph^2 (rph = relTetEph, the photometric
-// route's own fractional error; wp = 0 where rho is not measured in the partition). The piE used is the
-// photometric or the astrometric one, whichever is the better. c then has one source per route:
-//   - photometric piE: it shares a matrix with ln rho, ln thetaE_phot = ln theta* - ln rho (theta* independent), so
-//     c = -wp cov(ln rho, ln piE) = -wp corr s rpi (corr = corrRhoPiE, s = sigma(ln rho)). The astrometric thetaE
-//     is in another matrix: no covariance with it;
-//   - astrometric piE: it shares the astrometric matrix with the astrometric thetaE, so c = (1 - wp)
-//     cov(thetaE, piE) / (thetaE piE) from that matrix's inverse (covB; piE > 0 always); the photometric thetaE
-//     is in the other matrix: no covariance with this piE.
-// |c| <= rt rpi (Cauchy-Schwarz) so both variances are >= 0; a negative one within rounding is set to 0, any other
-// is a bug (CHECK). With c = 0 (no ln rho on the photometric route) the expression is sqrt(rpi^2 + rt^2), as it
-// always was. This function is the single source of c: relMl, relMlV, resu[9] and resu[10] all take it.
-static double lnCovTetPi(bool photPi, double wp, double rpi, double corr, double s, double covB, double tetE, double piE)
+// two quantities, x = (ln thetaE, ln piE): ln Ml = x0 - x1 + const, ln pi_rel = x0 + x1. Each matrix of a partition
+// constrains x:
+//   - the astrometric one (B) gives thetaE and piE together, with their covariance (the centroid's parallax);
+//   - the photometric one (A) gives piE and, where the light curve measures the source's size (rhoMeas), thetaE =
+//     theta* / rho as well (ln thetaE_ph = ln theta* - ln rho, theta* independent, variance relTetEph^2; its
+//     covariance with ln piE is -cov(ln rho, piE) / piE from the same inverse).
+// The data of the two matrices are independent (the photometric/astrometric split: each holds the other's own
+// parameters at their true values), so their information on x ADDS: I = I_A + I_B, C = I^-1. Without rho the
+// photometric matrix informs ln piE only, I_A = diag(0, 1 / rpi_ph^2). x is measured where I is positive definite.
+// (lensMotionCovariance does the same sum over all six parameters of the lens's motion; its (thetaE, piE) marginal is
+// this C.) Every block of the joint partition holds at least the information of the same
+// block of a single survey, so C_joint <= C_single and sigma_joint <= sigma_single for ANY combination of x: the
+// lens mass, the distance and the lens's motion. (Until Deviation 148 one piE route was picked per partition by
+// the smaller sigma(piE) alone, which broke that: the joint partition could switch route and lose the
+// thetaE-piE covariance a single survey's mass relied on.)
+struct ThetaPiCombo {
+  bool   ok = false;              //x measured: I positive definite
+  bool   rho = false;             //the photometric thetaE (theta* / rho) enters
+  double C[2][2]  = {{0.0, 0.0}, {0.0, 0.0}};   //covariance of x
+  double varLnM()     const { return C[0][0] + C[1][1] - 2.0 * C[0][1]; }
+  double varLnPirel() const { return C[0][0] + C[1][1] + 2.0 * C[0][1]; }
+};
+
+// The inverse of a symmetric 2x2 covariance; false unless it is positive definite.
+static bool invertSym2(double a, double b, double d, double out[2][2])
 {
-  if (photPi) return std::isfinite(corr) ? -(wp * corr * s * rpi) : 0.0;     //corr is NaN only for rpi = 0
-  return (1.0 - wp) * covB / ((std::fabs(tetE) + eps) * (std::fabs(piE) + eps));
+  const double det = a * d - b * b;
+  if (!(a > 0.0 and d > 0.0 and det > 0.0) or !std::isfinite(det)) return false;
+  out[0][0] = d / det;  out[1][1] = a / det;  out[0][1] = out[1][0] = -b / det;
+  return true;
 }
 
-// The variance of ln Ml (c2 = -2c) or of ln pi_rel (c2 = +2c), guarded as above.
-static double lnVar(double rt, double rpi, double c2)
+// x's combination from the pieces of one partition (one noise variant). Astrometric: vT, vP, cTP = the inverse's
+// thetaE, piE variances and their covariance [mas^2, mas, 1], used if astOk. Photometric: sPiPh = sigma(piE) (-1 = none),
+// rTph = relTetEph (-1 = rho not measured), cRhoPi = cov(ln rho, piE) of the photometric inverse.
+static ThetaPiCombo combineThetaPi(bool astOk, double vT, double vP, double cTP,
+                                   double sPiPh, double rTph, double cRhoPi, double tetE, double piE)
 {
-  const double base = rt * rt + rpi * rpi;
-  const double var  = base + c2;
-  if (var < 0.0) {
-      CHECK(var >= -1.0e-12 * base);   //rounding only
-      return 0.0;
+  ThetaPiCombo r;
+  const double T = std::fabs(tetE) + eps, P = std::fabs(piE) + eps;
+  double IA[2][2] = {{0.0, 0.0}, {0.0, 0.0}}, IB[2][2] = {{0.0, 0.0}, {0.0, 0.0}};
+  bool any = false;
+  if (astOk and invertSym2(vT / (T * T), cTP / (T * P), vP / (P * P), IB)) any = true;
+  if (sPiPh > 0.0) {
+      const double rp = sPiPh / P;
+      if (rTph >= 0.0 and invertSym2(rTph * rTph, -cRhoPi / P, rp * rp, IA)) r.rho = true;
+      else { IA[0][0] = IA[0][1] = IA[1][0] = 0.0;  IA[1][1] = 1.0 / (rp * rp); }
+      any = true;
   }
-  return var;
+  if (!any) return r;
+  double I[2][2];
+  for (int i = 0; i < 2; ++i) for (int j = 0; j < 2; ++j) I[i][j] = IA[i][j] + IB[i][j];
+  if (!invertSym2(I[0][0], I[0][1], I[1][1], r.C)) return r;   //I is the information: its inverse is C
+  r.ok = true;
+  return r;
 }
 
-// Fractional 1-sigma of the lens mass Ml = thetaE / (kappa piE): sqrt(rt^2 + rpi^2 - 2c), c from lnCovTetPi.
-static double relMass(double rt, double rpi, double c)
+// The main (W) combination of partition q, from the partition's own matrices: what relMl, relTetEc, rel_piE, rel_Dl
+// and the lens's motion all take.
+static ThetaPiCombo thetaPiOf(const covarian& co, const lens& l, int q)
 {
-  return std::sqrt(lnVar(rt, rpi, -2.0 * c));
+  const bool astOk = co.okB[q] and co.Erb[q][0] >= 0.0 and co.Erb[q][3] >= 0.0;
+  const double vT  = astOk ? gsl_matrix_get(co.inverB[q].get(), 0, 0) : 0.0;
+  const double vP  = astOk ? gsl_matrix_get(co.inverB[q].get(), 3, 3) : 0.0;
+  const double cTP = astOk ? gsl_matrix_get(co.inverB[q].get(), 0, 3) : 0.0;
+  const double sPh = (co.okA[q] and co.Era[q][3] > 0.0) ? co.Era[q][3] : -1.0;
+  const bool   rho = sPh > 0.0 and co.relTetEph[q] >= 0.0;
+  const double cRP = rho ? gsl_matrix_get(co.inverA[q].get(), 9, 3) : 0.0;
+  return combineThetaPi(astOk, vT, vP, cTP, sPh, rho ? co.relTetEph[q] : -1.0, cRP, l.tetE, l.piE);
 }
 
 // ---------------------------------------------------------------------------------------------------------
 // The lens's motion on the sky and its error (lensMotion, events/vbm_model.h). The six parameters of the model,
-// p = (tE, xi, piE, thetaE, mus1, mus2), are not fitted together: the photometric matrix gives tE, xi, piE (and ln
-// rho), the astrometric one thetaE, mus1, mus2, piE, and each holds the other's parameters fixed, so the two
-// matrices are independent blocks. p is a linear map of independent variables,
-//     a = (tE, xi, piE_phot, ln rho)  from inverA[q],   b = (thetaE_ast, mus1, mus2, piE_ast)  from inverB[q],
-//     e = the error of ln theta*  (variance THETASTAR_SIGLN^2),
-// and its covariance is L Sigma L^T. The pieces of L:
-//   - piE is the photometric one (a) or the astrometric one (b), the route relMl takes (the better one);
-//   - thetaE is the inverse-variance combination of the astrometric thetaE and the photometric theta* / rho
-//     that relTetEc is: delta thetaE = (1 - wp) delta thetaE_ast + wp thetaE (-delta ln rho + e), with the photometric
-//     weight wp = relTetEc^2 / relTetEph^2 (the weight of ln thetaE_phot in ln thetaE_c, as lnCovTetPi has it). So
-//     thetaE carries the covariance of thetaE_ast with mus (and with piE_ast) from the astrometric matrix, and
-//     that of ln rho with tE, xi and piE_phot from the photometric one;
-//   - mus1, mus2 are the astrometric ones.
-// Sigma(thetaE)/thetaE^2 comes out as relTetEc^2 and, on either route, the variance of ln thetaE - ln piE as relMl^2
-// and that of ln thetaE + ln piE as (rel_Dl / (1 - D_L/D_S))^2 (relMass, lnCovTetPi), which the fixture asserts.
+// p = (tE, xi, piE, thetaE, mus1, mus2), are not fitted together: the photometric matrix gives (tE, xi, piE) and,
+// where the light curve measures rho, thetaE = theta* / rho; the astrometric one (thetaE, mus1, mus2, piE). Each holds
+// the other's own parameters fixed, so their data are independent and their information on p ADDS:
+//     I_p = embed(Cov_A^-1) + embed(Cov_B^-1),   S = I_p^-1,
+// Cov_A the photometric inverse on (tE, xi, piE[, thetaE_ph]) with thetaE_ph = thetaE (ln theta* - ln rho) linearised
+// (cov(thetaE_ph, .) = -thetaE cov(ln rho, .), var = thetaE^2 (var(ln rho) + THETASTAR_SIGLN^2)), Cov_B the
+// astrometric inverse. The other parameters of each matrix (u0, t0, the fluxes; nothing in B) are already marginalised
+// in its inverse. This is the best estimate of all six from both matrices: never worse than any other combination of
+// them, for every function of p (the mass, the distance, mu_L, v_L), and monotone (a joint partition's blocks hold at
+// least a single survey's information). Its (thetaE, piE) marginal is exactly combineThetaPi's C (the nuisance parameters
+// tE, xi of A and mus of B are separate, so the Schur complements add): Sigma(thetaE)/thetaE^2 = relTetEc^2,
+// var(ln thetaE - ln piE) = relMl^2, var(ln thetaE + ln piE) = (rel_Dl / (1 - D_L/D_S))^2, which the fixture asserts.
+
+// The inverse of the n x n symmetric positive-definite M (row major, stride NLM), by Cholesky on the matrix scaled to unit
+// diagonal; false unless positive definite.
+static bool spdInverse(const double M[NLM][NLM], int n, double out[NLM][NLM])
+{
+  double d[NLM];
+  for (int i = 0; i < n; ++i) {
+      if (!(M[i][i] > 0.0) or !std::isfinite(M[i][i])) return false;
+      d[i] = 1.0 / std::sqrt(M[i][i]);
+  }
+  gsl_matrix* A = gsl_matrix_alloc(n, n);
+  for (int i = 0; i < n; ++i)
+      for (int j = 0; j < n; ++j) gsl_matrix_set(A, i, j, M[i][j] * d[i] * d[j]);
+  gsl_error_handler_t* old = gsl_set_error_handler_off();
+  const bool ok = gsl_linalg_cholesky_decomp1(A) == GSL_SUCCESS and gsl_linalg_cholesky_invert(A) == GSL_SUCCESS;
+  gsl_set_error_handler(old);
+  if (ok)
+      for (int i = 0; i < n; ++i)
+          for (int j = 0; j < n; ++j) out[i][j] = gsl_matrix_get(A, i, j) * d[i] * d[j];
+  gsl_matrix_free(A);
+  return ok;
+}
+
 bool lensMotionCovariance(const covarian& co, const lens& l, int q, double S[NLM][NLM])
 {
   for (int i = 0; i < NLM; ++i) for (int j = 0; j < NLM; ++j) S[i][j] = 0.0;
   if (!(co.okA[q] and co.okB[q] and co.relMl[q] >= 0.0)) return false;
   const auto& Era = co.Era[q];
   const auto& Erb = co.Erb[q];
-  const double rp1 = (Era[3] >= 0.0) ? Era[3] / (std::fabs(l.piE) + eps) : -1.0;
-  const double rp2 = (Erb[3] >= 0.0) ? Erb[3] / (std::fabs(l.piE) + eps) : -1.0;
-  const bool photPi = (rp1 >= 0.0 and (rp2 < 0.0 or rp1 < rp2));      //the route relMl takes
-  const bool rho    = (co.rhoMeas[q] != 0 and Era[9] >= 0.0);          //the photometric thetaE is used
-  if (Era[1] < 0.0 or Era[4] < 0.0 or Erb[0] < 0.0 or Erb[1] < 0.0 or Erb[2] < 0.0 or (rp1 < 0.0 and rp2 < 0.0))
-      return false;
-  const double wp = (rho and co.relTetEph[q] > 0.0 and co.relTetEc[q] >= 0.0)
-                  ? co.relTetEc[q] * co.relTetEc[q] / (co.relTetEph[q] * co.relTetEph[q]) : 0.0;
+  if (Era[1] < 0.0 or Era[4] < 0.0 or Erb[0] < 0.0 or Erb[1] < 0.0 or Erb[2] < 0.0) return false;
+  const ThetaPiCombo x = thetaPiOf(co, l, q);
+  if (!x.ok) return false;
+  const bool rho = x.rho;                                           //the photometric thetaE is used
 
-  // Sigma of (a[0..3], b[4..7], e[8]).
-  static const int ia[4] = {1, 4, 3, 9};
-  constexpr int NB = 9;
-  double Sb[NB][NB] = {};
+  // Photometric block on (tE, xi, piE[, thetaE_ph]); astrometric block on (thetaE, mus1, mus2, piE).
+  static const int ia[4] = {1, 4, 3, 9}, toA[4] = {LM_TE, LM_XI, LM_PIE, LM_TETE};
+  static const int toB[Ny] = {LM_TETE, LM_MUS1, LM_MUS2, LM_PIE};
   const int na = rho ? 4 : 3;
+  double CA[NLM][NLM] = {}, CB[NLM][NLM] = {}, IA[NLM][NLM] = {}, IB[NLM][NLM] = {}, I[NLM][NLM] = {};
   for (int i = 0; i < na; ++i)
-      for (int j = 0; j < na; ++j) Sb[i][j] = gsl_matrix_get(co.inverA[q].get(), ia[i], ia[j]);
+      for (int j = 0; j < na; ++j) CA[i][j] = gsl_matrix_get(co.inverA[q].get(), ia[i], ia[j]);
+  if (rho) {
+      for (int j = 0; j < 3; ++j) CA[3][j] = CA[j][3] = -l.tetE * CA[3][j];
+      CA[3][3] = l.tetE * l.tetE * (gsl_matrix_get(co.inverA[q].get(), 9, 9) + THETASTAR_SIGLN * THETASTAR_SIGLN);
+  }
   for (int i = 0; i < Ny; ++i)
-      for (int j = 0; j < Ny; ++j) Sb[4 + i][4 + j] = gsl_matrix_get(co.inverB[q].get(), i, j);
-  Sb[8][8] = THETASTAR_SIGLN * THETASTAR_SIGLN;
-
-  double L[NLM][NB] = {};
-  L[LM_TE][0] = 1.0;
-  L[LM_XI][1] = 1.0;
-  L[LM_PIE][photPi ? 2 : 7] = 1.0;
-  L[LM_TETE][4] = 1.0 - wp;
-  if (rho) { L[LM_TETE][3] = -wp * l.tetE; L[LM_TETE][8] = wp * l.tetE; }
-  L[LM_MUS1][5] = 1.0;
-  L[LM_MUS2][6] = 1.0;
-
-  double LS[NLM][NB] = {};
-  for (int i = 0; i < NLM; ++i)
-      for (int k = 0; k < NB; ++k)
-          for (int m = 0; m < NB; ++m) LS[i][k] += L[i][m] * Sb[m][k];
-  for (int i = 0; i < NLM; ++i)
-      for (int j = 0; j < NLM; ++j)
-          for (int k = 0; k < NB; ++k) S[i][j] += LS[i][k] * L[j][k];
-  return true;
+      for (int j = 0; j < Ny; ++j) CB[i][j] = gsl_matrix_get(co.inverB[q].get(), i, j);
+  if (!spdInverse(CA, na, IA) or !spdInverse(CB, Ny, IB)) return false;
+  for (int i = 0; i < na; ++i)
+      for (int j = 0; j < na; ++j) I[toA[i]][toA[j]] += IA[i][j];
+  for (int i = 0; i < Ny; ++i)
+      for (int j = 0; j < Ny; ++j) I[toB[i]][toB[j]] += IB[i][j];
+  return spdInverse(I, NLM, S);
 }
 
 void lensMotionPropagate(const MotionContext& c, const double p[NLM], const double S[NLM][NLM],
@@ -995,55 +1030,46 @@ void ErrorCal(covarian & co, lens & l , source & s){
   // The Einstein radius has two routes. Astrometry gives it directly (Erb[0]). When the data measure the source's
   // size (rhoMeas: the partition's data-only sigma(ln rho) is at most SIGLNRHO_MAX) the light curve gives it as
   // thetaE = theta* / rho, with the fractional error of ln rho (the posterior one) and of the source's angular
-  // radius theta* (THETASTAR_SIGLN) added in quadrature. The two are combined by inverse variance, as independent measurements (they come from different
-  // matrices, and theta* is independent of the fit). The lens mass below takes the combined thetaE; its error
-  // carries the covariance of ln rho with the photometric piE, which share a matrix (lnCovTetPi), co.corrRhoPiE
-  // being its correlation coefficient.
+  // radius theta* (THETASTAR_SIGLN) added in quadrature (relTetEph). corrRhoPiE is the correlation of ln rho with the
+  // photometric piE (a diagnostic).
   for (int q = 0; q < NSURV; ++q) {
-      const double rastr = (co.Erb[q][0] >= 0.0) ? co.Erb[q][0] / (std::fabs(l.tetE) + eps) : -1.0;
       const bool rhoUsed = co.rhoMeas[q] and co.okA[q] and co.Era[q][9] >= 0.0;
       co.relTetEph[q] = rhoUsed ? std::sqrt(co.Era[q][9] * co.Era[q][9] + THETASTAR_SIGLN * THETASTAR_SIGLN) : -1.0;
-      co.relTetEc[q]  = combineRel(rastr, co.relTetEph[q]);
       co.corrRhoPiE[q] = std::numeric_limits<double>::quiet_NaN();
       if (rhoUsed and co.Era[q][3] > 0.0)
           co.corrRhoPiE[q] = gsl_matrix_get(co.inverA[q].get(), 9, 3) / (co.Era[q][9] * co.Era[q][3]);
   }
 
-  // Fractional 1-sigma on the lens mass, per survey: Ml = tetE / (kappa * piE), kappa = 8.144 mas/Msun, so the
-  // fractional errors add in quadrature minus twice their covariance (relMass, lnCovTetPi: ln rho with the
-  // photometric piE, or thetaE with the astrometric piE, by the route). piE has a photometric (Era[3]) and an
-  // astrometric (Erb[3]) route; take the better available one, and report no mass if either
-  // ingredient is missing (-1.0 means "not measured", never a measurement).
+  // Lens mass, per survey: Ml = tetE / (kappa * piE), kappa = 8.144 mas/Msun, so var(ln Ml) = var(ln thetaE - ln piE)
+  // of the two matrices' constraints on (ln thetaE, ln piE) combined (combineThetaPi, Deviation 148). relTetEc is the
+  // thetaE of that combination; where it is undefined (no piE at all, or a matrix not positive definite) relTetEc falls
+  // back to the inverse-variance combination of the thetaE routes and there is no mass (-1, never a measurement).
+  std::array<ThetaPiCombo, NSURV> xc;
   for (int q = 0; q < NSURV; ++q) {
-      const double rp1 = (co.Era[q][3] >= 0.0) ? co.Era[q][3] / (std::fabs(l.piE)  + eps) : -1.0;
-      const double rp2 = (co.Erb[q][3] >= 0.0) ? co.Erb[q][3] / (std::fabs(l.piE)  + eps) : -1.0;
-      const double rp  = (rp1 >= 0.0 and rp2 >= 0.0) ? MIN(rp1, rp2) : std::max(rp1, rp2);
-      const double rt  = co.relTetEc[q];
-      const bool   photPi = (rp1 >= 0.0 and (rp2 < 0.0 or rp1 < rp2));   //the route MIN picked
-      if (!(rp >= 0.0 and rt >= 0.0)) { co.relMl[q] = -1.0; continue; }
-      const double wp   = (co.relTetEph[q] >= 0.0) ? rt * rt / (co.relTetEph[q] * co.relTetEph[q]) : 0.0;
-      const double covB = co.okB[q] ? gsl_matrix_get(co.inverB[q].get(), 0, 3) : 0.0;
-      co.relMl[q] = relMass(rt, rp, lnCovTetPi(photPi, wp, rp, co.corrRhoPiE[q], co.Era[q][9], covB, l.tetE, l.piE));
+      xc[q] = thetaPiOf(co, l, q);
+      const double rastr = (co.Erb[q][0] >= 0.0) ? co.Erb[q][0] / (std::fabs(l.tetE) + eps) : -1.0;
+      co.relTetEc[q] = xc[q].ok ? std::sqrt(xc[q].C[0][0]) : combineRel(rastr, co.relTetEph[q]);
+      co.relMl[q]    = xc[q].ok ? std::sqrt(std::max(xc[q].varLnM(), 0.0)) : -1.0;
   }
 
-  // Astrometric noise variants: W is the main result; N and P were inverted in FisherM. Lens-mass
-  // errors follow the same rule, with each variant's own tetE, astrometric piE and their covariance.
+  // Astrometric noise variants: W is the main result (relMlV[W] = relMl); N and P were inverted in FisherM. Their
+  // lens-mass errors take the same combination, with each variant's own astrometric thetaE, piE and covariance.
   for (int q = 0; q < NSURV; ++q) {
       co.okBV[AV_W][q] = co.okB[q];
       co.condBV[AV_W][q] = co.condB[q];
       for (int k = 0; k < Ny; ++k) co.ErbV[AV_W][q][k] = co.Erb[q][k];
       co.covTetPiV[AV_W][q] = co.okB[q] ? gsl_matrix_get(co.inverB[q].get(), 0, 3) : 0.0;
+      co.relMlV[AV_W][q] = co.relMl[q];
+      const double sPh = (co.okA[q] and co.Era[q][3] > 0.0) ? co.Era[q][3] : -1.0;
+      const bool   rho = sPh > 0.0 and co.relTetEph[q] >= 0.0;
+      const double cRP = rho ? gsl_matrix_get(co.inverA[q].get(), 9, 3) : 0.0;
       for (int v = 0; v < NAVAR; ++v) {
+          if (v == AV_W) continue;
           const auto& E = co.ErbV[v][q];
-          const double rp1 = (co.Era[q][3] >= 0.0) ? co.Era[q][3] / (std::fabs(l.piE) + eps) : -1.0;
-          const double rp2 = (E[3] >= 0.0) ? E[3] / (std::fabs(l.piE) + eps) : -1.0;
-          const double rp  = (rp1 >= 0.0 and rp2 >= 0.0) ? MIN(rp1, rp2) : std::max(rp1, rp2);
-          const double rt  = combineRel((E[0] >= 0.0) ? E[0] / (std::fabs(l.tetE) + eps) : -1.0, co.relTetEph[q]);
-          const bool   photPi = (rp1 >= 0.0 and (rp2 < 0.0 or rp1 < rp2));
-          if (!(rp >= 0.0 and rt >= 0.0)) { co.relMlV[v][q] = -1.0; continue; }
-          const double wp = (co.relTetEph[q] >= 0.0) ? rt * rt / (co.relTetEph[q] * co.relTetEph[q]) : 0.0;
-          co.relMlV[v][q] = relMass(rt, rp, lnCovTetPi(photPi, wp, rp, co.corrRhoPiE[q], co.Era[q][9],
-                                                       co.covTetPiV[v][q], l.tetE, l.piE));
+          const bool astOk = co.okBV[v][q] and E[0] >= 0.0 and E[3] >= 0.0;
+          const ThetaPiCombo x = combineThetaPi(astOk, E[0] * E[0], E[3] * E[3], co.covTetPiV[v][q],
+                                                sPh, rho ? co.relTetEph[q] : -1.0, cRP, l.tetE, l.piE);
+          co.relMlV[v][q] = x.ok ? std::sqrt(std::max(x.varLnM(), 0.0)) : -1.0;
       }
   }
 
@@ -1064,29 +1090,21 @@ void ErrorCal(covarian & co, lens & l , source & s){
   co.resu[7]  = double(Erb[2] / (std::fabs(s.mus2)  + eps));
   co.resu[8]  = double(Erb[3] / (std::fabs(l.piE)   + eps));
 
-  // piE is measured photometrically (resu[3]) and astrometrically (resu[8]). Take the better of
-  // the routes that produced a measurement; an unguarded MIN would pick the -1.0 sentinel over a
-  // real sigma. Same rule as relMl[].
-  const bool photPiJ = (co.resu[3] >= 0.0 and (co.resu[8] < 0.0 or co.resu[3] < co.resu[8]));   //the route MIN picks
-  if      (co.resu[3] < 0.0 and co.resu[8] < 0.0) co.resu[3] = -1.0;
+  // piE is measured photometrically (resu[3]) and astrometrically (resu[8]). rel_piE is the piE of the combination
+  // the mass takes (combineThetaPi); where that is undefined (no thetaE: photometry alone without rho), the route that
+  // produced a measurement -- an unguarded MIN would pick the -1.0 sentinel over a real sigma.
+  if (xc[SJOINT].ok)                              co.resu[3] = std::sqrt(xc[SJOINT].C[1][1]);
+  else if (co.resu[3] < 0.0 and co.resu[8] < 0.0) co.resu[3] = -1.0;
   else if (co.resu[3] < 0.0)                      co.resu[3] = co.resu[8];
   else if (co.resu[8] >= 0.0)                     co.resu[3] = MIN(co.resu[3], co.resu[8]);
 
-  // Lens mass: Ml = tetE/(kappa*piE), with the combined thetaE (resu[5] stays the astrometric one: the column and
-  // the proper-motion errors below read it) and the piE route above; var(ln Ml) = rt^2 + rpi^2 - 2c (relMass).
-  // Lens distance: Dl = 1 / (pi_rel + pi_S) with pi_S = 1/Ds known and pi_rel = tetE piE, so d ln Dl = -(1 - Dl/Ds)
-  // d ln pi_rel and rel_Dl = (1 - Dl/Ds) sqrt(var(ln pi_rel)), var(ln pi_rel) = rt^2 + rpi^2 + 2c, the same c
-  // of opposite sign in the two. -1 where the mass is.
-  {
-      const double rt = co.relTetEc[SJOINT], rpi = co.resu[3];
-      co.resu[9] = co.resu[10] = -1.0;
-      if (rpi >= 0.0 and rt >= 0.0) {
-          const double wp   = (co.relTetEph[SJOINT] >= 0.0) ? rt * rt / (co.relTetEph[SJOINT] * co.relTetEph[SJOINT]) : 0.0;
-          const double covB = co.okB[SJOINT] ? gsl_matrix_get(co.inverB[SJOINT].get(), 0, 3) : 0.0;
-          const double c    = lnCovTetPi(photPiJ, wp, rpi, co.corrRhoPiE[SJOINT], Era[9], covB, l.tetE, l.piE);
-          co.resu[9]  = relMass(rt, rpi, c);
-          co.resu[10] = std::fabs(std::sqrt(lnVar(rt, rpi, 2.0 * c)) * (s.Ds - l.Dl) / s.Ds);
-      }
+  // Lens mass and distance of the joint partition (resu[5] stays the astrometric thetaE: the column and the
+  // proper-motion errors below read it). Dl = 1 / (pi_rel + pi_S) with pi_S = 1/Ds known and pi_rel = tetE piE, so
+  // d ln Dl = -(1 - Dl/Ds) d ln pi_rel and rel_Dl = (1 - Dl/Ds) sqrt(var(ln thetaE + ln piE)). -1 where the mass is.
+  co.resu[9] = co.resu[10] = -1.0;
+  if (xc[SJOINT].ok) {
+      co.resu[9]  = co.relMl[SJOINT];
+      co.resu[10] = std::fabs(std::sqrt(std::max(xc[SJOINT].varLnPirel(), 0.0)) * (s.Ds - l.Dl) / s.Ds);
   }
 
   // The lens's proper motion and velocity on the sky, per partition (lensMotion; the covariance of its parameters

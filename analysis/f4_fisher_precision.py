@@ -12,12 +12,15 @@ Top row, the parameters the light curve and centroid fit:
                          wobble), so gated on okB, not okA.
 
 Bottom row, the payoff and whether to believe it:
-  (d) sigma_Ml / Ml      Lens mass, never fitted: Ml = tetE / (kappa * piE), kappa = 8.144 mas/Msun,
-                         so its fractional error is the quadrature sum of those on tetE and piE.
+  (d) sigma_Ml / Ml      Lens mass, never fitted: Ml = tetE / (kappa * piE), kappa = 8.144 mas/Msun;
+                         its error is var(ln tetE - ln piE) of the photometric and astrometric
+                         matrices' information on (ln tetE, ln piE) added (Deviation 148).
   (e) joint vs single    Per-event sigma_Ml/Ml, joint against each survey alone. Every point must lie
                          on or below 1:1, since the joint information matrix is the sum of the
-                         per-survey ones. Points above the line are round-off on ill-conditioned
-                         matrices.
+                         per-survey ones. Any point above the line is a bug. Runs made before
+                         Deviation 148 show a few dozen: their mass took ONE piE route per survey,
+                         chosen by sigma(piE) alone, so the joint fit could switch route and lose
+                         the thetaE-piE covariance a single survey's mass relied on.
   (f) condition number   of the normalized photometric matrix. Above ~1e9 double precision has lost
                          most of its digits and the inverse, hence every sigma from it, is not
                          trustworthy.
@@ -170,7 +173,7 @@ def draw_invariant(ax, df, w, surveys):
                          p10=np.nan, median=med, p90=np.nan,
                          median_unweighted=float(r.median())))
         print(f"    Ml joint/{s}: median ratio {med:.3f} weighted, {r.median():.3f} raw; "
-              f"{int((r > 1.0 + 1e-9).sum())} above 1 (round-off, cond > 1e9)")
+              f"{int((r > 1.0 + 1e-9).sum())} above 1 (must be 0; runs before Deviation 148: the one-route mass bug)")
 
     ax.set_xscale("log"); ax.set_yscale("log")
     ax.set_xlim(lo, hi); ax.set_ylim(lo, hi)
@@ -182,7 +185,7 @@ def draw_invariant(ax, df, w, surveys):
                  color=INK, fontsize=10, loc="left", pad=7, linespacing=1.5)
     ax.text(0.03, 0.72,
             f"{nviol} point{'' if nviol == 1 else 's'} above the line"
-            + ("" if nviol == 0 else "  (round-off, cond > $10^{9}$)"),
+            + ("" if nviol == 0 else "  (a bug; pre-Deviation-148 runs: one piE route per survey)"),
             transform=ax.transAxes, color=MUTED, fontsize=7.5, va="top")
     leg = ax.legend(loc="upper left", fontsize=7.2, frameon=False, labelcolor=INK,
                     handlelength=1.0, borderpad=0.2)

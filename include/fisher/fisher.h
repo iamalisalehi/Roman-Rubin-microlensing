@@ -103,8 +103,8 @@ struct covarian {
     std::array<std::array<int, NSURV>, NAVAR>    okBV{};
     std::array<std::array<double, NSURV>, NAVAR> condBV{};
     std::array<std::array<double, NSURV>, NAVAR> relMlV{};
-    // cov(thetaE, piE) of each variant's astrometric inverse [mas, per unit piE], the covariance the mass and
-    // distance errors need when the astrometric piE is the route (ErrorCal, lnCovTetPi). 0 where okBV = 0.
+    // cov(thetaE, piE) of each variant's astrometric inverse [mas, per unit piE]: with the variances, the astrometric
+    // block the lens-mass combination takes (ErrorCal, combineThetaPi). 0 where okBV = 0.
     std::array<std::array<double, NSURV>, NAVAR> covTetPiV{};
     std::array<std::array<std::array<double, Ny * Ny>, NSURV>, NAVAR> FBV{};  // the matrices
 
@@ -122,12 +122,11 @@ struct covarian {
     std::array<double, NSURV> condA;
     std::array<double, NSURV> condB;
 
-    // Fractional 1-sigma on the lens mass, per survey. Ml = tetE / (kappa * piE) is not fitted, so
-    // the fractional errors of tetE (astrometric matrix: sub-mas centroid motion, Roman; and, when the
-    // finite source is seen, photometric: theta* / rho) and piE (photometric matrix: parallax over a long
-    // baseline, Rubin) add in quadrature, less twice their covariance c = cov(ln tetE, ln piE): -wp cov(ln rho,
-    // ln piE) with the photometric piE, (1 - wp) cov(tetE, piE) / (tetE piE) with the astrometric one (wp the
-    // photometric weight in the combined tetE; ErrorCal, lnCovTetPi). relMlV[v] is the same for noise variant v.
+    // Fractional 1-sigma on the lens mass, per survey. Ml = tetE / (kappa * piE) is not fitted: the astrometric
+    // matrix constrains (ln tetE, ln piE) together (centroid motion and its parallax), the photometric one ln piE and,
+    // when the finite source is seen, ln tetE = ln theta* - ln rho; their information on the pair is ADDED and relMl
+    // = sqrt(var(ln tetE - ln piE)) of the result (ErrorCal, combineThetaPi; Deviation 148). Monotone by
+    // construction: relMl[SJOINT] <= relMl of either survey. relMlV[v] is the same for noise variant v.
     // -1.0 = not measurable in this partition, never a measured value.
     std::array<double, NSURV> relMl;
 
@@ -161,10 +160,10 @@ struct covarian {
     //               thetaE = theta* / rho is used.
     //   relTetEph   fractional 1-sigma on thetaE = theta* / rho, sqrt(Era[q][9]^2 + THETASTAR_SIGLN^2); -1 where rho
     //               is not measured.
-    //   relTetEc    the fractional 1-sigma on thetaE from the astrometric and photometric routes together,
-    //               inverse-variance combined; the one route that exists if only one does; -1 = neither.
-    //   corrRhoPiE  correlation of ln rho with the photometric piE in the partition's inverse matrix: how
-    //               far the combination of the two thetaE and piE errors as uncorrelated (ErrorCal) is off.
+    //   relTetEc    the fractional 1-sigma on thetaE of the (ln thetaE, ln piE) combination the mass takes (both
+    //               matrices, piE's information included); where that is undefined, the inverse-variance combination
+    //               of the thetaE routes, or the one that exists; -1 = neither.
+    //   corrRhoPiE  correlation of ln rho with the photometric piE in the partition's inverse matrix.
     //               NaN where rho is not measured. A diagnostic, not an output.
     // rhoFixed, rhoPriorSigLn and sigLnRhoMax are the production settings unless a test overrides them: rhoFixed
     // holds rho at its true value everywhere (ln rho never a parameter); rhoPriorSigLn infinite drops the prior;
@@ -343,7 +342,7 @@ enum LensMotionPar { LM_TE = 0, LM_XI, LM_PIE, LM_TETE, LM_MUS1, LM_MUS2, NLM };
 // The covariance of those six parameters in partition q, from the photometric matrix inverA[q] (tE, xi, piE,
 // ln rho) and the astrometric one inverB[q] (thetaE, mus1, mus2, piE), which are independent: the astrometric
 // matrix holds the photometric parameters fixed and vice versa, so the blocks do not talk. piE and thetaE are
-// taken by the routes relMl takes. False (S = 0) where relMl[q] < 0 or a matrix is missing.
+// the combination of the two matrices that relMl takes. False (S = 0) where relMl[q] < 0 or a matrix is missing.
 bool   lensMotionCovariance(const covarian& co, const lens& l, int q, double S[NLM][NLM]);
 // Linear propagation of S through lensMotion at the point p (central differences): the 2x2 covariances of mu_L
 // [mas/day] and v_L [km/s].
